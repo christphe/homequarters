@@ -213,6 +213,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("POST /api/join", s.join)
+	// Before any session exists, so it cannot be an authenticated API call.
+	mux.HandleFunc("GET /link/{token}", s.accountLink)
+	mux.HandleFunc("POST /api/account-link", s.newAccountLink)
 	mux.HandleFunc("POST /api/invites", s.createInvite)
 	mux.HandleFunc("GET /api/admin/members", s.listMembers)
 	mux.HandleFunc("PATCH /api/admin/members/{id}", s.patchMember)
@@ -350,6 +353,48 @@ func (s *Server) join(w http.ResponseWriter, r *http.Request) {
 		s.audit(r, &store.Session{UserID: uid, OfficeID: o.ID}, "member.join", uid, name, "role="+role)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": uid, "name": name, "role": role})
+}
+
+// accountLink is how one person reaches their own account from a second
+// machine. It is a plain URL rather than a form because it has to work before
+// there is a session: the client asks /api/me on load, so setting the cookie
+// and redirecting drops the browser straight into the office, with the same
+// identity and no join screen. An invite cannot do this - an invite makes a
+// new member, which is a second person, not a second machine.
+func (s *Server) accountLink(w http.ResponseWriter, r *http.Request) {
+	if !s.joinLim.Allow(clientIP(r)) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	tok, uid, oid, err := s.st.RedeemAccountLink(r.Context(), r.PathValue("token"), s.cfg.SessionTTL)
+	if err != nil {
+		// This URL is a credential. Say that it did not work, never why.
+		http.Error(w, "this link is not valid", http.StatusForbidden)
+		return
+	}
+	s.setCookie(w, tok)
+	s.audit(r, &store.Session{UserID: uid, OfficeID: oid}, "account.link.use", uid, "", "")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// newAccountLink mints the caller's own link, and only ever their own: the
+// user it belongs to comes from the session, never from the request, so there
+// is no shape of this call that hands one person another person's account.
+// Minting replaces the previous link, which is how it is revoked.
+func (s *Server) newAccountLink(w http.ResponseWriter, r *http.Request) {
+	se, err := s.session(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
+		return
+	}
+	tok, err := s.st.CreateAccountLink(r.Context(), se.UserID, se.OfficeID)
+	if err != nil {
+		s.log.Error("account link", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	s.audit(r, se, "account.link.create", se.UserID, "", "self")
+	writeJSON(w, http.StatusOK, map[string]any{"url": "/link/" + tok})
 }
 
 func (s *Server) session(r *http.Request) (*store.Session, error) {

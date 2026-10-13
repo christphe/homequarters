@@ -27,6 +27,7 @@ func main() {
 	inviteRole := flag.String("invite", "", "print a new invite link path for this role (admin|member) and exit; use it to bootstrap the first admin")
 	inviteUses := flag.Int("invite-uses", 1, "max uses of the invite created with -invite")
 	inviteHours := flag.Int("invite-hours", 24, "validity in hours of the invite created with -invite")
+	accountLink := flag.String("account-link", "", "print the personal link of this member and exit; opening it on another machine signs in as them and ends their other sessions")
 	backup := flag.String("backup", "", "write a consistent online backup of the SQLite database to this path and exit")
 	flag.Parse()
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -67,6 +68,22 @@ func main() {
 		}
 		_ = st.Audit(context.Background(), office.ID, 0, "invite.create", 0, "", fmt.Sprintf("cli role=%s uses=%d hours=%d", *inviteRole, *inviteUses, *inviteHours))
 		fmt.Println("/?invite=" + tok)
+		return
+	}
+
+	if *accountLink != "" {
+		uid, err := st.MemberByName(context.Background(), office.ID, *accountLink)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "account link:", err)
+			os.Exit(1)
+		}
+		tok, err := st.CreateAccountLink(context.Background(), uid, office.ID)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "account link:", err)
+			os.Exit(1)
+		}
+		_ = st.Audit(context.Background(), office.ID, 0, "account.link.create", uid, *accountLink, "cli")
+		fmt.Println("/link/" + tok)
 		return
 	}
 
