@@ -15,6 +15,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const myAvatar = useStore((x) => x.myAvatar);
   const [name, setName] = useState(myName);
   const [avatar, setAvatar] = useState<AvatarSpec>(useStore((x) => x.roster.get(x.meId)?.av) ?? myAvatar);
+  const [deviceLink, setDeviceLink] = useState("");
+  const makeDeviceLink = async () => {
+    const r = await fetch("/api/account-link", { method: "POST" });
+    if (!r.ok) return toast(t("settings.deviceError"));
+    const { url } = (await r.json()) as { url: string };
+    setDeviceLink(location.origin + url);
+  };
   const saveProfile = async () => {
     const r = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), avatar }) });
     if (!r.ok) return toast(t("settings.profileError"));
@@ -30,6 +37,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <input maxLength={24} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("join.name")} />
           <AvatarEditor value={avatar} onChange={setAvatar} />
           <button className="btn" onClick={saveProfile} disabled={!name.trim()}>{t("settings.saveProfile")}</button>
+        </div>
+      )}
+      {meId > 0 && (
+        <div className="field">
+          <span>{t("settings.device")}</span>
+          {deviceLink ? (
+            <>
+              <input readOnly value={deviceLink} onFocus={(e) => e.currentTarget.select()} aria-label={t("settings.device")} />
+              <small className="muted">{t("settings.deviceHint")} {t("settings.deviceReplaced")}</small>
+            </>
+          ) : (
+            <button className="btn" onClick={makeDeviceLink}>{t("settings.deviceNew")}</button>
+          )}
         </div>
       )}
       <label className="check">
