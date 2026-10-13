@@ -1,20 +1,20 @@
 import { t, type Key } from "../i18n";
-import { letterLabel, moveLabels, useKeyLayout } from "../keys";
+import { keyLabel, moveLabels, useKeyLayout } from "../keys";
 import { Modal } from "./Modal";
 
-// Movement keys are positions, named as this keyboard prints them; letter shortcuts are letters
-// (keys.ts). Digits stay 1-7 whatever the layout types on that row. An empty list means the
+// Letter shortcuts are physical keys (KeyboardEvent.code): the labels are what this keyboard
+// prints there. Digits stay 1-7 whatever the layout types on that row. An empty list means the
 // row's action is described by `note` instead of keys.
 const rows = (): [string[], Key, Key?][] => [
   [[moveLabels().join(" "), "↑ ← ↓ →"], "keys.move"],
-  [["Shift", letterLabel("r")], "keys.run"],
+  [["Shift", keyLabel("KeyR")], "keys.run"],
   [[], "keys.goto", "keys.dblclick"],
   [[], "keys.zoom", "keys.wheel"],
-  [[letterLabel("x")], "keys.interact"],
+  [[keyLabel("KeyX")], "keys.interact"],
   [["1-7"], "keys.emotes"],
-  [[letterLabel("z")], "keys.dance"],
-  [[letterLabel("h")], "keys.hand"],
-  [[letterLabel("m")], "keys.minimap"],
+  [[keyLabel("KeyZ")], "keys.dance"],
+  [[keyLabel("KeyH")], "keys.hand"],
+  [[keyLabel("KeyM")], "keys.minimap"],
   [["Esc"], "keys.close"],
   [["?"], "keys.help"],
 ];
