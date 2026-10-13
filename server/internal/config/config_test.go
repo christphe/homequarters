@@ -82,10 +82,10 @@ func TestLargestInterestRadiusDefaultsAndBounds(t *testing.T) {
 		want     int
 		ok       bool
 	}{
-		{"", "", 4, true},   // defaults: 2..4
-		{"6", "", 6, true},  // an install with a wide default radius keeps starting
-		{"9", "", 9, true},  // never narrower than the default radius
-		{"2", "8", 8, true}, // the documented ceiling
+		{"", "", 8, true},    // defaults: 2..8
+		{"6", "4", 4, false}, // never below the default radius
+		{"9", "", 9, true},   // never narrower than the default radius
+		{"2", "8", 8, true},  // the documented ceiling
 		{"2", "9", 0, false},
 		{"3", "2", 0, false},
 	} {

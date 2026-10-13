@@ -356,9 +356,10 @@ func TestNewcomersJoinGroupWithDisconnectedMembersAndSurviveTheirExpiry(t *testi
 
 func TestViewWidensInterestWithinTheServerCap(t *testing.T) {
 	h := newHarness(t)
+	h.w.cfg.AOIMaxCells = 4              // a smaller cap than the default, to see it hold
 	a := h.add(1, "member", 2*16, 2*16)  // cell 0
 	b := h.add(2, "member", 3*128+8, 32) // cell 3: outside the default radius of 2 cells
-	c := h.add(3, "member", 6*128+8, 32) // cell 6: outside even the largest radius
+	c := h.add(3, "member", 6*128+8, 32) // cell 6: outside the largest radius
 	h.w.flush(a)
 	drain(a)
 	view := func(cells int) []string {
@@ -545,7 +546,7 @@ func TestHelloCarriesOfficeChatHistoryAndProfileChangesReachTheRoster(t *testing
 			hello = f
 		}
 	}
-	if !strings.Contains(hello, `"cell":128,"aoi":2,"aoiMax":4,`) {
+	if !strings.Contains(hello, `"cell":128,"aoi":2,"aoiMax":8,`) {
 		t.Fatalf("hello must tell the client how far its view may reach: %s", hello[:200])
 	}
 	if !strings.Contains(hello, `"chat":[{"f":9,"n":"Zed","x":"welcome","ts":5}]`) {
