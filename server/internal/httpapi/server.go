@@ -139,6 +139,12 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 	wc := world.DefaultConfig()
 	wc.TickHz, wc.AOICells, wc.MaxPlayers = s.cfg.TickHz, s.cfg.AOICells, s.cfg.MaxPlayers
 	wc.Prox.MaxGroup = s.cfg.MaxGroup
+	if s.cfg.AOIMaxCells > 0 {
+		wc.AOIMaxCells = s.cfg.AOIMaxCells
+	}
+	if wc.AOIMaxCells < wc.AOICells {
+		wc.AOIMaxCells = wc.AOICells
+	}
 	w := world.New(wc, o.ID, o.Name, cm, s.media, s.log.With("office", o.ID))
 	if s.inst != "" {
 		w.RoomPrefix = s.inst + ".o" + strconv.FormatInt(o.ID, 10)

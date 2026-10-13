@@ -75,3 +75,25 @@ func TestMetricsTokenIsOptionalButValidated(t *testing.T) {
 		t.Fatalf("%v %v", c, err)
 	}
 }
+
+func TestLargestInterestRadiusDefaultsAndBounds(t *testing.T) {
+	for _, tc := range []struct {
+		aoi, max string
+		want     int
+		ok       bool
+	}{
+		{"", "", 4, true},   // defaults: 2..4
+		{"6", "", 6, true},  // an install with a wide default radius keeps starting
+		{"9", "", 9, true},  // never narrower than the default radius
+		{"2", "8", 8, true}, // the documented ceiling
+		{"2", "9", 0, false},
+		{"3", "2", 0, false},
+	} {
+		t.Setenv("TILEWORK_AOI_CELLS", tc.aoi)
+		t.Setenv("TILEWORK_AOI_MAX_CELLS", tc.max)
+		c, err := Load()
+		if (err == nil) != tc.ok || (tc.ok && c.AOIMaxCells != tc.want) {
+			t.Fatalf("AOI=%q MAX=%q: err=%v cfg=%+v", tc.aoi, tc.max, err, c)
+		}
+	}
+}

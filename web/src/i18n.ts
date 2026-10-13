@@ -48,6 +48,8 @@ const en = {
   "keys.dance": "Dance",
   "keys.hand": "Raise or lower your hand",
   "keys.minimap": "Show or hide the minimap",
+  "keys.zoom": "Zoom the map out or in",
+  "keys.wheel": "Mouse wheel over the map",
   "keys.help": "This list",
   "keys.close": "Close dialogs and expanded screens",
   "wave.action": "Wave at",
@@ -305,7 +307,7 @@ const en = {
   "admin.audit.invite.revoke": "{actor} revoked an invite",
   "admin.audit.map.update": "{actor} edited the office ({detail})",
   "removed.notice": "You were removed from this office. Ask an administrator for a new invite.",
-  "map.label": "Office map. Move with the arrow keys or W, A, S and D.",
+  "map.label": "Office map. Move with the arrow keys or {keys}.",
 } as const;
 
 export type Key = keyof typeof en;

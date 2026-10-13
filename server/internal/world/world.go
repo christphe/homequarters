@@ -60,6 +60,7 @@ const (
 	evNote
 	evWave
 	evAnnounce
+	evView
 )
 
 type ev struct {
@@ -246,6 +247,11 @@ func (c *Conn) Chat(ctx context.Context, scope string, to uint32, text string) {
 }
 func (c *Conn) Locate(ctx context.Context, id uint32) {
 	c.w.post(ctx, ev{kind: evLocate, p: c.P, gen: c.Gen, id: id})
+}
+
+// View asks for an interest radius (in cells) that covers the client's zoomed view.
+func (c *Conn) View(ctx context.Context, cells int) {
+	c.w.post(ctx, ev{kind: evView, p: c.P, gen: c.Gen, x: cells})
 }
 
 func (c *Conn) Emote(ctx context.Context, kind int) {
@@ -455,6 +461,8 @@ func (w *World) handle(e ev, now time.Time) {
 		w.sendSpot(p)
 	case evEmote:
 		w.doEmote(p, e.x, now)
+	case evView:
+		w.doView(p, e.x)
 	case evUse:
 		w.doUse(p, e.x, e.y, now)
 	case evFollow:
@@ -1042,6 +1050,22 @@ func removePlayer(s []*Player, p *Player) []*Player {
 	return s
 }
 
+// doView sets p's interest radius, clamped to [AOICells, AOIMaxCells], and resubscribes when it
+// changed. A zoomed-out client pays for its wider view in its own downlink; nobody else's grows.
+func (w *World) doView(p *Player, cells int) {
+	if cells < w.cfg.AOICells {
+		cells = w.cfg.AOICells
+	}
+	if cells > w.cfg.AOIMaxCells {
+		cells = w.cfg.AOIMaxCells
+	}
+	if cells == p.aoi || (p.aoi == 0 && cells == w.cfg.AOICells) {
+		return
+	}
+	p.aoi = cells
+	w.resub(p) // invisible players are out of the grid but still subscribe
+}
+
 func (p *Player) subscribed(cx, cy int) bool {
 	return cx >= p.sx0 && cx <= p.sx1 && cy >= p.sy0 && cy <= p.sy1
 }
@@ -1187,6 +1211,9 @@ func (w *World) advanceShadow(p *Player, now time.Time) {
 
 func (w *World) rect(p *Player) (x0, y0, x1, y1 int) {
 	r := w.cfg.AOICells
+	if p.aoi > r {
+		r = p.aoi
+	}
 	x0, y0, x1, y1 = p.cx-r, p.cy-r, p.cx+r, p.cy+r
 	if x0 < 0 {
 		x0 = 0

@@ -1,4 +1,5 @@
 import { WorldView } from "./game/WorldView";
+import { setKeyLayout } from "./keys";
 import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, Person, ServerMsg, Status } from "./net/protocol";
 import { boardModel } from "./game/boardModel";
@@ -35,6 +36,7 @@ class Session {
       onHand: () => this.toggleHand(),
       onInteract: (prop) => { view.setDirection(0, 0); this.socket?.send({ t: "use", x: prop.x, y: prop.y }); },
       onNearby: (nearby) => setState({ nearby }),
+      onView: (cells) => this.socket?.send({ t: "view", n: cells }),
     });
     await view.init(host, getState().settings.eco);
     if (this.stopped) {
@@ -64,7 +66,7 @@ class Session {
         this.setStatus("away");
       }
     }, 15000);
-    (window as unknown as { __tilework: unknown }).__tilework = { view, media, spotlightMedia, boardModel, get state() { return getState(); }, session: this };
+    (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, get state() { return getState(); }, session: this };
   }
 
   stop() {
@@ -113,6 +115,7 @@ class Session {
         view.setMap(m.map, m.cfg.deny);
         view.clearRemote();
         view.setMe(m.you, m.cfg.x, m.cfg.y, m.cfg.speed, m.cfg.run ?? 2);
+        if (m.cfg.cell && m.cfg.aoi) view.setInterest(m.cfg.cell, m.cfg.aoi, m.cfg.aoiMax ?? m.cfg.aoi);
         view.setPeople(roster);
         const s = getState();
         if (s.consent) this.socket?.send({ t: "consent", b: true });

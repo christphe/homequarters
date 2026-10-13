@@ -67,7 +67,7 @@ export interface Hello {
   role: Role;
   status: Status;
   office: string;
-  cfg: { speed: number; run?: number; tick: number; media: boolean; x: number; y: number; deny: number[]; lk?: number[] };
+  cfg: { speed: number; run?: number; tick: number; cell?: number; aoi?: number; aoiMax?: number; media: boolean; x: number; y: number; deny: number[]; lk?: number[] };
   map: MapData;
   roster: Person[];
   chat?: { f: number; n: string; x: string; ts: number }[];

@@ -19,6 +19,46 @@ export async function run(ctx) {
     await walkTo(a, 8 * 16 + 8, 28 * 16 + 8); // social area
     await walkTo(b, 9 * 16 + 8, 6 * 16 + 8); // reception, behind a wall and out of a's area of interest
 
+    // ---- the mouse wheel zooms the map (not the UI) and the server widens the area of interest to match ----
+    const sees = (u, id) => read(u, (id) => window.__tilework.view.debugEntities().some((e) => e.id === id), id);
+    const layoutBox = () => read(a, () => [".topbar", ".stage canvas"].map((q) => { const r = document.querySelector(q).getBoundingClientRect(); return [r.width, r.height].join("x"); }).join(" "));
+    const s0 = await read(a, () => window.__tilework.view.scale);
+    const [lo, hi] = await read(a, () => window.__tilework.view.scaleRange());
+    await read(a, (hi) => window.__tilework.view.zoomBy(hi), hi);
+    await sleep(800);
+    check("zoomed in, someone three cells away is outside the area of interest", !(await sees(a, b.id)));
+    await read(a, (s) => window.__tilework.view.zoomBy(s - window.__tilework.view.scale), s0);
+    const box0 = await layoutBox();
+    const canvas = await read(a, () => { const r = document.querySelector(".stage canvas").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await a.page.mouse.move(canvas.x, canvas.y);
+    await a.page.mouse.wheel({ deltaY: -100 });
+    await waitFor(() => read(a, (s) => window.__tilework.view.scale === s + 1, s0), { what: "zoom in one step" });
+    for (let i = 0; i < 12; i++) await a.page.mouse.wheel({ deltaY: 100 });
+    await waitFor(() => read(a, (lo) => window.__tilework.view.scale === lo, lo), { what: "zoomed out to the limit" });
+    check("wheel up zooms in one whole step, wheel down zooms out and stops at the area-of-interest limit", lo < s0, `auto ${s0}, farthest ${lo}`);
+    check("zooming leaves the UI and the canvas size alone", (await layoutBox()) === box0, box0);
+    await waitFor(() => sees(a, b.id), { what: "far person visible after zooming out" });
+    check("zoomed out, the server sends the people the wider view shows", true);
+    // a stands near the map's west wall: the camera must not show farther than the largest radius reaches
+    const span = await read(a, () => {
+      const v = window.__tilework.view, p = v.position(), S = v.scale, r = v.aoiMax * v.cellPx, m = v.currentMap();
+      const { width: W, height: H } = v.app.screen;
+      // visible map pixels only: a margin beyond the map's edge holds nobody
+      return { l: p.x - Math.max(0, -v.camX / S), r: Math.min(m.w * 16, (W - v.camX) / S) - p.x, t: p.y - Math.max(0, -v.camY / S), b: Math.min(m.h * 16, (H - v.camY) / S) - p.y, reach: r };
+    });
+    check("zoomed out next to a map edge, no visible part of the map is farther from me than the server's largest radius", Math.max(span.l, span.r, span.t, span.b) <= span.reach + 1, JSON.stringify(span));
+    const lineMode = await read(a, () => {
+      const v = window.__tilework.view, c = document.querySelector(".stage canvas"), s0 = v.scale;
+      c.dispatchEvent(new WheelEvent("wheel", { deltaY: -3, deltaMode: 1, bubbles: true, cancelable: true })); // Firefox: one notch = 3 lines
+      return v.scale - s0;
+    });
+    check("one wheel notch in line mode (Firefox) is one zoom step", lineMode === 1, `${lineMode}`);
+    await read(a, (hi) => window.__tilework.view.zoomBy(hi), hi);
+    await waitFor(async () => !(await sees(a, b.id)), { what: "far person dropped after zooming back in" });
+    check("zooming back in shrinks the area of interest again", true);
+    await read(a, (s) => window.__tilework.view.zoomBy(s - window.__tilework.view.scale), s0);
+    check("the zoom returns to the automatic scale", (await read(a, () => window.__tilework.view.scale)) === s0);
+
     // ---- wave, answered by walking over ----
     await click(a, "Wave at " + b.name, ".people button");
     await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave card" });
@@ -60,6 +100,25 @@ export async function run(ctx) {
     await waitFor(() => read(b, (n) => [...document.querySelectorAll(".people .note")].some((el) => el.textContent === n), "Deep work until 4"), { what: "note in people panel" });
     check("a status note set in the status menu shows in everyone's people panel", true);
 
+    // ---- shortcuts follow key positions: an AZERTY keyboard types "z" on KeyW and "&" on Digit1 ----
+    const key = (type, key, code) => read(a, (type, key, code) => window.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true })), type, key, code);
+    await sleep(800); // emote cooldown
+    await key("keydown", "&", "Digit1");
+    await key("keyup", "&", "Digit1");
+    await waitFor(() => read(b, (id) => window.__tilework.view.emotes.has(id), a.id), { what: "emote from the digit row without Shift" });
+    check("the digit row sends reactions whatever character the layout types there", true);
+    await sleep(800);
+    await key("keydown", "z", "KeyW");
+    const up = await read(a, () => window.__tilework.view.dy);
+    await key("keyup", "z", "KeyW");
+    const after = await read(a, () => window.__tilework.view.dy);
+    await key("keydown", "ArrowUp", "Numpad8"); // keypad with Num Lock off
+    const keypad = await read(a, () => window.__tilework.view.dy);
+    await key("keyup", "ArrowUp", "Numpad8");
+    check("the keypad without Num Lock still walks", keypad === -1, `dy ${keypad}`);
+    await sleep(800);
+    check("the key at the W position (Z on AZERTY) walks up and does not dance", up === -1 && after === 0 && !(await read(b, (id) => window.__tilework.view.ents.get(id)?.danceUntil > performance.now(), a.id)), `dy ${up} then ${after}`);
+
     // ---- dance (Z) ----
     await a.page.keyboard.press("z");
     await waitFor(() => read(b, (id) => window.__tilework.view.ents.get(id)?.danceUntil > performance.now(), a.id), { what: "dance seen" });
@@ -77,10 +136,21 @@ export async function run(ctx) {
     await a.page.keyboard.press("m");
 
     // ---- keyboard help and an administrator announcement ----
+    // Chrome reports the layout through navigator.keyboard; pretend it is French AZERTY.
+    await read(a, () => window.__tilework.keys.setKeyLayout(new Map([["KeyW", "z"], ["KeyA", "q"], ["KeyS", "s"], ["KeyD", "d"], ["KeyZ", "w"], ["KeyM", ","], ["Digit1", "&"]])));
     await a.page.keyboard.press("?");
     await waitFor(() => a.page.$("table.keys"), { what: "shortcuts dialog" });
+    const help = await read(a, () => [...document.querySelectorAll("table.keys tr")].map((r) => r.textContent));
+    check("the shortcuts list names the keys as printed on the keyboard (ZQSD on AZERTY) but keeps 1-7", help.some((r) => r.startsWith("Z Q S D")) && help.some((r) => r.startsWith("1-7")) && help.some((r) => r.startsWith("W") && r.includes("Dance")) && help.some((r) => r.includes("Mouse wheel")), help.join(" | "));
+    await read(a, () => window.__tilework.keys.setKeyLayout(null));
     await a.page.keyboard.press("Escape");
     check("? opens the keyboard shortcuts and Escape closes them", await read(a, () => !document.querySelector("table.keys")));
+    // AZERTY types "?" with Shift on the M position: the help opens, the minimap does not toggle
+    const mini0 = await read(a, () => window.__tilework.state.settings.minimap);
+    await read(a, () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?", code: "KeyM", shiftKey: true, bubbles: true })));
+    await waitFor(() => a.page.$("table.keys"), { what: "shortcuts dialog from Shift+M position" });
+    check("? typed on the M position (AZERTY) opens the help without toggling the minimap", (await read(a, () => window.__tilework.state.settings.minimap)) === mini0);
+    await a.page.keyboard.press("Escape");
     const admin = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
     await waitFor(() => click(admin, "Admin"), { what: "admin button" });
     await waitFor(() => click(admin, "Announce", '[role="tab"]'), { what: "announce tab" });

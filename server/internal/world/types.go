@@ -15,6 +15,7 @@ type Config struct {
 	RunMul      float64 // speed multiplier while running (sprint or a guided "walk to")
 	CellPx      int     // spatial hash cell size, px
 	AOICells    int     // interest radius in cells (Chebyshev)
+	AOIMaxCells int     // largest radius a client may ask for to cover a zoomed-out view
 	OutQueue    int     // per-client outbound queue (frames)
 	Grace       time.Duration
 	MaxPlayers  int
@@ -37,7 +38,7 @@ type ProxConfig struct {
 
 func DefaultConfig() Config {
 	return Config{
-		TickHz: 15, Speed: 72, RunMul: 2, CellPx: 128, AOICells: 2, OutQueue: 128,
+		TickHz: 15, Speed: 72, RunMul: 2, CellPx: 128, AOICells: 2, AOIMaxCells: 4, OutQueue: 128,
 		Grace: 10 * time.Second, MaxPlayers: 2000, ProxEvery: 250 * time.Millisecond, MaxChatRune: 500,
 		Prox: ProxConfig{
 			JoinR: 64, LeaveR: 96, CentJoin: 80, CentLeave: 112, MaxGroup: 8,
@@ -119,6 +120,7 @@ type Player struct {
 	area     int
 	inGrid   bool
 	cx, cy   int
+	aoi      int // interest radius asked for by the client's view (0 = AOICells)
 	sx0, sy0 int // subscribed cell rect (inclusive)
 	sx1, sy1 int
 
