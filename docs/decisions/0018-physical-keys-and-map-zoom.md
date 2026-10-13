@@ -21,7 +21,7 @@ The camera picked one integer scale from the window size (2 to 6) and people ask
 
 - A fixed larger radius for everyone: simpler, but every player would pay for the widest view. With 2 cells a player watches 25 cells and with 8 up to 289, so fan-out and downlink in a dense office would grow about 10x.
 - Zooming out without touching the server: people appear late at the edges of the screen, which looks broken.
-- A far ring updated at a lower rate (network level of detail): cheaper for wide views. Records are already sent only on state changes and extrapolated, so a far walker in a straight line costs little. This remains a follow-up that needs its own before/after measurement.
+- A far ring updated at a lower rate (network level of detail). Measured and rejected: records are already sent only on state changes plus a 1 s resync, so a walking person costs about 1.35 records per second to each observer (`TestZoomedOutTraffic`). A 3 Hz cap on far people would save almost nothing. Only a cap well below 1 Hz would save traffic, and then far people would turn up to a second or two late on screen. With 100 people all walking over the whole default office, a zoomed-out observer receives about 2.4 KB/s (135 records/s), against 1.7 KB/s at the default radius.
 
 ## Impact
 
