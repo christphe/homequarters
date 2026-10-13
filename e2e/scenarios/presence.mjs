@@ -142,6 +142,15 @@ export async function run(ctx) {
     await waitFor(() => a.page.$("table.keys"), { what: "shortcuts dialog" });
     const help = await read(a, () => [...document.querySelectorAll("table.keys tr")].map((r) => r.textContent));
     check("the shortcuts list names the keys as printed on the keyboard (ZQSD on AZERTY) but keeps 1-7", help.some((r) => r.startsWith("Z Q S D")) && help.some((r) => r.startsWith("1-7")) && help.some((r) => r.startsWith("W") && r.includes("Dance")) && help.some((r) => r.includes("Mouse wheel")), help.join(" | "));
+    await a.page.keyboard.press("Escape");
+    // letter shortcuts keep their letter: M is printed right of L on AZERTY, the M position types ","
+    const minimap = () => read(a, () => window.__tilework.state.settings.minimap);
+    const m0 = await minimap();
+    await read(a, () => window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", code: "KeyM", bubbles: true })));
+    const m1 = await minimap();
+    await read(a, () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "m", code: "Semicolon", bubbles: true })));
+    check("on AZERTY the key printed M toggles the minimap, the M position (,) does not", m1 === m0 && (await minimap()) === !m0);
+    await read(a, () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "m", code: "Semicolon", bubbles: true })));
     await read(a, () => window.__tilework.keys.setKeyLayout(null));
     await a.page.keyboard.press("Escape");
     check("? opens the keyboard shortcuts and Escape closes them", await read(a, () => !document.querySelector("table.keys")));
