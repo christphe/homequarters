@@ -17,9 +17,11 @@ import { WhiteboardDialog } from "./WhiteboardDialog";
 import { Minimap } from "./Minimap";
 import { TouchPad } from "./TouchPad";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { moveLabels, useKeyLayout } from "../keys";
 
 export function OfficeScreen() {
   const host = useRef<HTMLDivElement>(null);
+  useKeyLayout();
   const conn = useStore((s) => s.conn);
   const office = useStore((s) => s.office);
   const area = useStore((s) => s.currentArea);
@@ -57,7 +59,7 @@ export function OfficeScreen() {
 
   return (
     <div className={"office" + (editing ? " editing" : "")}>
-      <div className="stage" ref={host} role="application" aria-label={t("map.label")} />
+      <div className="stage" ref={host} role="application" aria-label={t("map.label", { keys: moveLabels().join(", ") })} />
       <header className="topbar">
         <strong className="brand">{office || t("app.name")}</strong>
         {area && <span className="pill">{area}</span>}

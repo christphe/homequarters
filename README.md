@@ -63,7 +63,7 @@ Virtual offices are usually heavy on the browser, the server and the bill. Tilew
 | **Consent and status** | Nothing is captured before you opt in. Available, busy, away and invisible; busy never joins a call automatically. |
 | **Avatars** | Procedural pixel-art characters with big heads and a three-frame walk cycle: skin, six hairstyles, hair colour, shirt, trousers. |
 | **Look** | 16 px tiles, outlined and shaded props, textured floors and walls, dialog-window UI and a pixel font. All original. |
-| **World** | Keyboard movement with collisions, camera follow, animation, prediction for you and dead-reckoned movement for others. |
+| **World** | Keyboard movement with collisions (shortcuts follow key positions, so ZQSD works on AZERTY), mouse-wheel zoom, camera follow, animation, prediction for you and dead-reckoned movement for others. |
 | **Getting around** | Run with Shift or toggle it with R (2x speed); double-click any spot to run there along a path the server finds; "Walk to" anyone from the people panel. |
 | **Pets** | Pick a companion (cat, dog, bunny, fox, chick, slime, owl, axolotl) that walks your trail a step behind, goes around corners with you and sits beside you when you stop. Drawn by code, animated locally: zero bandwidth. |
 | **Presence** | Wave at anyone in the office (they can run straight to you), raise your hand (H), set a status note, dance (Z). Busy means do not disturb. |

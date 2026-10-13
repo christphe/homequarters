@@ -14,6 +14,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `consent` | `b` | opt in or out of automatic conversations |
 | `chat` | `sc` (`o` office, `g` group, `d` direct), `text`, `id` (peer for `d`) | send a message |
 | `loc` | `id` | ask where a person is |
+| `view` | `n` cells | interest radius the zoomed view needs, in `cfg.cell` cells; the server clamps it to `cfg.aoi`..`cfg.aoiMax` and resubscribes ([decision 0018](decisions/0018-physical-keys-and-map-zoom.md)) |
 | `sync` | none | ask for the current state of everything in view (sent when a hidden tab becomes visible) |
 | `tok` | none | request a fresh media token for the current conversation |
 | `emo` | `n` 1-8 | show a reaction above your avatar (700 ms server cooldown); 8 is a short dance (key Z) |
@@ -33,7 +34,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 
 | Message | Fields | Meaning |
 | --- | --- | --- |
-| `hello` | `you`, `role`, `status`, `office`, `cfg`, `map`, `roster`, `chat` | initial state; `cfg` has speed, the run multiplier (`run`), tick, media availability, your position and the areas denied to you; `chat` is the persisted office chat |
+| `hello` | `you`, `role`, `status`, `office`, `cfg`, `map`, `roster`, `chat` | initial state; `cfg` has speed, the run multiplier (`run`), tick, the interest grid (`cell` px, default radius `aoi` and largest radius `aoiMax` in cells), media availability, your position and the areas denied to you; `chat` is the persisted office chat |
 | `w` | `k` tick, `m` [[id, x, y, d]...], `l` [id...] | **state records** in your area of interest and entities that left it |
 | `a` | `s`, `x`, `y` | acknowledgement with the authoritative position at the time of input `s` |
 | `p` | `a` people added/updated, `d` ids removed | presence roster changes; a person is `{id, n, av, s, r}` plus `h: 1` (hand raised) and `m` (status note) when set |

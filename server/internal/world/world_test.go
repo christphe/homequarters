@@ -354,6 +354,49 @@ func TestNewcomersJoinGroupWithDisconnectedMembersAndSurviveTheirExpiry(t *testi
 	}
 }
 
+func TestViewWidensInterestWithinTheServerCap(t *testing.T) {
+	h := newHarness(t)
+	a := h.add(1, "member", 2*16, 2*16)  // cell 0
+	b := h.add(2, "member", 3*128+8, 32) // cell 3: outside the default radius of 2 cells
+	c := h.add(3, "member", 6*128+8, 32) // cell 6: outside even the largest radius
+	h.w.flush(a)
+	drain(a)
+	view := func(cells int) []string {
+		h.w.handle(ev{kind: evView, p: a, gen: a.gen, x: cells}, h.now)
+		h.w.flush(a)
+		return drain(a)
+	}
+	if f := view(1); countRecords(f, "2") != 0 || a.sx1 != 2 {
+		t.Fatalf("a radius below the default keeps the default: rect x1=%d frames=%v", a.sx1, f)
+	}
+	f := view(99)
+	if countRecords(f, "2") == 0 {
+		t.Fatalf("a wider view must bring b into view: %v", f)
+	}
+	if countRecords(f, "3") != 0 || a.sx1 != h.w.cfg.AOIMaxCells {
+		t.Fatalf("the radius is capped at AOIMaxCells=%d: rect x1=%d", h.w.cfg.AOIMaxCells, a.sx1)
+	}
+	b.X += 4 // b's own moves now reach a
+	h.w.sendState(b, h.now)
+	h.w.flush(a)
+	if countRecords(drain(a), "2") == 0 {
+		t.Fatal("updates from inside the widened area must reach a")
+	}
+	left := false
+	for _, f := range view(0) {
+		left = left || strings.Contains(f, `"l":[2]`)
+	}
+	if !left || a.sx1 != h.w.cfg.AOICells {
+		t.Fatalf("zooming back in must drop b: left=%v x1=%d", left, a.sx1)
+	}
+	_ = c
+	// invisible people are out of the grid but still watch: their view resizes too
+	h.w.handle(ev{kind: evStatus, p: a, gen: a.gen, s: StatusInvisible}, h.now)
+	if f := view(4); a.inGrid || a.sx1 != h.w.cfg.AOIMaxCells || countRecords(f, "2") == 0 {
+		t.Fatalf("an invisible player's view must widen: inGrid=%v x1=%d", a.inGrid, a.sx1)
+	}
+}
+
 func drain(p *Player) []string {
 	var out []string
 	for len(p.out) > 0 {
@@ -501,6 +544,9 @@ func TestHelloCarriesOfficeChatHistoryAndProfileChangesReachTheRoster(t *testing
 		if strings.HasPrefix(f, `{"t":"hello"`) {
 			hello = f
 		}
+	}
+	if !strings.Contains(hello, `"cell":128,"aoi":2,"aoiMax":4,`) {
+		t.Fatalf("hello must tell the client how far its view may reach: %s", hello[:200])
 	}
 	if !strings.Contains(hello, `"chat":[{"f":9,"n":"Zed","x":"welcome","ts":5}]`) {
 		t.Fatalf("hello must carry persisted history: %s", hello[len(hello)-120:])

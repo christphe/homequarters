@@ -9,7 +9,7 @@ Tilework looks like a 2000s handheld RPG: a top-down 3/4 view, 16 px tiles, chun
 | Aspect | Rule |
 | --- | --- |
 | Tile size | 16 x 16 px; the map is baked into one texture |
-| Camera | integer zoom only (nearest-neighbour), reference view about 320 x 200 world px (20 x 12.5 tiles); a 240 x 160 handheld screen would show 15 x 10 |
+| Camera | integer zoom only (nearest-neighbour), reference view about 320 x 200 world px (20 x 12.5 tiles); a 240 x 160 handheld screen would show 15 x 10. The mouse wheel moves the scale by whole steps (decision 0018) |
 | Light | from the top-left: a light top/left edge, a darker bottom/right edge |
 | Outlines | every prop and character has a 1 px dark outline, never pure black; on characters it is a very dark version of the neighbouring colour, so hair, skin and clothes stay distinct |
 | Shading | three tones per material; highlights drift warm, shadows drift toward violet |
