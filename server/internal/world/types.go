@@ -38,7 +38,7 @@ type ProxConfig struct {
 
 func DefaultConfig() Config {
 	return Config{
-		TickHz: 15, Speed: 72, RunMul: 2, CellPx: 128, AOICells: 2, AOIMaxCells: 4, OutQueue: 128,
+		TickHz: 15, Speed: 72, RunMul: 2, CellPx: 128, AOICells: 2, AOIMaxCells: 8, OutQueue: 128,
 		Grace: 10 * time.Second, MaxPlayers: 2000, ProxEvery: 250 * time.Millisecond, MaxChatRune: 500,
 		Prox: ProxConfig{
 			JoinR: 64, LeaveR: 96, CentJoin: 80, CentLeave: 112, MaxGroup: 8,

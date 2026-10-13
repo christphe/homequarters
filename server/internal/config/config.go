@@ -111,8 +111,8 @@ func Load() (*Config, error) {
 	if c.TickHz < 5 || c.TickHz > 30 {
 		return nil, errors.New("TILEWORK_TICK_HZ must be within 5..30")
 	}
-	if c.AOIMaxCells == 0 { // unset: 4, or the default radius if that is already wider
-		c.AOIMaxCells = max(4, c.AOICells)
+	if c.AOIMaxCells == 0 { // unset: 8, or the default radius if that is already wider
+		c.AOIMaxCells = max(8, c.AOICells)
 	}
 	if c.AOIMaxCells < c.AOICells || c.AOIMaxCells > max(8, c.AOICells) {
 		return nil, errors.New("TILEWORK_AOI_MAX_CELLS must be within TILEWORK_AOI_CELLS..8")
