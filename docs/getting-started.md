@@ -75,6 +75,7 @@ Everything is configured through environment variables.
 | `TILEWORK_SESSION_DAYS` | `30` | Session cookie lifetime |
 | `TILEWORK_TICK_HZ` | `15` | World tick rate, 5 to 30 |
 | `TILEWORK_AOI_CELLS` | `2` | Area-of-interest radius in 128 px cells |
+| `TILEWORK_AOI_MAX_CELLS` | `4` (or `TILEWORK_AOI_CELLS` if wider) | Largest radius a zoomed-out player may ask for (`TILEWORK_AOI_CELLS`..8); bounds how far the map zooms out |
 | `TILEWORK_MAX_PLAYERS` | `2000` | Hard cap per office |
 | `TILEWORK_MAX_GROUP` | `8` | Maximum people in a proximity group |
 | `TILEWORK_JOIN_RATE` | `20` | Join requests per second per IP (raise only for load tests) |

@@ -189,6 +189,8 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 			conn.Locate(ctx, m.ID)
 		case "emo":
 			conn.Emote(ctx, m.N)
+		case "view":
+			conn.View(ctx, m.N)
 		case "hand":
 			conn.Hand(ctx, m.B)
 		case "note":

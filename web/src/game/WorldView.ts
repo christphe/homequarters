@@ -1,6 +1,7 @@
 import { Application, BitmapText, Container, Graphics, Sprite, Text } from "pixi.js";
 import type { Ack, AvatarSpec, MapData, Person, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
+import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { propSize } from "./mapModel";
 import { avatarFrames, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
@@ -11,6 +12,11 @@ const T = 16;
 // Reference view in world pixels. A 240x160 handheld screen would be 15x10 tiles; an office wants a little more room.
 const VIEW_REF_W = 320;
 const VIEW_REF_H = 200;
+const MAX_SCALE = 8;
+const WHEEL_STEP = 100; // wheel delta (px) per zoom step: one notch of a mouse wheel
+// world px kept inside the interest radius beyond what is visible: a sprite drawn above its feet,
+// and my predicted position running ahead of the server's
+const VIEW_PAD = 24;
 const FONT = '"Pixelify Sans", ui-monospace, Menlo, monospace';
 const BOX_HW = 5;
 const BOX_HH = 3;
@@ -88,6 +94,8 @@ export interface ViewHooks {
   onNearby?(prop: Prop | null): void;
   onGoto?(tx: number, ty: number): void;
   onRun?(on: boolean): void;
+  /** Interest radius, in server cells, the visible map needs; called only when it changes. */
+  onView?(cells: number): void;
 }
 
 export interface ViewStats {
@@ -127,6 +135,14 @@ export class WorldView {
   private dest: { x: number; y: number } | null = null;
   private baked: HTMLCanvasElement | null = null;
   private S = 3;
+  private zoom = readZoom(); // whole steps away from the automatic scale (wheel); negative = farther
+  private wheelAcc = 0;
+  private wheelAt = 0;
+  // the server's area of interest (hello): its cell size, default and largest radius in cells
+  private cellPx = 0;
+  private aoi = 0;
+  private aoiMax = 0;
+  private viewCells = 0; // radius last asked for (0 = the server default)
   private camX = 0;
   private camY = 0;
   private mapSprite: Sprite | null = null;
@@ -229,7 +245,25 @@ export class WorldView {
       this.goTo(tx, ty);
     };
     app.canvas.addEventListener("dblclick", dbl);
+    // The wheel zooms the map only, in whole steps; Ctrl+wheel stays the browser's page zoom.
+    const wheel = (e: WheelEvent) => {
+      if (e.ctrlKey || document.querySelector(".scrim, .editor")) return;
+      e.preventDefault();
+      if (!e.deltaY) return;
+      // a line- or page-mode event (Firefox, one notch) is one step; pixel deltas (trackpads, smooth
+      // scrolling) add up to one step per WHEEL_STEP, at most one per event, and fade when idle
+      const now = performance.now();
+      if (e.deltaMode !== 0 || Math.sign(e.deltaY) !== Math.sign(this.wheelAcc) || now - this.wheelAt > 300) this.wheelAcc = 0;
+      this.wheelAt = now;
+      this.wheelAcc += e.deltaMode !== 0 ? Math.sign(e.deltaY) * WHEEL_STEP : e.deltaY;
+      if (Math.abs(this.wheelAcc) < WHEEL_STEP) return;
+      const step = Math.sign(this.wheelAcc);
+      this.wheelAcc = 0;
+      this.zoomBy(-step);
+    };
+    app.canvas.addEventListener("wheel", wheel, { passive: false });
     this.cleanup.push(() => {
+      app.canvas.removeEventListener("wheel", wheel);
       app.canvas.removeEventListener("dblclick", dbl);
       window.removeEventListener("keydown", kd);
       window.removeEventListener("keyup", ku);
@@ -262,36 +296,41 @@ export class WorldView {
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key.toLowerCase();
+    if (down) learnKey(e);
+    // physical position: W A S D is Z Q S D on AZERTY (keys.ts); the keypad without Num Lock types arrows
+    const k = e.code.startsWith("Numpad") && e.key.startsWith("Arrow") ? e.key : codeOf(e);
     // Modal controls and the editor own their keyboard interaction.
     if (document.querySelector(".scrim, .editor")) return;
-    if (down && !e.repeat && /^[1-7]$/.test(k)) {
+    // Shift is the run key; with it held, keys type symbols ("?" is Shift + the M position on
+    // AZERTY), so one-shot shortcuts ignore it and only movement goes on.
+    const once = down && !e.repeat && !e.shiftKey;
+    const n = digitOf(k, e.key);
+    if (once && n >= 1 && n <= 7) {
       e.preventDefault();
-      this.hooks.onEmote?.(Number(k));
+      this.hooks.onEmote?.(n);
       return;
     }
-    if (down && !e.repeat && k === "x") {
+    if (once && k === "KeyX") {
       e.preventDefault();
       this.interact();
       return;
     }
-    if (down && !e.repeat && k === "r") {
+    if (once && k === "KeyR") {
       e.preventDefault();
       this.toggleRun();
       return;
     }
-    if (down && !e.repeat && k === "z") {
+    if (once && k === "KeyZ") {
       e.preventDefault();
       this.hooks.onEmote?.(DANCE);
       return;
     }
-    if (down && !e.repeat && k === "h") {
+    if (once && k === "KeyH") {
       e.preventDefault();
       this.hooks.onHand?.();
       return;
     }
-    const map: Record<string, string> = { arrowleft: "l", a: "l", arrowright: "r", d: "r", arrowup: "u", w: "u", arrowdown: "d", s: "d" };
-    const m = map[k];
+    const m = MOVE_KEYS[k];
     if (!m) return;
     e.preventDefault();
     if (down) this.keys.add(m);
@@ -873,13 +912,70 @@ export class WorldView {
     }
   }
 
+  // ---- zoom / area of interest ----
+  /** From hello: the server's interest grid, which bounds how far out the map may zoom. */
+  setInterest(cellPx: number, aoi: number, aoiMax: number) {
+    this.cellPx = cellPx;
+    this.aoi = aoi;
+    this.aoiMax = Math.max(aoi, aoiMax);
+    this.viewCells = -1; // tell each new connection, even when it is the default
+    this.layout();
+  }
+
+  /** Zooms by whole scale steps (positive = closer) and returns the scale in use. Public for tests. */
+  zoomBy(steps: number) {
+    if (!this.app) return this.S;
+    const { width, height } = this.app.screen;
+    this.zoom += steps;
+    this.layout();
+    if (!this.cellPx) return this.S; // limits are not known before hello: keep the remembered zoom
+    this.zoom = this.S - autoScale(width, height); // forget steps past a limit
+    writeZoom(this.zoom);
+    return this.S;
+  }
+
+  get scale() {
+    return this.S;
+  }
+
+  /** Smallest and largest scale for this window. */
+  scaleRange(width = this.app.screen.width, height = this.app.screen.height): [number, number] {
+    const auto = autoScale(width, height);
+    // Farthest out: half the visible map must fit the largest radius the server grants, or people
+    // near the screen edge would be missing. Before hello (unknown radius) only the automatic scale.
+    const reach = this.aoiMax * this.cellPx - VIEW_PAD;
+    const lo = this.cellPx ? Math.min(auto, Math.max(1, Math.ceil(Math.max(width, height) / (2 * reach)))) : auto;
+    return [lo, Math.max(auto, MAX_SCALE)];
+  }
+
+  /**
+   * Asks the server for the interest radius that covers the visible part of the map. The server
+   * subscribes whole cells around the player's cell, so a radius of r cells reaches at least r cells
+   * of pixels from the player in every direction; asking for the distance to the farthest visible
+   * map pixel keeps the request steady while walking (no flip-flop at cell boundaries).
+   */
+  private syncView(W: number, H: number, px: number, py: number) {
+    if (!this.map || !this.cellPx) return;
+    const S = this.S, mw = this.map.w * T, mh = this.map.h * T;
+    const left = Math.max(0, -this.camX / S), right = Math.min(mw, (W - this.camX) / S);
+    const top = Math.max(0, -this.camY / S), bottom = Math.min(mh, (H - this.camY) / S);
+    const far = Math.max(px - left, right - px, py - top, bottom - py);
+    const need = Math.max(this.aoi, Math.min(this.aoiMax, Math.ceil((far + VIEW_PAD) / this.cellPx - 1e-6)));
+    if (need === (this.viewCells || this.aoi)) return;
+    this.viewCells = need;
+    this.hooks.onView?.(need);
+  }
+
   // ---- layout / frame ----
   private layout() {
     this.dirty = true;
     if (!this.app) return;
     const { width, height } = this.app.screen;
-    // integer zoom keeps pixel art crisp; the reference view is a handheld-style screen scaled by whole numbers
-    this.S = Math.max(2, Math.min(6, Math.floor(Math.min(width / VIEW_REF_W, height / VIEW_REF_H))));
+    // integer zoom keeps pixel art crisp; the reference view is a handheld-style screen scaled by
+    // whole numbers, then moved by the wheel within what the server's area of interest can fill
+    const auto = autoScale(width, height);
+    const [lo, hi] = this.scaleRange(width, height);
+    this.S = Math.max(lo, Math.min(hi, auto + this.zoom));
     this.world.scale.set(this.S);
   }
 
@@ -914,11 +1010,20 @@ export class WorldView {
     let cx = W / 2 - rx * S, cy = H / 2 - ry * S;
     cx = mw <= W ? (W - mw) / 2 : Math.min(0, Math.max(W - mw, cx));
     cy = mh <= H ? (H - mh) / 2 : Math.min(0, Math.max(H - mh, cy));
+    // Never show map farther from me than the server's largest interest radius reaches: zoomed far
+    // out next to a map edge the camera stops following the edge and shows a margin instead of
+    // people the server does not send. A no-op whenever the visible map is already within reach.
+    if (this.cellPx) {
+      const R = this.aoiMax * this.cellPx - VIEW_PAD;
+      cx = reachClamp(cx, W, S, rx, R, this.map.w * T);
+      cy = reachClamp(cy, H, S, ry, R, this.map.h * T);
+    }
     let changed = this.dirty;
     this.dirty = false;
     if (Math.round(cx) !== this.camX || Math.round(cy) !== this.camY) changed = true;
     this.camX = Math.round(cx);
     this.camY = Math.round(cy);
+    this.syncView(W, H, rx, ry);
     this.world.position.set(this.camX, this.camY);
 
     const walkRate = this.eco ? 5 : 8;
@@ -1080,5 +1185,34 @@ export class WorldView {
       e.dot.roundRect(x, -12, 12, 9, 1).fill(0x1a1526).roundRect(x + 1.5, -10.5, 9, 6, 1).fill(0x6ec8ff).rect(x + 4, -3, 4, 2).fill(0x1a1526);
     }
     if (e.hand) e.hand.position.set(w / 2 + 3 + (e.inConv ? 9 : 0) + (e.sharing ? 15 : 0), 0);
+  }
+}
+
+/**
+ * Camera offset c (screen px, one axis) moved as little as possible so the visible map stays within
+ * R world px of the player at p; when the window is wider than 2R both ends cannot hold: centre on p.
+ */
+function reachClamp(c: number, W: number, S: number, p: number, R: number, mapLen: number) {
+  const hi = p - R > 0 ? (R - p) * S : Infinity; // the map's near end is out of reach: c at most this
+  const lo = p + R < mapLen ? W - (p + R) * S : -Infinity; // the far end is out of reach: c at least this
+  if (lo > hi) return W / 2 - p * S;
+  return Math.min(hi, Math.max(lo, c));
+}
+
+function autoScale(width: number, height: number) {
+  return Math.max(2, Math.min(6, Math.floor(Math.min(width / VIEW_REF_W, height / VIEW_REF_H))));
+}
+function readZoom() {
+  try {
+    return Math.round(Number(localStorage.getItem("tilework.zoom"))) || 0;
+  } catch {
+    return 0;
+  }
+}
+function writeZoom(z: number) {
+  try {
+    localStorage.setItem("tilework.zoom", String(z));
+  } catch {
+    // storage blocked: the zoom is just not remembered
   }
 }
