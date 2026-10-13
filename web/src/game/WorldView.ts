@@ -1,7 +1,7 @@
 import { Application, BitmapText, Container, Graphics, Sprite, Text } from "pixi.js";
 import type { Ack, AvatarSpec, MapData, Person, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
-import { MOVE_KEYS, codeOf, digitOf, learnKey, letterOf } from "../keys";
+import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { propSize } from "./mapModel";
 import { avatarFrames, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
@@ -305,28 +305,27 @@ export class WorldView {
     // AZERTY), so one-shot shortcuts ignore it and only movement goes on.
     const once = down && !e.repeat && !e.shiftKey;
     const n = digitOf(k, e.key);
-    const l = letterOf(e);
     if (once && n >= 1 && n <= 7) {
       e.preventDefault();
       this.hooks.onEmote?.(n);
       return;
     }
-    if (once && l === "x") {
+    if (once && k === "KeyX") {
       e.preventDefault();
       this.interact();
       return;
     }
-    if (once && l === "r") {
+    if (once && k === "KeyR") {
       e.preventDefault();
       this.toggleRun();
       return;
     }
-    if (once && l === "z") {
+    if (once && k === "KeyZ") {
       e.preventDefault();
       this.hooks.onEmote?.(DANCE);
       return;
     }
-    if (once && l === "h") {
+    if (once && k === "KeyH") {
       e.preventDefault();
       this.hooks.onHand?.();
       return;
