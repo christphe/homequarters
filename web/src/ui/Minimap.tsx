@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { session } from "../session";
 import { getState, saveSettings, useStore } from "../store";
 import { t } from "../i18n";
-import { codeOf } from "../keys";
+import { letterOf } from "../keys";
 
 const W = 200; // css px
 
@@ -19,7 +19,7 @@ export function Minimap() {
     const k = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
-      if (codeOf(e) !== "KeyM" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat || document.querySelector(".scrim, .editor")) return;
+      if (letterOf(e) !== "m" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat || document.querySelector(".scrim, .editor")) return;
       saveSettings({ minimap: !getState().settings.minimap });
     };
     window.addEventListener("keydown", k);

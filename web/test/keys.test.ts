@@ -1,7 +1,7 @@
 // Shortcuts by physical key position, labelled with the user's layout. Run: node --test web/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MOVE_KEYS, codeOf, digitOf, keyLabel, learnKey, moveLabels, setKeyLayout } from "../src/keys.ts";
+import { MOVE_KEYS, codeOf, digitOf, keyLabel, learnKey, letterLabel, letterOf, moveLabels, setKeyLayout } from "../src/keys.ts";
 
 // What Chrome's navigator.keyboard.getLayoutMap() reports on a French AZERTY keyboard.
 const AZERTY = new Map([["KeyW", "z"], ["KeyA", "q"], ["KeyS", "s"], ["KeyD", "d"], ["KeyZ", "w"], ["KeyM", ","], ["Semicolon", "m"], ["Digit1", "&"], ["KeyR", "r"]]);
@@ -48,4 +48,19 @@ test("events without a key position fall back to what they typed", () => {
   assert.equal(codeOf({ code: "", key: "3" }), "Digit3");
   assert.equal(codeOf({ code: "", key: "ArrowUp" }), "ArrowUp");
   assert.equal(codeOf({ code: "KeyW", key: "z" }), "KeyW");
+});
+
+test("letter shortcuts keep their letter; a letter on a movement key moves to its QWERTY position", () => {
+  setKeyLayout(AZERTY);
+  assert.equal(letterOf({ code: "Semicolon", key: "m" }), "m"); // M is printed right of L on AZERTY
+  assert.equal(letterOf({ code: "KeyM", key: "," }), "");
+  assert.equal(letterOf({ code: "KeyM", key: "?" }), ""); // Shift+, types "?": the help, not the minimap
+  assert.equal(letterOf({ code: "KeyW", key: "z" }), ""); // Z walks on AZERTY...
+  assert.equal(letterOf({ code: "KeyZ", key: "w" }), "z"); // ...so the key printed W dances
+  assert.equal(letterLabel("z"), "W");
+  assert.equal(letterLabel("m"), "M");
+  setKeyLayout(null);
+  assert.equal(letterOf({ code: "KeyZ", key: "z" }), "z");
+  assert.equal(letterOf({ code: "KeyZ", key: "w" }), ""); // layout unknown: W is just W
+  assert.equal(letterLabel("z"), "Z");
 });

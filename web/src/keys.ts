@@ -1,7 +1,9 @@
-// Shortcuts follow physical key positions (KeyboardEvent.code), not the characters they type, so
-// W A S D is Z Q S D on an AZERTY keyboard and the digit row works without Shift. Help text shows
-// what is printed on the user's keys when the browser can tell (Keyboard API, Chromium only);
-// elsewhere it learns them from the keys the user types, and names keys not typed yet in US QWERTY.
+// Movement and reactions follow physical key positions (KeyboardEvent.code), so W A S D is Z Q S D
+// on an AZERTY keyboard and the digit row works without Shift. Letter shortcuts (X, R, Z, H, M) keep
+// their letter, wherever the layout puts it, unless that letter sits on a movement key (Z on AZERTY):
+// then the key at the letter's QWERTY position takes over. Help text shows what is printed on the
+// user's keys when the browser can tell (Keyboard API, Chromium only); elsewhere it learns them from
+// the keys the user types, and names keys not typed yet in US QWERTY.
 import { useEffect, useState } from "react";
 
 export const MOVE_KEYS: Record<string, "u" | "l" | "d" | "r"> = {
@@ -35,6 +37,31 @@ const typed = new Map<string, string>(); // code -> character, from real key pre
 export function learnKey(e: { code: string; key: string; shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean }) {
   if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1 || !/^Key[A-Z]$/.test(e.code)) return;
   if (typed.size < 64) typed.set(e.code, e.key);
+}
+
+/** Letter shortcuts, matched by the character they type. */
+export const LETTERS = ["x", "r", "z", "h", "m"] as const;
+export type Letter = (typeof LETTERS)[number];
+const isLetter = (c: string): c is Letter => (LETTERS as readonly string[]).includes(c);
+
+/** Whether this layout types the letter on a movement key (as AZERTY does with Z). */
+function onMoveKey(l: string) {
+  return ["KeyW", "KeyA", "KeyS", "KeyD"].some((c) => (layout?.get(c) ?? typed.get(c))?.toLowerCase() === l);
+}
+
+/** The letter shortcut a key press means, or "" (movement keys never mean one). */
+export function letterOf(e: { code: string; key: string }): Letter | "" {
+  const code = codeOf(e);
+  if (MOVE_KEYS[code]) return "";
+  const ch = e.key.length === 1 ? e.key.toLowerCase() : "";
+  if (isLetter(ch)) return ch;
+  const pos = /^Key([A-Z])$/.exec(code)?.[1].toLowerCase() ?? "";
+  return isLetter(pos) && onMoveKey(pos) ? pos : "";
+}
+
+/** The key to press for a letter shortcut, as printed on this keyboard. */
+export function letterLabel(l: Letter): string {
+  return onMoveKey(l) ? keyLabel("Key" + l.toUpperCase()) : l.toUpperCase();
 }
 
 /** Reads the keyboard layout once; resolves when labels from keyLabel() are final. */
