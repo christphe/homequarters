@@ -63,7 +63,7 @@ Art (output goes to `site/assets/`; details in `docs/art-style.md`):
 ## Invariants: do not break these
 
 1. **The server is authoritative.** Clients send intent (direction), never positions. Collisions, speed, room access and conversation membership are decided on the server.
-2. **Never persist movement per step and never send movement per frame.** Network rate is 10-15 Hz, batched. Only the last position is saved, when a player leaves.
+2. **Never persist movement per step and never send movement per frame.** Network rate is 10-15 Hz, batched. Only the last position is saved, when a player leaves (a server stop is everybody leaving: one transaction for all).
 3. **Spatial index and areas of interest.** Do not introduce all-pairs comparisons in the tick or the proximity pass.
 4. **Backpressure.** Queues are bounded. Stale positions are dropped/overwritten for slow clients; reliable messages (chat, control) are not dropped silently. Do not add unbounded buffers.
 5. **Media isolation is enforced by the server/SFU.** Hiding or muting a video in the UI is not isolation. Tokens are scoped to one room and one identity; leaving a group revokes access.

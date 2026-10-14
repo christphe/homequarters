@@ -29,7 +29,7 @@ Each office has one `World` that owns all state in a single goroutine (see [deci
 - **State records, not position streams**: movement is deterministic, so a record is sent only when direction changes, reality diverges from what clients extrapolate, or as a 1 s resync ([decision 0006](0006-state-change-records.md)).
 - **Spatial index and area of interest**: a grid of 128 px cells. A player subscribes to the cells around it; entering or leaving that window produces enter/leave events instead of resending everything.
 - **Backpressure**: each client has a bounded outbound queue. Stale positions are overwritten for slow clients, while reliable messages (chat, control) are preserved; a client that cannot drain reliable traffic is disconnected and resyncs on reconnect.
-- **Persistence**: nothing per step. The last position is written when a player leaves; maps, users, invites, sessions and the office chat history live in SQLite. Direct and conversation chat are never stored.
+- **Persistence**: nothing per step. The last position is written when a player leaves, and for everybody in one transaction when the server stops; maps, users, invites, sessions and the office chat history live in SQLite. Direct and conversation chat are never stored.
 - **Admin edits**: the map can be replaced at runtime by an administrator; the world validates, hot-swaps and saves it ([decision 0007](0007-invites-roles-and-map-editing.md)).
 
 ## The client
