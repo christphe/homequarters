@@ -10,6 +10,7 @@ const rows = (): [string[], Key, Key?][] => [
   [["Shift", keyLabel("KeyR")], "keys.run"],
   [[], "keys.goto", "keys.dblclick"],
   [[], "keys.zoom", "keys.wheel"],
+  [[], "keys.pan", "keys.drag"],
   [[keyLabel("KeyX")], "keys.interact"],
   [["1-7"], "keys.emotes"],
   [[keyLabel("KeyZ")], "keys.dance"],

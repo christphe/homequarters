@@ -17,6 +17,7 @@ const WHEEL_STEP = 100; // wheel delta (px) per zoom step: one notch of a mouse 
 // world px kept inside the interest radius beyond what is visible: a sprite drawn above its feet,
 // and my predicted position running ahead of the server's
 const VIEW_PAD = 24;
+const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
 const FONT = '"Pixelify Sans", ui-monospace, Menlo, monospace';
 const BOX_HW = 5;
 const BOX_HH = 3;
@@ -138,6 +139,11 @@ export class WorldView {
   private zoom = readZoom(); // whole steps away from the automatic scale (wheel); negative = farther
   private wheelAcc = 0;
   private wheelAt = 0;
+  // camera pan (left-drag with a mouse): world px added to the followed position; moving recentres
+  private panX = 0;
+  private panY = 0;
+  private drag: { id: number; x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
+  private dragEndAt = 0;
   // the server's area of interest (hello): its cell size, default and largest radius in cells
   private cellPx = 0;
   private aoi = 0;
@@ -223,7 +229,7 @@ export class WorldView {
 
     const kd = (e: KeyboardEvent) => this.key(e, true);
     const ku = (e: KeyboardEvent) => this.key(e, false);
-    const blur = () => { this.releaseKeys(); this.setRunHeld(false); };
+    const blur = () => { this.releaseKeys(); this.setRunHeld(false); this.stopDrag(); };
     const vis = () => {
       if (document.hidden) {
         this.releaseKeys();
@@ -239,7 +245,7 @@ export class WorldView {
     document.addEventListener("visibilitychange", vis);
     // Double-click (or double-tap) a spot on the map to run there along a server-computed path.
     const dbl = (e: MouseEvent) => {
-      if (document.querySelector(".scrim, .editor")) return;
+      if (document.querySelector(".scrim, .editor") || performance.now() - this.dragEndAt < 500) return; // a drag's click is not a double-click
       const [tx, ty] = this.screenToTile(e.clientX, e.clientY);
       if (!this.map || tx < 0 || ty < 0 || tx >= this.map.w || ty >= this.map.h) return;
       this.goTo(tx, ty);
@@ -260,9 +266,53 @@ export class WorldView {
       const step = Math.sign(this.wheelAcc);
       this.wheelAcc = 0;
       this.zoomBy(-step);
+      const d = this.drag;
+      if (d?.moved) {
+        // keep dragging from here, at the new scale (the camera is placed on the next frame)
+        const { width: W, height: H } = app.screen;
+        d.x = e.clientX;
+        d.y = e.clientY;
+        d.camX = W / 2 - (this.mx + this.vox + this.panX) * this.S;
+        d.camY = H / 2 - (this.my + this.voy + this.panY) * this.S;
+      }
     };
     app.canvas.addEventListener("wheel", wheel, { passive: false });
+    // Left-drag with a mouse looks around; a press that moves less than DRAG_PX stays a click, so
+    // double-click to run there still works. Touch keeps the browser's own gestures and the pad.
+    const pdown = (e: PointerEvent) => {
+      if (e.button !== 0 || e.pointerType !== "mouse" || document.querySelector(".scrim, .editor")) return;
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.camX, camY: this.camY, moved: false };
+    };
+    const pmove = (e: PointerEvent) => {
+      const d = this.drag;
+      if (!d || e.pointerId !== d.id) return;
+      // released somewhere we did not hear about (outside the canvas before the drag began), or a
+      // dialog opened: the drag is over
+      if (!(e.buttons & 1) || document.querySelector(".scrim, .editor")) return this.stopDrag();
+      const ox = e.clientX - d.x, oy = e.clientY - d.y;
+      if (!d.moved) {
+        if (Math.hypot(ox, oy) < DRAG_PX) return;
+        d.moved = true;
+        app.canvas.setPointerCapture(e.pointerId);
+        app.canvas.style.cursor = "grabbing";
+        document.body.style.userSelect = "none"; // no text selection in overlays the drag crosses
+      }
+      this.panTo(d.camX + ox, d.camY + oy);
+    };
+    const pup = (e: PointerEvent) => {
+      if (this.drag && e.pointerId === this.drag.id) this.stopDrag();
+    };
+    app.canvas.addEventListener("pointerdown", pdown);
+    app.canvas.addEventListener("pointermove", pmove);
+    app.canvas.addEventListener("pointerup", pup);
+    app.canvas.addEventListener("pointercancel", pup);
+    app.canvas.addEventListener("lostpointercapture", pup);
     this.cleanup.push(() => {
+      app.canvas.removeEventListener("lostpointercapture", pup);
+      app.canvas.removeEventListener("pointerdown", pdown);
+      app.canvas.removeEventListener("pointermove", pmove);
+      app.canvas.removeEventListener("pointerup", pup);
+      app.canvas.removeEventListener("pointercancel", pup);
       app.canvas.removeEventListener("wheel", wheel);
       app.canvas.removeEventListener("dblclick", dbl);
       window.removeEventListener("keydown", kd);
@@ -447,6 +497,7 @@ export class WorldView {
 
   setMe(id: number, x: number, y: number, speed: number, runMul = 2) {
     this.meId = id;
+    this.panX = this.panY = 0;
     this.mx = x;
     this.my = y;
     this.vox = this.voy = 0;
@@ -508,6 +559,7 @@ export class WorldView {
     this.hover = h;
   }
   teleport(x: number, y: number) {
+    this.panX = this.panY = 0;
     this.mx = x;
     this.my = y;
     this.vox = this.voy = 0;
@@ -934,6 +986,37 @@ export class WorldView {
     return this.S;
   }
 
+  /** Puts the camera at this screen offset (the frame keeps it on the map and within reach). */
+  private panTo(camX: number, camY: number) {
+    const { width: W, height: H } = this.app.screen;
+    this.panX = (W / 2 - camX) / this.S - (this.mx + this.vox);
+    this.panY = (H / 2 - camY) / this.S - (this.my + this.voy);
+    this.dirty = true;
+  }
+
+  /** Ends a drag, wherever it is. */
+  private stopDrag() {
+    if (this.drag?.moved) this.endDrag();
+    this.drag = null;
+  }
+
+  /** Keeps only the pan the camera could follow, so the next drag starts where the view is. */
+  private endDrag() {
+    this.app.canvas.style.cursor = "";
+    document.body.style.userSelect = "";
+    this.dragEndAt = performance.now();
+    this.panTo(this.camX, this.camY);
+    if (!this.map) return;
+    const { width: W, height: H } = this.app.screen;
+    if (this.map.w * T * this.S <= W) this.panX = 0; // the whole width is on screen: nothing to pan
+    if (this.map.h * T * this.S <= H) this.panY = 0;
+  }
+
+  /** Camera pan in world px (tests). */
+  get pan() {
+    return { x: this.panX, y: this.panY };
+  }
+
   get scale() {
     return this.S;
   }
@@ -1007,7 +1090,16 @@ export class WorldView {
     if (now - this.nearbyAt > 150) { this.nearbyAt = now; this.updateNearby(); }
 
     const mw = this.map.w * T * S, mh = this.map.h * T * S;
-    let cx = W / 2 - rx * S, cy = H / 2 - ry * S;
+    if ((this.dx || this.dy || this.guided) && (this.panX || this.panY || this.drag)) {
+      // moving recentres the camera on me, and ends a drag in progress
+      if (this.drag?.moved) {
+        this.app.canvas.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+      this.panX = this.panY = 0;
+      this.drag = null;
+    }
+    let cx = W / 2 - (rx + this.panX) * S, cy = H / 2 - (ry + this.panY) * S;
     cx = mw <= W ? (W - mw) / 2 : Math.min(0, Math.max(W - mw, cx));
     cy = mh <= H ? (H - mh) / 2 : Math.min(0, Math.max(H - mh, cy));
     // Never show map farther from me than the server's largest interest radius reaches: zoomed far
