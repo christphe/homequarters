@@ -79,9 +79,23 @@ export async function run(ctx) {
     await waitFor(() => b.page.$('.modal input[aria-label]'), { what: "settings dialog" });
     await b.page.$eval('.modal input[aria-label]', (el) => el.select());
     await b.page.type('.modal input[aria-label]', "Novo" + t);
+    // hair style, beard and hat through the avatar editor's own radio groups
+    const pick = (group, label) => b.page.evaluate((g, l) => {
+      const r = [...document.querySelectorAll(`.modal [role=radiogroup][aria-labelledby=${g}] [role=radio]`)].find((x) => x.textContent === l);
+      r?.click();
+      return !!r;
+    }, group, label);
+    const hatColourRow = () => b.page.evaluate(() => !!document.querySelector('.modal [role=radiogroup][aria-label="Hat colour"]'));
+    const noHatColourBefore = !(await hatColourRow());
+    const picked = (await pick("ae-hair", "Afro")) && (await pick("ae-beard", "Full beard")) && (await pick("ae-hat", "Tricorne"));
+    await waitFor(hatColourRow, { what: "hat colour swatches" });
+    await b.page.click('.modal [role=radiogroup][aria-label="Hat colour"] [aria-label="Hat colour 3"]');
+    check("the avatar editor offers hair styles, beards and hats; hat colours appear once a hat is chosen", picked && noHatColourBefore);
     await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((x) => x.textContent === "Save profile")?.click());
     await waitFor(() => a.page.evaluate((n, id) => window.__tilework.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
     check("a profile change reaches other people's roster live", true);
+    const seen = await a.page.evaluate((id) => window.__tilework.state.roster.get(id)?.av, b.id);
+    check("another person sees the new hair, beard and hat", seen?.hs === 7 && seen?.bd === 4 && seen?.ht === 7 && seen?.hk === 2);
     const bad = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + (await c.ctx.cookies()).find((k) => k.name === "tilework_session").value }, body: JSON.stringify({ name: "   ", avatar: {} }) });
     check("an empty name is refused", bad.status === 400);
     const anon = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) });

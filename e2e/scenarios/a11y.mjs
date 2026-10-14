@@ -39,6 +39,24 @@ export async function run(ctx) {
     await anon.waitForSelector(".join-card");
     await audit(anon, "the join screen");
     check("the page declares its language", (await anon.evaluate(() => document.documentElement.lang)) === "en");
+    // the avatar editor makes the join card taller than the screen: the wheel must bring Enter into view,
+    // and back up the title must not be cut off (a centred card that overflows loses its top)
+    const reach = [];
+    const box = (sel) => anon.$eval(sel, (el) => { const x = el.getBoundingClientRect(); return [Math.round(x.top), Math.round(x.bottom)]; });
+    for (const [width, height] of [[1280, 720], [800, 450], [390, 844]]) {
+      await anon.setViewport({ width, height });
+      await anon.reload({ waitUntil: "domcontentloaded" });
+      await anon.waitForSelector(".join-card button.primary");
+      await anon.mouse.move(width / 2, height / 2);
+      for (let i = 0; i < 30; i++) await anon.mouse.wheel({ deltaY: 120 });
+      await sleep(300);
+      const enter = await box(".join-card button.primary");
+      for (let i = 0; i < 30; i++) await anon.mouse.wheel({ deltaY: -120 });
+      await sleep(300);
+      const title = await box(".join-card h1");
+      reach.push({ width, height, enter, title, ok: enter[0] >= 0 && enter[1] <= height && title[0] >= 0 && title[1] <= height });
+    }
+    check("the wheel brings the join screen's Enter into view and back up to its title (1280x720, 800x450, 390x844)", reach.every((r) => r.ok), JSON.stringify(reach));
 
     // ---- office
     const admin = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
