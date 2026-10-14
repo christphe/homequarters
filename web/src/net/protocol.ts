@@ -33,6 +33,8 @@ export interface Area {
   /** mode: open | members | admins | list | office. An office with users is a private office owned by them. */
   access: { mode: string; users?: number[] };
   capacity?: number;
+  /** A desk room: derived by the server from an assigned desk; drawn with its own floor, never labelled or edited. */
+  auto?: boolean;
 }
 
 /** A private office assigned to somebody (closed to everybody else unless an owner lets them in). */

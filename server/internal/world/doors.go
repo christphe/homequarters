@@ -88,8 +88,8 @@ func (w *World) doLock(p *Player, on bool) {
 		return
 	}
 	a := &w.m.Map.Areas[p.area]
-	if a.Kind != gamemap.KindRoom || isOwnedOffice(a) {
-		return
+	if a.Kind != gamemap.KindRoom || isOwnedOffice(a) || a.Auto {
+		return // an assigned office is always closed; a desk room is a desk, it has no door
 	}
 	_, locked := w.locks[a.ID]
 	switch {

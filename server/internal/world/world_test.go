@@ -299,6 +299,59 @@ func TestMeetingRoomGroupIsolatedFromCorridor(t *testing.T) {
 	}
 }
 
+func TestRoomCallStartsWithTwoPeopleAndStopsForTheLastOne(t *testing.T) {
+	h := newHarness(t)
+	joins := func(p *Player) (n int) {
+		for _, f := range drain(p) {
+			if strings.Contains(f, `"op":"join"`) {
+				n++
+			}
+		}
+		return
+	}
+	leaves := func(p *Player) (n int) {
+		for _, f := range drain(p) {
+			if strings.Contains(f, `"op":"leave"`) {
+				n++
+			}
+		}
+		return
+	}
+	a := h.add(1, "member", 50*16, 3*16) // Aurora (open)
+	h.consent(a, true)
+	h.run(3 * time.Second)
+	if a.group == nil || !a.group.isRoom || joins(a) != 0 {
+		t.Fatal("alone in a room: in its group, but no call (no media token, nothing to capture)")
+	}
+	snap := func() map[string]map[string]bool {
+		ch := make(chan map[string]map[string]bool, 1)
+		h.w.handle(ev{kind: evSnapshot, snap: ch}, h.now)
+		return <-ch
+	}
+	if len(snap()[a.group.room]) != 0 {
+		t.Fatal("nobody may be in the SFU room of a room with one person")
+	}
+	h.w.handle(ev{kind: evToken, p: a, gen: a.gen}, h.now)
+	if joins(a) != 0 {
+		t.Fatal("asking for a token alone in a room gets none")
+	}
+	b := h.add(2, "member", 54*16, 5*16)
+	h.consent(b, true)
+	h.run(3 * time.Second)
+	if b.group != a.group || joins(a) != 1 || joins(b) != 1 {
+		t.Fatal("the second person starts the call for both")
+	}
+	if len(snap()[a.group.room]) != 2 {
+		t.Fatal("both may be in the SFU room")
+	}
+	revoked := len(h.fm.revoked)
+	h.teleport(b, 20*16, 28*16) // out of the room
+	h.run(3 * time.Second)
+	if b.group != nil || a.group == nil || leaves(a) != 1 || len(h.fm.revoked) != revoked+2 {
+		t.Fatalf("left alone, a stays in the room but its call ends: revoked %v", h.fm.revoked[revoked:])
+	}
+}
+
 func TestSlowClientIsCoalescedNotUnbounded(t *testing.T) {
 	h := newHarness(t)
 	a := h.add(1, "member", sx, sy) // never drained

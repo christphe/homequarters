@@ -44,3 +44,58 @@ func TestEveryStarterOfficeIsReachable(t *testing.T) {
 		t.Fatalf("expected six offices, got %d", offices)
 	}
 }
+
+func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
+	m := Default()
+	at := func(t, x, y int) *Prop {
+		for i := range m.Props {
+			if m.Props[i].T == "desk" && m.Props[i].X == x && m.Props[i].Y == y {
+				return &m.Props[i]
+			}
+		}
+		return nil
+	}
+	at(0, 20, 3).Assign, at(0, 20, 3).Label = 7, "Desk of Ana"
+	at(0, 24, 3).Assign = 8
+	at(0, 26, 41).Assign = 9 // the desk of Office 3: its office is already its room
+	c, err := Compile(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var auto []Area
+	for _, a := range c.Map.Areas {
+		if a.Auto {
+			auto = append(auto, a)
+		}
+	}
+	if len(auto) != 2 {
+		t.Fatalf("one room per assigned desk outside a room, got %+v", auto)
+	}
+	if a := auto[0]; a.Name != "Desk of Ana" || a.X != 20 || a.Y != 3 || a.W != 2 || a.H != 3 || a.Kind != KindRoom || a.Access.Mode != AccessOpen || a.Floor != DeskRoomFloor {
+		t.Fatalf("desk room: %+v", a)
+	}
+	room := func(x, y int) string {
+		if i := c.AreaIndexAt(x, y); i >= 0 {
+			return c.Map.Areas[i].ID
+		}
+		return ""
+	}
+	if room(20, 4) != "desk-20-3" || room(21, 5) != "desk-20-3" || room(24, 4) != "desk-24-3" || room(22, 4) != "desks" || room(20, 6) != "desks" || room(28, 4) != "desks" {
+		t.Fatalf("chairs sit in their own desk rooms; aisles and unassigned desks do not: %q %q %q %q %q %q", room(20, 4), room(21, 5), room(24, 4), room(22, 4), room(20, 6), room(28, 4))
+	}
+	// a stored map carrying a stale desk room (desk since unassigned) gets it dropped
+	at(0, 24, 3).Assign = 0
+	c, err = Compile(c.Map)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, a := range c.Map.Areas {
+		if a.Auto {
+			n++
+		}
+	}
+	if n != 1 || room(24, 4) != "desks" {
+		t.Fatalf("unassigning a desk removes its room: %d rooms", n)
+	}
+}

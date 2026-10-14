@@ -78,8 +78,9 @@ export async function run(ctx) {
 
     await admin.page.evaluate(() => window.__tilework.session.setConsent(true));
     await walkTo(admin, 16 * 16 + 8, 30 * 16 + 8);
-    await waitFor(async () => (await st(admin)).conv?.name === "Test room", { timeout: 15000, what: "admin joins the new room call" });
-    check("the new room is a real meeting room with its own call", true);
+    await waitFor(() => admin.page.evaluate(() => window.__tilework.state.currentArea === "Test room"), { timeout: 15000, what: "admin inside the new room" });
+    await sleep(1500);
+    check("the new room is a real meeting room: alone inside, no call is started", (await st(admin)).conv === null);
 
     // ---- persistence across restart
     await sleep(500);
