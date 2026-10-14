@@ -507,7 +507,7 @@ export class WorldView {
       .filter((p) => p.t === "desk" && p.assign && p.label)
       .map((p) => {
         const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
-        const text = new BitmapText({ text: p.label! + (this.deny.has(ai) ? " 🔒" : ""), style: { fontFamily: FONT, fontSize: 9, fontWeight: "700", fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
+        const text = new BitmapText({ text: p.label! + (this.deny.has(ai) ? " 🔒" : ""), style: { fontFamily: FONT, fontSize: 12, fontWeight: "700", fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
         this.hud.addChild(text);
