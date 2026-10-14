@@ -2,6 +2,7 @@ import { Application, BitmapText, Container, Graphics, Sprite, Text } from "pixi
 import type { Ack, AvatarSpec, MapData, Person, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
+import { isHomeKey } from "./home";
 import { propSize } from "./mapModel";
 import { avatarFrames, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
@@ -97,6 +98,8 @@ export interface ViewHooks {
   onRun?(on: boolean): void;
   /** Interest radius, in server cells, the visible map needs; called only when it changes. */
   onView?(cells: number): void;
+  /** Ctrl+D / Cmd+D: go back to my desk. */
+  onHome?(): void;
 }
 
 export interface ViewStats {
@@ -339,6 +342,13 @@ export class WorldView {
 
   // ---- input ----
   private key(e: KeyboardEvent, down: boolean) {
+    // Ctrl+D (Cmd+D on a Mac) goes back to my desk from anywhere, a text field included; it is the
+    // browser's bookmark shortcut otherwise, so it is taken even while a dialog is open
+    if (down && isHomeKey(e)) {
+      e.preventDefault();
+      if (!e.repeat && !document.querySelector(".scrim, .editor")) this.hooks.onHome?.();
+      return;
+    }
     const el = e.target as HTMLElement | null;
     if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
     if (e.key === "Shift") {

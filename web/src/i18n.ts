@@ -50,6 +50,8 @@ const en = {
   "keys.minimap": "Show or hide the minimap",
   "keys.zoom": "Zoom the map out or in",
   "keys.wheel": "Mouse wheel over the map",
+  "keys.home": "Go back to your desk",
+  "home.none": "You have no desk or office yet. An administrator can assign one in the map editor.",
   "keys.pan": "Look around; moving brings the view back to you",
   "keys.drag": "Drag the map with the left mouse button",
   "keys.help": "This list",

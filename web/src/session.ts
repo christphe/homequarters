@@ -1,5 +1,6 @@
 import { WorldView } from "./game/WorldView";
 import { setKeyLayout } from "./keys";
+import { homeTile } from "./game/home";
 import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, Person, ServerMsg, Status } from "./net/protocol";
 import { boardModel } from "./game/boardModel";
@@ -37,6 +38,7 @@ class Session {
       onInteract: (prop) => { view.setDirection(0, 0); this.socket?.send({ t: "use", x: prop.x, y: prop.y }); },
       onNearby: (nearby) => setState({ nearby }),
       onView: (cells) => this.socket?.send({ t: "view", n: cells }),
+      onHome: () => this.goHome(),
     });
     await view.init(host, getState().settings.eco);
     if (this.stopped) {
@@ -262,6 +264,13 @@ class Session {
   follow(id: number) { this.socket?.send({ t: "fol", id }); }
   /** Run next to another person (server-side path finding). */
   goToPerson(id: number) { this.socket?.send({ t: "go", id }); }
+  /** Runs to my assigned desk, or into my private office; says so when I have neither. */
+  goHome() {
+    const map = this.view?.currentMap();
+    const tile = map && homeTile(map, getState().meId);
+    if (tile) this.view!.goTo(tile.x, tile.y);
+    else toast(t("home.none"));
+  }
   wave(id: number) { this.socket?.send({ t: "wave", id }); }
   hand(up: boolean) { this.handWanted = up; this.handAskedAt = Date.now(); this.socket?.send({ t: "hand", b: up }); }
   /** H key and the hand button: invert what was last asked for, so quick presses do not repeat a raise. */
