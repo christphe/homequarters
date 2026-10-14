@@ -14,7 +14,7 @@ const T = 16;
 const VIEW_REF_W = 320;
 const VIEW_REF_H = 200;
 const MAX_SCALE = 8;
-const WHEEL_STEP = 100; // wheel delta (px) per zoom step: one notch of a mouse wheel
+const WHEEL_GAP_MS = 120; // at most one zoom step per this long, so a trackpad or a free-spinning wheel does not race through every level
 // world px kept inside the interest radius beyond what is visible: a sprite drawn above its feet,
 // and my predicted position running ahead of the server's
 const VIEW_PAD = 24;
@@ -143,7 +143,6 @@ export class WorldView {
   private baked: HTMLCanvasElement | null = null;
   private S = 3;
   private zoom = readZoom(); // whole steps away from the automatic scale (wheel); negative = farther
-  private wheelAcc = 0;
   private wheelAt = 0;
   // camera pan (left-drag with a mouse): world px added to the followed position; moving recentres
   private panX = 0;
@@ -257,20 +256,17 @@ export class WorldView {
       this.goTo(tx, ty);
     };
     app.canvas.addEventListener("dblclick", dbl);
-    // The wheel zooms the map only, in whole steps; Ctrl+wheel stays the browser's page zoom.
+    // Ctrl+wheel zooms the map only, in whole steps (see below).
     const wheel = (e: WheelEvent) => {
-      if (e.ctrlKey || document.querySelector(".scrim, .editor")) return;
-      e.preventDefault();
+      // Ctrl+wheel (Cmd+wheel on a Mac, and a trackpad pinch, which browsers send as Ctrl+wheel) zooms
+      // the map, as in Gather; the plain wheel does nothing here. Every notch counts, whatever its size.
+      if (!(e.ctrlKey || e.metaKey) || document.querySelector(".scrim, .editor")) return;
+      e.preventDefault(); // not the browser's page zoom
       if (!e.deltaY) return;
-      // a line- or page-mode event (Firefox, one notch) is one step; pixel deltas (trackpads, smooth
-      // scrolling) add up to one step per WHEEL_STEP, at most one per event, and fade when idle
       const now = performance.now();
-      if (e.deltaMode !== 0 || Math.sign(e.deltaY) !== Math.sign(this.wheelAcc) || now - this.wheelAt > 300) this.wheelAcc = 0;
+      if (now - this.wheelAt < WHEEL_GAP_MS) return;
       this.wheelAt = now;
-      this.wheelAcc += e.deltaMode !== 0 ? Math.sign(e.deltaY) * WHEEL_STEP : e.deltaY;
-      if (Math.abs(this.wheelAcc) < WHEEL_STEP) return;
-      const step = Math.sign(this.wheelAcc);
-      this.wheelAcc = 0;
+      const step = Math.sign(e.deltaY);
       this.zoomBy(-step);
       const d = this.drag;
       if (d?.moved) {
