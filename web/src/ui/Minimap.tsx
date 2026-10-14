@@ -66,8 +66,16 @@ export function Minimap() {
       const counts = getState().areaCounts;
       g.font = "700 10px system-ui, sans-serif";
       g.textAlign = "center"; g.textBaseline = "middle";
+      // people in a desk room count for the area around it
+      const total = map.areas.map((_, i) => counts[i] ?? 0);
       map.areas.forEach((a, i) => {
-        const n = counts[i] ?? 0;
+        if (!a.auto || !total[i]) return;
+        const p = map.areas.findLastIndex((o) => o.kind !== "room" && a.x >= o.x && a.y >= o.y && a.x < o.x + o.w && a.y < o.y + o.h);
+        if (p >= 0) total[p] += total[i];
+        total[i] = 0;
+      });
+      map.areas.forEach((a, i) => {
+        const n = total[i];
         if (!n) return;
         const x = (a.x + a.w / 2) * 16 * s, y = (a.y + a.h / 2) * 16 * s;
         g.fillStyle = "#1a1526"; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();

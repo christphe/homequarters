@@ -1,4 +1,6 @@
 // Presence: waving across the office, raised hands, status notes, dancing, the minimap and the touch pad.
+import os from "node:os";
+import path from "node:path";
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep } from "../lib.mjs";
 
 const read = (u, fn, ...args) => u.page.evaluate(fn, ...args);
@@ -228,15 +230,35 @@ export async function run(ctx) {
     const full = await (await fetch(api + "/api/admin/map", { headers: { Cookie: "tilework_session=" + ctx.adminCookie } })).json();
     const putMap = (m) => fetch(api + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
     const withDesk = JSON.parse(JSON.stringify(full));
-    const desk = withDesk.props.find((p) => p.t === "desk" && p.label === "Desk 1");
+    // a free desk of the open-plan area whose right-hand neighbour is free too (other scenarios may have assigned some)
+    const free = (x, y) => withDesk.props.find((p) => p.t === "desk" && p.x === x && p.y === y && !p.assign);
+    const desk = withDesk.props.find((p) => p.t === "desk" && !p.assign && p.y < 14 && free(p.x + 4, p.y));
     Object.assign(desk, { assign: a.id, label: "Desk of " + a.name.slice(0, 30) });
-    check("an administrator assigns Desk 1 (API)", (await putMap(withDesk)).ok);
+    check("an administrator assigns a desk (API)", (await putMap(withDesk)).ok, `desk at ${desk.x},${desk.y}`);
     await waitFor(() => read(a, (id) => window.__tilework.view.map.props.some((p) => p.t === "desk" && p.assign === id), a.id), { what: "desk assignment reaches the client" });
     await a.page.keyboard.down("Control");
     await a.page.keyboard.press("d");
     await a.page.keyboard.up("Control");
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === desk.x && Math.floor(p.y / 16) === desk.y + 1; }, { timeout: 30000, what: "back at the desk" });
     check("Ctrl+D runs to the chair of my assigned desk", true);
+    // ---- an assigned desk is a room: alone there is no call; the neighbour's desk is not in it; a visitor is
+    const conv = (u) => read(u, () => window.__tilework.state.conv);
+    await Promise.all([a, b].map((u) => read(u, () => window.__tilework.session.setConsent(true))));
+    await sleep(2000);
+    check("alone at my desk with audio allowed, there is no call", !(await conv(a)));
+    check("the desk room gets no label of its own on the map", await read(a, () => window.__tilework.view.areaLabels.every((l) => !window.__tilework.view.map.areas[l.ai].auto)));
+    check("the place shown at my desk is still the desks area", (await read(a, () => window.__tilework.state.currentArea)) === "Individual desks");
+    await walkTo(b, (desk.x + 4) * 16 + 8, (desk.y + 1) * 16 + 8); // the neighbouring desk's chair, 4 tiles away
+    await sleep(2500);
+    check("sitting at the neighbouring desk does not join my desk's call", !(await conv(a)) && !(await conv(b)));
+    await a.page.screenshot({ path: path.join(os.tmpdir(), "tilework-desk-room.png") });
+    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8); // just behind my chair, inside my desk's room
+    await waitFor(async () => (await conv(a))?.kind === "r" && (await conv(b))?.kind === "r", { timeout: 20000, what: "desk call" });
+    check("coming over to my desk starts its call for both of us", (await conv(a)).name.startsWith("Desk of"), (await conv(a)).name);
+    await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8); // back out into the aisle
+    await waitFor(async () => !(await conv(a)) && !(await conv(b)), { timeout: 20000, what: "desk call ends" });
+    check("when the visitor leaves, the call ends and I stay at my desk alone", true);
+    await Promise.all([a, b].map((u) => read(u, () => window.__tilework.session.setConsent(false))));
     check("restoring the map", (await putMap(full)).ok);
 
     // ---- touch pad on a phone-sized touch screen ----

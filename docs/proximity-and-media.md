@@ -17,7 +17,8 @@ A person is eligible only if **all** of these are true:
 There are two kinds of group, each mapped to one small SFU room (see [decision 0003](0003-media-rooms.md)):
 
 - **Proximity groups** form between free people outside meeting rooms, up to 8 people.
-- **Meeting rooms** correspond to map areas with an explicit access rule: open, members only, admins only, a list, or a private office (open while unassigned; then its owners, admins and visitors an owner lets in).
+- **Meeting rooms** correspond to map areas with an explicit access rule: open, members only, admins only, a list, or a private office (open while unassigned; then its owners, admins and visitors an owner lets in). A room's call starts with two people: alone in a room you get no call and nothing is captured.
+- **Assigned desks** are small rooms the server derives from the map: the desk and the two rows in front of it. Whoever comes over to a desk shares its call; the neighbouring desks do not hear it ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)).
 
 | Rule | Default |
 | --- | --- |

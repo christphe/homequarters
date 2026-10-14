@@ -20,6 +20,9 @@ import (
 // LeaveDwell (hysteresis), members must stay close to the group centroid so
 // chains of avatars cannot merge into one office-wide call, and there is no
 // hopping between groups: a player must first leave, then join.
+// A room group with a single member is not a call: nobody gets a media token,
+// so nobody captures or reaches the SFU alone; the call starts when a second
+// person enters and stops for whoever is left alone again.
 
 func (p *Player) eligible() bool {
 	return p.consent && p.Status == StatusAvailable
@@ -32,6 +35,9 @@ func (w *World) conversationEligible(p *Player) bool {
 func (w *World) inRoomArea(p *Player) bool {
 	return p.area >= 0 && w.m.Map.Areas[p.area].Kind == gamemap.KindRoom
 }
+
+// live reports whether the group is a call: proximity groups always are, room groups from two people.
+func (g *group) live() bool { return !g.isRoom || len(g.members) >= 2 }
 
 func dist(ax, ay, bx, by float64) float64 { return math.Hypot(ax-bx, ay-by) }
 
@@ -123,6 +129,12 @@ func (w *World) joinGroup(p *Player, g *group) {
 	p.leaveSince = time.Time{}
 	p.candKind, p.candID = 0, 0
 	w.St.GroupJoins.Add(1)
+	if !g.live() {
+		return // alone in a room: no call yet
+	}
+	if g.isRoom && len(g.members) == 2 {
+		w.sendConvJoin(g.members[0], g) // the one who waited alone joins the call now
+	}
 	w.sendConvJoin(p, g)
 	w.sendConvMembers(g)
 }
@@ -134,6 +146,7 @@ func (w *World) leaveGroup(p *Player) {
 	if g == nil {
 		return
 	}
+	wasLive := g.live()
 	p.group = nil
 	p.leaveSince = time.Time{}
 	p.candKind, p.candID = 0, 0
@@ -144,11 +157,8 @@ func (w *World) leaveGroup(p *Player) {
 		}
 	}
 	w.St.GroupLeaves.Add(1)
-	if w.media != nil {
-		w.media.Revoke(g.room, w.identity(p))
-	}
-	if p.out != nil {
-		w.sendShared(p, []byte(`{"t":"conv","op":"leave"}`))
+	if wasLive {
+		w.endCall(p, g)
 	}
 	switch {
 	case len(g.members) == 0:
@@ -156,8 +166,20 @@ func (w *World) leaveGroup(p *Player) {
 	case !g.isRoom && len(g.members) < 2:
 		last := g.members[0]
 		w.leaveGroup(last)
+	case wasLive && !g.live():
+		w.endCall(g.members[0], g) // alone in the room again: stays there, out of the call
 	default:
 		w.sendConvMembers(g)
+	}
+}
+
+// endCall revokes p's SFU access to g and tells its client the call is over (capture stops).
+func (w *World) endCall(p *Player, g *group) {
+	if w.media != nil {
+		w.media.Revoke(g.room, w.identity(p))
+	}
+	if p.out != nil {
+		w.sendShared(p, []byte(`{"t":"conv","op":"leave"}`))
 	}
 }
 

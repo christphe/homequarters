@@ -20,6 +20,7 @@ const FLOORS: Record<string, Floor> = {
   carpet_teal: { kind: "carpet", a: "#52b0a0", b: "#4aa898", seam: "#3c9484", edge: "#2a7468", trim: "#2a9c90" },
   carpet_plum: { kind: "carpet", a: "#9a70b4", b: "#9068ac", seam: "#7c58a0", edge: "#5e4280", trim: "#8a52b0" },
   carpet_green: { kind: "carpet", a: "#62b070", b: "#5aa868", seam: "#4c9458", edge: "#367a44", trim: "#3c9c50" },
+  desk_mat: { kind: "carpet", a: "#8fa6c6", b: "#889fc0", seam: "#7a90b2", edge: "#5a6e96", trim: "#4a6088" }, // an assigned desk's space
   tile_gray: { kind: "plate", a: "#d8dce8", b: "#d0d4e2", seam: "#b0b6ca", edge: "#9aa0b8", trim: "#7a7ab0" },
 };
 

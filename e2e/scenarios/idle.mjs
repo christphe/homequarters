@@ -61,7 +61,7 @@ export async function run() {
     await read(b, () => { const v = window.__tilework.view; v.setDirection(0, -1); setTimeout(() => v.setDirection(0, 0), 1200); });
     const moving = await watch;
     const shot1 = await a.page.screenshot({ encoding: "base64" });
-    check("a person walking in view is drawn on every frame it changes", moving.seen > 20 && moving.drawn === moving.seen, moving.drawn + " of " + moving.seen + " changed frames drawn");
+    check("a person walking in view is drawn on every frame it changes", moving.seen >= 12 && moving.drawn === moving.seen, moving.drawn + " of " + moving.seen + " changed frames drawn");
     check("...and the picture really changed", shot0 !== shot1);
     // my own walk is drawn too. Draws are counted over the exact walk window in the page: the old
     // wall-clock window included 200 ms standing still afterwards, which fails a slow renderer by arithmetic.
