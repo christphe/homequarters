@@ -1044,10 +1044,6 @@ export class WorldView {
     document.body.style.userSelect = "";
     this.dragEndAt = performance.now();
     this.panTo(this.camX, this.camY);
-    if (!this.map) return;
-    const { width: W, height: H } = this.app.screen;
-    if (this.map.w * T * this.S <= W) this.panX = 0; // the whole width is on screen: nothing to pan
-    if (this.map.h * T * this.S <= H) this.panY = 0;
   }
 
   /** Camera pan in world px (tests). */
@@ -1127,7 +1123,6 @@ export class WorldView {
     const rx = this.mx + this.vox, ry = this.my + this.voy; // where my avatar is drawn
     if (now - this.nearbyAt > 150) { this.nearbyAt = now; this.updateNearby(); }
 
-    const mw = this.map.w * T * S, mh = this.map.h * T * S;
     if ((this.dx || this.dy || this.guided) && (this.panX || this.panY || this.drag)) {
       // moving recentres the camera on me, and ends a drag in progress
       if (this.drag?.moved) {
@@ -1137,9 +1132,11 @@ export class WorldView {
       this.panX = this.panY = 0;
       this.drag = null;
     }
-    let cx = W / 2 - (rx + this.panX) * S, cy = H / 2 - (ry + this.panY) * S;
-    cx = mw <= W ? (W - mw) / 2 : Math.min(0, Math.max(W - mw, cx));
-    cy = mh <= H ? (H - mh) / 2 : Math.min(0, Math.max(H - mh, cy));
+    // The middle of the screen may go anywhere on the office but never past its edges: at the top of
+    // the office the open space sits mid-screen, clear of the toolbars, with at most half a screen of
+    // margin beyond the map. Following me, I stay in the middle; a pan stops at the office's edge.
+    const vx = Math.max(0, Math.min(this.map.w * T, rx + this.panX)), vy = Math.max(0, Math.min(this.map.h * T, ry + this.panY));
+    let cx = W / 2 - vx * S, cy = H / 2 - vy * S;
     // Never show map farther from me than the server's largest interest radius reaches: zoomed far
     // out next to a map edge the camera stops following the edge and shows a margin instead of
     // people the server does not send. A no-op whenever the visible map is already within reach.
