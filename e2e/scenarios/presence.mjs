@@ -258,6 +258,25 @@ export async function run(ctx) {
     await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8); // back out into the aisle
     await waitFor(async () => !(await conv(a)) && !(await conv(b)), { timeout: 20000, what: "desk call ends" });
     check("when the visitor leaves, the call ends and I stay at my desk alone", true);
+    // ---- the owner locks the desk with its real button: the visitor knocks and is let in
+    const btn = (u, text) => read(u, (text) => { const x = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text)); x?.click(); return !!x; }, text);
+    const has = (u, text) => read(u, (text) => [...document.querySelectorAll("button")].some((b) => b.textContent.trim().startsWith(text)), text);
+    await waitFor(() => btn(a, "Lock desk"), { what: "lock desk button" });
+    await waitFor(() => read(b, () => window.__tilework.state.locked.length > 0), { what: "lock reaches the visitor" });
+    check("the desk shows a lock to others", await read(b, () => window.__tilework.view.deskLabels.some((l) => l.text.text.endsWith("🔒"))));
+    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 4) * 16 + 8); // right behind the desk room, then try to walk in
+    await b.page.evaluate(() => window.__tilework.view.setDirection(0, -1));
+    await sleep(1200);
+    await b.page.evaluate(() => window.__tilework.view.setDirection(0, 0));
+    const bTile = await pos(b);
+    check("a locked desk keeps the visitor out", Math.floor(bTile.y / 16) > desk.y + 2, `y tile ${Math.floor(bTile.y / 16)}`);
+    await waitFor(() => btn(b, "Knock · Desk of"), { what: "knock on the desk" });
+    await waitFor(() => btn(a, "Let in"), { what: "owner asked" });
+    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8);
+    check("the owner lets the visitor in", Math.floor((await pos(b)).y / 16) === desk.y + 2);
+    check("a visitor at somebody's desk cannot lock it", !(await has(b, "Lock desk")) && !(await has(b, "Unlock desk")));
+    await btn(a, "Unlock desk");
+    await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8);
     await Promise.all([a, b].map((u) => read(u, () => window.__tilework.session.setConsent(false))));
     check("restoring the map", (await putMap(full)).ok);
 

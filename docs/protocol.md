@@ -26,6 +26,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `lead` | `id` | ask that player to follow you (they decide) |
 | `lock` | `b` | lock or unlock the meeting room you are standing in |
 | `knock` | `n` area index | knock on a locked room or an assigned private office you stand close to |
+| `force` | `n` area index | administrators only: walk through a closed door (a locked room, an assigned office or a locked desk) on purpose, from where a knock would reach; the people inside are told (`frc`) and the activity log records it ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)) |
 | `kans` | `id`, `b` | admit or decline a knock (only from inside the room; in an assigned office only an owner or an admin) |
 | `wb` | drawing ops | whiteboard edits: `draw` (batched pen points or one text), `del`, `undo`, `clear` (admin), `close`; all bounded, see decision 0010 |
 | `ping` | `c` | round-trip probe |
@@ -55,6 +56,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `deny` | `d` denied areas, `lk` locked rooms | your blocked-area list (locks change it for everyone) |
 | `knk` | `id`, `n`, `a` | somebody knocks on the room you are in (`done` dismisses) |
 | `knr` | `st` wait/ok/no/empty, `a` | the answer to your knock |
+| `frc` | `n` name, `a` area | an administrator forced the door of the room you are in |
 | `wb` | `op` state/draw/del/clear/closed | whiteboard state and live strokes; deletes carry owner+id |
 | `spot` | `op` on/off | office broadcast: speaker, room and token (subscribe-only unless you are the speaker) |
 | `pong` | `c` | reply to `ping` |

@@ -357,7 +357,8 @@ func encodeWire(c *Compiled) []byte {
 // withDeskRooms returns m's areas without stale desk rooms, plus one room per assigned desk: the
 // desk and the two rows in front of it (its chair and the tile behind), as wide as the desk so the
 // aisles stay open. Whoever sits there and whoever comes over share a call that the neighbouring
-// desks do not hear. A desk already inside a room (a private office) gets none: that room is its call.
+// desks do not hear. It is open to anybody; Access.Users names the owner, who alone (with admins)
+// may lock it, always walks in, and answers knocks. A desk already inside a room (a private office) gets none: that room is its call.
 func withDeskRooms(m *Map) []Area {
 	areas := make([]Area, 0, len(m.Areas))
 	ids := map[string]bool{}
@@ -395,7 +396,7 @@ func withDeskRooms(m *Map) []Area {
 			name = "Desk"
 		}
 		areas = append(areas, Area{ID: id, Name: name, Kind: KindRoom, X: x0, Y: y0, W: x1 - x0, H: y1 - y0,
-			Floor: DeskRoomFloor, Access: Access{Mode: AccessOpen}, Capacity: DeskRoomCapacity, Auto: true})
+			Floor: DeskRoomFloor, Access: Access{Mode: AccessOpen, Users: []int64{p.Assign}}, Capacity: DeskRoomCapacity, Auto: true})
 	}
 	return areas
 }
