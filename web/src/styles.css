@@ -22,8 +22,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .boot { height: 100%; background: var(--bg); }
 
 /* join */
-.join { min-height: 100%; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 20% 10%, #2b2550, var(--bg) 55%); overflow: auto; }
-.join-card { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px; display: grid; gap: 14px; box-shadow: 0 20px 60px #0008; }
+.join { height: 100%; display: grid; padding: 24px; background: radial-gradient(circle at 20% 10%, #2b2550, var(--bg) 55%); overflow: auto; }
+.join-card { margin: auto; width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px; display: grid; gap: 14px; box-shadow: 0 20px 60px #0008; }
 .join-card h1 { margin: 0; font-size: 26px; letter-spacing: 0.2px; }
 .field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 .field input, .field select, .search, .composer input { background: #120f24; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; color: var(--ink); width: 100%; }
@@ -35,7 +35,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 
 /* avatar editor */
 .avatar-editor { display: grid; grid-template-columns: 110px 1fr; gap: 16px; align-items: start; }
-.ae-preview { background: #120f24; border: 1px solid var(--line); border-radius: 12px; display: flex; justify-content: center; align-items: flex-end; gap: 6px; padding: 12px 0; }
+.ae-preview { background: #120f24; border: 1px solid var(--line); border-radius: 12px; display: flex; justify-content: center; align-items: flex-end; gap: 6px; padding: 12px 0; position: sticky; top: 0; } /* stays in view while the long list of choices scrolls */
+@media (max-width: 480px) { .avatar-editor { grid-template-columns: 1fr; } .ae-preview { z-index: 1; } } /* phones: preview above, choices full width */
 .chips.pets { gap: 4px; }
 .pet-chip { display: inline-flex; align-items: center; gap: 4px; }
 .run-toggle.on { outline: 2px solid var(--amber); }

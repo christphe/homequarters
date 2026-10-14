@@ -9,6 +9,9 @@ export interface AvatarSpec {
   sh: number; // shirt
   pa: number; // pants
   pt?: number; // companion pet (0 = none), see game/art/pets.ts
+  bd?: number; // beard (0 = none), see game/art/characters.ts
+  ht?: number; // hat (0 = none)
+  hk?: number; // hat colour
 }
 
 export interface Person {

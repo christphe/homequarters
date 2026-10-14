@@ -56,5 +56,6 @@ TILEWORK_APP=http://127.0.0.1:8091 TILEWORK_API=http://127.0.0.1:8091 node scree
 ## Adding things
 
 - **A prop**: add its size to the dimensions table and a painter in `tiles.ts`, register the type in the Go map validator (`server/internal/gamemap`), and keep it solid or not in the Go table.
-- **A hairstyle**: add a case in each of the front, back and side branches of `characters.ts` and a label in `palette.ts`. The server keeps avatar fields within fixed ranges, so widen those too.
+- **A hairstyle, beard or hat**: add its id to `HAIR_STYLE_IDS`, `BEARD_IDS` or `HAT_IDS` in `characters.ts` and draw it in every view: `hairFront`/`hairBack`/`hairSide`, `beardFront`/`beardSide` (no beard from the back), or the three views of `hat` (the side view faces left; the right is mirrored). Add its label to `web/src/i18n.ts` (`hair.<id>`, `beard.<id>`, `hat.<id>`); the editor lists every id. Widen `nHair`, `nBeard` or `nHat` in `server/internal/httpapi/avatar.go`, or the server turns the new value back into 0. Only y >= -1 is drawable above the head, so tall hats stay short (the top hat is 5 px). Under any hat, hair above the crown (y < 1) is clipped. Beards use the hair colour; hats use their own colour from `HAT_COLORS`.
+- **Check the result**: the art preview shows a wardrobe with every hair style, beard and hat in the four directions. The ten looks above it are pixel goldens: `node e2e/export-art.mjs` must leave `site/assets/sheet-*.png` unchanged.
 - **A floor**: add an entry to the `FLOORS` table in `tiles.ts` and use its name in the map's areas.
