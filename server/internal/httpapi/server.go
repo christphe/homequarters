@@ -280,12 +280,17 @@ func spa(dir string) http.Handler {
 		p := filepath.Join(dir, filepath.Clean("/"+r.URL.Path))
 		if fi, err := os.Stat(p); err != nil || fi.IsDir() {
 			if !strings.HasPrefix(r.URL.Path, "/assets/") {
+				w.Header().Set("Cache-Control", "no-cache")
 				http.ServeFile(w, r, filepath.Join(dir, "index.html"))
 				return
 			}
 		}
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable") // content-hashed names
+		} else {
+			// index.html and other unhashed files: revalidate on every load, or a browser may keep
+			// running the previous client for hours after a deploy (heuristic caching from Last-Modified)
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		fsrv.ServeHTTP(w, r)
 	})
@@ -507,6 +512,10 @@ func (s *Server) putMap(w http.ResponseWriter, r *http.Request) {
 	var m gamemap.Map
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid map json"})
+		return
+	}
+	if err := gamemap.OnePlacePerPerson(&m); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
 	cm, err := gamemap.Compile(&m)

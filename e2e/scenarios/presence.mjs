@@ -246,7 +246,8 @@ export async function run(ctx) {
     await Promise.all([a, b].map((u) => read(u, () => window.__tilework.session.setConsent(true))));
     await sleep(2000);
     check("alone at my desk with audio allowed, there is no call", !(await conv(a)));
-    check("the desk room gets no label of its own on the map", await read(a, () => window.__tilework.view.areaLabels.every((l) => !window.__tilework.view.map.areas[l.ai].auto)));
+    const deskRoom = await read(a, (id) => { const v = window.__tilework.view, i = v.map.areas.findIndex((r) => r.id === id); return { i, auto: v.map.areas[i]?.auto === true, floor: v.map.areas[i]?.floor, labelled: v.areaLabels.some((l) => l.ai === i) }; }, `desk-${desk.x}-${desk.y}`);
+    check("my desk has its own room, drawn with the desk floor and no label of its own", deskRoom.i >= 0 && deskRoom.auto && deskRoom.floor === "desk_mat" && !deskRoom.labelled, JSON.stringify(deskRoom));
     check("the place shown at my desk is still the desks area", (await read(a, () => window.__tilework.state.currentArea)) === "Individual desks");
     await walkTo(b, (desk.x + 4) * 16 + 8, (desk.y + 1) * 16 + 8); // the neighbouring desk's chair, 4 tiles away
     await sleep(2500);
