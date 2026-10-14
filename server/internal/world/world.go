@@ -406,6 +406,9 @@ func (w *World) handle(e ev, now time.Time) {
 	case evSnapshot:
 		out := make(map[string]map[string]bool, len(w.groups)+1)
 		for _, g := range w.groups {
+			if !g.live() {
+				continue // nobody may be in the SFU room of a room with one person
+			}
 			ids := make(map[string]bool, len(g.members))
 			for _, m := range g.members {
 				ids[w.identity(m)] = true
@@ -455,7 +458,7 @@ func (w *World) handle(e ev, now time.Time) {
 		w.unsubAll(p)
 		w.resub(p)
 	case evToken:
-		if p.group != nil {
+		if p.group != nil && p.group.live() {
 			w.sendConvJoin(p, p.group)
 		}
 		w.sendSpot(p)
@@ -538,7 +541,7 @@ func (w *World) doJoin(e ev, now time.Time) {
 	if len(w.lastCounts) > 0 {
 		w.sendCopy(p, w.countsMsg())
 	}
-	if p.group != nil {
+	if p.group != nil && p.group.live() {
 		w.sendConvJoin(p, p.group)
 	}
 	w.updateSpot(p, now)
@@ -768,7 +771,7 @@ func (w *World) doChat(p *Player, scope string, to uint32, text string, now time
 			w.sendShared(q, f)
 		}
 	case "g":
-		if p.group == nil {
+		if p.group == nil || !p.group.live() {
 			return
 		}
 		f := mk("g", "")

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -43,7 +44,16 @@ type Area struct {
 	Floor    string `json:"floor"`
 	Access   Access `json:"access"`
 	Capacity int    `json:"capacity,omitempty"`
+	// Auto marks a desk room: derived by Compile from an assigned desk, never stored or edited.
+	Auto bool `json:"auto,omitempty"`
 }
+
+// DeskRoomCapacity is how many people fit in the call of an assigned desk (the owner and visitors),
+// and DeskRoomFloor the floor that shows the desk's space.
+const (
+	DeskRoomCapacity = 4
+	DeskRoomFloor    = "desk_mat"
+)
 
 type Prop struct {
 	T      string `json:"t"`
@@ -273,6 +283,7 @@ func Compile(m *Map) (*Compiled, error) {
 	if err := Validate(m); err != nil {
 		return nil, err
 	}
+	m.Areas = withDeskRooms(m)
 	c := &Compiled{Map: m, W: m.W, H: m.H, Solid: make([]bool, m.W*m.H), AreaAt: make([]int16, m.W*m.H),
 		Portals: map[int]Point{}, Spotlights: map[int]struct{}{}}
 	for y, row := range m.Walls {
@@ -341,4 +352,50 @@ func encodeWire(c *Compiled) []byte {
 		rows[y] = string(b)
 	}
 	return marshalWire(c.Map, rows)
+}
+
+// withDeskRooms returns m's areas without stale desk rooms, plus one room per assigned desk: the
+// desk and the two rows in front of it (its chair and the tile behind), as wide as the desk so the
+// aisles stay open. Whoever sits there and whoever comes over share a call that the neighbouring
+// desks do not hear. A desk already inside a room (a private office) gets none: that room is its call.
+func withDeskRooms(m *Map) []Area {
+	areas := make([]Area, 0, len(m.Areas))
+	ids := map[string]bool{}
+	for _, a := range m.Areas {
+		if !a.Auto {
+			areas = append(areas, a)
+			ids[a.ID] = true
+		}
+	}
+	inRoom := func(x, y int) bool {
+		for _, a := range areas {
+			if a.Kind == KindRoom && !a.Auto && x >= a.X && y >= a.Y && x < a.X+a.W && y < a.Y+a.H {
+				return true
+			}
+		}
+		return false
+	}
+	for _, p := range m.Props {
+		if p.T != "desk" || p.Assign == 0 || len(areas) >= MaxAreas {
+			continue
+		}
+		w, h := p.Size()
+		if inRoom(p.X, p.Y) {
+			continue
+		}
+		id := "desk-" + strconv.Itoa(p.X) + "-" + strconv.Itoa(p.Y)
+		if ids[id] {
+			continue
+		}
+		ids[id] = true
+		x0, y0 := p.X, p.Y
+		x1, y1 := p.X+w, min(p.Y+h+2, m.H)
+		name := p.Label
+		if name == "" {
+			name = "Desk"
+		}
+		areas = append(areas, Area{ID: id, Name: name, Kind: KindRoom, X: x0, Y: y0, W: x1 - x0, H: y1 - y0,
+			Floor: DeskRoomFloor, Access: Access{Mode: AccessOpen}, Capacity: DeskRoomCapacity, Auto: true})
+	}
+	return areas
 }

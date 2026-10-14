@@ -1,5 +1,5 @@
 // Meeting rooms: explicit access rules, server-side enforcement, SFU isolation and revocation, screen share.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, lkParticipants, metrics } from "../lib.mjs";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, lkParticipants, metrics, API } from "../lib.mjs";
 
 const b64json = (tok) => JSON.parse(Buffer.from(tok.split(".")[1], "base64url").toString());
 
@@ -27,16 +27,26 @@ export async function run(ctx) {
     await sleep(700);
     check("requesting a media token outside any group yields nothing", (await st(mem)).conv === null && (await mem.page.evaluate(() => window.__lastJoin ?? null)) === null);
 
-    // --- admin enters and gets the room media group
+    // --- admin enters alone: no call (nothing captured, nobody in the SFU room) until a second admin comes in
     await admin.page.evaluate(() => window.__tilework.session.setConsent(true));
     await walkTo(admin, 47 * 16 + 8, 12 * 16 + 8);
-    await waitFor(async () => (await st(admin)).conv?.state === "live", { timeout: 15000, what: "admin live in room" });
+    await sleep(1500);
+    check("alone in a room with audio allowed there is no call", (await st(admin)).conv === null);
+    const setRole = (id, role) => fetch(API + "/api/admin/members/" + id, { method: "PATCH", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + ctx.adminCookie }, body: JSON.stringify({ role }) });
+    const boss = await joinAs(browser, "Boss" + t);
+    check("a second member is made administrator", (await setRole(boss.id, "admin")).ok);
+    await waitFor(() => boss.page.evaluate(() => window.__tilework.state.role === "admin" && window.__tilework.state.conn === "open"), { timeout: 20000, what: "boss reconnects as admin" });
+    await boss.page.evaluate(() => window.__tilework.session.setConsent(true));
+    await walkTo(boss, 50 * 16 + 8, 12 * 16 + 8);
+    await waitFor(async () => (await st(admin)).conv?.state === "live" && (await st(boss)).conv?.state === "live", { timeout: 15000, what: "admins live in room" });
     const conv = (await st(admin)).conv;
     check("admin joins the private room call", conv.kind === "r" && conv.name === "Boardroom", JSON.stringify({ k: conv.kind, n: conv.name }));
     const room = await admin.page.evaluate(() => window.__tilework.media.currentRoom);
     const claims = b64json(await admin.page.evaluate(() => window.__lastJoin.token));
     check("token is scoped to exactly this room, this identity and a short validity", claims.video.room === room && claims.sub === String(admin.id) && claims.exp - claims.nbf <= 330 && claims.video.roomJoin === true && !claims.video.roomAdmin, JSON.stringify({ room: claims.video.room, sub: claims.sub, ttl: claims.exp - claims.nbf, admin: claims.video.roomAdmin }));
-    check("SFU room contains only the admin", (await lkParticipants(room)).join() === String(admin.id));
+    const both = [String(admin.id), String(boss.id)].sort().join();
+    await waitFor(async () => (await lkParticipants(room)).sort().join() === both, { timeout: 15000, what: "both admins in the SFU room" }).catch(() => {});
+    check("the second person starts the call: the SFU room holds exactly the two admins", (await lkParticipants(room)).sort().join() === both);
 
     // --- a member in a proximity call elsewhere gets a token for THAT group only
     const m2 = await joinAs(browser, "Mem2" + t);
@@ -47,7 +57,7 @@ export async function run(ctx) {
     const memClaims = b64json(await mem.page.evaluate(() => window.__lastJoin.token));
     const memRoom = await mem.page.evaluate(() => window.__tilework.media.currentRoom);
     check("member token grants only the proximity group room, never the private room", memClaims.video.room === memRoom && memRoom !== room && !memRoom.includes("boardroom"));
-    check("private room still contains only the admin while others talk elsewhere", (await lkParticipants(room)).join() === String(admin.id) && (await lkParticipants(memRoom)).length === 2);
+    check("private room still contains only the admins while others talk elsewhere", (await lkParticipants(room)).sort().join() === both && (await lkParticipants(memRoom)).length === 2);
 
     // --- screen sharing inside the admin room requires a second participant: use m2? not allowed. Share inside the member call.
     await mem.page.click('.bar button[aria-label="Share screen"]'); // the real control
@@ -125,6 +135,8 @@ export async function run(ctx) {
     await sleep(1500);
     const after = await metrics();
     check("leaving the private room ends the call and the server revokes SFU access", after.tilework_media_revocations_total > before.tilework_media_revocations_total && (await lkParticipants(room)).length === 0);
+    check("the admin left alone in the room is out of the call too", (await st(boss)).conv === null);
+    check("the second administrator is made a member again", (await setRole(boss.id, "member")).ok);
 
     const errs = [admin, mem, m2].flatMap((u) => u.logs).filter((l) => !/getDisplayMedia|display-capture/.test(l));
     check("no console errors", errs.length === 0, errs.slice(0, 2).join(" | "));

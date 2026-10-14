@@ -40,7 +40,7 @@ export function SocialControls() {
       const map = session.view?.currentMap(), p = session.view?.position();
       if (!map || !p) return;
       const target = map.areas.map((a, index) => ({ ...a, index })).find((a) => {
-        if (!locked.includes(a.index) || a.name === currentArea) return false;
+        if (!locked.includes(a.index) || a.name === currentArea || a.auto) return false;
         if (role === "admin" || isMyOffice(a, meId)) return false; // these doors open for you anyway
         return Math.hypot(Math.max(a.x * 16 - p.x, 0, p.x - (a.x + a.w) * 16), Math.max(a.y * 16 - p.y, 0, p.y - (a.y + a.h) * 16)) <= 40;
       });
@@ -51,7 +51,7 @@ export function SocialControls() {
     return () => clearInterval(timer);
   }, [locked, currentArea, meId, role]);
   const map = session.view?.currentMap();
-  const roomIndex = map?.areas.findIndex((a) => a.name === currentArea && a.kind === "room") ?? -1;
+  const roomIndex = map?.areas.findIndex((a) => a.name === currentArea && a.kind === "room" && !a.auto) ?? -1;
   // an assigned office is always closed to strangers: there is nothing to lock or unlock
   const lockable = roomIndex >= 0 && !isOwnedOffice(map!.areas[roomIndex]);
   return (

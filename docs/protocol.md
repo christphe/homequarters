@@ -39,7 +39,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `a` | `s`, `x`, `y` | acknowledgement with the authoritative position at the time of input `s` |
 | `p` | `a` people added/updated, `d` ids removed | presence roster changes; a person is `{id, n, av, s, r}` plus `h: 1` (hand raised) and `m` (status note) when set |
 | `c` | `sc`, `f` from, `to`, `x` text, `ts` | chat message |
-| `conv` | `op` = `join` / `m` / `leave` | conversation lifecycle, including room name and token on `join` |
+| `conv` | `op` = `join` / `m` / `leave` | conversation lifecycle, including room name and token on `join`; a room's call starts when a second person enters and ends (`leave`) for the last one left ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)) |
 | `map` | `map`, `deny`, optional `x`/`y` | the office map changed (admin edit); `x`/`y` present if you were moved |
 | `loc` | `id`, `ok`, `x`, `y`, `a` | answer to a locate request |
 | `e` | `id`, `v` 1-7 | somebody's reaction; rendered above their avatar |

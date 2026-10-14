@@ -131,6 +131,9 @@ export class WorldView {
   private map: MapData | null = null;
   private solid = new Uint8Array(0);
   private areaAt = new Int16Array(0);
+  // the area named to the player for each area: itself, or for a desk room the area it sits in
+  private shownOf = new Int16Array(0);
+  private mShown = -1;
   private deny = new Set<number>();
   private speed = 72;
   private runMul = 2;
@@ -481,7 +484,14 @@ export class WorldView {
     this.mapSprite = new Sprite(tex);
     this.world.addChildAt(this.mapSprite, 0);
     this.areaLabels.forEach((l) => l.text.destroy());
-    this.areaLabels = map.areas.map((a, ai) => {
+    // desk rooms (derived from assigned desks, "auto") are named after the area under them
+    this.shownOf = new Int16Array(map.areas.length).map((_, i) => {
+      const a = map.areas[i];
+      if (!a.auto) return i;
+      return map.areas.findLastIndex((p) => p.kind !== "room" && a.x >= p.x && a.y >= p.y && a.x < p.x + p.w && a.y < p.y + p.h);
+    });
+    this.areaLabels = map.areas.flatMap((a, ai) => {
+      if (a.auto) return []; // the desk's own label already names it
       const text = new BitmapText({
         text: a.name + (this.deny.has(ai) ? " 🔒" : ""),
         style: { fontFamily: FONT, fontSize: 12, fontWeight: "700", fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
@@ -489,7 +499,7 @@ export class WorldView {
       text.anchor.set(0.5, 0);
       text.alpha = 0.85;
       this.hud.addChild(text);
-      return { text, ai };
+      return [{ text, ai }];
     });
     // assigned desks show their owner
     this.deskLabels.forEach((l) => l.text.destroy());
@@ -516,8 +526,9 @@ export class WorldView {
     this.speed = speed;
     this.runMul = runMul;
     this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.map && this.mArea >= 0 ? this.map.areas[this.mArea].name : "");
-    if (this.map && this.mArea >= 0) this.showBanner(this.map.areas[this.mArea].name);
+    this.hooks.onArea(this.areaName(this.mArea));
+    this.mShown = this.shownArea(this.mArea);
+    if (this.mShown >= 0) this.showBanner(this.areaName(this.mArea));
     if (!this.meEnt) {
       this.meEnt = this.makeEnt(id);
       this.ents.set(id, this.meEnt);
@@ -578,7 +589,7 @@ export class WorldView {
     this.hist.clear();
     this.keys.clear();
     this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.map && this.mArea >= 0 ? this.map.areas[this.mArea].name : "");
+    this.hooks.onArea(this.areaName(this.mArea));
   }
 
   setGuided(on: boolean) {
@@ -620,7 +631,7 @@ export class WorldView {
       this.dx = m.dx;
       this.dy = m.dy;
       this.mArea = this.areaIndex(m.x, m.y);
-      this.hooks.onArea(this.map && this.mArea >= 0 ? this.map.areas[this.mArea].name : "");
+      this.hooks.onArea(this.areaName(this.mArea));
     }
   }
 
@@ -964,13 +975,28 @@ export class WorldView {
     this.syncArea();
   }
 
+  /** The area to name for area index ai (a desk room shows as the area around it), or -1. */
+  private shownArea(ai: number) {
+    return ai >= 0 ? this.shownOf[ai] ?? ai : -1;
+  }
+
+  private areaName(ai: number) {
+    const i = this.shownArea(ai);
+    return this.map && i >= 0 ? this.map.areas[i].name : "";
+  }
+
   private syncArea() {
     if (!this.map) return;
     const ai = this.areaIndex(this.mx, this.my);
     if (ai !== this.mArea) {
       this.mArea = ai;
-      this.hooks.onArea(ai >= 0 ? this.map.areas[ai].name : "");
-      if (ai >= 0) this.showBanner(this.map.areas[ai].name);
+      this.hooks.onArea(this.areaName(ai));
+      // a desk room is part of the desks around it: no banner walking in or out of one
+      const shown = this.shownArea(ai);
+      if (shown !== this.mShown) {
+        this.mShown = shown;
+        if (shown >= 0) this.showBanner(this.areaName(ai));
+      }
     }
   }
 

@@ -98,7 +98,7 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
       drag.current = { x, y };
       setPending({ x, y, w: 1, h: 1 });
     } else if (tool === "unroom") {
-      const i = d.areas.findIndex((a) => a.kind === "room" && x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h);
+      const i = d.areas.findIndex((a) => a.kind === "room" && !a.auto && x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h);
       if (i >= 0) {
         d.areas.splice(i, 1);
         apply();
