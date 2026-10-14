@@ -1,5 +1,6 @@
 import { t, type Key } from "../i18n";
 import { keyLabel, moveLabels, useKeyLayout } from "../keys";
+import { isMac } from "../game/home";
 import { Modal } from "./Modal";
 
 // Letter shortcuts are physical keys (KeyboardEvent.code): the labels are what this keyboard
@@ -11,6 +12,7 @@ const rows = (): [string[], Key, Key?][] => [
   [[], "keys.goto", "keys.dblclick"],
   [[], "keys.zoom", "keys.wheel"],
   [[], "keys.pan", "keys.drag"],
+  [[(isMac() ? "⌘ " : "Ctrl ") + keyLabel("KeyD")], "keys.home"],
   [[keyLabel("KeyX")], "keys.interact"],
   [["1-7"], "keys.emotes"],
   [[keyLabel("KeyZ")], "keys.dance"],

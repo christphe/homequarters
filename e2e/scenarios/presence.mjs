@@ -218,6 +218,27 @@ export async function run(ctx) {
     check("M hides the minimap", await read(a, () => !document.querySelector(".minimap")));
     await a.page.keyboard.press("m");
 
+    // ---- Ctrl+D: back to my desk ----
+    await a.page.keyboard.down("Control");
+    await a.page.keyboard.press("d");
+    await a.page.keyboard.up("Control");
+    await waitFor(async () => (await toast(a)).includes("no desk"), { what: "no desk message" });
+    check("Ctrl+D with nothing assigned says so", !(await read(a, () => window.__tilework.view.guided)));
+    const api = (await read(a, () => location.origin));
+    const full = await (await fetch(api + "/api/admin/map", { headers: { Cookie: "tilework_session=" + ctx.adminCookie } })).json();
+    const putMap = (m) => fetch(api + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
+    const withDesk = JSON.parse(JSON.stringify(full));
+    const desk = withDesk.props.find((p) => p.t === "desk" && p.label === "Desk 1");
+    Object.assign(desk, { assign: a.id, label: "Desk of " + a.name.slice(0, 30) });
+    check("an administrator assigns Desk 1 (API)", (await putMap(withDesk)).ok);
+    await waitFor(() => read(a, (id) => window.__tilework.view.map.props.some((p) => p.t === "desk" && p.assign === id), a.id), { what: "desk assignment reaches the client" });
+    await a.page.keyboard.down("Control");
+    await a.page.keyboard.press("d");
+    await a.page.keyboard.up("Control");
+    await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === desk.x && Math.floor(p.y / 16) === desk.y + 1; }, { timeout: 30000, what: "back at the desk" });
+    check("Ctrl+D runs to the chair of my assigned desk", true);
+    check("restoring the map", (await putMap(full)).ok);
+
     // ---- touch pad on a phone-sized touch screen ----
     const pctx = await browser.createBrowserContext();
     const phone = await pctx.newPage();

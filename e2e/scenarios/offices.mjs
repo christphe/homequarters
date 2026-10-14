@@ -73,6 +73,14 @@ export async function run(ctx) {
     await waitFor(async () => (await st(owner)).conv?.kind === "r" && (await st(guest)).conv?.kind === "r" && (await st(guest)).conv?.state === "live", { timeout: 30000, what: "office call" });
     const conv = (await st(owner)).conv;
     check("owner and visitor share the office's own call", conv.name?.startsWith("Office 2"), JSON.stringify(conv));
+
+    // ---- Ctrl+D brings the owner back to their office from the hall, with the real keys
+    await walkTo(owner, ...at(13, 37));
+    await owner.page.keyboard.down("Control");
+    await owner.page.keyboard.press("d");
+    await owner.page.keyboard.up("Control");
+    await waitFor(async () => (await here(owner)) === oi && !(await owner.page.evaluate(() => window.__tilework.view.guided)), { timeout: 20000, what: "owner back in their office" });
+    check("Ctrl+D runs the owner back into their own office", true);
     check("somebody in the hall is not in that call", (await st(other)).conv?.kind !== "r");
 
     // ---- a free office: open to anyone, lockable
