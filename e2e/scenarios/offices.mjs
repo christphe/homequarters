@@ -102,6 +102,33 @@ export async function run(ctx) {
     check("the activity log records the forced door", audit.includes('"room.force"') && audit.includes("office-2"));
     await walkTo(boss, ...at(14, 37));
 
+    // ---- the editor assigns desks: one place per person, and Nobody frees a desk
+    const [deskA, deskB] = await boss.page.evaluate(() => window.__tilework.view.map.props.filter((p) => p.t === "desk" && !p.assign && p.y < 14).slice(0, 2));
+    await walkTo(boss, ...at(deskA.x + 2, deskA.y + 3));
+    const roomOf = (u, d) => u.page.evaluate((id) => window.__tilework.view.map.areas.find((a) => a.id === id) ?? null, `desk-${d.x}-${d.y}`);
+    const assignDesk = async (who, d) => {
+      await boss.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Edit office")?.click());
+      await waitFor(() => boss.page.$(".editor"), { what: "editor open" });
+      await boss.page.evaluate(() => [...document.querySelectorAll(".editor .chip")].find((x) => x.textContent === "Assign desk or office")?.click());
+      await waitFor(() => boss.page.$(".editor select"), { what: "person picker" });
+      await boss.page.select(".editor select", String(who));
+      const c = await boss.page.evaluate((tx, ty) => { const v = window.__tilework.view, r = v.app.canvas.getBoundingClientRect(); return { x: r.left + v.camX + (tx * 16 + 8) * v.S, y: r.top + v.camY + (ty * 16 + 8) * v.S }; }, d.x, d.y);
+      await boss.page.mouse.click(c.x, c.y);
+      await waitFor(() => boss.page.evaluate(() => !document.querySelector(".editor .primary")?.disabled), { what: "editor dirty" });
+      await boss.page.evaluate(() => document.querySelector(".editor .primary").click());
+      await sleep(500);
+      await boss.page.evaluate(() => [...document.querySelectorAll(".editor button")].find((b) => b.textContent === "Close")?.click());
+    };
+    await assignDesk(other.id, deskA);
+    await waitFor(async () => (await roomOf(guest, deskA))?.auto === true, { what: "desk room appears" });
+    check("assigning a desk in the editor gives it its own room", true);
+    await assignDesk(other.id, deskB);
+    await waitFor(async () => (await roomOf(guest, deskB))?.auto === true && (await roomOf(guest, deskA)) === null, { what: "the desk moves" });
+    check("one desk per person: giving someone a second desk frees the first", !(await guest.page.evaluate((x, y) => window.__tilework.view.map.props.find((p) => p.t === "desk" && p.x === x && p.y === y)?.assign, deskA.x, deskA.y)));
+    await assignDesk(0, deskB);
+    await waitFor(async () => (await roomOf(guest, deskB)) === null, { what: "desk room goes" });
+    check("choosing Nobody frees the desk and removes its room", !(await guest.page.evaluate((x, y) => window.__tilework.view.map.props.find((p) => p.t === "desk" && p.x === x && p.y === y)?.assign, deskB.x, deskB.y)));
+
     // ---- a free office: open to anyone, lockable
     await walkTo(other, ...at(23, 42));
     check("anybody walks into a free office", (await here(other)) === (await areaIndex(other, "office-3")));

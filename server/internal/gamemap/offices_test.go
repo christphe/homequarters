@@ -99,3 +99,42 @@ func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
 		t.Fatalf("unassigning a desk removes its room: %d rooms", n)
 	}
 }
+
+func TestOnePlacePerPerson(t *testing.T) {
+	m := Default()
+	desk := func(x, y int) *Prop {
+		for i := range m.Props {
+			if m.Props[i].T == "desk" && m.Props[i].X == x && m.Props[i].Y == y {
+				return &m.Props[i]
+			}
+		}
+		return nil
+	}
+	desk(20, 3).Assign = 7
+	if err := OnePlacePerPerson(m); err != nil {
+		t.Fatalf("one desk is fine: %v", err)
+	}
+	desk(24, 3).Assign = 7
+	if OnePlacePerPerson(m) == nil {
+		t.Fatal("two desks for one person are refused")
+	}
+	desk(24, 3).Assign = 0
+	for i := range m.Areas {
+		if m.Areas[i].ID == "office-1" {
+			m.Areas[i].Access = Access{Mode: AccessOffice, Users: []int64{7}}
+		}
+	}
+	if OnePlacePerPerson(m) == nil {
+		t.Fatal("a desk and an office for one person are refused")
+	}
+	// a map stored before the rule still loads: the office wins, the desk gets no room
+	c, err := Compile(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range c.Map.Areas {
+		if a.Auto {
+			t.Fatalf("an office owner's extra desk gets no room: %+v", a)
+		}
+	}
+}
