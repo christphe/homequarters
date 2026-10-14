@@ -376,10 +376,19 @@ func withDeskRooms(m *Map) []Area {
 		}
 		return false
 	}
+	placed := map[int64]bool{} // one place per person: an office owner, or the first desk, wins
+	for _, a := range areas {
+		if a.Kind == KindRoom && a.Access.Mode == AccessOffice {
+			for _, u := range a.Access.Users {
+				placed[u] = true
+			}
+		}
+	}
 	for _, p := range m.Props {
-		if p.T != "desk" || p.Assign == 0 || len(areas) >= MaxAreas {
+		if p.T != "desk" || p.Assign == 0 || len(areas) >= MaxAreas || placed[p.Assign] {
 			continue
 		}
+		placed[p.Assign] = true
 		w, h := p.Size()
 		if inRoom(p.X, p.Y) {
 			continue
@@ -399,4 +408,35 @@ func withDeskRooms(m *Map) []Area {
 			Floor: DeskRoomFloor, Access: Access{Mode: AccessOpen, Users: []int64{p.Assign}}, Capacity: DeskRoomCapacity, Auto: true})
 	}
 	return areas
+}
+
+// OnePlacePerPerson checks that nobody is given two places: at most one assigned desk or one private
+// office (as one of its owners) per person. Maps sent by an editor must pass it; maps already stored
+// are loaded anyway (withDeskRooms then gives a room to the first place only).
+func OnePlacePerPerson(m *Map) error {
+	seen := map[int64]string{}
+	take := func(uid int64, place string) error {
+		if prev, dup := seen[uid]; dup {
+			return fmt.Errorf("user %d already has %s; one desk or office per person", uid, prev)
+		}
+		seen[uid] = place
+		return nil
+	}
+	for _, a := range m.Areas {
+		if a.Kind == KindRoom && a.Access.Mode == AccessOffice && !a.Auto {
+			for _, u := range a.Access.Users {
+				if err := take(u, "office "+a.ID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, p := range m.Props {
+		if p.T == "desk" && p.Assign != 0 {
+			if err := take(p.Assign, "a desk at "+strconv.Itoa(p.X)+","+strconv.Itoa(p.Y)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
