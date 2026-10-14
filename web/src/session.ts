@@ -64,7 +64,18 @@ class Session {
     for (const ev of ["keydown", "pointerdown", "pointermove"]) window.addEventListener(ev, act, { passive: true });
     this.cleanup.push(() => ["keydown", "pointerdown", "pointermove"].forEach((ev) => window.removeEventListener(ev, act)));
     this.idleTimer = window.setInterval(() => {
-      if (getState().status === "available" && Date.now() - this.lastActivity > AWAY_AFTER_MS) {
+      const st = getState();
+      // Being in a conversation, or watching a spotlight, is presence. Only the
+      // keyboard and the pointer count as activity, so somebody listening to a
+      // presentation looks idle for the whole presentation - and going away is
+      // not a dimmed dot: the server calls leaveGroup, which drops them out of
+      // the call mid-sentence. Keeping the clock fresh here also means they are
+      // not flipped away the instant a long call ends.
+      if (st.conv || st.spotlight) {
+        this.lastActivity = Date.now();
+        return;
+      }
+      if (st.status === "available" && Date.now() - this.lastActivity > AWAY_AFTER_MS) {
         this.autoAway = true;
         this.setStatus("away");
       }
