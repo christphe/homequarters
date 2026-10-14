@@ -49,6 +49,7 @@ class Session {
     media.onSpeaking = (ids) => view.setSpeaking(ids);
     media.onSharing = (ids) => view.setSharing(ids);
     media.onNeedToken = () => this.socket?.send({ t: "tok" });
+    media.onProblem = (kind, code) => this.socket?.send({ t: "diag", v: kind, n: code });
     spotlightMedia.onNeedToken = () => this.socket?.send({ t: "tok" });
     this.socket = new Socket((m) => this.onMessage(m), (s) => this.onConn(s), () => void this.onEvicted());
     this.socket.connect();
@@ -226,6 +227,7 @@ class Session {
       view.setInConversation(new Set(m.m));
       if (m.tok && m.url) {
         media.join({ url: m.url, token: m.tok, room: m.room }).catch(() => {
+          media.onProblem("media-join", 0);
           const c = getState().conv;
           if (c) setState({ conv: { ...c, state: "failed" } });
           toast(t("media.failed"));

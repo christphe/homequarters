@@ -99,6 +99,9 @@ func (c *Client) Reconcile(ctx context.Context, prefix string, allowed func(cont
 			if err := c.removeParticipant(ctx, l.room, id); err == nil {
 				removed++
 				ReconcileRemovals.Add(1)
+				// somebody was in an SFU room the world does not place them in: a revocation that did
+				// not land, or a stale token; a user id and a room name, nothing else
+				c.log.Warn("removed a participant the world does not place in this room", "room", l.room, "identity", id)
 			}
 		}
 	}
