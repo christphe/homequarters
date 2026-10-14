@@ -185,3 +185,9 @@ const (
 	KickSlow                           // the reliable queue overflowed
 	KickEvicted                        // an admin removed the member or changed their role
 )
+
+// LastPos is where a player stood when the world stopped.
+type LastPos struct {
+	User uint32
+	X, Y float64
+}

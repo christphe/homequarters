@@ -206,6 +206,33 @@ func (s *Store) SaveLastPos(ctx context.Context, officeID, userID int64, x, y fl
 	return err
 }
 
+// LastPos is where a member stood when they left.
+type LastPos struct {
+	UserID int64
+	X, Y   float64
+}
+
+// SaveLastPositions records where everybody stood, in one transaction: used when the server stops,
+// which is everybody leaving at once.
+func (s *Store) SaveLastPositions(ctx context.Context, officeID int64, ps []LastPos) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	st, err := tx.PrepareContext(ctx, `UPDATE memberships SET last_x=?, last_y=? WHERE office_id=? AND user_id=?`)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	for _, p := range ps {
+		if _, err := st.ExecContext(ctx, p.X, p.Y, officeID, p.UserID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) UpdateProfile(ctx context.Context, userID int64, name string, avatar json.RawMessage) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE users SET name=?, avatar_json=? WHERE id=?`, name, string(avatar), userID)
 	return err

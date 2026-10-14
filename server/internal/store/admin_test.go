@@ -124,3 +124,26 @@ func TestAuditTrailOrderAndPruning(t *testing.T) {
 		t.Fatalf("audit log must be pruned, has %d", n)
 	}
 }
+
+func TestPositionsSavedTogetherWhenTheServerStops(t *testing.T) {
+	s, o := open(t)
+	ctx := context.Background()
+	a, _, _ := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
+	b, _, _ := s.AddMember(ctx, o.ID, "Bia", json.RawMessage("{}"), "")
+	if err := s.SaveLastPositions(ctx, o.ID, []LastPos{{a, 10, 20}, {b, 30, 40}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		id   int64
+		x, y float64
+	}{{a, 10, 20}, {b, 30, 40}} {
+		tok, err := s.CreateSession(ctx, c.id, o.ID, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		se, err := s.LookupSession(ctx, tok)
+		if err != nil || se.LastX == nil || *se.LastX != c.x || *se.LastY != c.y {
+			t.Fatalf("member %d: %+v %v", c.id, se, err)
+		}
+	}
+}

@@ -107,6 +107,7 @@ type World struct {
 	OnChat     func(officeID int64, from uint32, text string, tsMillis int64) // persistence hook, must not block
 	hist       []ChatEntry
 	OnAction   func(officeID int64, actor uint32, action, target string) // metadata only, must not block
+	OnStop     func(officeID int64, last []LastPos)                      // called once by Run when it stops, before it returns
 
 	// social features (world goroutine only)
 	followers map[*Player]struct{}
@@ -169,6 +170,14 @@ func (w *World) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			w.flushBoards(true)
+			// stopping is everybody leaving at once: their last positions are saved, as on any leave
+			if w.OnStop != nil {
+				ps := make([]LastPos, 0, len(w.list))
+				for _, p := range w.list {
+					ps = append(ps, LastPos{User: p.ID, X: p.X, Y: p.Y})
+				}
+				w.OnStop(w.OfficeID, ps)
+			}
 			return
 		case e := <-w.inbox:
 			w.handle(e, time.Now())
