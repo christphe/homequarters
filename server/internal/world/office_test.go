@@ -135,10 +135,77 @@ func TestAssignedOfficeOwnerKnockAndAdmit(t *testing.T) {
 	if stranger.area == oi {
 		t.Fatal("unlocking does not open an assigned office to strangers")
 	}
+	// an admin is stopped like anybody else, then forces the door on purpose: logged, and the owner is told
+	var log []string
+	h.w.OnAction = func(_ int64, actor uint32, action, target string) { log = append(log, action+" "+target) }
 	admin := h.add(4, "admin", officeDoorX, hallY)
 	walkIn(h, admin, 1)
-	if admin.area != oi {
-		t.Fatal("admins can enter any office")
+	if admin.area == oi {
+		t.Fatal("an admin never walks into a closed office without forcing it")
+	}
+	drain(owner)
+	h.send(admin, ev{kind: evForce, x: oi})
+	walkIn(h, admin, 3)
+	if admin.area != oi || len(log) != 1 || log[0] != "room.force office-1" {
+		t.Fatalf("forcing lets the admin in and is logged: area=%d log=%v", admin.area, log)
+	}
+	if got := frames(owner); !strings.Contains(got, `"t":"frc"`) {
+		t.Fatalf("the people inside are told an admin forced the door: %q", got)
+	}
+	h.send(stranger, ev{kind: evForce, x: oi})
+	walkIn(h, stranger, 3)
+	if stranger.area == oi {
+		t.Fatal("only admins can force a door")
+	}
+}
+
+func TestADeskOwnerLocksTheirDeskAndAlwaysWalksIn(t *testing.T) {
+	h := newHarness(t)
+	m := *gamemap.Default()
+	m.Props = append([]gamemap.Prop(nil), m.Props...)
+	for i := range m.Props {
+		if p := &m.Props[i]; p.T == "desk" && p.X == 20 && p.Y == 3 {
+			p.Assign, p.Label = 1, "Desk of Ana"
+		}
+	}
+	cm, err := gamemap.Compile(&m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.doReloadMap(cm, h.now); err != nil {
+		t.Fatal(err)
+	}
+	di := officeIndex(t, h.w, "desk-20-3")
+	owner := h.add(1, "member", 20*16+8, 4*16+8) // on the chair
+	visitor := h.add(2, "member", 21*16+8, 5*16+8)
+	h.run(time.Second)
+	h.send(visitor, ev{kind: evLock, b: true})
+	if len(h.w.locks) != 0 {
+		t.Fatal("only the desk's owner may lock it")
+	}
+	h.send(owner, ev{kind: evLock, b: true})
+	if h.w.locks["desk-20-3"] == nil {
+		t.Fatal("the owner locks their desk")
+	}
+	outsider := h.add(3, "member", 21*16+8, 7*16+8) // in the aisle, two rows behind the desk
+	h.send(outsider, ev{kind: evInput, seq: 1, dy: -1})
+	h.run(2 * time.Second)
+	if outsider.area == di {
+		t.Fatal("a locked desk keeps outsiders out")
+	}
+	// the owner steps out (the visitor stays inside, so the desk stays locked) and walks back in
+	h.teleport(owner, 23*16+8, 6*16+8)
+	h.run(time.Second)
+	h.send(owner, ev{kind: evGoto, x: 20, y: 4})
+	h.run(4 * time.Second)
+	if owner.area != di {
+		t.Fatalf("the owner always walks into their locked desk (area %d)", owner.area)
+	}
+	h.send(outsider, ev{kind: evInput, seq: 2})
+	h.now = h.now.Add(5 * time.Second)
+	h.send(outsider, ev{kind: evKnock, x: di})
+	if !strings.Contains(frames(owner), `"t":"knk"`) || strings.Contains(frames(visitor), `"t":"knk"`) {
+		t.Fatal("a knock at a desk asks its owner, not the visitor")
 	}
 }
 

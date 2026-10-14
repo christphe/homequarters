@@ -13,7 +13,7 @@ export function SocialControls() {
   const request = useStore((s) => s.leadRequest);
   const knock = useStore((s) => s.knock);
   const locked = useStore((s) => s.locked);
-  const currentArea = useStore((s) => s.currentArea);
+  const here = useStore((s) => s.areaIndex);
   const running = useStore((s) => s.running);
   const wave = useStore((s) => s.wave);
   const handUp = useStore((s) => s.roster.get(s.meId)?.h === 1);
@@ -40,8 +40,9 @@ export function SocialControls() {
       const map = session.view?.currentMap(), p = session.view?.position();
       if (!map || !p) return;
       const target = map.areas.map((a, index) => ({ ...a, index })).find((a) => {
-        if (!locked.includes(a.index) || a.name === currentArea || a.auto) return false;
-        if (role === "admin" || isMyOffice(a, meId)) return false; // these doors open for you anyway
+        if (!locked.includes(a.index) || a.index === here) return false;
+        // my office and my desk open for me anyway; admins knock like everybody (and may force the door)
+        if (isMyOffice(a, meId) || (a.auto && a.access.users?.includes(meId))) return false;
         return Math.hypot(Math.max(a.x * 16 - p.x, 0, p.x - (a.x + a.w) * 16), Math.max(a.y * 16 - p.y, 0, p.y - (a.y + a.h) * 16)) <= 40;
       });
       setKnockArea((old) => old?.index === target?.index ? old : target ? { index: target.index, name: target.name } : null);
@@ -49,11 +50,14 @@ export function SocialControls() {
     update();
     const timer = window.setInterval(update, 300);
     return () => clearInterval(timer);
-  }, [locked, currentArea, meId, role]);
+  }, [locked, here, meId]);
   const map = session.view?.currentMap();
-  const roomIndex = map?.areas.findIndex((a) => a.name === currentArea && a.kind === "room" && !a.auto) ?? -1;
-  // an assigned office is always closed to strangers: there is nothing to lock or unlock
-  const lockable = roomIndex >= 0 && !isOwnedOffice(map!.areas[roomIndex]);
+  const room = map && here >= 0 && map.areas[here]?.kind === "room" ? map.areas[here] : null;
+  const roomIndex = room ? here : -1;
+  // an assigned office is always closed to strangers: there is nothing to lock or unlock; a desk is
+  // locked by its owner (or an admin)
+  const lockable = !!room && !isOwnedOffice(room) && (!room.auto || role === "admin" || !!room.access.users?.includes(meId));
+  const lockKey = (on: boolean): Key => (room?.auto ? (on ? "door.unlockDesk" : "door.lockDesk") : on ? "door.unlock" : "door.lock");
   return (
     <>
       <div className={"social-controls" + (compact && open ? " open" : "")} role="region" aria-label={t("emote.title")}>
@@ -76,8 +80,9 @@ export function SocialControls() {
         )}
         {nearby && <button className="btn interaction-hint" onClick={() => session.view?.interact()}>{t("object.use", { name: nearby.label || t(`object.${nearby.t}` as Key) })}</button>}
         {following && <div className="follow-hint"><span>{t("follow.active", { name: following.name })}</span> <button className="btn" onClick={() => session.follow(0)}>{t("follow.stop")}</button></div>}
-        {lockable && <button className="btn" onClick={() => session.lock(!locked.includes(roomIndex))}>{t(locked.includes(roomIndex) ? "door.unlock" : "door.lock")}</button>}
+        {lockable && <button className="btn" onClick={() => session.lock(!locked.includes(roomIndex))}>{t(lockKey(locked.includes(roomIndex)))}</button>}
         {knockArea && <button className="btn" onClick={() => session.knock(knockArea.index)}>{t("door.knock", { area: knockArea.name })}</button>}
+        {knockArea && role === "admin" && <button className="btn" onClick={() => session.force(knockArea.index)}>{t("door.force")}</button>}
       </div>
       {request && <Modal title={t("follow.lead")} onClose={() => setState({ leadRequest: null })}>
         <p>{t("follow.request", { name: request.name })}</p>

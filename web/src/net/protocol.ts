@@ -122,6 +122,8 @@ export interface LeadRequest { t: "lreq"; from: number; n: string }
 export interface DoorState { t: "deny"; d: number[]; lk: number[] }
 export interface Knock { t: "knk"; id: number; n?: string; a?: string; done?: boolean }
 export interface KnockResult { t: "knr"; st: "wait" | "ok" | "no" | "empty"; a: string }
+/** An administrator forced the door of the room you are in. */
+export interface Forced { t: "frc"; n: string; a: string }
 export interface BoardStroke { o: number; i: number; k: number; c: number; w: number; p: number[]; tx?: string }
 export type BoardEvent =
   | { t: "wb"; op: "state"; bk: string; w: number; h: number; s: BoardStroke[] }
@@ -132,4 +134,4 @@ export type BoardEvent =
 export type BoardCommand = { op: "draw" | "del" | "undo" | "clear" | "close"; bk: string; i?: number; o?: number; k?: number; c?: number; w?: number; p?: number[]; tx?: string };
 export type Spotlight = { t: "spot"; op: "off" } | { t: "spot"; op: "on"; sid: number; n: string; me: boolean; room?: string; url?: string; tok?: string };
 
-export type ServerMsg = MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | BoardEvent | Spotlight;
+export type ServerMsg = MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

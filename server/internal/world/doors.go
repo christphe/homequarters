@@ -8,14 +8,18 @@ import (
 )
 
 // Locked doors. Somebody standing inside a meeting room can lock it. From then on nobody who was
-// not inside at that moment (or let in since) can walk in, except admins. Outsiders knock; the people
+// not inside at that moment (or let in since) can walk in. Admins are stopped like anybody else, so
+// they never walk into a closed room without noticing; they can knock, or force the door (doForce),
+// which the people inside are told about and the activity log records. Outsiders knock; the people
 // inside answer. The state lives only in memory: an empty room unlocks itself and a restart unlocks
 // everything. Movement is what enforces it (canEnterArea), and media follows position, so a locked
 // call cannot be joined from outside.
 //
 // An assigned private office is always closed: it is announced as locked, its owners never need to
 // be let in, and the lock control does nothing there. Visitors an owner admits are remembered in the
-// same lockState until the office is empty again.
+// same lockState until the office is empty again. An assigned desk's room is open until its owner
+// locks it; then it works like an office: the owner always walks in and alone (with admins) lets
+// people in.
 
 const (
 	knockReach = 40.0 // px from the room's rectangle
@@ -88,8 +92,11 @@ func (w *World) doLock(p *Player, on bool) {
 		return
 	}
 	a := &w.m.Map.Areas[p.area]
-	if a.Kind != gamemap.KindRoom || isOwnedOffice(a) || a.Auto {
-		return // an assigned office is always closed; a desk room is a desk, it has no door
+	if a.Kind != gamemap.KindRoom || isOwnedOffice(a) {
+		return // an assigned office is always closed: there is nothing to lock
+	}
+	if a.Auto && p.Role != "admin" && !ownsOffice(a, p.ID) {
+		return // only the desk's owner locks a desk
 	}
 	_, locked := w.locks[a.ID]
 	switch {
@@ -164,7 +171,8 @@ func (w *World) doKnock(p *Player, areaIdx int, now time.Time) {
 	a := &w.m.Map.Areas[areaIdx]
 	ls := w.locks[a.ID]
 	office := isOwnedOffice(a)
-	if a.Kind != gamemap.KindRoom || (ls == nil && !office) || p.Role == "admin" || (office && ownsOffice(a, p.ID)) {
+	owned := office || a.Auto // somebody's office or desk: its owners decide
+	if a.Kind != gamemap.KindRoom || (ls == nil && !office) || (owned && ownsOffice(a, p.ID)) {
 		return
 	}
 	if ls != nil {
@@ -182,7 +190,7 @@ func (w *World) doKnock(p *Player, areaIdx int, now time.Time) {
 		return
 	}
 	occ := w.occupants(areaIdx)
-	if office { // in somebody's office only the owner (or an admin) decides who comes in
+	if owned { // in somebody's office or at their desk only the owner (or an admin) decides who comes in
 		hosts := occ[:0]
 		for _, o := range occ {
 			if o.Role == "admin" || ownsOffice(a, o.ID) {
@@ -215,8 +223,8 @@ func (w *World) doKnockAns(p *Player, id uint32, allow bool, now time.Time) {
 	if p.area < 0 || w.m.Map.Areas[p.area].ID != k.area {
 		return // only somebody inside can answer
 	}
-	if a := &w.m.Map.Areas[p.area]; isOwnedOffice(a) && p.Role != "admin" && !ownsOffice(a, p.ID) {
-		return // a guest cannot let more people into somebody's office
+	if a := &w.m.Map.Areas[p.area]; (isOwnedOffice(a) || a.Auto) && p.Role != "admin" && !ownsOffice(a, p.ID) {
+		return // a guest cannot let more people into somebody's office or desk
 	}
 	delete(w.knocks, id)
 	for _, o := range w.occupants(p.area) { // the other people inside can dismiss their prompt
@@ -243,4 +251,35 @@ func (w *World) doKnockAns(p *Player, id uint32, allow bool, now time.Time) {
 	}
 	w.sendJSON(q, map[string]any{"t": "knr", "st": "ok", "a": name})
 	w.sendDeny(q)
+}
+
+// doForce lets an admin standing at a closed door (a locked room, an assigned office or a locked
+// desk) walk in: they are admitted like a visitor let in, until the room is empty again. The people
+// inside are told who came in, and the activity log records it (room id only).
+func (w *World) doForce(p *Player, areaIdx int) {
+	if p.Role != "admin" || areaIdx < 0 || areaIdx >= len(w.m.Map.Areas) || p.area == areaIdx || w.canEnterArea(p, areaIdx) {
+		return
+	}
+	a := &w.m.Map.Areas[areaIdx]
+	if a.Kind != gamemap.KindRoom {
+		return
+	}
+	x, y, ww, hh := w.areaRect(a)
+	if rectDist(p.X, p.Y, x, y, ww, hh) > knockReach {
+		return
+	}
+	ls := w.locks[a.ID]
+	if ls == nil { // an assigned office nobody has been let into yet
+		ls = &lockState{admitted: map[uint32]struct{}{}}
+		w.locks[a.ID] = ls
+	}
+	ls.admitted[p.ID] = struct{}{}
+	delete(w.knocks, p.ID)
+	for _, o := range w.occupants(areaIdx) {
+		w.sendJSON(o, map[string]any{"t": "frc", "n": p.Name, "a": a.Name})
+	}
+	w.sendDeny(p)
+	if w.OnAction != nil {
+		w.OnAction(w.OfficeID, p.ID, "room.force", a.ID)
+	}
 }
