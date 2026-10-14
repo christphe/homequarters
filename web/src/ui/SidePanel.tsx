@@ -58,18 +58,70 @@ function People({ onDm }: { onDm: (id: number) => void }) {
             </div>
             {p.id !== me && p.s !== "offline" && (
               <div className="acts">
-                <button title={t("follow.action")} aria-label={`${t("follow.action")} ${p.n}`} onClick={() => session.follow(p.id)}>↗</button>
                 <button title={t("go.action")} aria-label={`${t("go.action")} ${p.n}`} onClick={() => session.goToPerson(p.id)}>🏃</button>
                 <button title={t("wave.action")} aria-label={`${t("wave.action")} ${p.n}`} onClick={() => session.wave(p.id)}>👋</button>
-                <button title={t("follow.lead")} aria-label={`${t("follow.lead")} ${p.n}`} onClick={() => session.lead(p.id)}>→</button>
-                <button title={t("roster.locate")} aria-label={t("roster.locate")} onClick={() => session.locate(p.id)}><PinIcon /></button>
-                <button title={t("roster.dm")} aria-label={t("roster.dm")} onClick={() => onDm(p.id)}><ChatIcon /></button>
+                <button title={t("roster.dm")} aria-label={`${t("roster.dm")} ${p.n}`} onClick={() => onDm(p.id)}><ChatIcon /></button>
+                <MoreActions id={p.id} name={p.n} />
               </div>
             )}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * The less frequent actions on a person, behind one button. The menu is fixed-positioned under the
+ * button so the scrolling list never clips it; it closes on Escape, a click elsewhere, a scroll or
+ * a resize, and after an action.
+ */
+function MoreActions({ id, name }: { id: number; name: string }) {
+  const [at, setAt] = useState<React.CSSProperties | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLUListElement>(null);
+  const menuId = "more-" + id;
+  useEffect(() => {
+    if (!at) return;
+    menu.current?.querySelector("button")?.focus({ preventScroll: true }); // scrolling the list would close the menu
+    const away = (e: Event) => {
+      if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setAt(null);
+    };
+    const close = () => setAt(null);
+    window.addEventListener("pointerdown", away, true);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [at]);
+  const open = () => {
+    const r = btn.current!.getBoundingClientRect();
+    const right = window.innerWidth - r.right;
+    // under the button, or above it when the screen ends first (three items, about 130 px)
+    setAt(r.bottom + 4 + 130 > window.innerHeight ? { top: "auto", bottom: window.innerHeight - r.top + 4, right } : { top: r.bottom + 4, right });
+  };
+  const run = (f: () => void) => () => { setAt(null); f(); };
+  const items: [Key, () => void, React.ReactNode][] = [
+    ["follow.action", () => session.follow(id), "↗"],
+    ["follow.lead", () => session.lead(id), "→"],
+    ["roster.locate", () => session.locate(id), <PinIcon key="pin" />],
+  ];
+  return (
+    <>
+      <button ref={btn} title={t("roster.more")} aria-label={t("roster.moreFor", { name })} aria-haspopup="true" aria-expanded={!!at} aria-controls={at ? menuId : undefined} onClick={() => (at ? setAt(null) : open())}>⋯</button>
+      {at && (
+        <ul ref={menu} id={menuId} className="menu more-menu" style={{ position: "fixed", ...at }} onKeyDown={(e) => { if (e.key === "Escape") { setAt(null); btn.current?.focus({ preventScroll: true }); } }}>
+          {items.map(([label, f, icon]) => (
+            <li key={label}>
+              <button aria-label={`${t(label)} ${name}`} onClick={run(f)}><span className="ico" aria-hidden="true">{icon}</span>{t(label)}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 

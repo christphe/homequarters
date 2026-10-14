@@ -2,6 +2,8 @@
 // and keyboard checks (focus trap and Escape in dialogs, tab semantics). This finds a subset of problems; it is not a
 // substitute for testing with a screen reader (see docs/status.md).
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createRequire } from "node:module";
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP } from "../lib.mjs";
 
@@ -44,6 +46,17 @@ export async function run(ctx) {
     const p = admin.page;
     await sleep(500);
     await audit(p, "the office (people panel)");
+    await waitFor(() => p.$('.people button[aria-label^="More actions for"]'), { what: "more actions button" });
+    await p.screenshot({ path: path.join(os.tmpdir(), "tilework-people-row.png") });
+    const fit = await p.evaluate(() => { const ul = document.querySelector(".people"), b = document.querySelector('.people button[aria-label^="More actions for"]').getBoundingClientRect(), u = ul.getBoundingClientRect(); return { sw: ul.scrollWidth, cw: ul.clientWidth, inside: b.right <= u.right + 0.5 }; });
+    check("people rows fit the panel: no sideways scroll, the more button fully visible", fit.sw <= fit.cw && fit.inside, JSON.stringify(fit));
+    await p.evaluate(() => document.querySelector('.people button[aria-label^="More actions for"]').click());
+    await waitFor(() => p.$(".more-menu"), { what: "more actions menu" });
+    await audit(p, "a person's more actions menu");
+    const onScreen = await p.evaluate(() => { const r = document.querySelector(".more-menu").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; });
+    check("the more actions menu is entirely on screen", onScreen);
+    await p.screenshot({ path: path.join(os.tmpdir(), "tilework-people-menu.png") });
+    await p.keyboard.press("Escape");
     await click(p, ".tabs button[aria-selected]", undefined); // toggles people off
     await p.evaluate(() => [...document.querySelectorAll(".tabs button")][1].click());
     await waitFor(() => p.$(".chat"), { what: "chat panel" });
