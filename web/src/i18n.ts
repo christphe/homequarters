@@ -50,6 +50,8 @@ const en = {
   "keys.minimap": "Show or hide the minimap",
   "keys.zoom": "Zoom the map out or in",
   "keys.wheel": "Mouse wheel over the map",
+  "keys.pan": "Look around; moving brings the view back to you",
+  "keys.drag": "Drag the map with the left mouse button",
   "keys.help": "This list",
   "keys.close": "Close dialogs and expanded screens",
   "wave.action": "Wave at",
