@@ -1,7 +1,7 @@
 import { Rectangle, Texture } from "pixi.js";
 import type { AvatarSpec } from "../net/protocol";
-import { CELL_H, CELL_W, FEET_Y, drawSheet, type Look } from "./art/characters";
-import { HAIR, PANTS, SHIRT, SKIN } from "./palette";
+import { BEARD_IDS, CELL_H, CELL_W, FEET_Y, drawSheet, HAIR_STYLE_IDS, HAT_IDS, LEGACY_CAP_STYLE, type Look } from "./art/characters";
+import { HAIR, HAT_COLORS, PANTS, SHIRT, SKIN } from "./palette";
 
 // Procedural pixel-art avatars. One small canvas per distinct look (4 directions x
 // 3 frames); all frames share one GPU texture and are cached by look key.
@@ -13,11 +13,29 @@ export type AvatarFrames = Texture[][]; // [dir][frame]; dirs: 0 down, 1 left, 2
 const cache = new Map<string, AvatarFrames>();
 
 export function avatarKey(a: AvatarSpec) {
-  return `${a.sk}-${a.hs}-${a.hc}-${a.sh}-${a.pa}`;
+  return `${a.sk}-${a.hs}-${a.hc}-${a.sh}-${a.pa}-${a.bd ?? 0}-${a.ht ?? 0}-${a.hk ?? 0}`;
 }
 
+/** The retired "cap" hairstyle as the editor shows it: bald + a cap in the hair colour (the server does the same). */
+export function normaliseSpec(a: AvatarSpec): AvatarSpec {
+  if (a.hs !== LEGACY_CAP_STYLE) return a;
+  return a.ht ? { ...a, hs: 2 } : { ...a, hs: 2, ht: 1, hk: a.hc };
+}
+
+// out-of-range indexes draw as 0, like the server would store them
+const idx = (v: number | undefined, n: number) => (Number.isInteger(v) && v! >= 0 && v! < n ? v! : 0);
+
 function lookOf(a: AvatarSpec): Look {
-  return { skin: SKIN[a.sk] ?? SKIN[0], hair: HAIR[a.hc] ?? HAIR[0], hairStyle: a.hs, shirt: SHIRT[a.sh] ?? SHIRT[0], pants: PANTS[a.pa] ?? PANTS[0] };
+  return {
+    skin: SKIN[a.sk] ?? SKIN[0],
+    hair: HAIR[a.hc] ?? HAIR[0],
+    hairStyle: idx(a.hs, HAIR_STYLE_IDS.length),
+    shirt: SHIRT[a.sh] ?? SHIRT[0],
+    pants: PANTS[a.pa] ?? PANTS[0],
+    beard: idx(a.bd, BEARD_IDS.length),
+    hat: idx(a.ht, HAT_IDS.length),
+    hatColor: HAT_COLORS[idx(a.hk, HAT_COLORS.length)],
+  };
 }
 
 export function avatarFrames(a: AvatarSpec): AvatarFrames {
