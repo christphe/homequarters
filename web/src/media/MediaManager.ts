@@ -1,5 +1,6 @@
 import {
   ConnectionState,
+  DisconnectReason,
   Room,
   RoomEvent,
   ScreenSharePresets,
@@ -83,6 +84,8 @@ export class MediaManager {
   /** Who shares a screen in this call (drawn as a badge over their avatar). */
   onSharing: (ids: Set<number>) => void = () => {};
   onNeedToken: () => void = () => {};
+  /** A problem worth a server log line (never a normal leave): an unexpected drop, with LiveKit's reason. */
+  onProblem: (kind: "media-drop" | "media-join", code: number) => void = () => {};
 
   private publishing = true;
   constructor(private target: "conversation" | "spotlight" = "conversation") {
@@ -209,14 +212,16 @@ export class MediaManager {
     // LiveKit reports a failed screen capture here too, before setShare's own catch: ignore it while a
     // share is starting, so a closed picker never flashes the camera/microphone message.
     on(RoomEvent.MediaDevicesError, ((e: unknown) => { if (!this.startingShare) setState({ deviceError: describeMediaError(e) }); }) as never);
-    on(RoomEvent.Disconnected, guard(() => {
-      if (this.leaving) return;
+    on(RoomEvent.Disconnected, ((reason?: DisconnectReason) => {
+      if (gen !== this.gen || this.leaving) return;
+      // a removal is the server ending this call (it logs its own oddities); anything else is worth a report
+      if (reason !== DisconnectReason.CLIENT_INITIATED && reason !== DisconnectReason.PARTICIPANT_REMOVED) this.onProblem("media-drop", reason ?? 0);
       // Unexpected drop: the server keeps the membership, so ask for a fresh token and rejoin.
       this.setPlaybackState("reconnecting");
       this.room = null;
       this.roomName = "";
       this.onNeedToken();
-    }));
+    }) as never);
   }
 
   /** Audio is always subscribed; camera video is limited and ranked (speakers first). */

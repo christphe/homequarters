@@ -29,6 +29,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `force` | `n` area index | administrators only: walk through a closed door (a locked room, an assigned office or a locked desk) on purpose, from where a knock would reach; the people inside are told (`frc`) and the activity log records it ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)) |
 | `kans` | `id`, `b` | admit or decline a knock (only from inside the room; in an assigned office only an owner or an admin) |
 | `wb` | drawing ops | whiteboard edits: `draw` (batched pen points or one text), `del`, `undo`, `clear` (admin), `close`; all bounded, see decision 0010 |
+| `diag` | `v` kind, `n` code, `c` ms | report a problem for the server log, never a normal leave: `media-drop` (LiveKit disconnect reason), `media-join` (0), `ws-drop` (close code, time offline); allow-listed and bounded, at most 20 per session |
 | `ping` | `c` | round-trip probe |
 
 ## Server to client
