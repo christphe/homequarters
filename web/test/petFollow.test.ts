@@ -103,6 +103,22 @@ test("at rest it settles behind and looks at the owner", () => {
   assert.equal(s.dir, 2, "facing right, toward the owner");
 });
 
+test("an owner pulled back after stopping (dead-reckoning overshoot) does not leave the pet glued to them", () => {
+  // what an observer sees: the remote owner walks left, keeps going ~7 px past the real stop until the
+  // stop record arrives, then is corrected back over ~80 ms
+  for (const [fps, back] of [[60, 5], [60, 7], [60, 10], [12, 7]]) {
+    const dt = 1 / fps, s = newPet(), o = { x: 300, y: 100, t: 0 };
+    for (let i = 0; i < Math.round(1.2 / dt); i++) { o.x -= WALK * dt; o.t += dt * 1000; followOwner(s, o.x, o.y, 1, WALK, dt, o.t); }
+    const gaps: number[] = [];
+    const steps = Math.max(1, Math.round(0.08 / dt)); // pulled back over ~80 ms
+    for (let i = 0; i < steps; i++) { o.x += back / steps; o.t += dt * 1000; followOwner(s, o.x, o.y, 1, WALK, dt, o.t); gaps.push(Math.hypot(s.px - o.x, s.py - o.y)); }
+    for (let i = 0; i < Math.round(1.5 / dt); i++) { o.t += dt * 1000; followOwner(s, o.x, o.y, 1, 0, dt, o.t); gaps.push(Math.hypot(s.px - o.x, s.py - o.y)); }
+    const min = Math.min(...gaps), end = gaps[gaps.length - 1];
+    assert.ok(min >= PET_GAP - 4 && Math.abs(end - PET_GAP) <= 2, // never closer than 16 px: before, 7-10 px for half a second
+      `${fps} fps, pulled back ${back} px: closest ${min.toFixed(1)}, resting ${end.toFixed(1)}`);
+  }
+});
+
 test("behaves the same at 12 fps (slow, software-rendered browsers)", () => {
   const s = newPet(), o = { x: 100, y: 100, t: 0 };
   const dt = 1 / 12;
