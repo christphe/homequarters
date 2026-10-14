@@ -97,7 +97,19 @@ func (s *Server) savePositions(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			// leaves queued just before the stop are not lost
+			fctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			for {
+				select {
+				case p := <-s.posQ:
+					if err := s.st.SaveLastPos(fctx, p.office, p.user, p.x, p.y); err != nil {
+						s.log.Error("save last position", "err", err)
+					}
+				default:
+					return
+				}
+			}
 		case b := <-s.boardQ:
 			if err := s.st.SaveBoard(ctx, b.office, b.key, b.data); err != nil {
 				s.log.Error("save whiteboard", "err", err) // never log the strokes
@@ -187,6 +199,17 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 		case s.auditQ <- actionSave{office, int64(actor), action, target}:
 		default:
 			s.log.Error("audit queue full")
+		}
+	}
+	w.OnStop = func(office int64, last []world.LastPos) {
+		ps := make([]store.LastPos, len(last))
+		for i, p := range last {
+			ps[i] = store.LastPos{UserID: int64(p.User), X: p.X, Y: p.Y}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // the server context is already done
+		defer cancel()
+		if err := s.st.SaveLastPositions(ctx, office, ps); err != nil {
+			s.log.Error("save positions on stop", "err", err)
 		}
 	}
 	w.OnLeave = func(office int64, user uint32, x, y float64) {

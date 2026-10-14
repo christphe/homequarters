@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -349,6 +350,21 @@ func TestRoomCallStartsWithTwoPeopleAndStopsForTheLastOne(t *testing.T) {
 	h.run(3 * time.Second)
 	if b.group != nil || a.group == nil || leaves(a) != 1 || len(h.fm.revoked) != revoked+2 {
 		t.Fatalf("left alone, a stays in the room but its call ends: revoked %v", h.fm.revoked[revoked:])
+	}
+}
+
+func TestStoppingTheWorldHandsOverEverybodysLastPosition(t *testing.T) {
+	h := newHarness(t)
+	h.add(1, "member", 100, 200)
+	gone := h.add(2, "member", 300, 400)
+	h.w.handle(ev{kind: evDetach, p: gone, gen: gone.gen}, h.now) // disconnected, still within its grace period
+	var got []LastPos
+	h.w.OnStop = func(_ int64, last []LastPos) { got = last }
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h.w.Run(ctx)
+	if len(got) != 2 || got[0] != (LastPos{1, 100, 200}) || got[1] != (LastPos{2, 300, 400}) {
+		t.Fatalf("a stop saves where everybody stood, connected or not: %+v", got)
 	}
 }
 
