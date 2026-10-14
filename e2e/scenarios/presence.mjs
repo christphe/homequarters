@@ -59,6 +59,57 @@ export async function run(ctx) {
     await read(a, (s) => window.__tilework.view.zoomBy(s - window.__tilework.view.scale), s0);
     check("the zoom returns to the automatic scale", (await read(a, () => window.__tilework.view.scale)) === s0);
 
+    // ---- left-drag pans the camera; a drag is not a double-click; moving recentres ----
+    const cam = () => read(a, () => ({ x: window.__tilework.view.camX, y: window.__tilework.view.camY, pan: window.__tilework.view.pan, dest: window.__tilework.view.dest }));
+    await sleep(300); // let the frame after the zoom change place the camera
+    const c0 = await cam();
+    await a.page.mouse.move(canvas.x, canvas.y);
+    await a.page.mouse.down();
+    await a.page.mouse.move(canvas.x - 150, canvas.y - 80, { steps: 8 });
+    await a.page.mouse.up();
+    await sleep(200);
+    const c1 = await cam();
+    check("dragging the map with the left button moves the view the same way", Math.abs(c1.x - c0.x + 150) <= 2 && Math.abs(c1.y - c0.y + 80) <= 2, `camera ${c0.x},${c0.y} -> ${c1.x},${c1.y}`);
+    await a.page.mouse.click(canvas.x - 150, canvas.y - 80, { count: 2 });
+    await sleep(300);
+    check("a double-click right after a drag does not send me running", !(await cam()).dest && !(await read(a, () => window.__tilework.view.guided)));
+    await a.page.mouse.move(canvas.x, canvas.y);
+    await a.page.mouse.down();
+    await a.page.mouse.move(canvas.x + 2, canvas.y + 1);
+    await a.page.mouse.up();
+    check("a press that barely moves is a click, not a drag", (await cam()).x === c1.x);
+    // pressed on the map next to the top bar and released on the bar before it became a drag:
+    // hovering afterwards must not pan
+    const bar = await read(a, () => document.querySelector(".topbar").getBoundingClientRect().bottom);
+    await a.page.mouse.move(canvas.x, bar + 1);
+    await a.page.mouse.down();
+    await a.page.mouse.move(canvas.x, bar - 2);
+    await a.page.mouse.up();
+    await a.page.mouse.move(canvas.x - 100, canvas.y, { steps: 5 });
+    await sleep(200);
+    check("a press released off the map before dragging leaves no drag behind", (await cam()).x === c1.x && (await read(a, () => document.querySelector(".stage canvas").style.cursor)) !== "grabbing");
+    // a drag ends with the text selection and cursor back to normal
+    await a.page.mouse.move(canvas.x, canvas.y);
+    await a.page.mouse.down();
+    await a.page.mouse.move(canvas.x + 60, canvas.y, { steps: 4 });
+    await a.page.mouse.wheel({ deltaY: -100 }); // zoom in mid-drag, then keep dragging
+    const z = await read(a, () => window.__tilework.view.scale);
+    await sleep(200);
+    const mid = await cam();
+    await a.page.mouse.move(canvas.x + 90, canvas.y, { steps: 3 });
+    await sleep(200);
+    const c3 = await cam();
+    await a.page.mouse.up();
+    check("zooming during a drag keeps the drag 1:1 at the new scale", Math.abs(c3.x - mid.x - 30) <= 2, `scale ${z}, camera ${mid.x} -> ${c3.x}`);
+    check("the cursor and text selection are back to normal after a drag", (await read(a, () => document.querySelector(".stage canvas").style.cursor + "|" + document.body.style.userSelect)) === "|");
+    await read(a, (s) => window.__tilework.view.zoomBy(s - window.__tilework.view.scale), s0);
+    await a.page.keyboard.down("ArrowDown");
+    await sleep(150);
+    await a.page.keyboard.up("ArrowDown");
+    await sleep(200);
+    const c2 = await cam();
+    check("moving brings the view back to me", c2.pan.x === 0 && c2.pan.y === 0 && Math.abs(c2.x - c0.x) <= 2, `camera ${c2.x},${c2.y}, pan ${JSON.stringify(c2.pan)}`);
+
     // ---- wave, answered by walking over ----
     await click(a, "Wave at " + b.name, ".people button");
     await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave card" });
