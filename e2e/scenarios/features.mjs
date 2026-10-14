@@ -26,12 +26,24 @@ export async function run(ctx) {
     check("the public map omits object content", await read(b, () => !JSON.stringify(window.__tilework.view.map).includes("Welcome to Tilework!")));
     await close(a);
 
-    await click(b, "Request to lead Admin", ".people button");
+    // a person's row shows Walk to, Wave and Message; the rest is behind "More actions"
+    const rowActs = await read(b, () => [...document.querySelectorAll(".people li")].find((li) => li.textContent.includes("Admin"))?.querySelectorAll(".acts > button").length);
+    check("a person's row has four buttons: walk to, wave, message and more", rowActs === 4, `${rowActs}`);
+    await click(b, "More actions for Admin", ".people button");
+    await waitFor(() => b.page.$(".more-menu"), { what: "more actions menu" });
+    await b.page.keyboard.press("Escape");
+    check("Escape closes the more actions menu", await read(b, () => !document.querySelector(".more-menu")));
+    await click(b, "More actions for Admin", ".people button");
+    await waitFor(() => b.page.$(".more-menu"), { what: "more actions menu" });
+    await click(b, "Request to lead Admin", ".more-menu button");
+    check("choosing an action closes the menu", await read(b, () => !document.querySelector(".more-menu")));
     await waitFor(() => read(a, () => !!window.__tilework.state.leadRequest), { what: "lead request arrives" });
     check("request to lead asks the other person before moving them", await read(a, () => !window.__tilework.state.following));
     await click(a, "Not now");
     await walkTo(b, 12 * 16 + 8, 9 * 16 + 8);
-    await click(b, "Follow Admin", ".people button");
+    await click(b, "More actions for Admin", ".people button");
+    await waitFor(() => b.page.$(".more-menu"), { what: "more actions menu" });
+    await click(b, "Follow Admin", ".more-menu button");
     await waitFor(async () => { const p = await pos(b), q = await pos(a); return Math.hypot(p.x - q.x, p.y - q.y) < 33; }, { timeout: 25000, what: "follower reaches leader" });
     check("Follow walks to the leader at server speed, around objects", true);
     await click(b, "Stop following");
