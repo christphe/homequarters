@@ -114,7 +114,7 @@ export interface ObjectReply { t: "obj"; k: "note" | "embed" | "image"; l: strin
 export interface Follow { t: "fol"; id: number; n: string }
 export interface GoResult { t: "go"; ok: boolean; x?: number; y?: number }
 export interface Wave { t: "wv"; from: number; n: string }
-export interface WaveResult { t: "wvr"; id: number; st: "ok" | "busy" | "away" | "offline" }
+export interface WaveResult { t: "wvr"; id: number; st: "ok" | "wait" | "offline" }
 export interface AreaCounts { t: "ac"; c: number[] }
 export interface Announcement { t: "ann"; n: string; x: string }
 export interface SelfPosition { t: "self"; x: number; y: number; dx: number; dy: number; d: number; tp: boolean }

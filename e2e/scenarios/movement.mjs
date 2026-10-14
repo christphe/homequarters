@@ -235,11 +235,14 @@ export async function run() {
     check("...and others see it touching the wall too", Math.abs(seenAtWall - wall.after) < 0.5, "observer y " + seenAtWall.toFixed(2));
 
     await walkTo(a, 4 * 16 + 8, 27 * 16 + 8);
-    const target = { tx: 12, ty: 29 };
+    // a free tile a few steps away that is on the map itself, not under a panel (the camera keeps me mid-screen)
+    const target = { tx: 6, ty: 30 };
     const box = await read(a, (t) => {
       const v = window.__tilework.view, r = v.app.canvas.getBoundingClientRect();
-      return { x: r.left + v.camX + (t.tx * 16 + 8) * v.S, y: r.top + v.camY + (t.ty * 16 + 8) * v.S };
+      const x = r.left + v.camX + (t.tx * 16 + 8) * v.S, y = r.top + v.camY + (t.ty * 16 + 8) * v.S;
+      return { x, y, onMap: document.elementFromPoint(x, y) === v.app.canvas };
     }, target);
+    check("the double-click target is on the map, not under a panel", box.onMap);
     await a.page.mouse.click(box.x, box.y, { count: 2 });
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === target.tx && Math.floor(p.y / 16) === target.ty; }, { timeout: 20000, what: "double-click walk arrives" });
     await sleep(400);

@@ -65,6 +65,8 @@ export async function run(ctx) {
     const cam = () => read(a, () => ({ x: window.__tilework.view.camX, y: window.__tilework.view.camY, pan: window.__tilework.view.pan, dest: window.__tilework.view.dest }));
     await sleep(300); // let the frame after the zoom change place the camera
     const c0 = await cam();
+    const here0 = await read(a, () => { const v = window.__tilework.view; return { x: (v.app.screen.width / 2 - v.camX) / v.scale, me: v.position().x }; });
+    check("next to the office's west wall I stay in the middle of the screen", Math.abs(here0.x - here0.me) < 2, JSON.stringify(here0));
     await a.page.mouse.move(canvas.x, canvas.y);
     await a.page.mouse.down();
     await a.page.mouse.move(canvas.x - 150, canvas.y - 80, { steps: 8 });
@@ -105,6 +107,17 @@ export async function run(ctx) {
     check("zooming during a drag keeps the drag 1:1 at the new scale", Math.abs(c3.x - mid.x - 30) <= 2, `scale ${z}, camera ${mid.x} -> ${c3.x}`);
     check("the cursor and text selection are back to normal after a drag", (await read(a, () => document.querySelector(".stage canvas").style.cursor + "|" + document.body.style.userSelect)) === "|");
     await read(a, (s) => window.__tilework.view.zoomBy(s - window.__tilework.view.scale), s0);
+    // the camera keeps me mid-screen even next to the office's west wall, and a pan stops at the edge
+    await sleep(300);
+    const centre = () => read(a, () => { const v = window.__tilework.view; return { x: (v.app.screen.width / 2 - v.camX) / v.scale, me: v.position().x }; });
+    const atWall = await centre();
+    await a.page.mouse.move(canvas.x - 200, canvas.y);
+    await a.page.mouse.down();
+    await a.page.mouse.move(canvas.x + 300, canvas.y, { steps: 8 });
+    await a.page.mouse.up();
+    await sleep(200);
+    const panned = await centre();
+    check("the camera can show the office's west edge in the middle of the screen, never beyond it", panned.x >= -1 && panned.x < 4, JSON.stringify({ atWall, panned }));
     await a.page.keyboard.down("ArrowDown");
     await sleep(150);
     await a.page.keyboard.up("ArrowDown");
@@ -124,8 +137,13 @@ export async function run(ctx) {
     await read(b, () => window.__tilework.session.setStatus("busy"));
     await sleep(2200); // wave cooldown
     await click(a, "Wave at " + b.name, ".people button");
-    await waitFor(async () => (await toast(a)).includes("busy"), { what: "busy answer" });
-    check("busy people are not disturbed and the sender learns why", !(await read(b, () => !!document.querySelector(".wave-card"))));
+    await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave at a busy person" });
+    check("a busy person can still be waved at (everybody sees the status)", true);
+    await read(b, () => document.querySelector('.wave-card button[aria-label="Dismiss"]')?.click());
+    await sleep(2200);
+    await click(a, "Wave at " + b.name, ".people button");
+    await waitFor(async () => (await toast(a)).includes("30 seconds"), { what: "second wave refused" });
+    check("one wave every 30 s at a busy or away person", !(await read(b, () => !!document.querySelector(".wave-card"))));
     await read(b, () => window.__tilework.session.setStatus("available"));
 
     // ---- raised hand (H) and a status note, seen by the other person ----
