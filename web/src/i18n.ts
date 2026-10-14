@@ -166,6 +166,8 @@ const en = {
   "roster.title": "People",
   "roster.locate": "Locate",
   "roster.dm": "Message",
+  "roster.more": "More",
+  "roster.moreFor": "More actions for {name}",
   "chat.title": "Chat",
   "chat.office": "Office",
   "chat.conversation": "Conversation",

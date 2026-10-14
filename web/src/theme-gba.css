@@ -80,6 +80,7 @@ h1, h2, h3 { font-weight: 700; }
   content: ""; border-left: 8px solid var(--dark); border-top: 5px solid transparent; border-bottom: 5px solid transparent; margin-right: 6px; margin-left: -6px;
 }
 .acts button { color: var(--muted); } .acts button:hover { background: #fff; color: var(--ink); }
+.acts .more-menu button { color: var(--ink); } .acts .more-menu button:hover { background: var(--cream); }
 
 /* chat bubbles */
 .msg { background: #fff; color: var(--ink); border: 2px solid var(--dark); border-radius: 8px; }
