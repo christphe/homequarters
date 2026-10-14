@@ -170,6 +170,7 @@ type Player struct {
 	hand      bool      // raised hand
 	note      string    // short custom status line, in memory only
 	waveAt    time.Time // last wave sent (cooldown)
+	quietAt   time.Time // last wave sent to a busy or away person
 }
 
 // tile is a map cell coordinate.

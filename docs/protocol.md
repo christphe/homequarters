@@ -20,7 +20,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `emo` | `n` 1-8 | show a reaction above your avatar (700 ms server cooldown); 8 is a short dance (key Z) |
 | `hand` | `b` | raise or lower your hand (shown in the roster and over the avatar) |
 | `note` | `text` | set your status note, one line, at most 60 characters ("" clears it); kept in memory only |
-| `wave` | `id` | wave at somebody anywhere in the office (2 s cooldown); busy and away people are not disturbed |
+| `wave` | `id` | wave at somebody anywhere in the office (2 s cooldown); busy and away people get it too, at most one per sender every 30 s (`wvr` `wait` otherwise); invisible people look offline |
 | `use` | `x`, `y` tile | interact with the object at that tile (note, site, image, whiteboard); the server checks distance and area access |
 | `fol` | `id` (0 stops) | follow that player; any movement key stops it |
 | `lead` | `id` | ask that player to follow you (they decide) |

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestWaveReachesThePersonUnlessTheyDoNotWantToBeDisturbed(t *testing.T) {
+func TestWaveReachesThePersonBusyAndAwayIncluded(t *testing.T) {
 	h := newHarness(t)
 	a := h.add(1, "member", sx, sy)
 	b := h.add(2, "member", 3*16, 3*16) // far away: waves are not limited to the area of interest
@@ -27,11 +27,22 @@ func TestWaveReachesThePersonUnlessTheyDoNotWantToBeDisturbed(t *testing.T) {
 	h.send(b, ev{kind: evStatus, s: StatusBusy})
 	drain(a)
 	h.send(a, ev{kind: evWave, id: 2})
-	if strings.Contains(frames(b), `"t":"wv"`) {
-		t.Fatal("busy means do not disturb")
+	if got := frames(b); !strings.Contains(got, `"t":"wv"`) {
+		t.Fatalf("a busy person gets the wave too: %q", got)
 	}
-	if got := frames(a); !strings.Contains(got, `"st":"busy"`) {
-		t.Fatalf("the sender is told the person is busy: %q", got)
+	if got := frames(a); !strings.Contains(got, `"st":"ok"`) {
+		t.Fatalf("the sender is told it arrived: %q", got)
+	}
+	h.now = h.now.Add(10 * time.Second)
+	h.send(b, ev{kind: evStatus, s: StatusAway})
+	h.send(a, ev{kind: evWave, id: 2})
+	if strings.Contains(frames(b), `"t":"wv"`) || !strings.Contains(frames(a), `"st":"wait"`) {
+		t.Fatal("one wave at a busy or away person per sender every 30 s")
+	}
+	h.now = h.now.Add(25 * time.Second)
+	h.send(a, ev{kind: evWave, id: 2})
+	if !strings.Contains(frames(b), `"t":"wv"`) {
+		t.Fatal("after 30 s another wave goes through (away counts too)")
 	}
 	h.now = h.now.Add(3 * time.Second)
 	h.send(b, ev{kind: evStatus, s: StatusAvailable})

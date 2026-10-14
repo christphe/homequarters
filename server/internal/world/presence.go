@@ -11,14 +11,16 @@ import (
 
 const (
 	waveCooldown     = 2 * time.Second
+	quietCooldown    = 30 * time.Second // one wave at a busy or away person per sender per 30 s
 	maxNoteRunes     = 60
 	countsEvery      = 2 * time.Second
 	danceEmote       = 8 // emote kind rendered as a short dance instead of a bubble
 	maxAnnounceRunes = 280
 )
 
-// doWave pings another player wherever they are. Busy (do not disturb) and away people are not
-// disturbed; the sender learns the outcome. Invisible players cannot wave (it would reveal them).
+// doWave pings another player wherever they are; the sender learns the outcome. Busy and away people
+// get waves too (everybody sees their status, so waving anyway is a choice), at most one per sender
+// every 30 s. Invisible players can neither be waved at nor wave (it would reveal them).
 func (w *World) doWave(p *Player, id uint32, now time.Time) {
 	q := w.players[id]
 	if q == nil || q == p || q.out == nil || q.Status == StatusInvisible {
@@ -28,12 +30,14 @@ func (w *World) doWave(p *Player, id uint32, now time.Time) {
 	if p.Status == StatusInvisible || now.Sub(p.waveAt) < waveCooldown {
 		return
 	}
-	p.waveAt = now
-	switch q.Status {
-	case StatusBusy, StatusAway:
-		w.sendJSON(p, map[string]any{"t": "wvr", "id": id, "st": q.Status})
-		return
+	if q.Status == StatusBusy || q.Status == StatusAway {
+		if now.Sub(p.quietAt) < quietCooldown {
+			w.sendJSON(p, map[string]any{"t": "wvr", "id": id, "st": "wait"})
+			return
+		}
+		p.quietAt = now
 	}
+	p.waveAt = now
 	w.sendJSON(q, map[string]any{"t": "wv", "from": p.ID, "n": p.Name})
 	w.sendJSON(p, map[string]any{"t": "wvr", "id": id, "st": "ok"})
 }

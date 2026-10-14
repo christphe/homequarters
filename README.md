@@ -66,7 +66,7 @@ Virtual offices are usually heavy on the browser, the server and the bill. Tilew
 | **World** | Keyboard movement with collisions (shortcuts follow key positions, so ZQSD works on AZERTY), mouse-wheel zoom, left-drag to look around, camera follow, animation, prediction for you and dead-reckoned movement for others. |
 | **Getting around** | Run with Shift or toggle it with R (2x speed); double-click any spot to run there along a path the server finds; "Walk to" anyone from the people panel. |
 | **Pets** | Pick a companion (cat, dog, bunny, fox, chick, slime, owl, axolotl) that walks your trail a step behind, goes around corners with you and sits beside you when you stop. Drawn by code, animated locally: zero bandwidth. |
-| **Presence** | Ctrl+D (Cmd+D on a Mac) runs back to your desk or private office. Wave at anyone in the office (they can run straight to you), raise your hand (H), set a status note, dance (Z). Busy means do not disturb. |
+| **Presence** | Ctrl+D (Cmd+D on a Mac) runs back to your desk or private office. Wave at anyone in the office (they can run straight to you), raise your hand (H), set a status note, dance (Z). Busy keeps you out of automatic calls; people can still wave at you (at most once every 30 s each). |
 | **Minimap** | The whole office at a glance with live head counts per area; click to run there (M toggles). |
 | **Phones and tablets** | An on-screen movement pad appears on touch screens. Optional sounds and desktop notifications for waves, knocks and direct messages. |
 | **Announcements and help** | Administrators can send a banner to everyone online (audited, never stored). Press ? for every shortcut. Turn anyone in a call down or mute them for yourself only. |
