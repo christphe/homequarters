@@ -83,6 +83,25 @@ export async function run(ctx) {
     check("Ctrl+D runs the owner back into their own office", true);
     check("somebody in the hall is not in that call", (await st(other)).conv?.kind !== "r");
 
+    // ---- an administrator is stopped at a closed office like anybody else, and forces it on purpose
+    await walkTo(boss, ...at(14, 37));
+    await boss.page.evaluate(() => window.__tilework.view.setDirection(0, 1));
+    await sleep(1500);
+    await boss.page.evaluate(() => window.__tilework.view.setDirection(0, 0));
+    check("an administrator does not walk into a closed office by accident", (await here(boss)) !== oi);
+    await waitFor(() => hasButton(boss, /^Enter anyway \(admin\)$/), { what: "force button" });
+    check("at the door an administrator gets Knock and Enter anyway", await hasButton(boss, /^Knock · Office 2/));
+    check("a member at the door gets no Enter anyway button", !(await hasButton(other, /^Enter anyway/)));
+    await button(boss, /^Enter anyway \(admin\)$/);
+    await waitFor(() => boss.page.evaluate((oi) => !window.__tilework.view.deny.has(oi), oi), { what: "door forced" });
+    await walkTo(boss, ...at(14, 41));
+    check("after forcing, the administrator walks in", (await here(boss)) === oi);
+    await waitFor(() => owner.page.evaluate(() => document.querySelector(".toast")?.textContent.includes("(admin) entered")), { what: "owner told" });
+    check("the owner is told an administrator entered", true);
+    const audit = await (await fetch(API + "/api/admin/audit", { headers: { Cookie: "tilework_session=" + cookie } })).text();
+    check("the activity log records the forced door", audit.includes('"room.force"') && audit.includes("office-2"));
+    await walkTo(boss, ...at(14, 37));
+
     // ---- a free office: open to anyone, lockable
     await walkTo(other, ...at(23, 42));
     check("anybody walks into a free office", (await here(other)) === (await areaIndex(other, "office-3")));

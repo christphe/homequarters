@@ -57,6 +57,8 @@ export interface State {
   sharing: boolean;
   deviceError: string;
   currentArea: string;
+  /** The area I stand in (a desk room included), -1 outside any. */
+  areaIndex: number;
   toast: string;
   myAvatar: AvatarSpec;
   /** One-off message shown on the join screen (for example after being removed). */
@@ -110,6 +112,7 @@ const initial: State = {
   sharing: false,
   deviceError: "",
   currentArea: "",
+  areaIndex: -1,
   toast: "",
   myAvatar: load<AvatarSpec>("tilework.avatar", { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 }),
   notice: "",

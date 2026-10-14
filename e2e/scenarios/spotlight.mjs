@@ -21,8 +21,11 @@ export async function run(ctx) {
       const m = window.__tilework.spotlightMedia, join = m.join.bind(m);
       m.join = (info, publish) => { window.__spotInfo = info; return join(info, publish); };
     });
-    await walkTo(listener, 47 * 16 + 8, 12 * 16 + 8); // admins-only room
-    await listener.page.evaluate(() => window.__tilework.session.setConsent(true));
+    // the listener is in a room call of their own (a room's call needs two people: a mate keeps them company)
+    const mate = await joinAs(browser, "Mate" + Date.now() % 10000);
+    await walkTo(listener, 46 * 16 + 8, 5 * 16 + 8); // Aurora room
+    await walkTo(mate, 52 * 16 + 8, 5 * 16 + 8);
+    await Promise.all([listener, mate].map((u) => u.page.evaluate(() => window.__tilework.session.setConsent(true))));
     await waitFor(() => listener.page.evaluate(() => window.__tilework.state.conv?.state === "live"), { what: "private room call" });
     const privateRoom = await listener.page.evaluate(() => window.__tilework.media.currentRoom);
     await speaker.page.evaluate(() => window.__tilework.session.setConsent(true));

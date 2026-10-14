@@ -217,9 +217,16 @@ func TestLockingKnockingAndAnswering(t *testing.T) {
 	}
 	h.send(admin, ev{kind: evInput, seq: 1, dx: 1})
 	h.run(3 * time.Second)
-	if admin.X < 46*16 {
-		t.Fatalf("admins walk through locked doors, x=%.0f", admin.X)
+	if admin.X > 45*16 {
+		t.Fatalf("an admin is stopped at a locked door like anybody else, x=%.0f", admin.X)
 	}
+	h.send(admin, ev{kind: evForce, x: 3})
+	h.send(admin, ev{kind: evInput, seq: 2, dx: 1})
+	h.run(3 * time.Second)
+	if admin.X < 46*16 {
+		t.Fatalf("an admin who forces the door walks in, x=%.0f", admin.X)
+	}
+	drain(in)
 
 	// knock: only near the room, answered by somebody inside
 	h.send(out, ev{kind: evKnock, x: 3})

@@ -88,7 +88,7 @@ interface Ent {
 
 export interface ViewHooks {
   sendInput(seq: number, dx: number, dy: number, run: boolean): void;
-  onArea(name: string): void;
+  onArea(name: string, index: number): void;
   onResume(): void;
   onEmote?(kind: number): void;
   onHand?(): void;
@@ -125,7 +125,7 @@ export class WorldView {
   private bannerT0 = -1e9;
   private bannerW = 0;
   private areaLabels: { text: BitmapText; ai: number }[] = [];
-  private deskLabels: { text: BitmapText; x: number; y: number }[] = [];
+  private deskLabels: { text: BitmapText; x: number; y: number; label: string; ai: number }[] = [];
   private ents = new Map<number, Ent>();
   private people = new Map<number, Person>();
   private map: MapData | null = null;
@@ -506,11 +506,12 @@ export class WorldView {
     this.deskLabels = map.props
       .filter((p) => p.t === "desk" && p.assign && p.label)
       .map((p) => {
-        const text = new BitmapText({ text: p.label!, style: { fontFamily: FONT, fontSize: 9, fontWeight: "700", fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
+        const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
+        const text = new BitmapText({ text: p.label! + (this.deny.has(ai) ? " 🔒" : ""), style: { fontFamily: FONT, fontSize: 9, fontWeight: "700", fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
         this.hud.addChild(text);
-        return { text, x: (p.x + 1) * T, y: p.y * T };
+        return { text, x: (p.x + 1) * T, y: p.y * T, label: p.label!, ai };
       });
     this.layout();
   }
@@ -526,7 +527,7 @@ export class WorldView {
     this.speed = speed;
     this.runMul = runMul;
     this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.mArea));
+    this.hooks.onArea(this.areaName(this.mArea), this.mArea);
     this.mShown = this.shownArea(this.mArea);
     if (this.mShown >= 0) this.showBanner(this.areaName(this.mArea));
     if (!this.meEnt) {
@@ -589,7 +590,7 @@ export class WorldView {
     this.hist.clear();
     this.keys.clear();
     this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.mArea));
+    this.hooks.onArea(this.areaName(this.mArea), this.mArea);
   }
 
   setGuided(on: boolean) {
@@ -631,7 +632,7 @@ export class WorldView {
       this.dx = m.dx;
       this.dy = m.dy;
       this.mArea = this.areaIndex(m.x, m.y);
-      this.hooks.onArea(this.areaName(this.mArea));
+      this.hooks.onArea(this.areaName(this.mArea), this.mArea);
     }
   }
 
@@ -639,6 +640,7 @@ export class WorldView {
     this.dirty = true;
     this.deny = new Set(deny);
     for (const l of this.areaLabels) l.text.text = this.map!.areas[l.ai].name + (this.deny.has(l.ai) ? " 🔒" : "");
+    for (const l of this.deskLabels) l.text.text = l.label + (this.deny.has(l.ai) ? " 🔒" : ""); // a desk locked against me
   }
 
   showEmote(id: number, kind: number) {
@@ -990,7 +992,7 @@ export class WorldView {
     const ai = this.areaIndex(this.mx, this.my);
     if (ai !== this.mArea) {
       this.mArea = ai;
-      this.hooks.onArea(this.areaName(ai));
+      this.hooks.onArea(this.areaName(ai), ai);
       // a desk room is part of the desks around it: no banner walking in or out of one
       const shown = this.shownArea(ai);
       if (shown !== this.mShown) {

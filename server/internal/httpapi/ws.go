@@ -210,6 +210,8 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 			conn.Lock(ctx, m.B)
 		case "knock":
 			conn.Knock(ctx, m.N)
+		case "force":
+			conn.Force(ctx, m.N)
 		case "kans":
 			conn.KnockAnswer(ctx, m.ID, m.B)
 		case "wb":

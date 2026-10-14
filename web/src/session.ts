@@ -31,7 +31,7 @@ class Session {
       sendInput: (seq, dx, dy, run) => this.socket?.send(run ? { t: "in", s: seq, x: dx, y: dy, b: true } : { t: "in", s: seq, x: dx, y: dy }),
       onGoto: (x, y) => this.socket?.send({ t: "go", x, y }),
       onRun: (running) => setState({ running }),
-      onArea: (name) => setState({ currentArea: name }),
+      onArea: (name, index) => setState({ currentArea: name, areaIndex: index }),
       onResume: () => this.socket?.send({ t: "sync" }),
       onEmote: (kind) => this.emote(kind),
       onHand: () => this.toggleHand(),
@@ -201,6 +201,7 @@ class Session {
         if (!m.done) { chime("knock"); desktopNotify(t("door.knock", { area: m.a ?? "" }), t("notify.open")); }
         break;
       case "knr": toast(t(`door.${m.st}`, { area: m.a })); break;
+      case "frc": toast(t("door.forced", { name: m.n, area: m.a })); break;
       case "wb":
         boardModel.apply(m);
         if (m.op === "state") { view.setDirection(0, 0); setState({ boardKey: m.bk }); }
@@ -289,6 +290,8 @@ class Session {
   lead(id: number) { this.socket?.send({ t: "lead", id }); }
   lock(on: boolean) { this.socket?.send({ t: "lock", b: on }); }
   knock(area: number) { this.socket?.send({ t: "knock", n: area }); }
+  /** Administrators: walk through a closed door on purpose (logged, the people inside are told). */
+  force(area: number) { this.socket?.send({ t: "force", n: area }); }
   answerKnock(id: number, allow: boolean) { this.socket?.send({ t: "kans", id, b: allow }); setState({ knock: null }); }
   board(m: BoardCommand) { this.socket?.send({ t: "wb", ...m }); }
   setEco(eco: boolean) {

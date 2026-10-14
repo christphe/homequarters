@@ -61,6 +61,7 @@ const (
 	evWave
 	evAnnounce
 	evView
+	evForce
 )
 
 type ev struct {
@@ -287,6 +288,11 @@ func (c *Conn) Lock(ctx context.Context, on bool) {
 func (c *Conn) Knock(ctx context.Context, area int) {
 	c.w.post(ctx, ev{kind: evKnock, p: c.P, gen: c.Gen, x: area})
 }
+
+// Force lets an administrator through a closed door on purpose.
+func (c *Conn) Force(ctx context.Context, area int) {
+	c.w.post(ctx, ev{kind: evForce, p: c.P, gen: c.Gen, x: area})
+}
 func (c *Conn) KnockAnswer(ctx context.Context, id uint32, allow bool) {
 	c.w.post(ctx, ev{kind: evKnockAns, p: c.P, gen: c.Gen, id: id, b: allow})
 }
@@ -484,6 +490,8 @@ func (w *World) handle(e ev, now time.Time) {
 		w.doLock(p, e.b)
 	case evKnock:
 		w.doKnock(p, e.x, now)
+	case evForce:
+		w.doForce(p, e.x)
 	case evKnockAns:
 		w.doKnockAns(p, e.id, e.b, now)
 	case evBoard:
@@ -837,8 +845,9 @@ func (w *World) canEnterArea(p *Player, ai int) bool {
 		return true
 	}
 	if isOwnedOffice(a) {
-		// owners and admins always; everybody else only once an owner inside has let them in
-		if p.Role == "admin" || ownsOffice(a, p.ID) {
+		// owners always; everybody else, admins included, once let in (an admin may force the door
+		// on purpose, never walk through it by accident: see doForce)
+		if ownsOffice(a, p.ID) {
 			return true
 		}
 		if ls := w.locks[a.ID]; ls != nil {
@@ -850,8 +859,9 @@ func (w *World) canEnterArea(p *Player, ai int) bool {
 	if !AllowedIn(a, p.ID, p.Role) {
 		return false
 	}
-	// A door locked from the inside stays closed for everybody who was not let in (admins bypass it).
-	if ls := w.locks[a.ID]; ls != nil && p.Role != "admin" {
+	// A door locked from the inside stays closed for everybody who was not let in, admins included
+	// (they force it on purpose); the owner of a locked desk always walks in.
+	if ls := w.locks[a.ID]; ls != nil && !(a.Auto && ownsOffice(a, p.ID)) {
 		_, ok := ls.admitted[p.ID]
 		return ok
 	}
