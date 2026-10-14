@@ -49,7 +49,7 @@ const en = {
   "keys.hand": "Raise or lower your hand",
   "keys.minimap": "Show or hide the minimap",
   "keys.zoom": "Zoom the map out or in",
-  "keys.wheel": "Mouse wheel over the map",
+  "keys.wheel": "Ctrl + mouse wheel over the map (⌘ on a Mac, or pinch)",
   "keys.home": "Go back to your desk",
   "home.none": "You have no desk or office yet. An administrator can assign one in the map editor.",
   "keys.pan": "Look around; moving brings the view back to you",

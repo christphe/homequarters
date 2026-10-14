@@ -34,10 +34,15 @@ export async function run(ctx) {
     const canvas = await read(a, () => { const r = document.querySelector(".stage canvas").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     await a.page.mouse.move(canvas.x, canvas.y);
     await a.page.mouse.wheel({ deltaY: -100 });
+    await sleep(300);
+    check("the plain mouse wheel does not zoom the map", (await read(a, () => window.__tilework.view.scale)) === s0);
+    await a.page.keyboard.down("Control"); // Ctrl+wheel zooms, as in Gather
+    await a.page.mouse.wheel({ deltaY: -33 }); // one small notch (a mouse sending 33 px per notch)
     await waitFor(() => read(a, (s) => window.__tilework.view.scale === s + 1, s0), { what: "zoom in one step" });
-    for (let i = 0; i < 12; i++) await a.page.mouse.wheel({ deltaY: 100 });
+    for (let i = 0; i < 12; i++) { await a.page.mouse.wheel({ deltaY: 33 }); await sleep(150); }
+    await a.page.keyboard.up("Control");
     await waitFor(() => read(a, (lo) => window.__tilework.view.scale === lo, lo), { what: "zoomed out to the limit" });
-    check("wheel up zooms in one whole step, wheel down zooms out and stops at the area-of-interest limit", lo < s0, `auto ${s0}, farthest ${lo}`);
+    check("Ctrl+wheel: one notch, however small, is one whole zoom step; out it stops at the area-of-interest limit", lo < s0, `auto ${s0}, farthest ${lo}`);
     check("zooming leaves the UI and the canvas size alone", (await layoutBox()) === box0, box0);
     await waitFor(() => sees(a, b.id), { what: "far person visible after zooming out" });
     check("zoomed out, the server sends the people the wider view shows", true);
@@ -51,7 +56,7 @@ export async function run(ctx) {
     check("zoomed out next to a map edge, no visible part of the map is farther from me than the server's largest radius", Math.max(span.l, span.r, span.t, span.b) <= span.reach + 1, JSON.stringify(span));
     const lineMode = await read(a, () => {
       const v = window.__tilework.view, c = document.querySelector(".stage canvas"), s0 = v.scale;
-      c.dispatchEvent(new WheelEvent("wheel", { deltaY: -3, deltaMode: 1, bubbles: true, cancelable: true })); // Firefox: one notch = 3 lines
+      c.dispatchEvent(new WheelEvent("wheel", { deltaY: -3, deltaMode: 1, ctrlKey: true, bubbles: true, cancelable: true })); // Firefox: one notch = 3 lines
       return v.scale - s0;
     });
     check("one wheel notch in line mode (Firefox) is one zoom step", lineMode === 1, `${lineMode}`);
@@ -96,7 +101,9 @@ export async function run(ctx) {
     await a.page.mouse.move(canvas.x, canvas.y);
     await a.page.mouse.down();
     await a.page.mouse.move(canvas.x + 60, canvas.y, { steps: 4 });
+    await a.page.keyboard.down("Control");
     await a.page.mouse.wheel({ deltaY: -100 }); // zoom in mid-drag, then keep dragging
+    await a.page.keyboard.up("Control");
     const z = await read(a, () => window.__tilework.view.scale);
     await sleep(200);
     const mid = await cam();
@@ -212,7 +219,7 @@ export async function run(ctx) {
     await a.page.keyboard.press("?");
     await waitFor(() => a.page.$("table.keys"), { what: "shortcuts dialog" });
     const help = await read(a, () => [...document.querySelectorAll("table.keys tr")].map((r) => r.textContent));
-    check("the shortcuts list names the keys as printed on the keyboard (ZQSD on AZERTY) but keeps 1-7", help.some((r) => r.startsWith("Z Q S D")) && help.some((r) => r.startsWith("1-7")) && help.some((r) => r.startsWith("W") && r.includes("Dance")) && help.some((r) => r.includes("Mouse wheel")), help.join(" | "));
+    check("the shortcuts list names the keys as printed on the keyboard (ZQSD on AZERTY) but keeps 1-7", help.some((r) => r.startsWith("Z Q S D")) && help.some((r) => r.startsWith("1-7")) && help.some((r) => r.startsWith("W") && r.includes("Dance")) && help.some((r) => r.includes("Ctrl + mouse wheel")), help.join(" | "));
     await read(a, () => window.__tilework.keys.setKeyLayout(null));
     await a.page.keyboard.press("Escape");
     check("? opens the keyboard shortcuts and Escape closes them", await read(a, () => !document.querySelector("table.keys")));
