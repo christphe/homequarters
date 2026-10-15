@@ -8,9 +8,9 @@ const (
 	nSkin  = 6
 	nHair  = 12 // styles; 5 is the retired cap, see legacyCapStyle
 	nColor = 8
-	nPet   = 9 // 0 = no pet, then cat, dog, bunny, fox, chick, slime, owl, axolotl
-	nBeard = 6 // 0 = none, stubble, moustache, goatee, full, long
-	nHat   = 9 // 0 = none, cap, beanie, headphones, bowler, top hat, beret, tricorne, clown
+	nPet   = 9  // 0 = no pet, then cat, dog, bunny, fox, chick, slime, owl, axolotl
+	nBeard = 6  // 0 = none, stubble, moustache, goatee, full, long
+	nHat   = 10 // 0 = none, cap, beanie, headphones, bowler, top hat, beret, tricorne, clown, hijab
 
 	legacyCapStyle = 5 // the old "cap" hairstyle, now bald + a cap hat
 	baldStyle      = 2

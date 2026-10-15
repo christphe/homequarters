@@ -3,7 +3,7 @@
 export const HAIR_STYLE_IDS = ["short", "long", "bald", "spiky", "bun", "", "ponytail", "afro", "bob", "balding", "mohawk", "pigtails"] as const;
 export const LEGACY_CAP_STYLE = 5;
 export const BEARD_IDS = ["none", "stubble", "moustache", "goatee", "full", "long"] as const;
-export const HAT_IDS = ["none", "cap", "beanie", "headphones", "bowler", "tophat", "beret", "tricorne", "clown"] as const;
+export const HAT_IDS = ["none", "cap", "beanie", "headphones", "bowler", "tophat", "beret", "tricorne", "clown", "hijab"] as const;
 
 export interface Look {
   skin: string;
