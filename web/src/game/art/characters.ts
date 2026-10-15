@@ -17,8 +17,6 @@ const EYE = "#241c34";
 const TIE = "#e05048"; // hair ties and hat ribbons
 const GOLD = "#f0c040";
 const BADGE = "#f6f4ee";
-const NOSE = "#e8303a";
-const WIG = "#e8483a";
 
 type P = (x: number, y: number, w: number, h: number, c: string) => void;
 
@@ -339,7 +337,7 @@ function beardSide(R: P, k: Look) {
 
 // First hair row left visible under each hat (by HAT_IDS index): narrow crowns hide the hair beside them,
 // headphones (3) hide nothing, the hijab (9) hides all of it.
-const HAT_HAIR_TOP = [0, 1, 1, 0, 5, 4, 1, 3, 1, 99];
+const HAT_HAIR_TOP = [0, 1, 1, 0, 5, 4, 1, 2, 2, 99];
 
 // Hats are drawn last. Views: 0 front, 3 back, 1 side (facing left).
 function hat(R: P, k: Look, view: 0 | 1 | 3) {
@@ -419,19 +417,23 @@ function hat(R: P, k: Look, view: 0 | 1 | 3) {
       }
       R(view === 3 ? 3 : 2, 6, side ? 11 : 12, 1, cdd);
       return;
-    case 5: // top hat: a short chibi chimney with a ribbon
+    case 5: // top hat: worn low, the brim on the forehead; a tall, wide crown with a ribbon
       if (side) {
-        R(5, -1, 7, 5, c);
-        R(5, 3, 7, 1, TIE);
-        R(6, -1, 1, 4, cl);
-        R(2, 4, 12, 1, c);
-        R(3, 5, 10, 1, cdd);
-      } else {
-        R(4, -1, 8, 5, c);
-        R(4, 3, 8, 1, TIE);
-        R(5, -1, 1, 4, cl);
+        R(4, -5, 9, 10, c);
+        R(4, 3, 9, 1, TIE);
+        R(5, -5, 1, 8, cl);
+        R(12, -5, 1, 8, cd);
+        R(4, -5, 9, 1, cl);
         R(1, 4, 14, 1, c);
-        R(3, 5, 10, 1, cdd);
+        R(2, 5, 12, 1, cdd);
+      } else {
+        R(3, -5, 10, 9, c);
+        R(3, 3, 10, 1, TIE);
+        R(4, -5, 1, 8, cl);
+        R(12, -5, 1, 8, cd);
+        R(3, -5, 10, 1, cl);
+        R(0, 4, 16, 1, c);
+        R(2, 5, 12, 1, cdd);
       }
       return;
     case 6: // beret: a flat disc that leans to one side
@@ -449,56 +451,51 @@ function hat(R: P, k: Look, view: 0 | 1 | 3) {
       R(7, 0, 1, 1, cd);
       R(4, 2, 4, 1, cl);
       return;
-    case 7: // tricorne: turned-up brim with gold trim, a white badge in front
+    case 7: // tricorne: worn low, the brim on the forehead; a crown with a badge, corners turned up, gold trim
+      R(5, -2, 6, 1, c);
+      R(4, -1, 8, 3, c);
+      R(5, -2, 3, 1, cl);
+      R(4, -1, 1, 2, cl);
       if (side) {
-        R(3, 0, 9, 3, c);
-        R(0, 2, 3, 2, c);
-        R(12, 1, 2, 2, c);
-        R(1, 3, 13, 2, c);
-        R(1, 3, 13, 1, GOLD);
-        R(0, 2, 1, 1, GOLD);
-        R(4, 0, 3, 1, cl);
+        R(0, 0, 3, 2, c); // the front corner points the way we face
+        R(12, -1, 3, 2, c);
+        R(0, 0, 1, 1, GOLD);
+        R(14, -1, 1, 1, GOLD);
+        R(1, 2, 13, 2, c);
+        R(1, 2, 13, 1, GOLD);
+        R(2, 4, 11, 1, cdd);
       } else {
-        R(4, 0, 8, 1, c);
-        R(3, 1, 10, 2, c);
-        R(0, 1, 2, 2, c);
-        R(14, 1, 2, 2, c);
-        R(1, 3, 14, 2, c);
-        R(1, 3, 14, 1, GOLD);
-        R(0, 1, 2, 1, GOLD);
-        R(14, 1, 2, 1, GOLD);
-        R(5, 0, 3, 1, cl);
-        if (view === 0) R(7, 1, 2, 2, BADGE);
+        R(0, -1, 2, 1, c); // corners turned up on both sides
+        R(0, 0, 4, 2, c);
+        R(14, -1, 2, 1, c);
+        R(12, 0, 4, 2, c);
+        R(0, -1, 2, 1, GOLD);
+        R(14, -1, 2, 1, GOLD);
+        R(1, 2, 14, 2, c);
+        R(1, 2, 14, 1, GOLD);
+        R(2, 4, 12, 1, cdd);
+        if (view === 0) R(7, 0, 2, 2, BADGE);
       }
-      R(view === 3 ? 2 : 1, 5, side ? 12 : 14, 1, cdd);
       return;
-    case 8: // clown: party cone with a pompom, red puffs of hair, red nose
-      if (side) {
-        R(6, -1, 2, 1, BADGE);
-        R(6, 0, 2, 1, c);
-        R(5, 1, 4, 1, c);
-        R(4, 2, 6, 1, c);
-        R(3, 3, 8, 1, c);
-        R(6, 1, 1, 1, GOLD);
-        R(8, 3, 1, 1, GOLD);
-        R(9, 4, 5, 4, WIG);
-        R(9, 4, 5, 1, light(WIG, 0.3));
-        R(1, 9, 2, 2, NOSE);
-      } else {
-        R(7, -1, 2, 1, BADGE);
-        R(7, 0, 2, 1, c);
-        R(6, 1, 4, 1, c);
-        R(5, 2, 6, 1, c);
-        R(4, 3, 8, 1, c);
-        R(7, 1, 1, 1, GOLD);
-        R(5, 3, 1, 1, GOLD);
-        R(9, 3, 1, 1, GOLD);
-        R(0, 4, 3, 4, WIG);
-        R(13, 4, 3, 4, WIG);
-        R(0, 4, 3, 1, light(WIG, 0.3));
-        R(13, 4, 3, 1, light(WIG, 0.3));
-        if (view === 0) R(7, 9, 2, 2, NOSE), R(7, 9, 1, 1, light(NOSE, 0.4));
-      }
+    case 8: // party hat: a cone sitting on the crown (the same from every side), lit from the left
+      R(7, -6, 2, 1, BADGE); // pompom
+      R(6, -5, 4, 1, BADGE);
+      R(9, -5, 1, 1, dark(BADGE, 0.15));
+      R(7, -4, 2, 2, c);
+      R(6, -2, 4, 2, c);
+      R(5, 0, 6, 2, c);
+      R(4, 2, 8, 1, c); // rim on the head's top row
+      R(5, 3, 6, 1, cd); // the rim's near half, lower than its ends
+      R(7, -4, 1, 2, cl); // light edge
+      R(6, -2, 1, 2, cl);
+      R(5, 0, 1, 2, cl);
+      R(8, -4, 1, 2, cd); // shaded edge
+      R(9, -2, 1, 2, cd);
+      R(10, 0, 1, 2, cd);
+      R(7, -2, 1, 1, GOLD); // dots
+      R(8, 0, 1, 1, GOLD);
+      R(6, 1, 1, 1, GOLD);
+      R(9, 2, 1, 1, GOLD);
       return;
     case 9: {
       // hijab: snug over the skull with a dark underscarf at the forehead, framing the face, wrapped
@@ -526,7 +523,6 @@ function hat(R: P, k: Look, view: 0 | 1 | 3) {
         R(5, 0, 5, 1, c); // gathered at the back of the head
         R(3, 12, 10, 1, cd);
         R(3, 13, 10, 1, c);
-        R(7, 5, 1, 7, cd); // a soft fold down the back
         R(5, 13, 1, 1, cd);
         R(10, 13, 1, 1, cd);
       } else {

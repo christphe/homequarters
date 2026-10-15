@@ -190,7 +190,7 @@ const en = {
   "hat.tophat": "Top hat",
   "hat.beret": "Beret",
   "hat.tricorne": "Tricorne",
-  "hat.clown": "Clown",
+  "hat.party": "Party hat",
   "hat.hijab": "Hijab",
   "avatar.shirt": "Shirt",
   "avatar.pants": "Trousers",
