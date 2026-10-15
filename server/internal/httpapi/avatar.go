@@ -15,7 +15,7 @@ const (
 	nCloth     = 24 // shirt, trousers and hat colours
 	nPet       = 9  // 0 = no pet, then cat, dog, bunny, fox, chick, slime, owl, axolotl
 	nBeard     = 6  // 0 = none, stubble, moustache, goatee, full, long
-	nHat       = 10 // 0 = none, cap, beanie, headphones, bowler, top hat, beret, tricorne, clown, hijab
+	nHat       = 10 // 0 = none, cap, beanie, headphones, bowler, top hat, beret, tricorne, party hat, hijab
 
 	legacyCapStyle = 5 // the old "cap" hairstyle, now bald + a cap hat
 	baldStyle      = 2
