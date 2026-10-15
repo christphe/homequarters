@@ -100,6 +100,8 @@ h1, h2, h3 { font-weight: 700; }
 .ae-preview { background: repeating-conic-gradient(#f4ecc0 0% 25%, #ece0ac 0% 50%) 0 0 / 16px 16px; border: 3px solid var(--dark); border-radius: 6px; }
 .sw { border: 3px solid var(--dark); border-radius: 4px; }
 .sw.on { border-color: var(--coral); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--dark); }
+.swatches input.sw.sw-custom { border: 3px solid var(--dark); border-radius: 4px; box-shadow: none; }
+.swatches input.sw.sw-custom.on { border-color: var(--coral); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--dark); }
 .ae-label { color: var(--muted); }
 
 .debug { font-family: ui-monospace, Menlo, monospace; text-shadow: none; }

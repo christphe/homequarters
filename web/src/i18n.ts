@@ -164,6 +164,7 @@ const en = {
   "avatar.beard": "Beard",
   "avatar.hat": "Hat",
   "avatar.hatColor": "Hat colour",
+  "avatar.customColor": "{part}: custom colour",
   "hair.short": "Short",
   "hair.long": "Long",
   "hair.bald": "Bald",

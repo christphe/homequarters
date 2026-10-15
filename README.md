@@ -61,7 +61,7 @@ Virtual offices are usually heavy on the browser, the server and the bill. Tilew
 | --- | --- |
 | **Proximity conversations** | Audio and video start when you get close and stop when you leave, with hysteresis and small groups. |
 | **Consent and status** | Nothing is captured before you opt in. Available, busy, away and invisible; busy never joins a call automatically. |
-| **Avatars** | Procedural pixel-art characters with big heads and a three-frame walk cycle: skin, eleven hairstyles, hair colour, five beards, eight hats (cap, beanie, headphones, bowler, top hat, beret, tricorne, clown) and a hijab, with their own colour, shirt, trousers. |
+| **Avatars** | Procedural pixel-art characters with big heads and a three-frame walk cycle: skin, eleven hairstyles, hair colour (12 skin tones, 16 hair colours and 24 for clothes and hats, or any colour from a picker), five beards, eight hats (cap, beanie, headphones, bowler, top hat, beret, tricorne, clown) and a hijab, with their own colour, shirt, trousers. |
 | **Look** | 16 px tiles, outlined and shaded props, textured floors and walls, dialog-window UI and a pixel font. All original. |
 | **World** | Keyboard movement with collisions (shortcuts follow key positions, so ZQSD works on AZERTY), mouse-wheel zoom, left-drag to look around, camera follow, animation, prediction for you and dead-reckoned movement for others. |
 | **Getting around** | Run with Shift or toggle it with R (2x speed); double-click any spot to run there along a path the server finds; "Walk to" anyone from the people panel. |

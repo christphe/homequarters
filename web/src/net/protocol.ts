@@ -2,16 +2,19 @@ export type Status = "available" | "busy" | "away" | "invisible";
 export type PublicStatus = Status | "offline";
 export type Role = "admin" | "member";
 
+/** A palette index (game/palette.ts) or a custom "#rrggbb". */
+export type Color = number | string;
+
 export interface AvatarSpec {
-  sk: number; // skin
+  sk: Color; // skin
   hs: number; // hair style
-  hc: number; // hair color
-  sh: number; // shirt
-  pa: number; // pants
+  hc: Color; // hair color
+  sh: Color; // shirt
+  pa: Color; // pants
   pt?: number; // companion pet (0 = none), see game/art/pets.ts
   bd?: number; // beard (0 = none), see game/art/characters.ts
   ht?: number; // hat (0 = none)
-  hk?: number; // hat colour
+  hk?: Color; // hat colour
 }
 
 export interface Person {
