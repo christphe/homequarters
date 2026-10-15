@@ -68,13 +68,15 @@ HAIR_STYLE_IDS.forEach((id, i) => i !== LEGACY_CAP_STYLE && item(id, { ...base, 
 section("Beards (in the hair colour)");
 BEARD_IDS.forEach((id, i) => i > 0 && item(id, { ...base, beard: i, hairStyle: i === 5 ? 9 : 0, hair: HAIR[[0, 1, 2, 5, 4, 5][i]], skin: SKIN[i % 6] }));
 section("Hats (own colour; hair above the crown is hidden)");
-HAT_IDS.forEach((id, i) => i > 0 && item(id, { ...base, hat: i, hatColor: HAT_COLORS[[0, 6, 4, 0, 0, 0, 4, 0, 7][i]], hairStyle: [0, 0, 1, 3, 0, 8, 0, 1, 2][i], beard: i === 7 ? 4 : 0 }));
+HAT_IDS.forEach((id, i) => i > 0 && item(id, { ...base, hat: i, hatColor: HAT_COLORS[[0, 6, 4, 0, 0, 0, 4, 0, 7, 6][i]], hairStyle: [0, 0, 1, 3, 0, 8, 0, 1, 2, 1][i], beard: i === 7 ? 4 : 0 }));
 section("Combinations");
 item("legacy cap (hs 5)", { ...base, hairStyle: LEGACY_CAP_STYLE, hair: HAIR[4] });
 item("afro + beanie", { ...base, hairStyle: 7, hat: 2, hatColor: HAT_COLORS[3], skin: SKIN[4] });
 item("mohawk + headphones", { ...base, hairStyle: 10, hat: 3, hatColor: HAT_COLORS[6], hair: HAIR[7] });
 item("pigtails + beret", { ...base, hairStyle: 11, hat: 6, hatColor: HAT_COLORS[4], hair: HAIR[3], skin: SKIN[0] });
 item("balding + long beard", { ...base, hairStyle: 9, beard: 5, hair: HAIR[5], skin: SKIN[2] });
+item("afro + hijab", { ...base, hairStyle: 7, hat: 9, hatColor: HAT_COLORS[7], skin: SKIN[4] });
+item("pigtails + hijab", { ...base, hairStyle: 11, hat: 9, hatColor: HAT_COLORS[5], skin: SKIN[0] });
 item("bun + top hat + goatee", { ...base, hairStyle: 4, hat: 5, beard: 3, hair: HAIR[0] });
 section("Hard cases: beards on skin close to the hair colour, look-alikes, hats over tall hair");
 for (const [sk, hc] of [[5, 0], [4, 0], [4, 1], [3, 5], [2, 3], [1, 3]]) for (let b = 1; b < BEARD_IDS.length; b++) item(`skin ${sk}, hair ${hc}: ${BEARD_IDS[b]}`, { ...base, skin: SKIN[sk], hair: HAIR[hc], beard: b });

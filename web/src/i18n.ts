@@ -190,6 +190,7 @@ const en = {
   "hat.beret": "Beret",
   "hat.tricorne": "Tricorne",
   "hat.clown": "Clown",
+  "hat.hijab": "Hijab",
   "avatar.shirt": "Shirt",
   "avatar.pants": "Trousers",
   "status.available": "Available",
