@@ -2,10 +2,12 @@ import { normaliseLook, type Look } from "./look";
 import { dark, deep, light, mix, px, rgb, type Ctx } from "./pixel";
 
 // Overworld characters: "chibi" proportions (the head is over half of the sprite), 3/4 view,
-// three walk frames per direction. Content is 16 x 24 px inside an 18 x 26 cell (1 px outline margin).
+// three walk frames per direction. The body is 16 x 24 px inside an 18 x 30 cell: a 1 px outline margin
+// around it and 4 more rows on top, so hats and tall hair can rise above the head.
 export const CELL_W = 18;
-export const CELL_H = 26;
-export const FEET_Y = 24; // y of the feet line inside a cell
+export const CELL_H = 30;
+export const FEET_Y = 28; // y of the feet line inside a cell
+const ORIGIN_Y = 6; // cell row of content y = 0; content y down to -6 is drawable above the head
 
 export { BEARD_IDS, HAIR_STYLE_IDS, HAT_IDS, LEGACY_CAP_STYLE, normaliseLook, type Look } from "./look";
 
@@ -26,7 +28,7 @@ function shoe(R: P, x: number, y: number, w: number) {
   R(x, y + 1, w, 1, SOLE);
 }
 
-// Layout (content coordinates, y grows down; y < 2 is room for spikes, buns and hat crowns):
+// Layout (content coordinates, y grows down; y -6..1 is room for spikes, buns and hat crowns):
 //   head 12 x 11 at y2..12 · torso y13..17 · legs y18..19 · sneakers y20..21 · shadow y22..23
 
 function headFront(R: P, k: Look) {
@@ -578,7 +580,7 @@ function legsFront(R: P, k: Look, frame: number) {
 }
 
 export function drawChar(ctx: Ctx, ox: number, oy: number, dir: number, frame: number, k: Look) {
-  const R: P = (x, y, w, h, c) => px(ctx, ox + 1 + x, oy + 2 + y, w, h, c);
+  const R: P = (x, y, w, h, c) => px(ctx, ox + 1 + x, oy + ORIGIN_Y + y, w, h, c);
   // under a hat, hair never pokes out above its brim (spikes, buns, crests, the top of an afro)
   const top = HAT_HAIR_TOP[k.hat] ?? 0;
   const H: P = top

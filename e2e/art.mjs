@@ -30,8 +30,9 @@ await page.evaluate(() => {
   window.loadImg = (src) => new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.src = src; });
   window.sprite = (ctx, img, dir, frame, x, y, s) => {
     ctx.imageSmoothingEnabled = false;
-    // 25 rows only: the 26th row can hold outline pixels bled from the next sheet row
-    ctx.drawImage(img, frame * 18, dir * 26, 18, 25, x, y, 18 * s, 25 * s);
+    // cells are 18 x 30; rows 4..28 hold a hatless avatar (rows 0..3 are room for hats, row 29 can hold
+    // outline pixels bled from the next sheet row), so the cast, GIF and banner keep their framing
+    ctx.drawImage(img, frame * 18, dir * 30 + 4, 18, 25, x, y, 18 * s, 25 * s);
   };
 });
 

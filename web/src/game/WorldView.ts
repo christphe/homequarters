@@ -39,6 +39,10 @@ const SNAP_PX = 128; // larger corrections are not network jitter: no blending (
 const IDLE_RENDER_MS = 250;
 const HEARTBEAT_MS = 400; // re-send held input so the server can correct drift
 const STATUS_COLOR: Record<string, number> = { available: 0x5ec26a, busy: 0xe5584f, away: 0xf2d14b, offline: 0x8e8e9a, invisible: 0x8e8e9a };
+// Name tags sit where they always did (just over a plain head, whose drawing rises 22 px above the feet),
+// plus whatever a hat or tall hair adds on top.
+const extraHeight = (f: AvatarFrames) => Math.max(0, f.tall - 22);
+
 const DEFAULT_AV: AvatarSpec = { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 };
 
 /** Where a box of half size `half` moving in direction v touches the tile edge it crosses reaching c (server: contact). */
@@ -1201,7 +1205,7 @@ export class WorldView {
       e.spr.texture = tex;
       e.spr.position.set(px, py);
       e.spr.zIndex = e.y;
-      const ly = sy - (CELL_H - 2) * S * 0.9;
+      const ly = sy - (24 * 0.9 + extraHeight(e.frames)) * S;
       if (e.label.x !== sx || e.label.y !== ly) changed = true; // name tags move in screen pixels
       e.label.position.set(sx, ly);
       if (e.drawnStatus !== e.status || e.drawnConv !== e.inConv || e.drawnShare !== e.sharing) this.drawDot(e);
@@ -1218,7 +1222,7 @@ export class WorldView {
       const e = this.ents.get(id);
       if (!e || now >= bubble.until) { bubble.text.destroy(); this.emotes.delete(id); changed = true; continue; }
       bubble.text.visible = e.label.visible;
-      bubble.text.position.set(e.x * S + this.camX, e.y * S + this.camY - CELL_H * S - 28);
+      bubble.text.position.set(e.x * S + this.camX, e.y * S + this.camY - (26 + extraHeight(e.frames)) * S - 28);
     }
 
     // area labels
