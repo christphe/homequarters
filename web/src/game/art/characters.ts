@@ -1,5 +1,5 @@
 import { normaliseLook, type Look } from "./look";
-import { dark, light, mix, px, rgb, type Ctx } from "./pixel";
+import { dark, deep, light, mix, px, rgb, type Ctx } from "./pixel";
 
 // Overworld characters: "chibi" proportions (the head is over half of the sprite), 3/4 view,
 // three walk frames per direction. Content is 16 x 24 px inside an 18 x 26 cell (1 px outline margin).
@@ -313,8 +313,8 @@ function beardSide(R: P, k: Look) {
 }
 
 // First hair row left visible under each hat (by HAT_IDS index): narrow crowns hide the hair beside them,
-// headphones (3) hide nothing.
-const HAT_HAIR_TOP = [0, 1, 1, 0, 5, 4, 1, 3, 1];
+// headphones (3) hide nothing, the hijab (9) hides all of it.
+const HAT_HAIR_TOP = [0, 1, 1, 0, 5, 4, 1, 3, 1, 99];
 
 // Hats are drawn last. Views: 0 front, 3 back, 1 side (facing left).
 function hat(R: P, k: Look, view: 0 | 1 | 3) {
@@ -475,6 +475,56 @@ function hat(R: P, k: Look, view: 0 | 1 | 3) {
         if (view === 0) R(7, 9, 2, 2, NOSE), R(7, 9, 1, 1, light(NOSE, 0.4));
       }
       return;
+    case 9: {
+      // hijab: snug over the skull with a dark underscarf at the forehead, framing the face, wrapped
+      // under the chin and close around the neck, then falling over the shoulders and chest
+      const band = deep(c, 0.7);
+      R(4, 1, 8, 1, c);
+      R(3, 2, 10, 1, c);
+      R(2, 3, 12, 2, c);
+      R(5, 1, 3, 1, cl);
+      R(4, 2, 2, 1, cl);
+      if (view === 0) {
+        R(4, 4, 8, 1, band);
+        R(2, 5, 1, 8, c); // framing the cheeks, down to the jaw
+        R(13, 5, 1, 8, cd);
+        R(3, 11, 1, 1, c);
+        R(12, 11, 1, 1, cd);
+        R(3, 12, 10, 1, c); // wrapped under the chin
+        R(3, 13, 10, 1, c); // over the shoulders
+        R(3, 14, 6, 1, c); // one side falls longer across the chest
+        R(4, 15, 4, 1, cd);
+        R(9, 13, 3, 1, cd); // fold
+        R(8, 14, 1, 1, cd);
+      } else if (view === 3) {
+        R(2, 5, 12, 7, c);
+        R(5, 0, 5, 1, c); // gathered at the back of the head
+        R(3, 12, 10, 1, cd);
+        R(3, 13, 10, 1, c);
+        R(7, 5, 1, 7, cd); // a soft fold down the back
+        R(5, 13, 1, 1, cd);
+        R(10, 13, 1, 1, cd);
+      } else {
+        R(11, 1, 3, 1, c); // gathered at the back of the head
+        R(12, 2, 3, 3, c);
+        R(13, 2, 1, 1, cl);
+        R(2, 4, 2, 1, band);
+        // everything behind the face, edge sloping from the cheek down under the chin
+        R(7, 5, 7, 8, c);
+        R(6, 10, 1, 3, c);
+        R(5, 11, 1, 2, c);
+        R(4, 12, 1, 1, c);
+        R(7, 5, 1, 5, cd);
+        R(6, 10, 1, 1, cd);
+        R(5, 11, 1, 1, cd);
+        R(13, 5, 1, 7, cd);
+        R(4, 13, 8, 1, c); // around the neck, then down the chest
+        R(4, 14, 5, 1, c);
+        R(5, 15, 3, 1, cd);
+        R(9, 13, 1, 1, cd);
+      }
+      return;
+    }
   }
 }
 
@@ -522,7 +572,7 @@ export function drawChar(ctx: Ctx, ox: number, oy: number, dir: number, frame: n
     torso(R, k, 4, 8, true);
     arm(R, k, 2, frame === 2 ? 1 : 0);
     arm(R, k, 12, frame === 1 ? 1 : 0);
-    if (k.hairStyle === 1) R(1, 5, 2, 9, k.hair), R(13, 5, 2, 9, k.hair);
+    if (k.hairStyle === 1) H(1, 5, 2, 9, k.hair), H(13, 5, 2, 9, k.hair);
     headFront(R, k);
     faceFront(R, k);
     beardFront(R, k);
