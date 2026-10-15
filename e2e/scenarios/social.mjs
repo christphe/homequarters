@@ -91,11 +91,28 @@ export async function run(ctx) {
     await waitFor(hatColourRow, { what: "hat colour swatches" });
     await b.page.click('.modal [role=radiogroup][aria-label="Hat colour"] [aria-label="Hat colour 3"]');
     check("the avatar editor offers hair styles, beards and hats; hat colours appear once a hat is chosen", picked && noHatColourBefore);
+    // any colour through the shirt's own colour picker (React listens to "input")
+    await b.page.$eval('.modal input[type=color][aria-label="Shirt: custom colour"]', (el) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "#12ab9f");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((x) => x.textContent === "Save profile")?.click());
     await waitFor(() => a.page.evaluate((n, id) => window.__tilework.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
     check("a profile change reaches other people's roster live", true);
     const seen = await a.page.evaluate((id) => window.__tilework.state.roster.get(id)?.av, b.id);
     check("another person sees the new hair, beard and hat", seen?.hs === 7 && seen?.bd === 4 && seen?.ht === 7 && seen?.hk === 2);
+    check("another person sees the custom shirt colour", seen?.sh === "#12ab9f", JSON.stringify(seen));
+    // someone changing look over and over leaves at most one look per person in other people's memory
+    const looks0 = await a.page.evaluate(() => window.__tilework.cachedLooks());
+    const bCookie = (await b.ctx.cookies()).find((k) => k.name === "tilework_session").value;
+    for (let i = 0; i < 4; i++) { // the profile rate limit allows a burst of 5; one save is already spent
+      await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + bCookie }, body: JSON.stringify({ name: "Novo" + t, avatar: { sk: 1, hs: i, hc: 3, sh: "#0000" + (10 + i), pa: 1 } }) });
+      await waitFor(() => a.page.evaluate((id, sh) => window.__tilework.state.roster.get(id)?.av.sh === sh, b.id, "#0000" + (10 + i)), { what: "look " + i });
+    }
+    await sleep(300);
+    const looks1 = await a.page.evaluate(() => window.__tilework.cachedLooks());
+    const bSeen = await a.page.evaluate((id) => window.__tilework.view.debugEntities().some((e) => e.id === id), b.id);
+    check("four look changes leave other people's avatar cache the same size", bSeen && looks1 === looks0, `B in view: ${bSeen}, looks ${looks0} -> ${looks1}`);
     const bad = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + (await c.ctx.cookies()).find((k) => k.name === "tilework_session").value }, body: JSON.stringify({ name: "   ", avatar: {} }) });
     check("an empty name is refused", bad.status === 400);
     const anon = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) });

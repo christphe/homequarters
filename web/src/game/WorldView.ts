@@ -4,7 +4,7 @@ import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { isHomeKey } from "./home";
 import { propSize } from "./mapModel";
-import { avatarFrames, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
+import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
 import { followOwner, newPet, type PetState } from "./petFollow";
 import { bakeMap } from "./mapArt";
@@ -539,6 +539,8 @@ export class WorldView {
 
   setPeople(people: Map<number, Person>) {
     this.dirty = true;
+    // someone who left the office frees their look (once their sprite is gone too); leaving the screen does not
+    for (const id of this.people.keys()) if (!people.has(id) && !this.ents.has(id)) releaseAvatar(id);
     this.people = people;
     for (const e of this.ents.values()) this.refreshEnt(e);
   }
@@ -765,7 +767,7 @@ export class WorldView {
   // ---- entities ----
   private makeEnt(id: number): Ent {
     const p = this.people.get(id);
-    const frames = avatarFrames(p?.av ?? DEFAULT_AV);
+    const frames = avatarFramesFor(id, p?.av ?? DEFAULT_AV);
     const spr = new Sprite(frames[0][0]);
     spr.anchor.set(0.5, FEET_Y / CELL_H);
     this.entLayer.addChild(spr);
@@ -791,8 +793,12 @@ export class WorldView {
     this.dirty = true;
     const p = this.people.get(e.id);
     if (!p) return;
-    const frames = avatarFrames(p.av);
-    if (frames !== e.frames) e.frames = frames;
+    const frames = avatarFramesFor(e.id, p.av);
+    if (frames !== e.frames) {
+      // the previous look may just have been destroyed: switch the sprite now, not on the next tick
+      e.frames = frames;
+      e.spr.texture = frames[e.dir]?.[0] ?? frames[0][0];
+    }
     if (e.name !== p.n || e.text.text !== p.n) {
       e.name = p.n;
       e.text.text = p.n;
@@ -863,6 +869,7 @@ export class WorldView {
     this.ents.delete(id);
     this.emotes.get(id)?.text.destroy();
     this.emotes.delete(id);
+    if (!this.people.has(id)) releaseAvatar(id);
   }
 
   /** Location signboard that slides in from the top when entering an area (handheld-RPG style). */
