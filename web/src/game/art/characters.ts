@@ -239,45 +239,61 @@ function hairSide(R: P, k: Look) {
   if (k.hairStyle === 11) R(13, 6, 2, 1, TIE), R(13, 7, 2, 7, h), R(13, 13, 2, 1, hd);
 }
 
-// a five-o'clock shadow: the jaw tinted toward the hair colour
-function stubble(R: P, k: Look, x0: number, x1: number) {
-  R(x0, 11, x1 - x0 + 1, 1, mix(k.skin, k.hair, 0.6));
-  R(x0 + 1, 12, x1 - x0 - 1, 1, mix(dark(k.skin, 0.24), k.hair, 0.7));
+// stubble: the full beard's shape, see-through: a bit under half the hair colour over the skin under it
+// (rows 11 and 12 are the jaw's shaded skin, so each row mixes with its own tone)
+function stubble(R: P, k: Look, rects: [number, number, number, number][]) {
+  const under = (y: number) => (y >= 12 ? dark(k.skin, 0.24) : y === 11 ? dark(k.skin, 0.1) : k.skin);
+  for (const [x, y, w, h] of rects) for (let j = y; j < y + h; j++) R(x, j, w, 1, mix(under(j), k.hair, 0.45));
 }
 
-// Beards are always the hair colour, even where it nearly matches the skin (a deliberate choice).
 function beardFront(R: P, k: Look) {
   const c = k.hair, cd = dark(c, 0.3), cl = light(c, 0.2);
   switch (k.beard) {
     case 1:
-      stubble(R, k, 3, 12);
+      stubble(R, k, [[2, 9, 1, 2], [13, 9, 1, 2], [5, 10, 6, 1], [2, 11, 12, 1], [3, 12, 10, 1]]);
       return;
-    case 2:
-      R(5, 10, 6, 1, c);
-      R(5, 11, 1, 1, cd);
-      R(10, 11, 1, 1, cd);
+    case 2: // moustache: under the nose, ends drooping
+      R(5, 11, 6, 1, c);
+      R(5, 12, 1, 1, cd);
+      R(10, 12, 1, 1, cd);
       return;
-    case 3:
-      R(6, 10, 4, 1, c);
-      R(7, 11, 2, 1, c);
-      R(7, 12, 2, 2, cd);
+    case 3: // goatee: a thin line over the lip and a tuft on the chin
+      R(6, 11, 4, 1, c);
+      R(7, 12, 2, 1, c);
+      R(7, 13, 2, 1, cd);
       return;
     case 4:
-    case 5:
-      R(2, 9, 1, 2, c);
-      R(13, 9, 1, 2, c);
-      R(5, 10, 6, 1, c);
+    case 5: {
+      // a rounded mass: darker edges following its curve, a highlight on each cheek, symmetric
+      const long = k.beard === 5;
+      R(2, 9, 1, 2, cd); // sideburns
+      R(13, 9, 1, 2, cd);
+      R(5, 10, 6, 1, c); // moustache
+      R(5, 10, 1, 1, cd);
+      R(10, 10, 1, 1, cd);
       R(2, 11, 12, 1, c);
+      R(2, 11, 1, 1, cd);
+      R(13, 11, 1, 1, cd);
       R(3, 12, 10, 1, c);
-      R(4, 11, 2, 1, cl);
-      if (k.beard === 4) {
+      R(3, 12, 1, 1, cd);
+      R(12, 12, 1, 1, cd);
+      R(4, 11, 2, 1, cl); // cheeks
+      R(10, 11, 2, 1, cl);
+      if (!long) {
         R(4, 13, 8, 1, cd);
-      } else {
-        R(4, 13, 8, 1, c);
-        R(5, 14, 6, 1, c);
-        R(6, 15, 4, 1, cd);
-        R(5, 13, 1, 2, cl);
+        return;
       }
+      R(4, 13, 8, 1, c);
+      R(4, 13, 1, 1, cd);
+      R(11, 13, 1, 1, cd);
+      R(5, 13, 1, 1, cl);
+      R(10, 13, 1, 1, cl);
+      R(5, 14, 6, 1, c);
+      R(5, 14, 1, 1, cd);
+      R(10, 14, 1, 1, cd);
+      R(6, 15, 4, 1, cd);
+      return;
+    }
   }
 }
 
@@ -285,30 +301,37 @@ function beardSide(R: P, k: Look) {
   const c = k.hair, cd = dark(c, 0.3), cl = light(c, 0.2);
   switch (k.beard) {
     case 1:
-      stubble(R, k, 2, 8);
+      stubble(R, k, [[8, 8, 1, 3], [2, 10, 3, 1], [2, 11, 8, 1], [3, 12, 7, 1]]);
       return;
     case 2:
-      R(2, 10, 3, 1, c);
-      R(2, 11, 1, 1, cd);
+      R(2, 11, 3, 1, c);
+      R(2, 12, 1, 1, cd);
       return;
     case 3:
-      R(2, 10, 3, 1, c);
-      R(2, 11, 3, 1, c);
-      R(3, 12, 2, 2, cd);
+      R(2, 11, 2, 1, c);
+      R(2, 12, 2, 1, c);
+      R(3, 13, 1, 1, cd);
       return;
     case 4:
-    case 5:
-      R(8, 8, 1, 3, c);
+    case 5: {
+      // in profile: lit at the front of the chin, darker toward the neck
+      const long = k.beard === 5;
+      R(8, 8, 1, 3, cd);
       R(2, 10, 3, 1, c);
       R(2, 11, 8, 1, c);
       R(3, 12, 7, 1, c);
-      R(3, 11, 2, 1, cl);
-      if (k.beard === 4) {
+      R(8, 11, 2, 2, cd);
+      R(3, 12, 3, 1, cl);
+      if (!long) {
         R(4, 13, 5, 1, cd);
-      } else {
-        R(3, 13, 6, 2, c);
-        R(4, 15, 4, 1, cd);
+        return;
       }
+      R(3, 13, 6, 2, c);
+      R(7, 13, 2, 2, cd);
+      R(4, 13, 2, 1, cl);
+      R(4, 15, 4, 1, cd);
+      return;
+    }
   }
 }
 
