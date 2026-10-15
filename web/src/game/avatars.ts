@@ -10,7 +10,8 @@ import { colorOf, HAIR, HAT_COLORS, PANTS, SHIRT, SKIN } from "./palette";
 // The painting itself lives in ./art/characters (pure canvas, no PixiJS).
 export { CELL_H, CELL_W, FEET_Y };
 
-export type AvatarFrames = Texture[][]; // [dir][frame]; dirs: 0 down, 1 left, 2 right, 3 up
+/** [dir][frame] (dirs: 0 down, 1 left, 2 right, 3 up); `tall` is how far the drawing rises above the feet, in px. */
+export type AvatarFrames = Texture[][] & { tall: number };
 
 const cache = new LookCache<AvatarFrames>((frames) => frames[0][0].source.destroy());
 
@@ -52,6 +53,14 @@ export function releaseAvatar(id: number) {
 
 export const cachedLooks = () => cache.size;
 
+// the highest opaque row of any frame, in cell rows
+function topRow(canvas: HTMLCanvasElement): number {
+  const d = canvas.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height).data;
+  let top = CELL_H;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 0) top = Math.min(top, Math.floor(i / 4 / canvas.width) % CELL_H);
+  return top;
+}
+
 function buildFrames(a: AvatarSpec): AvatarFrames {
   const canvas = document.createElement("canvas");
   canvas.width = CELL_W * 3;
@@ -59,7 +68,8 @@ function buildFrames(a: AvatarSpec): AvatarFrames {
   drawSheet(canvas.getContext("2d", { willReadFrequently: true })!, lookOf(a));
   const base = Texture.from(canvas);
   base.source.scaleMode = "nearest";
-  const frames: AvatarFrames = [];
+  const frames = [] as unknown as AvatarFrames;
+  frames.tall = FEET_Y - topRow(canvas);
   for (let dir = 0; dir < 4; dir++) {
     frames.push([]);
     for (let f = 0; f < 3; f++) {
