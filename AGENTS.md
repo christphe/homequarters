@@ -113,7 +113,7 @@ Other agents or people may be working in the same tree at the same time.
 - `node run.mjs capture-pet` writes frames and a contact sheet to a fresh folder under `/tmp/tilework-capture`; copy it for new `capture-*` scenarios. They are not in the default suite.
 - LiveKit's client may use a single peer connection; read RTP stats from `room.engine.pcManager.subscriber?.pc ?? publisher.pc` (see `rtpBytes` in `e2e/lib.mjs`).
 - Editing client files while the Vite dev server runs can trigger a full reload and break a running E2E script; rerun it.
-- Avatar sheet cells are 18x26 px (16x24 content plus a 1 px outline margin). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops to 25 rows when it reuses cells.
+- Avatar sheet cells are 18x30 px (16x24 body plus a 1 px outline margin and 4 rows on top for hats and tall hair). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops rows 4-28 when it reuses cells. Name tags follow the drawing's real top (`AvatarFrames.tall`), not the cell height.
 - The camera uses integer zoom (`VIEW_REF_W/H` in `WorldView.ts`). Keep the server's area of interest large enough to cover the visible world at the smallest zoom.
 - Tests that need real media use Chrome flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`.
 - Load generators must run **outside** the machine being measured.
