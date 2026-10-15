@@ -18,6 +18,14 @@ func TestNormalizeAvatarKeepsValidPetsAndDropsUnknownFields(t *testing.T) {
 		// the retired cap hairstyle becomes bald + a cap in the hair colour, which draws the same pixels
 		{`{"hs":5,"hc":4}`, `{"sk":0,"hs":2,"hc":4,"sh":0,"pa":0,"pt":0,"ht":1,"hk":4}`},
 		{`{"hs":5,"hc":4,"ht":6,"hk":1}`, `{"sk":0,"hs":2,"hc":4,"sh":0,"pa":0,"pt":0,"ht":6,"hk":1}`},
+		// larger palettes: 12 skin tones, 16 hair colours, 24 for clothes and hats
+		{`{"sk":11,"hc":15,"sh":23,"pa":23,"ht":1,"hk":23}`, `{"sk":11,"hs":0,"hc":15,"sh":23,"pa":23,"pt":0,"ht":1,"hk":23}`},
+		{`{"sk":12,"hc":16,"sh":24,"pa":24,"ht":1,"hk":24}`, `{"sk":0,"hs":0,"hc":0,"sh":0,"pa":0,"pt":0,"ht":1}`},
+		// or any colour as #rrggbb, stored lower case; anything else is index 0
+		{`{"sk":"#A0B0C0","hc":"#1a2b3c","sh":"#ffffff","pa":"#000000","ht":2,"hk":"#FF8800"}`, `{"sk":"#a0b0c0","hs":0,"hc":"#1a2b3c","sh":"#ffffff","pa":"#000000","pt":0,"ht":2,"hk":"#ff8800"}`},
+		{`{"sk":"#abc","hc":"red","sh":"#12345g","pa":"#1234567","ht":2,"hk":"<script>"}`, `{"sk":0,"hs":0,"hc":0,"sh":0,"pa":0,"pt":0,"ht":2}`},
+		{`{"sk":1.5,"hc":true,"sh":null,"pa":[1],"hk":"#ffffff"}`, `{"sk":0,"hs":0,"hc":0,"sh":0,"pa":0,"pt":0}`},
+		{`{"hs":5,"hc":"#336699"}`, `{"sk":0,"hs":2,"hc":"#336699","sh":0,"pa":0,"pt":0,"ht":1,"hk":"#336699"}`},
 	}
 	for _, c := range cases {
 		if got := string(NormalizeAvatar([]byte(c.in))); got != c.want {

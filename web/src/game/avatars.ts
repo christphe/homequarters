@@ -1,16 +1,18 @@
 import { Rectangle, Texture } from "pixi.js";
 import type { AvatarSpec } from "../net/protocol";
 import { BEARD_IDS, CELL_H, CELL_W, FEET_Y, drawSheet, HAIR_STYLE_IDS, HAT_IDS, LEGACY_CAP_STYLE, type Look } from "./art/characters";
-import { HAIR, HAT_COLORS, PANTS, SHIRT, SKIN } from "./palette";
+import { LookCache } from "./lookCache";
+import { colorOf, HAIR, HAT_COLORS, PANTS, SHIRT, SKIN } from "./palette";
 
 // Procedural pixel-art avatars. One small canvas per distinct look (4 directions x
-// 3 frames); all frames share one GPU texture and are cached by look key.
+// 3 frames); all frames share one GPU texture, shared by everybody wearing that look and
+// destroyed when the last of them changes look or leaves (see lookCache.ts).
 // The painting itself lives in ./art/characters (pure canvas, no PixiJS).
 export { CELL_H, CELL_W, FEET_Y };
 
 export type AvatarFrames = Texture[][]; // [dir][frame]; dirs: 0 down, 1 left, 2 right, 3 up
 
-const cache = new Map<string, AvatarFrames>();
+const cache = new LookCache<AvatarFrames>((frames) => frames[0][0].source.destroy());
 
 export function avatarKey(a: AvatarSpec) {
   return `${a.sk}-${a.hs}-${a.hc}-${a.sh}-${a.pa}-${a.bd ?? 0}-${a.ht ?? 0}-${a.hk ?? 0}`;
@@ -27,21 +29,30 @@ const idx = (v: number | undefined, n: number) => (Number.isInteger(v) && v! >= 
 
 function lookOf(a: AvatarSpec): Look {
   return {
-    skin: SKIN[a.sk] ?? SKIN[0],
-    hair: HAIR[a.hc] ?? HAIR[0],
+    skin: colorOf(a.sk, SKIN),
+    hair: colorOf(a.hc, HAIR),
     hairStyle: idx(a.hs, HAIR_STYLE_IDS.length),
-    shirt: SHIRT[a.sh] ?? SHIRT[0],
-    pants: PANTS[a.pa] ?? PANTS[0],
+    shirt: colorOf(a.sh, SHIRT),
+    pants: colorOf(a.pa, PANTS),
     beard: idx(a.bd, BEARD_IDS.length),
     hat: idx(a.ht, HAT_IDS.length),
-    hatColor: HAT_COLORS[idx(a.hk, HAT_COLORS.length)],
+    hatColor: colorOf(a.hk, HAT_COLORS),
   };
 }
 
-export function avatarFrames(a: AvatarSpec): AvatarFrames {
-  const key = avatarKey(a);
-  const hit = cache.get(key);
-  if (hit) return hit;
+/** Frames for person `id` wearing `a`; their previous look is released. */
+export function avatarFramesFor(id: number, a: AvatarSpec): AvatarFrames {
+  return cache.acquire(id, avatarKey(a), () => buildFrames(a));
+}
+
+/** Person `id` left the office: their look is freed unless somebody else wears it. */
+export function releaseAvatar(id: number) {
+  cache.release(id);
+}
+
+export const cachedLooks = () => cache.size;
+
+function buildFrames(a: AvatarSpec): AvatarFrames {
   const canvas = document.createElement("canvas");
   canvas.width = CELL_W * 3;
   canvas.height = CELL_H * 4;
@@ -55,7 +66,6 @@ export function avatarFrames(a: AvatarSpec): AvatarFrames {
       frames[dir].push(new Texture({ source: base.source, frame: new Rectangle(f * CELL_W, dir * CELL_H, CELL_W, CELL_H) }));
     }
   }
-  cache.set(key, frames);
   return frames;
 }
 

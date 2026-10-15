@@ -1,4 +1,5 @@
 import { WorldView } from "./game/WorldView";
+import { cachedLooks } from "./game/avatars";
 import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
 import { Socket, type ConnState } from "./net/socket";
@@ -80,7 +81,7 @@ class Session {
         this.setStatus("away");
       }
     }, 15000);
-    (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, get state() { return getState(); }, session: this };
+    (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, get state() { return getState(); }, session: this };
   }
 
   stop() {
