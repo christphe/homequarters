@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"tilework/internal/store"
@@ -82,6 +83,52 @@ func (s *Server) announce(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, se, "announce", 0, "", "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// renameOffice changes the office's name: stored (it outlives restarts, TILEWORK_OFFICE_NAME only names a new
+// office), audited with the old and new name, and pushed to everybody online.
+func (s *Server) renameOffice(w http.ResponseWriter, r *http.Request) {
+	se := s.adminSession(w, r)
+	if se == nil {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "1 to 40 characters"})
+		return
+	}
+	name := strings.TrimSpace(strings.Map(func(c rune) rune {
+		if unicode.IsControl(c) || unicode.In(c, unicode.Cf, unicode.Zl, unicode.Zp) { // control, invisible format (bidi, zero-width) and line breaks
+			return -1
+		}
+		return c
+	}, req.Name))
+	if name == "" || utf8.RuneCountInString(name) > 40 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "1 to 40 characters"})
+		return
+	}
+	if !s.renameLim.Allow(strconv.FormatInt(se.UserID, 10)) { // each rename is a broadcast to everybody
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limited"})
+		return
+	}
+	// under s.mu: a world is either already running (and hears the rename) or starts after it (worldFor reads
+	// the stored name), never in between with the old one
+	s.mu.Lock()
+	old, err := s.st.RenameOffice(r.Context(), se.OfficeID, name)
+	wd := s.worlds[se.OfficeID]
+	s.mu.Unlock()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	if wd != nil {
+		wd.Rename(s.ctx, name) // stored already: the push must not depend on the admin's request staying open
+	}
+	s.audit(r, se, "office.rename", se.OfficeID, name, old+" -> "+name)
+	writeJSON(w, http.StatusOK, map[string]string{"name": name})
 }
 
 func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {

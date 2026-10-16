@@ -71,7 +71,7 @@ Everything is configured through environment variables.
 | `TILEWORK_DB` | `data/tilework.db` | SQLite file (WAL mode) |
 | `TILEWORK_STATIC_DIR` | empty | Directory with the built web app to serve |
 | `TILEWORK_ALLOWED_ORIGINS` | empty | WebSocket origin patterns; **required in production** |
-| `TILEWORK_OFFICE_SLUG` / `TILEWORK_OFFICE_NAME` | `default` | Single-office deployment identity |
+| `TILEWORK_OFFICE_SLUG` / `TILEWORK_OFFICE_NAME` | `default` / `Office` | Single-office deployment identity. The name only applies when the office is created; afterwards an administrator renames it under Administration > Office |
 | `TILEWORK_SESSION_DAYS` | `30` | Session cookie lifetime |
 | `TILEWORK_TICK_HZ` | `15` | World tick rate, 5 to 30 |
 | `TILEWORK_AOI_CELLS` | `2` | Area-of-interest radius in 128 px cells |

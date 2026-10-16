@@ -29,7 +29,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .field input, .field select, .search, .composer input { background: #120f24; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; color: var(--ink); width: 100%; }
 .error { color: #ff9a92; margin: 0; }
 .primary { background: var(--amber); color: #2a1d05; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; }
-.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.primary:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn { background: #241f42; border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; display: inline-flex; align-items: center; gap: 8px; }
 .btn:hover { background: #2d2752; }
 

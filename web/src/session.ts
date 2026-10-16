@@ -230,6 +230,7 @@ class Session {
         chime("wave");
         desktopNotify(t("announce.title", { name: m.n }), t("notify.open"));
         break;
+      case "office": setState({ office: m.n }); break;
       case "lreq": setState({ leadRequest: { id: m.from, name: m.n } }); break;
       case "deny": view.setDeny(m.d); setState({ locked: m.lk, denied: m.d }); break;
       case "knk":

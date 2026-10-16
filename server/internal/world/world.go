@@ -64,6 +64,7 @@ const (
 	evView
 	evForce
 	evClaim
+	evRename
 )
 
 type ev struct {
@@ -98,7 +99,7 @@ var ErrFull = errors.New("office is full")
 type World struct {
 	cfg      Config
 	OfficeID int64
-	Name     string
+	Name     string // set before Run; afterwards only the world goroutine touches it (Rename)
 	// RoomPrefix namespaces SFU room names, e.g. "3fa9c1d2.o1". Empty means "o<office id>".
 	RoomPrefix string
 	m          *gamemap.Compiled
@@ -392,6 +393,11 @@ func (w *World) UpdateProfile(ctx context.Context, id uint32, name string, avata
 	w.post(ctx, ev{kind: evProfile, id: id, info: UserInfo{Name: name, Avatar: avatar}})
 }
 
+// Rename changes the office name for everybody online and for later hellos (already stored by the caller).
+func (w *World) Rename(ctx context.Context, name string) {
+	w.post(ctx, ev{kind: evRename, s: name})
+}
+
 // Announce shows a banner to everybody connected to the office (an administrator's message).
 // The text is not stored; it reaches the people online now.
 func (w *World) Announce(ctx context.Context, from, text string) {
@@ -420,6 +426,9 @@ func (w *World) handle(e ev, now time.Time) {
 		return
 	case evAnnounce:
 		w.doAnnounce(e.info.Name, e.s)
+		return
+	case evRename:
+		w.doRename(e.s)
 		return
 	case evClaim:
 		claim := w.doClaimDesk

@@ -51,6 +51,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `wvr` | `id`, `st` ok / busy / away / offline | what happened to your wave |
 | `ac` | `c` [count per area] | visible people per map area, in map order; sent with `hello` and then at most every 2 s when a count changes |
 | `ann` | `n` sender name, `x` text | an administrator's announcement banner (one line, at most 280 characters, never stored) |
+| `office` | `n` name | an administrator renamed the office; later `hello`s carry the new name |
 | `go` | `ok`, `x`, `y`, `near` | a walk-to was accepted (the server now steers you, `self` carries the positions) or refused (`ok: false`: no path, nobody there); `near: true` means the person is behind a door you may not open and the run stops at it; its end arrives as `fol` with `id` 0 |
 | `self` | `x`, `y`, `dx`, `dy`, `d`, `tp` | your authoritative position while following or walking to a place, once more where a guided walk stops, and after a portal (`tp`) |
 | `lreq` | `from`, `n` | somebody asks you to follow them |
@@ -94,6 +95,7 @@ Avatars are `{sk, hs, hc, sh, pa, pt, bd, ht, hk}`. The colours `sk` (skin, 12 s
 | `DELETE /api/admin/members/{id}` | admin | remove a member: sessions deleted, socket closed, call ended. Not yourself, not the last admin (409) |
 | `GET /api/admin/audit` | admin | the latest 100 admin actions, newest first |
 | `POST /api/admin/announce` | admin | `{text}` (1-280 characters): banner to everybody online; one per 15 s per admin (burst 2); audited as `announce` without the text |
+| `PATCH /api/admin/office` | admin | `{name}` (1-40 characters after trimming; control characters removed): renames the office, stored (it outlives restarts) and pushed to everybody online as `office`; audited as `office.rename` with the old and new name; answers `{name}` |
 | `PUT /api/map` | admin | validate, apply and save a new map |
 | `GET /api/admin/map` | admin | the saved map including hidden interactive-object content (the world map redacts it; editors must round-trip through this endpoint or they will erase object content) |
 | `GET /ws` | cookie | the world WebSocket |

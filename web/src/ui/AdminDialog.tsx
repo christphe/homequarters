@@ -3,7 +3,7 @@ import { toast, useStore } from "../store";
 import { hasKey, t, type Key } from "../i18n";
 import { Modal } from "./Modal";
 
-type Tab = "members" | "invites" | "activity" | "announce";
+type Tab = "members" | "invites" | "activity" | "announce" | "office";
 interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number }
 interface InviteRow { id: number; role: string; maxUses: number; uses: number; expiresAt: number; createdAt: number; createdBy: string; status: string }
 interface AuditRow { id: number; actor: string; action: string; target: string; detail: string; at: number }
@@ -20,7 +20,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title={t("admin.title")} onClose={onClose} wide>
       <div className="chips" role="tablist" aria-label={t("admin.title")}>
-        {(["members", "invites", "activity", "announce"] as Tab[]).map((k) => (
+        {(["members", "invites", "activity", "announce", "office"] as Tab[]).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{t(("admin.tab." + k) as Key)}</button>
         ))}
       </div>
@@ -28,6 +28,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
       {tab === "invites" && <Invites />}
       {tab === "activity" && <Activity />}
       {tab === "announce" && <Announce />}
+      {tab === "office" && <OfficeName />}
       <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
     </Modal>
   );
@@ -47,6 +48,25 @@ function Announce() {
       <textarea id="announce-text" value={text} maxLength={280} rows={3} onChange={(e) => setText(e.target.value)} placeholder={t("announce.placeholder")} />
       <small className="muted">{t("announce.hint")}</small>
       <button className="btn" type="submit" disabled={!text.trim()}>{t("announce.send")}</button>
+    </form>
+  );
+}
+
+/** The office name everybody sees at the top of the screen and in the browser tab. Stored, audited, pushed live. */
+function OfficeName() {
+  const current = useStore((s) => s.office);
+  const [name, setName] = useState(current);
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const r = await api<{ name: string }>("PATCH", "/api/admin/office", { name: name.trim() });
+    if (r.ok) { setName(r.json.name ?? name.trim()); toast(t("office.renamed")); } else toast(t(r.status === 429 ? "office.wait" : r.status === 400 ? "office.invalid" : "admin.error"));
+  };
+  return (
+    <form className="field" onSubmit={save}>
+      <label htmlFor="office-name">{t("office.nameLabel")}</label>
+      <input id="office-name" value={name} onChange={(e) => setName(e.target.value)} />
+      <small className="muted">{t("office.nameHint")}</small>
+      <button className="btn" type="submit" disabled={!name.trim() || [...name.trim()].length > 40 || name.trim() === current}>{t("office.save")}</button>
     </form>
   );
 }
