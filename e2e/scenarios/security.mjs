@@ -54,16 +54,26 @@ export async function run(ctx) {
       }
     }, tokenTweak);
 
+    // The attacker must be seen in the SFU room before its eviction means anything: a connection that drops on
+    // its own (a headless ICE/DTLS flake, 1 run in 8 here) empties the room without the reconciler.
+    const seenInRoom = () => waitFor(async () => (await lkParticipants(room)).length > 0, { timeout: 5000, every: 100 }).then(() => true, () => false);
     let replay = await attack("none");
+    let seen = replay === "connected" && await seenInRoom();
     // "could not establish pc connection" is an ICE/DTLS setup flake of the headless browser, not a token verdict
     // (a rejected token fails at the signal step). Retry it once so the check measures the token.
-    if (/pc connection/.test(replay)) replay = await attack("none");
+    if (/pc connection/.test(replay) || (replay === "connected" && !seen)) {
+      await a.page.evaluate(() => window.__attacker?.disconnect());
+      replay = await attack("none");
+      seen = replay === "connected" && await seenInRoom();
+    }
     check("a replayed token can still connect inside its validity window (known, bounded)", replay === "connected", replay);
+    check("the replayed connection shows up in the SFU room", seen);
     const t0 = Date.now();
-    const evicted = await waitFor(async () => (await lkParticipants(room)).length === 0, { timeout: 15000, every: 250, what: "attacker evicted" }).then(() => true).catch(() => false);
+    const evicted = seen && await waitFor(async () => (await lkParticipants(room)).length === 0, { timeout: 15000, every: 250, what: "attacker evicted" }).then(() => true).catch(() => false);
     const rm = await metrics();
     check("the reconciler evicts the replayed connection within seconds", evicted, ((Date.now() - t0) / 1000).toFixed(1) + " s");
-    check("the eviction is counted (tilework_media_reconcile_removals_total)", rm.tilework_media_reconcile_removals_total > (before.tilework_media_reconcile_removals_total ?? 0));
+    const removals = [before.tilework_media_reconcile_removals_total ?? 0, rm.tilework_media_reconcile_removals_total];
+    check("the eviction is counted (tilework_media_reconcile_removals_total)", removals[1] > removals[0], removals.join(" -> "));
     await a.page.evaluate(() => window.__attacker?.disconnect());
 
     // Attack 2: change the room inside the token (private room) without the signing secret.
