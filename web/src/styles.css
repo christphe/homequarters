@@ -164,6 +164,19 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 .toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--amber); padding: 8px 16px; border-radius: 10px; z-index: 30; } /* above dialogs (.scrim is 20): messages from a dialog must show */
+.check-row { display: flex; align-items: center; gap: 8px; }
+.check-row .check { flex: 1; }
+.check-row .round:disabled { opacity: 0.35; cursor: not-allowed; }
+.noise-engines { display: grid; gap: 8px; }
+.noise-engine { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; }
+.noise-engine.on { border-color: var(--amber); }
+.noise-engine span { display: grid; gap: 2px; }
+.noise-test { display: grid; gap: 8px; }
+.noise-test p { margin: 0; }
+.noise-take { font-size: 13px; }
+.noise-take.silent { color: #c0392b; }
+.noise-meter { height: 8px; border-radius: 4px; background: #0002; overflow: hidden; }
+.noise-meter-bar { height: 100%; width: 0; background: #3cc9b0; transition: width 60ms linear; }
 .setting-note { margin: -4px 0 0 30px; font-size: 13px; color: #c0392b; display: grid; gap: 6px; }
 .setting-note p { margin: 0; }
 .setting-url { display: flex; gap: 6px; }

@@ -71,6 +71,9 @@ export function clearShareMessage() {
  * The server decides the room and issues a scoped token; leaving the group
  * disconnects and stops every local track (no capture outside conversations).
  */
+/** How the microphone is captured, in calls and in the microphone test alike. */
+export const micCapture = () => ({ deviceId: getState().prefs.micId || undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+
 // RNNoise needs 48 kHz; one context serves every call (created on first use, after a click)
 let noiseCtx: AudioContext | null = null;
 const noiseContext = () => (noiseCtx ??= new AudioContext({ sampleRate: 48000 }));
@@ -128,7 +131,7 @@ export class MediaManager {
       dynacast: true,
       stopLocalTrackOnUnpublish: true,
       disconnectOnPageLeave: true,
-      audioCaptureDefaults: { deviceId: prefs.micId || undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audioCaptureDefaults: micCapture(),
       videoCaptureDefaults: { deviceId: prefs.camId || undefined, resolution: VideoPresets.h360.resolution },
       // Screens go out at 1080p for readable text, with two cheap layers: small tiles and slow links
       // receive those (adaptive stream picks the layer from the rendered size).
@@ -292,7 +295,8 @@ export class MediaManager {
     room.remoteParticipants.forEach((p: RemoteParticipant) => list.push(mk(p, false)));
     // remote audio elements
     room.remoteParticipants.forEach((p) => {
-      const v = this.volumes.get(p.identity);
+      // a microphone test silences everyone, including people who arrive during it
+      const v = this.micTest ? 0 : this.volumes.get(p.identity);
       if (v !== undefined && p.getVolume() !== v) p.setVolume(v);
       for (const pub of p.trackPublications.values()) {
         if (pub.kind === Track.Kind.Audio && pub.track && !this.audioEls.has(pub.trackSid)) {
@@ -337,23 +341,48 @@ export class MediaManager {
   }
 
   // ---- local controls ----
-  /** Puts RNNoise on the published microphone, or takes it off, to match the setting. */
+  /** Puts the chosen noise suppression on the published microphone, or takes it off, to match the settings. */
   async applyNoiseSuppression() {
     const track = this.room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined;
     if (!track) return;
-    const want = getState().settings.rnnoise, has = track.getProcessor()?.name === "rnnoise";
+    const { denoise, noiseEngine } = getState().settings;
+    const want = denoise ? "noise-" + noiseEngine : "", has = track.getProcessor()?.name ?? "";
+    if (want === has) return;
     try {
-      if (want && !has) {
+      if (has) await track.stopProcessor();
+      if (want) {
         track.setAudioContext(noiseContext());
-        const { rnnoiseProcessor } = await import("./rnnoise");
-        await track.setProcessor(rnnoiseProcessor());
-      } else if (!want && has) {
-        await track.stopProcessor();
+        const { noiseProcessor } = await import("./noise");
+        await track.setProcessor(noiseProcessor(noiseEngine));
       }
     } catch {
       toast(t("media.noiseFailed")); // the microphone keeps working, unfiltered
     }
   }
+
+  /**
+   * While testing the microphone alone: nobody hears me, I hear nobody; restored afterwards. The call's
+   * microphone is released while the test runs and recreated afterwards.
+   */
+  async pauseForMicTest(on: boolean) {
+    const room = this.room;
+    if (!room) return;
+    if (on) {
+      this.testWasMicOn = room.localParticipant.isMicrophoneEnabled;
+      this.micTest = true;
+      room.remoteParticipants.forEach((p) => p.setVolume(0));
+      const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+      if (track) await room.localParticipant.unpublishTrack(track, true); // stops it: the device is free
+    } else {
+      this.micTest = false;
+      room.remoteParticipants.forEach((p) => p.setVolume(this.volumes.get(p.identity) ?? 1));
+      if (this.testWasMicOn && this.publishing) await room.localParticipant.setMicrophoneEnabled(true);
+      this.testWasMicOn = false;
+    }
+    this.refresh();
+  }
+  private testWasMicOn = false;
+  private micTest = false;
 
   async setMic(on: boolean) {
     if (!this.room || !this.publishing) return;
