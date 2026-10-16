@@ -315,12 +315,8 @@ class Session {
   }
   /** Takes the free desk I stand next to; the server checks everything and sends everybody the new map. */
   async claimDesk(desk: Prop): Promise<boolean> {
-    const name = desk.label || t("desk.name");
     const r = await fetch("/api/desk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x: desk.x, y: desk.y }) }).catch(() => null);
-    if (r?.ok) {
-      toast(t("desk.claimed", { name }));
-      return true;
-    }
+    if (r?.ok) return true; // the button changes and the desk gets its mat: no toast needed
     const reason = ((await r?.json().catch(() => null)) as { error?: string } | null)?.error;
     toast(t(reason === "far" || reason === "taken" || reason === "has_place" || reason === "room" ? `desk.err.${reason}` : "desk.err.other"));
     return false;
@@ -328,7 +324,7 @@ class Session {
   /** Frees my own desk (I stand in its room); the server checks it and sends everybody the new map. */
   async releaseDesk(desk: Prop): Promise<boolean> {
     const r = await fetch("/api/desk/release", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x: desk.x, y: desk.y }) }).catch(() => null);
-    toast(r?.ok ? t("desk.released", { name: desk.label || t("desk.name") }) : t("desk.err.release"));
+    if (!r?.ok) toast(t("desk.err.release"));
     return !!r?.ok;
   }
   wave(id: number) { this.socket?.send({ t: "wave", id }); }
