@@ -243,3 +243,43 @@ func TestOfficeOwnersAreBounded(t *testing.T) {
 		t.Fatal("an office lists at most four owners")
 	}
 }
+
+// "Walk to" the owner of an assigned office stops at its door (nobody walks in uninvited); once let
+// in, the same walk goes all the way onto their tile.
+func TestWalkToAnOfficeOwnerStopsAtTheDoorUntilLetIn(t *testing.T) {
+	h := newHarness(t)
+	oi := assignOffice(t, h, "office-1", 1)
+	owner := h.add(1, "member", officeDoorX, hallY+16)
+	h.teleport(owner, officeDoorX, hallY)
+	walkIn(h, owner, 1)
+	if owner.area != oi {
+		t.Fatalf("the owner walks into their office, area %d", owner.area)
+	}
+	visitor := h.add(2, "member", 30*16+8, 36*16+8) // further down the hall
+	drain(visitor)
+	h.send(visitor, ev{kind: evGoto, id: 1})
+	if got := frames(visitor); !strings.Contains(got, `"near":true`) {
+		t.Fatalf("an assigned office is closed to the visitor: %q", got)
+	}
+	h.run(10 * time.Second)
+	if visitor.area == oi {
+		t.Fatal("the visitor must not walk into somebody else's office")
+	}
+	door := tileOf(officeDoorX, hallY)
+	if at := tileOf(visitor.X, visitor.Y); at.x < door.x-1 || at.x > door.x+1 || at.y < door.y-1 || at.y > door.y+1 {
+		t.Fatalf("the visitor stops at the office door %v, is on %v", door, at)
+	}
+
+	h.now = h.now.Add(5 * time.Second)
+	h.send(visitor, ev{kind: evKnock, x: oi})
+	h.send(owner, ev{kind: evKnockAns, id: 2, b: true})
+	drain(visitor)
+	h.send(visitor, ev{kind: evGoto, id: 1})
+	if got := frames(visitor); !strings.Contains(got, `"ok":true`) || strings.Contains(got, `"near"`) {
+		t.Fatalf("once let in, the walk goes all the way: %q", got)
+	}
+	h.run(10 * time.Second)
+	if tileOf(visitor.X, visitor.Y) != tileOf(owner.X, owner.Y) {
+		t.Fatalf("the admitted visitor ends on the owner's tile, is at (%.0f,%.0f), owner (%.0f,%.0f)", visitor.X, visitor.Y, owner.X, owner.Y)
+	}
+}

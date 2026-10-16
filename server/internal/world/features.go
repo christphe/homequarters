@@ -157,18 +157,24 @@ func (w *World) stopFollow(p *Player, now time.Time, notify, halt bool) {
 	}
 }
 
-// doGoto starts a guided run to a tile (id == 0) or next to another player. It reuses the follow
-// machinery: the path is searched on the server, so walls and locked rooms are respected.
+// doGoto starts a guided run to a tile (id == 0) or onto another player's tile. It reuses the follow
+// machinery: the path is searched on the server, so walls and locked rooms are respected. A person
+// behind a door the walker may not open is walked to as close as possible, and the reply says so.
 func (w *World) doGoto(p *Player, x, y int, id uint32, now time.Time) {
 	var dest tile
 	gap := 0.0
+	near := false
 	if id != 0 {
 		q := w.players[id]
 		if q == nil || q == p || q.Status == StatusInvisible || q.out == nil {
 			w.sendJSON(p, map[string]any{"t": "go", "ok": false})
 			return
 		}
-		dest, gap = tileOf(q.X, q.Y), followGap
+		// onto their tile: stopping a step short leaves the walker outside a small office or desk room
+		dest = tileOf(q.X, q.Y)
+		if from := tileOf(p.X, p.Y); from != dest && w.findPath(p, from, dest) == nil {
+			dest, near = w.closestReachable(p, from, dest), true
+		}
 	} else {
 		if x < 0 || y < 0 || x >= w.m.W || y >= w.m.H {
 			return
@@ -196,7 +202,48 @@ func (w *World) doGoto(p *Player, x, y int, id uint32, now time.Time) {
 		p.shadowAt = now
 		w.sendState(p, now) // now at run speed
 	}
+	if near {
+		w.sendJSON(p, map[string]any{"t": "go", "ok": true, "x": dest.x, "y": dest.y, "near": true})
+		return
+	}
 	w.sendJSON(p, map[string]any{"t": "go", "ok": true, "x": dest.x, "y": dest.y})
+}
+
+// closestReachable is the tile the player can walk to that is nearest to `to` (straight-line), the
+// shorter walk winning a tie. Used when `to` itself is behind a door the player may not open.
+func (w *World) closestReachable(p *Player, from, to tile) tile {
+	W, H := w.m.W, w.m.H
+	s := w.bfsReset()
+	start := int32(int(from.y)*W + int(from.x))
+	s.queue = append(s.queue[:0], start)
+	s.seen[start] = s.gen
+	best, bestD := from, sq(from, to)
+	dirs := [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+	for head := 0; head < len(s.queue); head++ {
+		cur := s.queue[head]
+		cx, cy := int(cur)%W, int(cur)/W
+		if d := sq(tile{int16(cx), int16(cy)}, to); d < bestD {
+			best, bestD = tile{int16(cx), int16(cy)}, d
+		}
+		for _, d := range dirs {
+			nx, ny := cx+d[0], cy+d[1]
+			if nx < 0 || ny < 0 || nx >= W || ny >= H {
+				continue
+			}
+			ni := int32(ny*W + nx)
+			if s.seen[ni] == s.gen || !w.walkable(p, tile{int16(nx), int16(ny)}) {
+				continue
+			}
+			s.seen[ni] = s.gen
+			s.queue = append(s.queue, ni)
+		}
+	}
+	return best
+}
+
+func sq(a, b tile) int {
+	dx, dy := int(a.x)-int(b.x), int(a.y)-int(b.y)
+	return dx*dx + dy*dy
 }
 
 // setDrive applies a server-chosen direction, exactly like a client input would.
@@ -328,25 +375,36 @@ type bfsScratch struct {
 
 // findPath returns the tiles from (excluding) 'from' to (including) 'to' over tiles p may stand on,
 // or nil. Portals are avoided so a follower does not teleport by accident.
-func (w *World) findPath(p *Player, from, to tile) []tile {
-	W, H := w.m.W, w.m.H
-	n := W * H
+// bfsReset readies the shared search buffers for a new search.
+func (w *World) bfsReset() *bfsScratch {
+	n := w.m.W * w.m.H
 	s := &w.bfs
 	if len(s.seen) != n {
 		s.seen, s.prev, s.queue, s.gen = make([]uint32, n), make([]int32, n), make([]int32, 0, 256), 0
 	}
 	s.gen++
-	pass := func(t tile) bool {
-		x, y := int(t.x), int(t.y)
-		if x < 0 || y < 0 || x >= W || y >= H || w.m.Solid[y*W+x] {
-			return false
-		}
-		if _, portal := w.m.Portals[y*W+x]; portal {
-			return false
-		}
-		ai := w.m.AreaIndexAt(x, y)
-		return ai == p.area || w.canEnterArea(p, ai)
+	return s
+}
+
+// walkable reports whether p may stand on tile t: not a wall or a portal, and not inside a room p
+// may not enter.
+func (w *World) walkable(p *Player, t tile) bool {
+	W, H := w.m.W, w.m.H
+	x, y := int(t.x), int(t.y)
+	if x < 0 || y < 0 || x >= W || y >= H || w.m.Solid[y*W+x] {
+		return false
 	}
+	if _, portal := w.m.Portals[y*W+x]; portal {
+		return false
+	}
+	ai := w.m.AreaIndexAt(x, y)
+	return ai == p.area || w.canEnterArea(p, ai)
+}
+
+func (w *World) findPath(p *Player, from, to tile) []tile {
+	W, H := w.m.W, w.m.H
+	s := w.bfsReset()
+	pass := func(t tile) bool { return w.walkable(p, t) }
 	if from == to || !pass(to) {
 		return nil
 	}
