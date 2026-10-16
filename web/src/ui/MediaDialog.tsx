@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { describeMediaError } from "../media/MediaManager";
+import { describeMediaError, media, spotlightMedia } from "../media/MediaManager";
 import { session } from "../session";
 import { savePrefs, useStore } from "../store";
 import { t } from "../i18n";
@@ -7,7 +7,11 @@ import { Modal } from "./Modal";
 
 const canPickOutput = typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
 
-export function MediaDialog({ onClose }: { onClose: () => void }) {
+/**
+ * "enable": the first opt-in to audio and video, with device choice. "devices": the same choice later, from
+ * the settings; the call is paused meanwhile and resumes on the chosen devices.
+ */
+export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void; mode?: "enable" | "devices" }) {
   const prefs = useStore((s) => s.prefs);
   const [micOn, setMicOn] = useState(prefs.micOn);
   const [camOn, setCamOn] = useState(prefs.camOn);
@@ -23,6 +27,7 @@ export function MediaDialog({ onClose }: { onClose: () => void }) {
 
   const stop = useCallback(() => {
     stopAudio.current();
+    stopAudio.current = () => {}; // once: stopping twice would close a closed AudioContext
     stream.current?.getTracks().forEach((tr) => tr.stop());
     stream.current = null;
     if (video.current) video.current.srcObject = null;
@@ -86,13 +91,28 @@ export function MediaDialog({ onClose }: { onClose: () => void }) {
   const activate = () => {
     stop();
     savePrefs({ micOn, camOn, micId, camId, spkId });
-    session.setConsent(true);
+    if (mode === "enable") session.setConsent(true);
+    else
+      for (const m of [media, spotlightMedia]) {
+        void m.switchDevice("videoinput", camId);
+        void m.switchDevice("audiooutput", spkId);
+      }
     onClose();
   };
 
+  useEffect(() => {
+    if (mode !== "devices") return;
+    void media.pauseForMicTest(true);
+    void spotlightMedia.pauseForMicTest(true);
+    return () => {
+      void media.pauseForMicTest(false);
+      void spotlightMedia.pauseForMicTest(false);
+    };
+  }, [mode]);
+
   return (
-    <Modal title={t("media.enable")} onClose={onClose}>
-      <p className="muted">{t("media.consentText")}</p>
+    <Modal title={mode === "enable" ? t("media.enable") : t("media.devices")} onClose={onClose}>
+      {mode === "enable" ? <p className="muted">{t("media.consentText")}</p> : <p className="muted">{t("media.devicesText")}</p>}
       <div className="preview">
         <video ref={video} autoPlay muted playsInline className="mirror" />
         {!camOn && <span className="ph">{t("media.cameraOff")}</span>}
@@ -123,7 +143,7 @@ export function MediaDialog({ onClose }: { onClose: () => void }) {
       )}
       <div className="modal-actions">
         <button className="btn" onClick={onClose}>{t("media.cancel")}</button>
-        <button className="primary" onClick={activate}>{t("media.activate")}</button>
+        <button className="primary" onClick={activate}>{mode === "enable" ? t("media.activate") : t("media.save")}</button>
       </div>
     </Modal>
   );

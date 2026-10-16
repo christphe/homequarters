@@ -117,6 +117,16 @@ export async function run(ctx) {
     const resumed = await noise(admin);
     const heardGtcrn = await heard(boss);
     check("closing the options resumes the call, now through RNNoise, and the other person hears it", resumed.micOn && resumed.name === "noise-rnnoise" && resumed.sendsProcessed && heardGtcrn > 1000, JSON.stringify({ ...resumed, bytes: heardGtcrn }));
+    // devices can be changed from the settings at any time; the call pauses meanwhile and comes back
+    await openSettings(admin);
+    await admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Microphone, camera and speaker")?.click());
+    await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".modal")].some((m) => m.querySelector("select") && m.textContent.includes("call is paused"))), { what: "devices dialog" });
+    await waitFor(async () => !(await noise(admin)).micOn, { timeout: 8000, what: "mic released for the device preview" }).catch(() => {});
+    const duringDevices = (await noise(admin)).micOn;
+    await admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Save")?.click());
+    await admin.page.keyboard.press("Escape"); // the settings
+    await waitFor(async () => (await noise(admin)).micOn, { timeout: 15000, what: "mic back after the device dialog" }).catch(() => {});
+    check("the settings reopen the device choice mid-call: the call pauses, then the microphone comes back", !duringDevices && (await noise(admin)).micOn);
     await toggleNoise(admin);
     await waitFor(async () => (await noise(admin)).name === "", { timeout: 10000, what: "noise suppression off" }).catch(() => {});
     check("switching it off takes the filter off the microphone", (await noise(admin)).name === "");
