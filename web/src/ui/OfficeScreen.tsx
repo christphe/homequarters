@@ -66,7 +66,7 @@ export function OfficeScreen() {
         {area && <span className="pill">{area}</span>}
         {demo && <span className="pill" title={t("demo.reset", { time: new Date(demo.nextReset * 1000).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" }) })}>{t("demo.pill")}</span>}
         {conn !== "open" && conn !== "connecting" && <span className="pill warn" role="status">{conn === "replaced" ? t("conn.replaced") : t("conn.reconnecting")}</span>}
-        <span className="spacer" />
+        <div className="spacer topbar-slot" id="topbar-reactions" />
         <button className="btn" onClick={() => setDialog("keys")} aria-label={t("keys.open")} title={t("keys.open")}>?</button>
         <AdminButton onOpen={() => setDialog("admin")} />
         {role === "admin" && !editing && <button className="btn" onClick={() => setEditing(true)}>{t("editor.open")}</button>}
