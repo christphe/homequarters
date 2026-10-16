@@ -97,6 +97,20 @@ export async function run(ctx) {
       return true;
     };
     check("Tab stays inside an open dialog (focus trap)", await trapped());
+    // the appearance editor opens over the settings: audited, and Escape closes only the top one
+    await p.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Change appearance")?.click());
+    await waitFor(() => p.$(".modal.huge"), { what: "appearance dialog" });
+    await audit(p, "the appearance dialog");
+    const layout = await p.evaluate(() => {
+      const opt = document.querySelector(".appearance-options").getBoundingClientRect();
+      const views = document.querySelector(".appearance-views").getBoundingClientRect();
+      const act = document.querySelector(".modal.huge .modal-actions").getBoundingClientRect();
+      return { optBottom: Math.round(opt.bottom), viewsBottom: Math.round(views.bottom), actionsTop: Math.round(act.top), vh: innerHeight, w: innerWidth };
+    });
+    check("the appearance options scroll above the buttons, never under them", layout.optBottom <= layout.actionsTop && layout.viewsBottom <= layout.actionsTop, JSON.stringify(layout));
+    await p.keyboard.press("Escape");
+    await sleep(200);
+    check("Escape closes the appearance dialog and leaves the settings open", !(await p.$(".modal.huge")) && !!(await p.$(".modal")));
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "dialog closed by Escape" });
     check("Escape closes the dialog", true);

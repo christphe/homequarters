@@ -79,6 +79,9 @@ export async function run(ctx) {
     await waitFor(() => b.page.$('.modal input[aria-label]'), { what: "settings dialog" });
     await b.page.$eval('.modal input[aria-label]', (el) => el.select());
     await b.page.type('.modal input[aria-label]', "Novo" + t);
+    // the look is edited in its own dialog, opened from the settings
+    await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((x) => x.textContent === "Change appearance")?.click());
+    await waitFor(() => b.page.$(".modal.huge"), { what: "appearance dialog" });
     // hair style, beard and hat through the avatar editor's own radio groups
     const pick = (group, label) => b.page.evaluate((g, l) => {
       const r = [...document.querySelectorAll(`.modal [role=radiogroup][aria-labelledby=${g}] [role=radio]`)].find((x) => x.textContent === l);
@@ -96,7 +99,8 @@ export async function run(ctx) {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "#12ab9f");
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((x) => x.textContent === "Save profile")?.click());
+    await b.page.evaluate(() => [...document.querySelectorAll(".modal.huge button")].find((x) => x.textContent === "Save")?.click());
+    await waitFor(async () => !(await b.page.$(".modal.huge")), { what: "appearance dialog closes on Save" });
     await waitFor(() => a.page.evaluate((n, id) => window.__tilework.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
     check("a profile change reaches other people's roster live", true);
     const seen = await a.page.evaluate((id) => window.__tilework.state.roster.get(id)?.av, b.id);
