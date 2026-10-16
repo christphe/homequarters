@@ -66,34 +66,43 @@ function Chips({ id, label, ids, prefix, value, onPick }: { id: string; label: s
   );
 }
 
+/** The join screen's editor: a front preview next to every option. */
 export function AvatarEditor({ value: raw, onChange }: { value: AvatarSpec; onChange: (a: AvatarSpec) => void }) {
   const value = useMemo(() => normaliseSpec(raw), [raw]);
-  const set = (p: Partial<AvatarSpec>) => onChange({ ...value, ...p });
   return (
     <div className="avatar-editor">
       <div className="ae-preview">
         <AvatarCanvas av={value} dir={0} size={5} />
         {!!value.pt && <PetCanvas kind={value.pt} dir={0} size={4} />}
       </div>
-      <div className="ae-controls">
-        <Swatches label={t("avatar.skin")} colors={SKIN} value={value.sk} onPick={(c) => set({ sk: c })} />
-        <Chips id="ae-hair" label={t("avatar.hair")} ids={HAIR_STYLE_IDS} prefix="hair" value={value.hs} onPick={(i) => set({ hs: i })} />
-        <Swatches label={t("avatar.hairColor")} colors={HAIR} value={value.hc} onPick={(c) => set({ hc: c })} />
-        <Chips id="ae-beard" label={t("avatar.beard")} ids={BEARD_IDS} prefix="beard" value={value.bd ?? 0} onPick={(i) => set({ bd: i })} />
-        <Chips id="ae-hat" label={t("avatar.hat")} ids={HAT_IDS} prefix="hat" value={value.ht ?? 0} onPick={(i) => set({ ht: i })} />
-        {!!value.ht && <Swatches label={t("avatar.hatColor")} colors={HAT_COLORS} value={value.hk ?? 0} onPick={(c) => set({ hk: c })} />}
-        <Swatches label={t("avatar.shirt")} colors={SHIRT} value={value.sh} onPick={(c) => set({ sh: c })} />
-        <Swatches label={t("avatar.pants")} colors={PANTS} value={value.pa} onPick={(c) => set({ pa: c })} />
-        <div className="ae-row">
-          <span className="ae-label" id="ae-pet">{t("avatar.pet")}</span>
-          <div className="chips pets" role="radiogroup" aria-labelledby="ae-pet">
-            {PET_KINDS.map((n, i) => (
-              <button key={n} type="button" role="radio" aria-checked={(value.pt ?? 0) === i} className={"chip pet-chip" + ((value.pt ?? 0) === i ? " on" : "")} title={t(`pet.${n}` as Key)} onClick={() => set({ pt: i })}>
-                {i > 0 && <PetCanvas kind={i} size={2} />}
-                <span>{t(`pet.${n}` as Key)}</span>
-              </button>
-            ))}
-          </div>
+      <AvatarControls value={value} onChange={onChange} />
+    </div>
+  );
+}
+
+/** Every appearance option: hair, colours, beard, hat, clothes, pet. */
+export function AvatarControls({ value: raw, onChange }: { value: AvatarSpec; onChange: (a: AvatarSpec) => void }) {
+  const value = useMemo(() => normaliseSpec(raw), [raw]);
+  const set = (p: Partial<AvatarSpec>) => onChange({ ...value, ...p });
+  return (
+    <div className="ae-controls">
+      <Swatches label={t("avatar.skin")} colors={SKIN} value={value.sk} onPick={(c) => set({ sk: c })} />
+      <Chips id="ae-hair" label={t("avatar.hair")} ids={HAIR_STYLE_IDS} prefix="hair" value={value.hs} onPick={(i) => set({ hs: i })} />
+      <Swatches label={t("avatar.hairColor")} colors={HAIR} value={value.hc} onPick={(c) => set({ hc: c })} />
+      <Chips id="ae-beard" label={t("avatar.beard")} ids={BEARD_IDS} prefix="beard" value={value.bd ?? 0} onPick={(i) => set({ bd: i })} />
+      <Chips id="ae-hat" label={t("avatar.hat")} ids={HAT_IDS} prefix="hat" value={value.ht ?? 0} onPick={(i) => set({ ht: i })} />
+      {!!value.ht && <Swatches label={t("avatar.hatColor")} colors={HAT_COLORS} value={value.hk ?? 0} onPick={(c) => set({ hk: c })} />}
+      <Swatches label={t("avatar.shirt")} colors={SHIRT} value={value.sh} onPick={(c) => set({ sh: c })} />
+      <Swatches label={t("avatar.pants")} colors={PANTS} value={value.pa} onPick={(c) => set({ pa: c })} />
+      <div className="ae-row">
+        <span className="ae-label" id="ae-pet">{t("avatar.pet")}</span>
+        <div className="chips pets" role="radiogroup" aria-labelledby="ae-pet">
+          {PET_KINDS.map((n, i) => (
+            <button key={n} type="button" role="radio" aria-checked={(value.pt ?? 0) === i} className={"chip pet-chip" + ((value.pt ?? 0) === i ? " on" : "")} title={t(`pet.${n}` as Key)} onClick={() => set({ pt: i })}>
+              {i > 0 && <PetCanvas kind={i} size={2} />}
+              <span>{t(`pet.${n}` as Key)}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>
