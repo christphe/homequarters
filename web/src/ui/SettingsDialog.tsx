@@ -5,6 +5,8 @@ import { saveAvatar, saveSettings, toast, useStore } from "../store";
 import type { AvatarSpec } from "../net/protocol";
 import { AvatarCanvas, PetCanvas } from "./AvatarEditor";
 import { AppearanceDialog } from "./AppearanceDialog";
+import { NoiseDialog } from "./NoiseDialog";
+import { GearIcon } from "./Icons";
 import { askNotifyPermission } from "../notify";
 import { askOsIdle, IDLE_SETTINGS_URL, osIdleSupported } from "../osIdle";
 import { t } from "../i18n";
@@ -20,6 +22,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [deviceLink, setDeviceLink] = useState("");
   const [dressing, setDressing] = useState(false);
   const [idleBlocked, setIdleBlocked] = useState(false);
+  const [noiseOpen, setNoiseOpen] = useState(false);
   const makeDeviceLink = async () => {
     const r = await fetch("/api/account-link", { method: "POST" });
     if (!r.ok) return toast(t("settings.deviceError"));
@@ -73,10 +76,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <input type="checkbox" checked={s.eco} onChange={(e) => { saveSettings({ eco: e.target.checked, maxVideos: e.target.checked ? Math.min(s.maxVideos, 3) : s.maxVideos }); session.setEco(e.target.checked); media.applySubscriptions(); }} />
         <span>{t("settings.eco")}<small className="muted"> — {t("settings.ecoHint")}</small></span>
       </label>
-      <label className="check">
-        <input type="checkbox" checked={s.rnnoise} onChange={(e) => { saveSettings({ rnnoise: e.target.checked }); void media.applyNoiseSuppression(); void spotlightMedia.applyNoiseSuppression(); }} />
-        <span>{t("settings.rnnoise")}<small className="muted"> — {t("settings.rnnoiseHint")}</small></span>
-      </label>
+      <div className="check-row">
+        <label className="check">
+          <input type="checkbox" checked={s.denoise} onChange={(e) => { saveSettings({ denoise: e.target.checked }); void media.applyNoiseSuppression(); void spotlightMedia.applyNoiseSuppression(); }} />
+          <span>{t("settings.denoise")}<small className="muted"> — {t("settings.denoiseHint")}</small></span>
+        </label>
+        <button className="round ghost" disabled={!s.denoise} aria-label={t("noise.title")} title={t("noise.title")} onClick={() => setNoiseOpen(true)}><GearIcon /></button>
+      </div>
+      {noiseOpen && <NoiseDialog onClose={() => setNoiseOpen(false)} />}
       <label className="check">
         <input type="checkbox" checked={s.audioOnly} onChange={(e) => { saveSettings({ audioOnly: e.target.checked }); if (e.target.checked) void activeMedia().setCam(false); media.applySubscriptions(); spotlightMedia.applySubscriptions(); }} />
         <span>{t("media.audioOnly")}</span>
