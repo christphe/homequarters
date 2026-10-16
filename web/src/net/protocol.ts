@@ -118,7 +118,7 @@ export interface MapUpdate { t: "map"; deny: number[]; x?: number; y?: number; m
 export interface Emote { t: "e"; id: number; v: number }
 export interface ObjectReply { t: "obj"; k: "note" | "embed" | "image"; l: string; d: string }
 export interface Follow { t: "fol"; id: number; n: string }
-export interface GoResult { t: "go"; ok: boolean; x?: number; y?: number }
+export interface GoResult { t: "go"; ok: boolean; x?: number; y?: number; near?: boolean } // near: stopped at a closed door
 export interface Wave { t: "wv"; from: number; n: string }
 export interface WaveResult { t: "wvr"; id: number; st: "ok" | "wait" | "offline" }
 export interface AreaCounts { t: "ac"; c: number[] }

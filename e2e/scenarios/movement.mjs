@@ -252,8 +252,20 @@ export async function run() {
     await walkTo(b, 9 * 16 + 8, 6 * 16 + 8);
     const t0 = Date.now();
     await click(a, "Walk to " + b.name, ".people button");
-    await waitFor(async () => dist(await pos(a), await pos(b)) < 40 && !(await read(a, () => window.__tilework.view.guided)), { timeout: 30000, what: "walk to person arrives" });
-    check("Walk to (people panel) runs next to the person around walls", true, ((Date.now() - t0) / 1000).toFixed(1) + " s");
+    const sameTile = (p, q) => Math.floor(p.x / 16) === Math.floor(q.x / 16) && Math.floor(p.y / 16) === Math.floor(q.y / 16);
+    await waitFor(async () => sameTile(await pos(a), await pos(b)) && !(await read(a, () => window.__tilework.view.guided)), { timeout: 30000, what: "walk to person arrives" });
+    check("Walk to (people panel) runs onto the person's tile around walls", true, ((Date.now() - t0) / 1000).toFixed(1) + " s");
+
+    // ---- ...but a locked room keeps the walker at its door, and says why
+    await walkTo(b, 50 * 16 + 8, 4 * 16 + 8); // Aurora, an open meeting room
+    await waitFor(() => click(b, "Lock room"), { what: "lock control" });
+    await waitFor(() => read(a, (id) => window.__tilework.state.locked.length > 0, b.id), { what: "lock reaches the walker" });
+    await click(a, "Walk to " + b.name, ".people button");
+    await waitFor(() => read(a, () => document.querySelector(".toast")?.textContent.includes("stop at the door")), { what: "closed-door toast" });
+    await waitFor(async () => !(await read(a, () => window.__tilework.view.guided)), { timeout: 30000, what: "walk to the door ends" });
+    const atDoor = await pos(a);
+    check("Walk to a person in a locked room stops outside, at the door", atDoor.x < 45 * 16 && dist(atDoor, await pos(b)) < 8 * 16, JSON.stringify(atDoor));
+    await click(b, "Unlock room");
 
     // ---- refused targets ----
     await read(a, () => window.__tilework.view.goTo(50, 10)); // admin-only boardroom
