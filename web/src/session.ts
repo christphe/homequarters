@@ -126,7 +126,7 @@ class Session {
         // The server replays the persisted office chat on every connect; other scopes are kept as they are.
         const history: ChatMsg[] = (m.chat ?? []).map((c) => ({ id: ++this.chatId, sc: "o", from: c.f, text: c.x, ts: c.ts, n: c.n }));
         setState({ chat: [...history, ...getState().chat.filter((c) => c.sc !== "o")] });
-        setState({ meId: m.you, role: m.role, status: m.status, office: m.office, mediaAvailable: m.cfg.media, roster, phase: "play", locked: m.cfg.lk ?? [] });
+        setState({ meId: m.you, role: m.role, status: m.status, office: m.office, mediaAvailable: m.cfg.media, roster, phase: "play", locked: m.cfg.lk ?? [], denied: m.cfg.deny ?? [] });
         view.setMap(m.map, m.cfg.deny);
         view.clearRemote();
         view.setMe(m.you, m.cfg.x, m.cfg.y, m.cfg.speed, m.cfg.run ?? 2);
@@ -171,6 +171,7 @@ class Session {
         break;
       case "map":
         view.setMap(m.map, m.deny);
+        setState({ denied: m.deny ?? [] });
         if (m.x !== undefined && m.y !== undefined) view.teleport(m.x, m.y);
         break;
       case "loc":
@@ -210,7 +211,7 @@ class Session {
         desktopNotify(t("announce.title", { name: m.n }), t("notify.open"));
         break;
       case "lreq": setState({ leadRequest: { id: m.from, name: m.n } }); break;
-      case "deny": view.setDeny(m.d); setState({ locked: m.lk }); break;
+      case "deny": view.setDeny(m.d); setState({ locked: m.lk, denied: m.d }); break;
       case "knk":
         if (m.done) { if (getState().knock?.id === m.id) setState({ knock: null }); }
         else setState({ knock: { id: m.id, name: m.n ?? "", area: m.a ?? "" } });
