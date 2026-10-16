@@ -83,6 +83,8 @@ Art (output goes to `site/assets/`; details in `docs/art-style.md`):
 
 - Go: standard library first, `gofmt`, table-driven tests where natural, no dependency for what a few lines do. Keep `internal/media` the only package that speaks to LiveKit.
 - TypeScript: `strict` is on; keep `tsc --noEmit` clean. Prefer small modules; keep hot paths allocation-light.
+- Web Audio: create (or resume) an `AudioContext` inside the click that needs it; made after an `await` it may stay suspended and silent. A node that processes mono sets `channelCount = 1` with `channelCountMode = "explicit"`, or a stereo microphone loses half its signal. Playback the user hears goes to the chosen speaker (`setSinkId`).
+- Toasts sit above dialogs (`.toast` z-index over `.scrim`) so a message raised from a dialog shows.
 - Validate all external input: WebSocket messages, avatars, maps, uploads. Enforce size and rate limits.
 - Media tokens are short (30 s, LiveKit adds 60 s of leeway) and the reconciler in `httpapi` removes unknown SFU participants: keep both when touching `internal/media`.
 - Protocol changes: update `web/src/net/protocol.ts`, `docs/protocol.md` and the world tests together.
@@ -108,14 +110,15 @@ Other agents or people may be working in the same tree at the same time.
 
 ## Testing notes and gotchas
 
-- The browser exposes `window.__tilework` (view, media, state, session) for tests. Drive movement with `view.setDirection`, not synthetic key events.
+- The browser exposes `window.__tilework` (view, media, state, session, `cachedLooks()` for the avatar texture cache size, `chimes` for the last chimes played) for tests. Drive movement with `view.setDirection`, not synthetic key events.
 - `window.__tilework` shortcuts are for setup; every feature also needs one check through its real controls with its panel open (the chat crash hid behind API-only sends).
 - `node run.mjs capture-pet` writes frames and a contact sheet to a fresh folder under `/tmp/tilework-capture`; copy it for new `capture-*` scenarios. They are not in the default suite.
 - LiveKit's client may use a single peer connection; read RTP stats from `room.engine.pcManager.subscriber?.pc ?? publisher.pc` (see `rtpBytes` in `e2e/lib.mjs`).
 - Editing client files while the Vite dev server runs can trigger a full reload and break a running E2E script; rerun it.
 - Avatar sheet cells are 18x30 px (16x24 body plus a 1 px outline margin and 4 rows on top for hats and tall hair). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops rows 4-28 when it reuses cells. Name tags follow the drawing's real top (`AvatarFrames.tall`), not the cell height.
 - The camera uses integer zoom (`VIEW_REF_W/H` in `WorldView.ts`). Keep the server's area of interest large enough to cover the visible world at the smallest zoom.
-- Tests that need real media use Chrome flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`.
+- Tests that need real media use Chrome flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`. The fake microphone is a beep: it proves audio flows, not how well noise suppression cleans a voice.
+- On Windows, video RTP does not cross Docker Desktop's network, so the video RTP checks of `proximity` and `spotlight` fail locally; leave them to CI. Vite may listen on `::1` only: open `http://localhost`, not `127.0.0.1`.
 - Load generators must run **outside** the machine being measured.
 
 ## The site (GitHub Pages)
