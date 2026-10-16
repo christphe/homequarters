@@ -67,6 +67,15 @@ export async function run(ctx) {
     await click(a, "Let in");
     await walkTo(b, 46 * 16 + 8, 5 * 16 + 8);
     check("Let in opens the door only for the accepted visitor", (await pos(b)).x > 45 * 16);
+    // whoever locked the room stays let in: stepping out and back, they get no Knock or Enter anyway
+    // buttons (the room stays locked: B is still inside) and walk straight back in
+    await walkTo(a, 43 * 16 + 8, 4 * 16 + 8); // right outside the door, where the door buttons show
+    await sleep(800);
+    const hasBtn = (u, re) => u.page.evaluate((src) => [...document.querySelectorAll("button")].some((x) => new RegExp(src).test(x.textContent.trim())), re.source);
+    const offered = { knock: await hasBtn(a, /^Knock · Aurora/), force: await hasBtn(a, /^Enter anyway/), stillLocked: await read(a, () => window.__tilework.state.locked.includes(3)) };
+    check("the person who locked a room and stepped out is not offered Knock or Enter anyway", offered.stillLocked && !offered.knock && !offered.force, JSON.stringify(offered));
+    await walkTo(a, 46 * 16 + 8, 5 * 16 + 8);
+    check("...and walks straight back in", (await pos(a)).x > 45 * 16);
     await click(a, "Unlock room");
 
     // Editing existing content must use the authenticated full map, not the redacted world map.

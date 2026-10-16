@@ -70,6 +70,8 @@ export interface State {
   following: { id: number; name: string } | null;
   leadRequest: { id: number; name: string } | null;
   locked: number[];
+  /** Rooms the server keeps me out of right now (locked and not let in, or somebody else's office). */
+  denied: number[];
   knock: { id: number; name: string; area: string } | null;
   boardKey: string;
   /** The local player runs (Shift held, or "always run" on). */
@@ -122,6 +124,7 @@ const initial: State = {
   following: null,
   leadRequest: null,
   locked: [],
+  denied: [],
   knock: null,
   boardKey: "",
   running: false,
