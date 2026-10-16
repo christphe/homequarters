@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { UpdateBanner } from "./UpdateBanner";
 import { session } from "../session";
 import { setState, useStore } from "../store";
 import { t } from "../i18n";
@@ -77,6 +78,7 @@ export function OfficeScreen() {
           <button className="btn" onClick={() => setState({ announcement: null })} aria-label={t("announce.dismiss")} title={t("announce.dismiss")}>×</button>
         </div>
       )}
+      <UpdateBanner />
       <SidePanel />
       {!editing && <SocialControls />}
       {!editing && <Minimap />}

@@ -728,3 +728,19 @@ func nPendingPos(p *Player) int {
 	}
 	return n
 }
+
+// hello names the server's version, so a client loaded from an older page knows it is out of date.
+func TestHelloCarriesTheServerVersion(t *testing.T) {
+	h := newHarness(t)
+	h.w.cfg.Version = `9fc44ab"x`
+	a := h.add(1, "member", sx, sy)
+	hello := ""
+	for _, f := range drain(a) {
+		if strings.HasPrefix(f, `{"t":"hello"`) {
+			hello = f
+		}
+	}
+	if !strings.Contains(hello, `"ver":"9fc44ab\"x"`) {
+		t.Fatalf("hello must carry the version, JSON-escaped: %s", hello[:240])
+	}
+}

@@ -11,6 +11,7 @@ import { getState, setState, toast, type ChatMsg } from "./store";
 import { t } from "./i18n";
 import { chime, chimeLog, desktopNotify } from "./notify";
 import { convChange } from "./convChime";
+import { isOutdated, pageVersion } from "./version";
 
 const AWAY_AFTER_MS = 5 * 60 * 1000;
 
@@ -145,7 +146,7 @@ class Session {
         // The server replays the persisted office chat on every connect; other scopes are kept as they are.
         const history: ChatMsg[] = (m.chat ?? []).map((c) => ({ id: ++this.chatId, sc: "o", from: c.f, text: c.x, ts: c.ts, n: c.n }));
         setState({ chat: [...history, ...getState().chat.filter((c) => c.sc !== "o")] });
-        setState({ meId: m.you, role: m.role, status: m.status, office: m.office, mediaAvailable: m.cfg.media, roster, phase: "play", locked: m.cfg.lk ?? [], denied: m.cfg.deny ?? [] });
+        setState({ meId: m.you, role: m.role, status: m.status, office: m.office, mediaAvailable: m.cfg.media, roster, phase: "play", locked: m.cfg.lk ?? [], denied: m.cfg.deny ?? [], outdated: isOutdated(pageVersion(), m.cfg.ver) });
         view.setMap(m.map, m.cfg.deny);
         view.clearRemote();
         view.setMe(m.you, m.cfg.x, m.cfg.y, m.cfg.speed, m.cfg.run ?? 2);

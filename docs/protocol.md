@@ -36,7 +36,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 
 | Message | Fields | Meaning |
 | --- | --- | --- |
-| `hello` | `you`, `role`, `status`, `office`, `cfg`, `map`, `roster`, `chat` | initial state; `cfg` has speed, the run multiplier (`run`), tick, the interest grid (`cell` px, default radius `aoi` and largest radius `aoiMax` in cells), media availability, your position and the areas denied to you; `chat` is the persisted office chat |
+| `hello` | `you`, `role`, `status`, `office`, `cfg`, `map`, `roster`, `chat` | initial state; `cfg` has speed, the run multiplier (`run`), tick, the interest grid (`cell` px, default radius `aoi` and largest radius `aoiMax` in cells), media availability, your position, the areas denied to you and the server's version (`ver`); `chat` is the persisted office chat. The page served by the same server carries that version in `<meta name="tilework-version">`: when they differ (a deploy happened since the page loaded), the client shows a dialog that cannot be dismissed and asks to reload |
 | `w` | `k` tick, `m` [[id, x, y, d]...], `l` [id...] | **state records** in your area of interest and entities that left it |
 | `a` | `s`, `x`, `y` | acknowledgement with the authoritative position at the time of input `s` |
 | `p` | `a` people added/updated, `d` ids removed | presence roster changes; a person is `{id, n, av, s, r}` plus `h: 1` (hand raised) and `m` (status note) when set |
