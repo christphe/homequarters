@@ -123,6 +123,7 @@ export interface Wave { t: "wv"; from: number; n: string }
 export interface WaveResult { t: "wvr"; id: number; st: "ok" | "wait" | "offline" }
 export interface AreaCounts { t: "ac"; c: number[] }
 export interface Announcement { t: "ann"; n: string; x: string }
+export interface OfficeName { t: "office"; n: string }
 export interface SelfPosition { t: "self"; x: number; y: number; dx: number; dy: number; d: number; tp: boolean }
 export interface LeadRequest { t: "lreq"; from: number; n: string }
 export interface DoorState { t: "deny"; d: number[]; lk: number[] }
@@ -140,4 +141,4 @@ export type BoardEvent =
 export type BoardCommand = { op: "draw" | "del" | "undo" | "clear" | "close"; bk: string; i?: number; o?: number; k?: number; c?: number; w?: number; p?: number[]; tx?: string };
 export type Spotlight = { t: "spot"; op: "off" } | { t: "spot"; op: "on"; sid: number; n: string; me: boolean; room?: string; url?: string; tok?: string };
 
-export type ServerMsg = MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;
+export type ServerMsg = MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

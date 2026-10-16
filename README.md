@@ -92,7 +92,7 @@ Virtual offices are usually heavy on the browser, the server and the bill. Tilew
 | **Spotlight** | Step on the pad to broadcast audio, video and screen share to the whole office. |
 | **Shared whiteboards** | Collaborative pen and text boards that persist and survive restarts. |
 | **Chat** | Office (last messages are kept), conversation and direct messages (never stored). |
-| **Invites, roles and administration** | Administrators mint, list and revoke invite links, promote or demote members, remove people and read an activity log; production joins require an invite. |
+| **Invites, roles and administration** | Administrators mint, list and revoke invite links, promote or demote members, remove people, rename the office (live for everybody, also in the browser tab) and read an activity log; production joins require an invite. |
 | **Office editor** | Administrators paint walls, place objects, draw meeting rooms with access rules and assign desks; changes go live for everyone and persist. A member without a desk can also take a free one with the button that appears next to it, and give it back with "Release desk". |
 | **Profile** | Change your name and avatar any time. |
 | **Screen sharing** | Inside a live conversation, up to 1080p with cheap low layers for small tiles; expand over the map, full screen or picture-in-picture; a badge shows who is presenting. |

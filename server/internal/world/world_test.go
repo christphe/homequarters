@@ -762,3 +762,24 @@ func TestHelloCarriesTheServerVersion(t *testing.T) {
 		t.Fatalf("hello must carry the version, JSON-escaped: %s", hello[:240])
 	}
 }
+
+func TestRenameReachesEverybodyAndLaterHellos(t *testing.T) {
+	h := newHarness(t)
+	a := h.add(1, "member", sx, sy)
+	drain(a)
+	h.w.handle(ev{kind: evRename, s: `Harbour "HQ"`}, h.now)
+	got := drain(a)
+	if len(got) != 1 || got[0] != `{"t":"office","n":"Harbour \"HQ\""}` {
+		t.Fatalf("everybody online hears the new name: %q", got)
+	}
+	b := h.add(2, "member", sx+400, sy)
+	hello := ""
+	for _, f := range drain(b) {
+		if strings.HasPrefix(f, `{"t":"hello"`) {
+			hello = f
+		}
+	}
+	if !strings.Contains(hello, `"office":"Harbour \"HQ\""`) {
+		t.Fatalf("a later hello carries the new name: %.160s", hello)
+	}
+}

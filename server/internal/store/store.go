@@ -120,6 +120,25 @@ func (s *Store) EnsureOffice(ctx context.Context, slug, name, mapJSON string) (*
 	return s.OfficeBySlug(ctx, slug)
 }
 
+// RenameOffice changes an office's name and answers the name it replaced (read in the same transaction, so two
+// concurrent renames each report their own predecessor). EnsureOffice never overwrites it, so it outlives restarts.
+func (s *Store) RenameOffice(ctx context.Context, officeID int64, name string) (old string, err error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err := tx.QueryRowContext(ctx, `SELECT name FROM offices WHERE id=?`, officeID).Scan(&old); errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	} else if err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE offices SET name=? WHERE id=?`, name, officeID); err != nil {
+		return "", err
+	}
+	return old, tx.Commit()
+}
+
 func (s *Store) OfficeBySlug(ctx context.Context, slug string) (*Office, error) {
 	o := &Office{}
 	err := s.DB.QueryRowContext(ctx, `SELECT id,slug,name,map_json,map_rev FROM offices WHERE slug=?`, slug).Scan(&o.ID, &o.Slug, &o.Name, &o.MapJSON, &o.MapRev)

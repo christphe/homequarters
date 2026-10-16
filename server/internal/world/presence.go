@@ -106,6 +106,18 @@ func (w *World) countsMsg() []byte {
 	return append(b, ']', '}')
 }
 
+// doRename takes the office's new name and tells everybody connected (reliable, like an announcement).
+func (w *World) doRename(name string) {
+	w.Name = name
+	nb, _ := json.Marshal(name)
+	b := append(append([]byte(`{"t":"office","n":`), nb...), '}')
+	for _, q := range w.list {
+		if q.out != nil {
+			w.sendShared(q, b)
+		}
+	}
+}
+
 // doAnnounce sends an administrator's banner to everybody connected. Reliable delivery (a
 // congested client is handled like for chat), cleaned to one line of at most maxAnnounceRunes.
 func (w *World) doAnnounce(from, text string) {

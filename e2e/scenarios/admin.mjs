@@ -1,4 +1,4 @@
-// Administration: members, roles, removal, invites and the activity log, driven through the real UI.
+// Administration: members, roles, removal, invites, the office name and the activity log, driven through the real UI.
 import { check, summary, resetChecks, launch, joinAs, waitFor, sleep, API } from "../lib.mjs";
 
 const click = (u, selector, text) => u.page.evaluate((selector, text) => {
@@ -59,11 +59,35 @@ export async function run(ctx) {
     const use = await fetch(API + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Late" + t, invite: token }) });
     check("a revoked invite link stops working (403)", use.status === 403);
 
+    // ---- office tab: rename, seen live by everybody (top bar and browser tab)
+    const errors = [];
+    admin.page.on("pageerror", (e) => errors.push(e.message));
+    admin.page.on("response", (r) => { if (r.url().includes("/api/admin/office")) errors.push("PATCH " + r.status()); });
+    const before = await mia.page.evaluate(() => window.__tilework.state.office);
+    check("the browser tab names the office", (await mia.page.title()) === "Tilework - " + before, await mia.page.title());
+    await click(admin, ".modal [role=tab]", "Office");
+    const field = await waitFor(() => admin.page.$("#office-name"), { what: "office name field" });
+    await field.click();
+    await field.evaluate((el) => el.select()); // typing replaces the current name
+    await field.type("Harbour " + t);
+    await click(admin, ".modal form button", "Rename");
+    const seen = await waitFor(() => mia.page.evaluate((n) => document.querySelector(".topbar .brand")?.textContent === n, "Harbour " + t), { timeout: 5000 }).then(() => true, () => false);
+    const why = seen ? "" : JSON.stringify(await Promise.all([mia.page.evaluate(() => document.querySelector(".topbar .brand")?.textContent), admin.page.evaluate(() => ({ field: document.querySelector("#office-name")?.value, toast: document.querySelector(".toast")?.textContent, brand: document.querySelector(".topbar .brand")?.textContent }))]));
+    check("a rename reaches an online member's top bar without a reload", seen, why + " " + errors.join(" | ") + " " + admin.page.url());
+    check("and her browser tab", (await mia.page.title()) === "Tilework - Harbour " + t, await mia.page.title());
+    const stored = await (await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: "" })).status;
+    check("an empty name is refused (400)", stored === 400, String(stored));
+    const byMember = (await api(miaCookie, "PATCH", "/api/admin/office", { name: "Mine" })).status;
+    check("a member cannot rename the office (403)", byMember === 403, String(byMember));
+
+    await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: before }); // shared office: put the name back
+
     // ---- activity tab
     await click(admin, ".modal [role=tab]", "Activity");
     await waitFor(() => admin.page.$(".modal .audit li"), { what: "activity list" });
     const audit = await admin.page.evaluate(() => document.querySelector(".modal .audit").textContent);
     check("the activity log records role changes and invite actions, by name", audit.includes("Admin changed the role of Mia" + t) && audit.includes("created an invite") && audit.includes("revoked an invite"), audit.slice(0, 160));
+    check("and the rename, with the old and new name", audit.includes(`Admin renamed the office (${before} -> Harbour ${t})`), audit.slice(0, 200));
 
     // ---- removal
     await click(admin, ".modal [role=tab]", "Members");
