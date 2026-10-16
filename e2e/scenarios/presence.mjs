@@ -1,7 +1,7 @@
 // Presence: waving across the office, raised hands, status notes, dancing, the minimap and the touch pad.
 import os from "node:os";
 import path from "node:path";
-import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep } from "../lib.mjs";
+import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, APP } from "../lib.mjs";
 
 const read = (u, fn, ...args) => u.page.evaluate(fn, ...args);
 const click = (u, text, selector = "button") => u.page.evaluate((text, selector) => {
@@ -325,6 +325,35 @@ export async function run(ctx) {
     const p1 = await phone.evaluate(() => window.__tilework.view.position());
     check("on a touch screen the on-screen pad walks the avatar", p1.x - p0.x > 10, (p1.x - p0.x).toFixed(1) + " px");
     await pctx.close();
+
+    // ---- away from the computer's own idle state (Idle Detection), opted in from the real setting
+    {
+      const c = await joinAs(browser, "Idler" + sfx);
+      await c.ctx.overridePermissions(APP, ["idle-detection"]);
+      const cdp = await c.page.createCDPSession();
+      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
+      await c.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
+      await waitFor(() => c.page.$(".modal"), { what: "settings dialog" });
+      const box = await c.page.evaluateHandle(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("computer is idle"))?.querySelector("input"));
+      await box.click();
+      await waitFor(() => c.page.evaluate(() => window.__tilework.state.settings.osIdle), { what: "idle setting on" });
+      await c.page.keyboard.press("Escape");
+      const status = () => c.page.evaluate(() => window.__tilework.state.status);
+      const seenBy = () => a.page.evaluate((id) => window.__tilework.state.roster.get(id)?.s, c.id);
+      await cdp.send("Emulation.setIdleOverride", { isUserActive: false, isScreenUnlocked: true });
+      await waitFor(async () => (await status()) === "away" && (await seenBy()) === "away", { timeout: 10000, what: "away when the computer is idle" });
+      check("with the setting on, an idle computer sets me away (others see it)", true);
+      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
+      await waitFor(async () => (await status()) === "available", { timeout: 10000, what: "back when the computer is used" });
+      check("...and using the computer again brings me back", true);
+      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: false });
+      await waitFor(async () => (await status()) === "away", { timeout: 10000, what: "away when the screen is locked" });
+      check("a locked screen sets me away too", true);
+      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
+      await waitFor(async () => (await status()) === "available", { timeout: 10000, what: "back after unlocking" });
+      check("no console errors for the idle-detecting player", c.logs.length === 0, c.logs.join(" | ").slice(0, 300));
+      await c.ctx.close();
+    }
 
     check("no console errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | ").slice(0, 300));
   } catch (e) {

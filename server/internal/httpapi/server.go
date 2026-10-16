@@ -269,7 +269,7 @@ func secureHeaders(h http.Handler) http.Handler {
 		hd := w.Header()
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "same-origin")
-		hd.Set("Permissions-Policy", "camera=(self), microphone=(self), display-capture=(self), geolocation=()")
+		hd.Set("Permissions-Policy", "camera=(self), microphone=(self), display-capture=(self), idle-detection=(self), geolocation=()")
 		h.ServeHTTP(w, r)
 	})
 }
