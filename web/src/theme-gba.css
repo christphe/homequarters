@@ -71,7 +71,8 @@ h1, h2, h3 { font-weight: 700; }
 }
 .bar-error { background: #c8402c; border-color: #f8b8a8; text-shadow: 1px 1px 0 #601408; }
 .convline { font-size: 14px; }
-.hint { color: #fff; text-shadow: 0 2px 0 rgba(20, 16, 40, .85); }
+/* sits on the map, so it carries its own light plate to read on any floor */
+.hint { color: var(--dark); font-size: 12px; background: rgba(255, 255, 255, .85); padding: 2px 8px; border-radius: 6px; width: fit-content; margin: 2px auto 0; text-shadow: none; }
 .rec { background: #ff5a4a; }
 
 /* menu cursor: a black triangle */
