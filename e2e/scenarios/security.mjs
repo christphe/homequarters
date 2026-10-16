@@ -1,8 +1,10 @@
 // Media isolation attacks against the real SFU: replayed, tampered and expired tokens.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, sleep, lkParticipants, metrics } from "../lib.mjs";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, lkParticipants, metrics, LK } from "../lib.mjs";
 
 const prefixOf = (room) => room.split(".").slice(0, 2).join(".");
 const TTL = Number(process.env.TILEWORK_MEDIA_TOKEN_TTL_SECONDS ?? 20);
+// the SFU's own token check (the one a signal connection runs): 200 accepted, 401 rejected
+const validate = async (token) => (await fetch(LK + "/rtc/validate?access_token=" + encodeURIComponent(token))).status;
 
 export async function run(ctx) {
   resetChecks();
@@ -70,12 +72,16 @@ export async function run(ctx) {
     check("the private room stayed empty", (await lkParticipants(prefixOf(room) + ".r.boardroom")).length === 0);
 
     // Attack 3: token past its validity. LiveKit's JWT library tolerates 60 s of clock skew (measured: a token
-    // 12 s past its exp was still accepted), so the effective lifetime is TTL + 60 s.
+    // 12 s past its exp was still accepted), so the effective lifetime is TTL + 60 s. Rather than sleep through
+    // that here, the runner asks the SFU about the same token after the other scenarios.
     const LEEWAY = 60;
-    const wait = Math.max(0, TTL + LEEWAY + 8 - (Date.now() - issued) / 1000);
-    await sleep(wait * 1000);
-    const expired = await attack("none");
-    check("an expired token is rejected once LiveKit\'s 60 s clock-skew leeway has passed", expired.startsWith("rejected"), expired + " (" + TTL + " s validity + " + LEEWAY + " s leeway)");
+    const stale = await a.page.evaluate(() => window.__stale.token);
+    const fresh = await validate(stale);
+    check("the SFU accepts the token while it is valid (control for the deferred expiry check)", fresh === 200, String(fresh));
+    ctx.defer("security: expired token", issued + (TTL + LEEWAY + 8) * 1000, async () => {
+      const s = await validate(stale);
+      check("an expired token is rejected once LiveKit's 60 s clock-skew leeway has passed", s === 401, s + " (" + TTL + " s validity + " + LEEWAY + " s leeway)");
+    });
     check("no unauthorised participant remains in the SFU room", (await lkParticipants(room)).length === 0);
 
     const errs = [a, b].flatMap((u) => u.logs).filter((l) => !/WebSocket|ERR_|net::|closed|401|Unauthorized|validation|token|Failed to load/i.test(l));
