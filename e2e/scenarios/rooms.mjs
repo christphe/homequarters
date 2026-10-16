@@ -50,31 +50,76 @@ export async function run(ctx) {
     await waitFor(async () => (await lkParticipants(room)).sort().join() === both, { timeout: 15000, what: "both admins in the SFU room" }).catch(() => {});
     check("the second person starts the call: the SFU room holds exactly the two admins", (await lkParticipants(room)).sort().join() === both);
 
-    // --- RNNoise, switched on from the real setting in the middle of the call
+    // --- noise suppression, switched on from the real setting in the middle of the call
     const noise = (u) => u.page.evaluate(() => {
       const r = window.__tilework.media.room, pub = r.localParticipant.getTrackPublication("microphone");
       const proc = pub?.track?.getProcessor?.();
       const sent = r.engine.pcManager.publisher.pc.getSenders().find((x) => x.track?.kind === "audio")?.track;
-      return { name: proc?.name ?? "", sendsProcessed: !!proc && sent?.id === proc.processedTrack?.id, live: sent?.readyState === "live" };
+      return { name: proc?.name ?? "", sendsProcessed: !!proc && sent?.id === proc.processedTrack?.id, live: sent?.readyState === "live", micOn: r.localParticipant.isMicrophoneEnabled };
     });
-    const toggleNoise = async (u) => {
+    const openSettings = async (u) => {
       await u.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
       await waitFor(() => u.page.$(".modal"), { what: "settings dialog" });
-      await u.page.evaluate(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("Noise suppression"))?.querySelector("input")?.click());
+    };
+    const toggleNoise = async (u) => {
+      await openSettings(u);
+      await u.page.evaluate(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("Enhanced noise suppression"))?.querySelector("input")?.click());
       await sleep(300);
       await u.page.keyboard.press("Escape");
     };
+    const heard = async (u, ms = 2500) => {
+      const b0 = await rtpBytes(u, "inbound", "audio");
+      await sleep(ms);
+      return (await rtpBytes(u, "inbound", "audio")) - b0;
+    };
     await toggleNoise(admin);
-    await waitFor(async () => (await noise(admin)).sendsProcessed, { timeout: 15000, what: "rnnoise on the microphone" }).catch(() => {});
+    await waitFor(async () => (await noise(admin)).sendsProcessed, { timeout: 15000, what: "gtcrn on the microphone" }).catch(() => {});
     const on = await noise(admin);
-    const heard0 = await rtpBytes(boss, "inbound", "audio");
-    await sleep(2500);
-    const heard1 = await rtpBytes(boss, "inbound", "audio");
-    check("the noise suppression setting puts RNNoise on the published microphone mid-call", on.name === "rnnoise" && on.sendsProcessed && on.live, JSON.stringify(on));
-    check("...and the other person keeps hearing it", heard1 - heard0 > 1000, (heard1 - heard0) + " bytes in 2.5 s");
+    check("the noise suppression setting puts GTCRN (the default engine) on the published microphone mid-call", on.name === "noise-gtcrn" && on.sendsProcessed && on.live, JSON.stringify(on));
+    const heardOn = await heard(boss);
+    check("...and the other person keeps hearing it", heardOn > 1000, heardOn + " bytes in 2.5 s");
+
+    // the options dialog (gear next to the setting) pauses the call, tests the microphone, switches engine
+    await openSettings(admin);
+    const gearOff = await admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.getAttribute("aria-label") === "Noise suppression options")?.disabled);
+    check("the options button sits next to the setting and is enabled while it is on", gearOff === false);
+    await admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.getAttribute("aria-label") === "Noise suppression options")?.click());
+    const button = (text) => admin.page.evaluate((x) => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.startsWith(x)), text);
+    const press = (text) => admin.page.evaluate((x) => [...document.querySelectorAll(".modal button")].find((b) => b.textContent.startsWith(x))?.click(), text);
+    await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.startsWith("Record"))), { what: "noise options dialog" });
+    await waitFor(async () => !(await noise(admin)).micOn, { timeout: 8000, what: "mic paused" }).catch(() => {});
+    const remoteMuted = await admin.page.evaluate(() => [...window.__tilework.media.room.remoteParticipants.values()].every((p) => p.getVolume() === 0));
+    const paused = await noise(admin);
+    check("while the options are open the call is paused: my microphone is off and I hear nobody", !paused.micOn && remoteMuted, JSON.stringify({ ...paused, remoteMuted }));
+    // record a few seconds, then play them back
+    await press("Record");
+    await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.startsWith("Recording"))), { what: "recording" });
+    await waitFor(() => admin.page.evaluate(() => { const p = [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Play"); return p && !p.disabled; }), { timeout: 15000, what: "recording done" });
+    await press("Play");
+    await waitFor(() => admin.page.evaluate(() => !!document.querySelector(".noise-meter-bar")), { what: "playing" });
+    // what is played: the meter on the playback, sampled for 3 s with the filter off (the fake microphone's
+    // beeps are tones a denoiser may rightly remove)
+    await press("Filter on");
+    let peak = 0;
+    for (let i = 0; i < 30; i++) {
+      peak = Math.max(peak, Number(await admin.page.evaluate(() => document.querySelector(".noise-meter-bar")?.dataset.level ?? 0)));
+      await sleep(100);
+    }
+    check("the recording plays back (level on the playback)", peak > 0.01, "peak level " + peak.toFixed(3));
+    await press("Filter off");
+    await admin.page.evaluate(() => [...document.querySelectorAll(".modal .noise-engine")].find((l) => l.textContent.includes("RNNoise"))?.querySelector("input")?.click());
+    await sleep(1500);
+    const testErr = await admin.page.evaluate(() => document.querySelector(".modal .setting-note")?.textContent ?? "");
+    check("the engines can be switched during playback, on the same recording", testErr === "" && (await admin.page.evaluate(() => window.__tilework.state.settings.noiseEngine)) === "rnnoise" && (await button("Stop")), testErr);
+    await admin.page.keyboard.press("Escape"); // closes the options dialog only
+    await admin.page.keyboard.press("Escape"); // then the settings
+    await waitFor(async () => { const n = await noise(admin); return n.micOn && n.name === "noise-rnnoise" && n.sendsProcessed; }, { timeout: 15000, what: "call resumed with RNNoise" }).catch(() => {});
+    const resumed = await noise(admin);
+    const heardGtcrn = await heard(boss);
+    check("closing the options resumes the call, now through RNNoise, and the other person hears it", resumed.micOn && resumed.name === "noise-rnnoise" && resumed.sendsProcessed && heardGtcrn > 1000, JSON.stringify({ ...resumed, bytes: heardGtcrn }));
     await toggleNoise(admin);
-    await waitFor(async () => (await noise(admin)).name === "", { timeout: 10000, what: "rnnoise off" }).catch(() => {});
-    check("switching it off takes RNNoise off the microphone", (await noise(admin)).name === "");
+    await waitFor(async () => (await noise(admin)).name === "", { timeout: 10000, what: "noise suppression off" }).catch(() => {});
+    check("switching it off takes the filter off the microphone", (await noise(admin)).name === "");
 
     // --- a member in a proximity call elsewhere gets a token for THAT group only
     const m2 = await joinAs(browser, "Mem2" + t);
