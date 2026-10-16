@@ -53,6 +53,13 @@ export function OfficeScreen() {
   }, []);
 
   useEffect(() => {
+    document.title = office ? t("app.titleOffice", { office }) : t("app.name");
+    return () => {
+      document.title = t("app.name");
+    };
+  }, [office]);
+
+  useEffect(() => {
     if (!announcement) return;
     const timer = window.setTimeout(() => setState({ announcement: null }), 60000);
     return () => clearTimeout(timer);

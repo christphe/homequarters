@@ -48,13 +48,14 @@ type Server struct {
 	auditQ  chan actionSave
 	workers sync.WaitGroup
 
-	inst     string // installation id, namespaces SFU rooms
-	joinLim  *limiter
-	mapLim   *limiter
-	profLim  *limiter
-	adminLim *limiter
-	annLim   *limiter
-	demoLim  *limiter
+	inst      string // installation id, namespaces SFU rooms
+	joinLim   *limiter
+	mapLim    *limiter
+	profLim   *limiter
+	adminLim  *limiter
+	annLim    *limiter
+	renameLim *limiter // office renames: each is a broadcast to everybody
+	demoLim   *limiter
 }
 
 type chatSave struct {
@@ -81,7 +82,7 @@ type posSave struct {
 
 func New(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.Store, md *media.Client) *Server {
 	s := &Server{cfg: cfg, log: log, st: st, media: md, ctx: ctx, worlds: map[int64]*world.World{},
-		posQ: make(chan posSave, 1024), chatQ: make(chan chatSave, 256), boardQ: make(chan boardSave, 64), joinLim: newLimiter(float64(cfg.JoinRate), float64(cfg.JoinRate)*2), mapLim: newLimiter(1, 5), profLim: newLimiter(0.5, 5), adminLim: newLimiter(5, 20), annLim: newLimiter(1.0/15, 2)}
+		posQ: make(chan posSave, 1024), chatQ: make(chan chatSave, 256), boardQ: make(chan boardSave, 64), joinLim: newLimiter(float64(cfg.JoinRate), float64(cfg.JoinRate)*2), mapLim: newLimiter(1, 5), profLim: newLimiter(0.5, 5), adminLim: newLimiter(5, 20), annLim: newLimiter(1.0/15, 2), renameLim: newLimiter(1.0/10, 3)}
 	s.version = resolveVersion(cfg.Version, cfg.StaticDir)
 	log.Info("version", "v", s.version)
 	if id, err := st.InstanceID(ctx); err == nil {
@@ -149,6 +150,10 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 	}
 	if w, ok := s.worlds[o.ID]; ok {
 		return w, nil
+	}
+	// the caller's row may predate a rename (or a map save); read it again under s.mu, which renames also hold
+	if fresh, err := s.st.OfficeByID(s.ctx, o.ID); err == nil {
+		o = fresh
 	}
 	var m gamemap.Map
 	if err := json.Unmarshal([]byte(o.MapJSON), &m); err != nil {
@@ -264,6 +269,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/admin/invites/{id}", s.revokeInvite)
 	mux.HandleFunc("GET /api/admin/audit", s.listAudit)
 	mux.HandleFunc("POST /api/admin/announce", s.announce)
+	mux.HandleFunc("PATCH /api/admin/office", s.renameOffice)
 	mux.HandleFunc("GET /api/admin/map", s.getFullMap)
 	mux.HandleFunc("PUT /api/map", s.putMap)
 	mux.HandleFunc("POST /api/desk", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, false) })
