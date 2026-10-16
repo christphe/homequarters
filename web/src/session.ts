@@ -46,6 +46,7 @@ class Session {
       onNearby: (nearby) => setState({ nearby }),
       onView: (cells) => this.socket?.send({ t: "view", n: cells }),
       onHome: () => this.goHome(),
+      onBusy: () => this.toggleBusy(),
     });
     await view.init(host, getState().settings.eco);
     if (this.stopped) {
@@ -291,6 +292,18 @@ class Session {
   setStatus(s: Status) {
     setState({ status: s });
     this.socket?.send({ t: "st", v: s });
+  }
+  /** Ctrl+U: busy, or back to available from busy or away. A manual choice ends the automatic away. */
+  toggleBusy() {
+    const s = getState().status;
+    if (s === "busy" || s === "away") this.backToAvailable();
+    else { this.autoAway = false; this.setStatus("busy"); }
+  }
+  /** The big button on the status veil, and Ctrl+U from busy or away. */
+  backToAvailable() {
+    this.autoAway = false;
+    this.lastActivity = Date.now();
+    this.setStatus("available");
   }
   setConsent(b: boolean) {
     setState({ consent: b });

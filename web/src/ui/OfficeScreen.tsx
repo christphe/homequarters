@@ -18,6 +18,7 @@ import { WhiteboardDialog } from "./WhiteboardDialog";
 import { Minimap } from "./Minimap";
 import { TouchPad } from "./TouchPad";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { StatusVeil } from "./StatusVeil";
 import { moveLabels, useKeyLayout } from "../keys";
 
 export function OfficeScreen() {
@@ -68,6 +69,7 @@ export function OfficeScreen() {
   return (
     <div className={"office" + (editing ? " editing" : "")}>
       <div className="stage" ref={host} role="application" aria-label={t("map.label", { keys: moveLabels().join(", ") })} />
+      {!editing && <StatusVeil />}
       <header className="topbar">
         <div className="brand-box">
           <strong className="brand" title={office || undefined}>{office || t("app.name")}</strong>
