@@ -33,6 +33,19 @@ Tilework is an open source alternative to Gather for remote and hybrid teams: ev
 
 > **MVP / alpha.** The whole loop works and is tested in real browsers: avatars, movement, proximity audio and video through a real SFU, private meeting rooms, screen sharing, chat, invites, an admin map editor and a Docker install. **Capacity is not established yet**: on the free 1 GB demo VM a single run over the internet stayed smooth at 100 bots and saturated at 500, and only small calls (4 people with video, 20 in audio groups) ran clean. Read [Status](#status) before you rely on anything. Tilework is an independent open source alternative to Gather and is not affiliated with the original Gather product.
 
+## About this fork
+
+**This is a (very) opinionated fork** of [guhcostan/tilework](https://github.com/guhcostan/tilework). It keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) but makes its own product choices, and some of them will not suit everyone. The badges, website, docs site and live demo above are the original project's. The main differences from the original:
+
+- **Desks and offices.** A room's call starts with two people, so nobody captures alone. An assigned desk is a small room with its own call that its owner can lock; one desk or private office per person. A member without one takes a free desk with a button next to it and gives it back from its room. Ctrl+D (Cmd+D) runs back to your desk. Administrators knock at closed doors like anyone, or force them on purpose, which is announced and logged. A room that did not change keeps its call when the map changes. Decisions [0019](docs/decisions/0019-room-calls-from-two-and-desk-rooms.md) and [0020](docs/decisions/0020-members-take-free-desks.md).
+- **Getting around.** Shortcuts follow key positions (ZQSD works on AZERTY), Ctrl+wheel zooms one level per notch and further out, left-drag looks around, the camera stays within the office, and "Walk to" goes onto the person's tile or stops at a closed door. Everybody's position survives a server restart. Decision [0018](docs/decisions/0018-physical-keys-and-map-zoom.md).
+- **Presence.** You go away when the computer is idle or locked (Idle Detection, never during a call or a presentation), busy and away people can still be waved at, a chime marks entering and leaving a conversation, and a page from an older deploy asks to reload.
+- **Audio and video.** Optional noise suppression (RNNoise, Speex or GTCRN), and the microphone, camera and speaker can be changed from the settings at any time.
+- **Avatars.** Beards, hats, a hijab, more hair styles, more colours or any colour, a taller sprite cell for hats, a bounded texture cache, and appearance in its own dialog.
+- **Accounts.** A one-time sign-in link lets you use your account on a second machine.
+- **Look.** The Jersey 10 pixel font, the people panel's main actions on each row, the reaction bar on the top bar's row on wide screens, and one button size across dialogs.
+- **Operations.** Abnormal disconnects are logged at WARN (normal leaves never are), and the tooling and docs work on Windows.
+
 ⭐ **If you would like a virtual office you can own, star the repository.** It is the simplest way to help other teams find it and to tell us this is worth building.
 
 ## Why Tilework
