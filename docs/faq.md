@@ -44,7 +44,7 @@ The automated suite runs in Google Chrome, including an emulated phone with an o
 
 ## Can I change the office map?
 
-Yes. Administrators paint walls, place objects, draw meeting rooms with access rules (open, members, admins or a list) and assign desks and private offices from the built-in editor. Changes go live for everyone and persist.
+Yes. Administrators paint walls, place objects, draw meeting rooms with access rules (open, members, admins or a list) and assign desks and private offices from the built-in editor. Changes go live for everyone and persist. A member who has no desk yet can also take a free one: a "Take this desk" button appears next to it, and "Release desk" gives it back.
 
 ## Is it ready for production?
 

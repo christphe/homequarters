@@ -39,6 +39,8 @@ type Server struct {
 
 	mu     sync.Mutex
 	worlds map[int64]*world.World
+	// mapMu orders map changes (admin edits, desk claims) so the saved map is the one last applied.
+	mapMu sync.Mutex
 
 	posQ    chan posSave
 	chatQ   chan chatSave
@@ -264,6 +266,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/announce", s.announce)
 	mux.HandleFunc("GET /api/admin/map", s.getFullMap)
 	mux.HandleFunc("PUT /api/map", s.putMap)
+	mux.HandleFunc("POST /api/desk", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, false) })
+	mux.HandleFunc("POST /api/desk/release", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, true) })
 	mux.HandleFunc("PUT /api/profile", s.putProfile)
 	mux.HandleFunc("GET /api/me", s.me)
 	mux.HandleFunc("GET /ws", s.ws)
@@ -573,6 +577,8 @@ func (s *Server) putMap(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
 		return
 	}
+	s.mapMu.Lock()
+	defer s.mapMu.Unlock()
 	if err := wd.ReloadMap(r.Context(), cm); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -587,6 +593,86 @@ func (s *Server) putMap(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("map updated", "by", se.UserID, "rev", rev, "props", len(m.Props), "areas", len(m.Areas))
 	s.audit(r, se, "map.update", 0, "", "rev="+strconv.FormatInt(rev, 10)+" props="+strconv.Itoa(len(m.Props))+" areas="+strconv.Itoa(len(m.Areas)))
 	writeJSON(w, http.StatusOK, map[string]any{"rev": rev})
+}
+
+// claimReasons names, for the client, why the world refused a desk claim.
+var claimReasons = map[error]string{
+	world.ErrClaimOffline: "offline", world.ErrClaimNoDesk: "no_desk", world.ErrClaimFar: "far",
+	world.ErrClaimTaken: "taken", world.ErrClaimRoom: "room", world.ErrClaimHasPlace: "has_place",
+	world.ErrReleaseNotMine: "not_mine",
+}
+
+// changeDesk lets a member who has no desk or office take the free desk they stand next to, or
+// (release) free their own desk from inside its room. The world checks all of it (presence,
+// distance, the desk, one place per person) and applies it; the map is then saved like an admin
+// edit, so the change survives a restart.
+func (s *Server) changeDesk(w http.ResponseWriter, r *http.Request, release bool) {
+	se, err := s.session(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if !s.mapLim.Allow(strconv.FormatInt(se.UserID, 10)) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limited"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 256)
+	var req struct {
+		X int `json:"x"`
+		Y int `json:"y"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
+		return
+	}
+	office, err := s.st.OfficeByID(r.Context(), se.OfficeID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	s.mu.Lock()
+	wd := s.worlds[office.ID]
+	s.mu.Unlock()
+	if wd == nil { // no world running means nobody is connected
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "offline"})
+		return
+	}
+	s.mapMu.Lock()
+	defer s.mapMu.Unlock()
+	// Once the world applies the claim, it must be saved and logged even if the client goes away.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
+	defer cancel()
+	change, action := wd.ClaimDesk, "desk.claim"
+	if release {
+		change, action = wd.ReleaseDesk, "desk.release"
+	}
+	m, err := change(ctx, uint32(se.UserID), req.X, req.Y)
+	if err != nil {
+		if reason, ok := claimReasons[err]; ok {
+			code := http.StatusConflict
+			if err == world.ErrClaimNoDesk {
+				code = http.StatusNotFound
+			}
+			writeJSON(w, code, map[string]string{"error": reason})
+			return
+		}
+		s.log.Error("change desk", "action", action, "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	raw, _ := json.Marshal(m)
+	rev, err := s.st.SaveMap(ctx, office.ID, string(raw))
+	if err != nil {
+		s.log.Error("save map", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "applied but not saved"})
+		return
+	}
+	at := strconv.Itoa(req.X) + "," + strconv.Itoa(req.Y)
+	s.log.Info("desk changed", "action", action, "by", se.UserID, "at", at, "rev", rev)
+	if err := s.st.Audit(ctx, se.OfficeID, se.UserID, action, se.UserID, "", "at="+at+" rev="+strconv.FormatInt(rev, 10)); err != nil {
+		s.log.Error("audit", "action", action, "err", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"x": req.X, "y": req.Y})
 }
 
 // putProfile lets a member change their own display name and avatar.

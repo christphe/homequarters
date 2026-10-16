@@ -151,6 +151,19 @@ export async function run(ctx) {
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$("canvas.whiteboard")), { what: "whiteboard closed" });
 
+    // a free desk: its Take button and the confirmation (Escape leaves the desk free)
+    // earlier scenarios may have assigned some desks: take the first free one in the desk area
+    const free = await p.evaluate(() => window.__tilework.view.map.props.find((d) => d.t === "desk" && !d.assign && d.y < 14));
+    await walkTo(admin, free.x * 16 + 8, (free.y + 1) * 16 + 8);
+    await waitFor(() => p.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Take this desk")), { what: "take desk button" });
+    await audit(p, "the office with the Take this desk button");
+    await click(p, "button", "Take this desk");
+    await waitFor(() => p.$(".modal"), { what: "take desk dialog" });
+    await audit(p, "the take a desk dialog");
+    await p.keyboard.press("Escape");
+    await waitFor(async () => !(await p.$(".modal")), { what: "take desk closed" });
+    check("Escape closes the take a desk dialog without taking the desk", !(await p.evaluate((x, y) => window.__tilework.view.map.props.find((d) => d.t === "desk" && d.x === x && d.y === y)?.assign, free.x, free.y)));
+
     await click(p, ".topbar button", "Edit office");
     await waitFor(() => p.$(".editor"), { what: "editor" });
     await audit(p, "the map editor");
