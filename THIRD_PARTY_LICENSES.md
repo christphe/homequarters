@@ -11,6 +11,7 @@ Generated on 2026-09-29 from `pnpm licenses list --prod` and the Go module cache
 | react, react-dom, scheduler | 19.3.0 / 19.3.0 / 0.28.0 | MIT |
 | pixi.js (+ @pixi/colord, earcut, eventemitter3, gifuct-js, ismobilejs, parse-svg-path, tiny-lru, @xmldom/xmldom) | 8.21.0 | MIT / ISC / BSD-3-Clause |
 | livekit-client, @livekit/protocol, @livekit/mutex | 2.22.3 / 1.50.4 / 1.1.1 | Apache-2.0 |
+| @sapphi-red/web-noise-suppressor (optional noise suppression, loaded only when enabled; its bundled `rnnoise.wasm` is [xiph/rnnoise](https://github.com/xiph/rnnoise), BSD-3-Clause, built by [shiguredo/rnnoise-wasm](https://github.com/shiguredo/rnnoise-wasm), Apache-2.0) | 0.4.1 | MIT |
 | @bufbuild/protobuf | 1.10.1 | Apache-2.0 AND BSD-3-Clause |
 | jose, loglevel, sdp, sdp-transform, webrtc-adapter, typed-emitter, events, machina, js-binary-schema-parser | various | MIT / BSD-3-Clause |
 | rxjs | 7.8.2 | Apache-2.0 |

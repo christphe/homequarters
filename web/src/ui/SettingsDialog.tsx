@@ -74,6 +74,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <span>{t("settings.eco")}<small className="muted"> — {t("settings.ecoHint")}</small></span>
       </label>
       <label className="check">
+        <input type="checkbox" checked={s.rnnoise} onChange={(e) => { saveSettings({ rnnoise: e.target.checked }); void media.applyNoiseSuppression(); void spotlightMedia.applyNoiseSuppression(); }} />
+        <span>{t("settings.rnnoise")}<small className="muted"> — {t("settings.rnnoiseHint")}</small></span>
+      </label>
+      <label className="check">
         <input type="checkbox" checked={s.audioOnly} onChange={(e) => { saveSettings({ audioOnly: e.target.checked }); if (e.target.checked) void activeMedia().setCam(false); media.applySubscriptions(); spotlightMedia.applySubscriptions(); }} />
         <span>{t("media.audioOnly")}</span>
       </label>

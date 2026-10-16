@@ -6,11 +6,12 @@ import {
   ScreenSharePresets,
   Track,
   VideoPresets,
+  type LocalAudioTrack,
   type Participant,
   type RemoteParticipant,
   type RemoteTrackPublication,
 } from "livekit-client";
-import { getState, setState } from "../store";
+import { getState, setState, toast } from "../store";
 import { t } from "../i18n";
 
 export interface Tile {
@@ -70,6 +71,10 @@ export function clearShareMessage() {
  * The server decides the room and issues a scoped token; leaving the group
  * disconnects and stops every local track (no capture outside conversations).
  */
+// RNNoise needs 48 kHz; one context serves every call (created on first use, after a click)
+let noiseCtx: AudioContext | null = null;
+const noiseContext = () => (noiseCtx ??= new AudioContext({ sampleRate: 48000 }));
+
 export class MediaManager {
   private room: Room | null = null;
   private startingShare = false;
@@ -198,6 +203,7 @@ export class MediaManager {
       RoomEvent.TrackUnpublished,
     ])
       on(ev, guard(() => this.refresh()));
+    on(RoomEvent.LocalTrackPublished, guard(() => void this.applyNoiseSuppression()));
     on(RoomEvent.TrackPublished, guard(() => { this.applySubscriptions(); this.refresh(); }));
     on(RoomEvent.TrackSubscribed, guard((() => {
       this.refresh();
@@ -331,6 +337,24 @@ export class MediaManager {
   }
 
   // ---- local controls ----
+  /** Puts RNNoise on the published microphone, or takes it off, to match the setting. */
+  async applyNoiseSuppression() {
+    const track = this.room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined;
+    if (!track) return;
+    const want = getState().settings.rnnoise, has = track.getProcessor()?.name === "rnnoise";
+    try {
+      if (want && !has) {
+        track.setAudioContext(noiseContext());
+        const { rnnoiseProcessor } = await import("./rnnoise");
+        await track.setProcessor(rnnoiseProcessor());
+      } else if (!want && has) {
+        await track.stopProcessor();
+      }
+    } catch {
+      toast(t("media.noiseFailed")); // the microphone keeps working, unfiltered
+    }
+  }
+
   async setMic(on: boolean) {
     if (!this.room || !this.publishing) return;
     try {

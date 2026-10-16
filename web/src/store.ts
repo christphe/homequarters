@@ -29,6 +29,8 @@ export interface Settings {
   minimap: boolean;
   /** Go away when the computer itself is idle or locked (Idle Detection), not just this tab. */
   osIdle: boolean;
+  /** RNNoise on the microphone (loaded only when on). */
+  rnnoise: boolean;
 }
 
 export interface MediaPrefs {
@@ -111,7 +113,7 @@ const initial: State = {
   conv: null,
   chat: [],
   unread: 0,
-  settings: load<Settings>("tilework.settings", { eco: false, maxVideos: 6, audioOnly: false, debug: false, sounds: true, notify: false, minimap: true, osIdle: false }),
+  settings: load<Settings>("tilework.settings", { eco: false, maxVideos: 6, audioOnly: false, debug: false, sounds: true, notify: false, minimap: true, osIdle: false, rnnoise: false }),
   prefs: load<MediaPrefs>("tilework.prefs", { micOn: true, camOn: false, micId: "", camId: "", spkId: "" }),
   mic: false,
   cam: false,

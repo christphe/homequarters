@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
     "livekit-client": "^2.22.3",
     "pixi.js": "^8.21.0",
     "react": "^19.3.0",
