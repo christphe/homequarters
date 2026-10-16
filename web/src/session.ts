@@ -1,5 +1,6 @@
 import { WorldView } from "./game/WorldView";
 import { cachedLooks } from "./game/avatars";
+import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
 import { Socket, type ConnState } from "./net/socket";
@@ -21,6 +22,9 @@ class Session {
   private idleTimer = 0;
   private lastActivity = Date.now();
   private autoAway = false;
+  /** Set while the computer's own idle state is watched (settings, Idle Detection); then it decides. */
+  private stopOsIdle: (() => void) | null = null;
+  private machineIdle = false;
   /** The hand state last asked for while the server has not confirmed it yet (null: follow the server). */
   private handWanted: boolean | null = null;
   private handAskedAt = 0;
@@ -57,10 +61,7 @@ class Session {
 
     const act = () => {
       this.lastActivity = Date.now();
-      if (this.autoAway && getState().status === "away") {
-        this.autoAway = false;
-        this.setStatus("available");
-      }
+      if (!this.stopOsIdle) this.applyAutoStatus(false);
     };
     for (const ev of ["keydown", "pointerdown", "pointermove"]) window.addEventListener(ev, act, { passive: true });
     this.cleanup.push(() => ["keydown", "pointerdown", "pointermove"].forEach((ev) => window.removeEventListener(ev, act)));
@@ -72,21 +73,38 @@ class Session {
       // not a dimmed dot: the server calls leaveGroup, which drops them out of
       // the call mid-sentence. Keeping the clock fresh here also means they are
       // not flipped away the instant a long call ends.
-      if (st.conv || st.spotlight) {
-        this.lastActivity = Date.now();
-        return;
-      }
-      if (st.status === "available" && Date.now() - this.lastActivity > AWAY_AFTER_MS) {
-        this.autoAway = true;
-        this.setStatus("away");
-      }
+      if (st.conv || st.spotlight) this.lastActivity = Date.now();
+      // with the computer's idle state watched, it decides (working in another app is not being away)
+      this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
+    if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
     (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, get state() { return getState(); }, session: this };
+  }
+
+  private applyAutoStatus(inactive: boolean) {
+    const st = getState();
+    const next = autoStatus({ status: st.status, autoAway: this.autoAway, inCall: !!(st.conv || st.spotlight), inactive });
+    if (!next) return;
+    this.autoAway = next === "away";
+    this.setStatus(next);
+  }
+
+  /** Follows the computer's idle state (true) or only this tab's activity (false). */
+  setOsIdle(on: boolean) {
+    this.stopOsIdle?.();
+    this.stopOsIdle = null;
+    this.machineIdle = false;
+    if (!on) return;
+    this.stopOsIdle = watchOsIdle(AWAY_AFTER_MS, (idle) => {
+      this.machineIdle = idle;
+      this.applyAutoStatus(idle);
+    });
   }
 
   stop() {
     this.stopped = true;
     clearInterval(this.idleTimer);
+    this.stopOsIdle?.();
     this.cleanup.forEach((f) => f());
     this.cleanup = [];
     this.socket?.close();
