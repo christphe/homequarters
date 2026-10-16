@@ -513,6 +513,13 @@ export class WorldView {
         this.hud.addChild(text);
         return { text, x: (p.x + 1) * T, y: p.y * T, label: p.label!, ai };
       });
+    // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
+    // stand, as the server does on a reload
+    if (this.meEnt) {
+      this.mArea = this.areaIndex(this.mx, this.my);
+      this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+      this.mShown = this.shownArea(this.mArea);
+    }
     this.layout();
   }
 

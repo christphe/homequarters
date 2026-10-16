@@ -554,7 +554,7 @@ func TestSyncResendsCurrentStates(t *testing.T) {
 	}
 }
 
-func TestReloadMapRelocatesTrappedPlayersAndDissolvesRooms(t *testing.T) {
+func TestReloadMapRelocatesTrappedPlayersAndKeepsUnchangedRooms(t *testing.T) {
 	h := newHarness(t)
 	in1 := h.add(1, "member", 46*16+8, 5*16+8) // Aurora, on free floor (the table is solid)
 	in2 := h.add(2, "member", 56*16+8, 5*16+8)
@@ -578,11 +578,29 @@ func TestReloadMapRelocatesTrappedPlayersAndDissolvesRooms(t *testing.T) {
 	if err := h.w.doReloadMap(cm, h.now); err != nil {
 		t.Fatal(err)
 	}
-	if in1.group != nil || in2.group != nil {
-		t.Fatal("room calls must be dissolved when the map changes (area indexes may differ)")
+	if in1.group == nil || in1.group != in2.group {
+		t.Fatal("an unchanged room keeps its call when the map changes elsewhere")
 	}
 	if !h.w.canStand(stay, stay.X, stay.Y) {
 		t.Fatalf("a player standing inside a new wall must be relocated, at %v,%v", stay.X, stay.Y)
+	}
+	// a room whose rules change loses its call; its occupants re-join under the new rules
+	m2 := *cm.Map
+	m2.Areas = append([]gamemap.Area(nil), m2.Areas...)
+	for i := range m2.Areas {
+		if m2.Areas[i].ID == "aurora" {
+			m2.Areas[i].Capacity = 19
+		}
+	}
+	cm3, err := gamemap.Compile(&m2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.doReloadMap(cm3, h.now); err != nil {
+		t.Fatal(err)
+	}
+	if in1.group != nil || in2.group != nil {
+		t.Fatal("a room that changed loses its call")
 	}
 	h.run(2 * time.Second)
 	if in1.group == nil {

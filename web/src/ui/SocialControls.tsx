@@ -4,7 +4,8 @@ import { setState, useStore } from "../store";
 import { t, type Key } from "../i18n";
 import { EMOTES } from "../game/emotes";
 import { Modal } from "./Modal";
-import { isOwnedOffice } from "../net/protocol";
+import { isOwnedOffice, type Prop } from "../net/protocol";
+import { claimableDesk } from "../game/home";
 
 /** Low-rate UI state only: avatar reactions themselves are drawn by Pixi, not React. */
 export function SocialControls() {
@@ -51,12 +52,41 @@ export function SocialControls() {
     const timer = window.setInterval(update, 300);
     return () => clearInterval(timer);
   }, [denied, here]);
+  // a free desk I stand next to, while I have no place of my own
+  const [desk, setDesk] = useState<Prop | null>(null);
+  const [confirmDesk, setConfirmDesk] = useState<Prop | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  useEffect(() => {
+    const update = () => {
+      const map = session.view?.currentMap(), p = session.view?.position();
+      const next = map && p ? claimableDesk(map, meId, p.x, p.y) : null;
+      setDesk((old) => (old?.x === next?.x && old?.y === next?.y ? old : next));
+    };
+    update();
+    const timer = window.setInterval(update, 300);
+    return () => clearInterval(timer);
+  }, [meId]);
+  const claim = async (d: Prop) => {
+    setClaiming(true);
+    if (await session.claimDesk(d)) setDesk(null); // do not wait for the next poll to hide it
+    setClaiming(false);
+    setConfirmDesk(null);
+  };
   const map = session.view?.currentMap();
   const room = map && here >= 0 && map.areas[here]?.kind === "room" ? map.areas[here] : null;
   const roomIndex = room ? here : -1;
   // an assigned office is always closed to strangers: there is nothing to lock or unlock; a desk is
   // locked by its owner (or an admin)
   const lockable = !!room && !isOwnedOffice(room) && (!room.auto || role === "admin" || !!room.access.users?.includes(meId));
+  // my own desk: its room is the desk and the rows in front of it, starting at the desk's tile
+  const myDesk = room?.auto && room.access.users?.includes(meId) ? map?.props.find((p) => p.t === "desk" && p.x === room.x && p.y === room.y) ?? null : null;
+  const [confirmRelease, setConfirmRelease] = useState<Prop | null>(null);
+  const release = async (d: Prop) => {
+    setClaiming(true);
+    await session.releaseDesk(d);
+    setClaiming(false);
+    setConfirmRelease(null);
+  };
   const lockKey = (on: boolean): Key => (room?.auto ? (on ? "door.unlockDesk" : "door.lockDesk") : on ? "door.unlock" : "door.lock");
   return (
     <>
@@ -80,13 +110,25 @@ export function SocialControls() {
         )}
         {nearby && <button className="btn interaction-hint" onClick={() => session.view?.interact()}>{t("object.use", { name: nearby.label || t(`object.${nearby.t}` as Key) })}</button>}
         {following && <div className="follow-hint"><span>{t("follow.active", { name: following.name })}</span> <button className="btn" onClick={() => session.follow(0)}>{t("follow.stop")}</button></div>}
-        {lockable && <button className="btn" onClick={() => session.lock(!locked.includes(roomIndex))}>{t(lockKey(locked.includes(roomIndex)))}</button>}
+        {(lockable || myDesk) && <div className="room-actions">
+          {lockable && <button className="btn" onClick={() => session.lock(!locked.includes(roomIndex))}>{t(lockKey(locked.includes(roomIndex)))}</button>}
+          {myDesk && <button className="btn" onClick={() => setConfirmRelease(myDesk)}>{t("desk.release")}</button>}
+        </div>}
+        {desk && <button className="btn" onClick={() => setConfirmDesk(desk)}>{t("desk.claim")}</button>}
         {knockArea && <button className="btn" onClick={() => session.knock(knockArea.index)}>{t("door.knock", { area: knockArea.name })}</button>}
         {knockArea && role === "admin" && <button className="btn" onClick={() => session.force(knockArea.index)}>{t("door.force")}</button>}
       </div>
       {request && <Modal title={t("follow.lead")} onClose={() => setState({ leadRequest: null })}>
         <p>{t("follow.request", { name: request.name })}</p>
         <div className="modal-actions"><button className="btn" onClick={() => setState({ leadRequest: null })}>{t("follow.decline")}</button><button className="primary" onClick={() => { session.follow(request.id); setState({ leadRequest: null }); }}>{t("follow.accept")}</button></div>
+      </Modal>}
+      {confirmDesk && <Modal title={t("desk.claimTitle", { name: confirmDesk.label || t("desk.name") })} onClose={() => setConfirmDesk(null)}>
+        <p>{t("desk.claimBody")}</p>
+        <div className="modal-actions"><button className="btn" onClick={() => setConfirmDesk(null)}>{t("desk.claimCancel")}</button><button className="primary" disabled={claiming} onClick={() => void claim(confirmDesk)}>{t("desk.claimConfirm")}</button></div>
+      </Modal>}
+      {confirmRelease && <Modal title={t("desk.releaseTitle", { name: confirmRelease.label || t("desk.name") })} onClose={() => setConfirmRelease(null)}>
+        <p>{t("desk.releaseBody")}</p>
+        <div className="modal-actions"><button className="btn" onClick={() => setConfirmRelease(null)}>{t("desk.releaseCancel")}</button><button className="primary" disabled={claiming} onClick={() => void release(confirmRelease)}>{t("desk.releaseConfirm")}</button></div>
       </Modal>}
       {knock && <Modal title={t("door.knock", { area: knock.area })} onClose={() => session.answerKnock(knock.id, false)}>
         <p>{t("door.request", { name: knock.name, area: knock.area })}</p>

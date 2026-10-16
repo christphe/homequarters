@@ -80,7 +80,7 @@ Virtual offices are usually heavy on the browser, the server and the bill. Tilew
 | **Shared whiteboards** | Collaborative pen and text boards that persist and survive restarts. |
 | **Chat** | Office (last messages are kept), conversation and direct messages (never stored). |
 | **Invites, roles and administration** | Administrators mint, list and revoke invite links, promote or demote members, remove people and read an activity log; production joins require an invite. |
-| **Office editor** | Administrators paint walls, place objects, draw meeting rooms with access rules and assign desks; changes go live for everyone and persist. |
+| **Office editor** | Administrators paint walls, place objects, draw meeting rooms with access rules and assign desks; changes go live for everyone and persist. A member without a desk can also take a free one with the button that appears next to it, and give it back with "Release desk". |
 | **Profile** | Change your name and avatar any time. |
 | **Screen sharing** | Inside a live conversation, up to 1080p with cheap low layers for small tiles; expand over the map, full screen or picture-in-picture; a badge shows who is presenting. |
 | **Self-hosted** | One Go binary, SQLite in WAL mode, LiveKit. No paid service required. |
@@ -181,6 +181,7 @@ Planned next: breakout rooms, a stage, audio-only areas set by administrators an
 | World tick microbenchmark (300 players) 1.99 -> 0.52 ms; idle browser renderer + GPU CPU about 26 % -> 9 % of a core | **measured once on an M1 Pro**, not a capacity claim ([efficiency](docs/efficiency-and-benchmarks.md#researched-techniques)) |
 | Avatar beards, hats and hair styles: old avatars render pixel-identical, the server clamps the new fields, the editor works through its real controls and the join screen scrolls at three sizes | **pass** on Windows 11 (see [Status](docs/status.md)); `proximity`, `spotlight` and one restart step of `features` not verifiable there |
 | Gauntlet regression checks: chat composer survives repeated sends; small-screen chat controls and expanded reactions are clickable; pet trail, catch-up and resting visibility | Local results and limitations in [Status](docs/status.md); [review procedure](docs/gauntlet.md) |
+| Taking a free desk yourself: the button, its confirmation and every refusal are decided by the server; room calls survive map changes | **pass** on Windows 11 (Go tests, `offices` through the real button; see [Status](docs/status.md)) |
 | Docker: image builds, Compose local stack passes the browser scenarios, production mode in the container refuses insecure config and requires invites | **verified locally** |
 | Production Compose (Caddy, TLS, LiveKit) on a public host: the public demo on an Oracle Always Free micro VM, real audio/video over UDP across the internet | **verified** (one smoke run, 2 people); TURN relay through UDP-blocked networks and load on that host are **not tested** |
 | Load, scenario A (no media, up to 1,000 bots) and a 500-client mass reconnect | **run locally, generator on the same host**: not a capacity claim, see [results](docs/benchmark-results.md) |

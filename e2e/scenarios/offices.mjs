@@ -129,6 +129,56 @@ export async function run(ctx) {
     await waitFor(async () => (await roomOf(guest, deskB)) === null, { what: "desk room goes" });
     check("choosing Nobody frees the desk and removes its room", !(await guest.page.evaluate((x, y) => window.__tilework.view.map.props.find((p) => p.t === "desk" && p.x === x && p.y === y)?.assign, deskB.x, deskB.y)));
 
+    // ---- a member without a place takes a free desk with the button shown next to it
+    const takeDesk = /^Take this desk$/;
+    await walkTo(owner, ...at(deskA.x + 1, deskA.y + 1));
+    await sleep(800);
+    check("no Take button for someone who owns an office", !(await hasButton(owner, takeDesk)));
+    await walkTo(guest, ...at(deskB.x + 6, deskB.y + 3));
+    await sleep(800);
+    check("no Take button away from a desk", !(await hasButton(guest, takeDesk)));
+    await walkTo(guest, ...at(deskB.x + 1, deskB.y + 1));
+    await waitFor(() => hasButton(guest, takeDesk), { what: "Take this desk button" });
+    check("a member with no desk sees Take this desk next to a free desk", true);
+    await button(guest, takeDesk);
+    await waitFor(() => guest.page.$("[role=dialog]"), { what: "confirmation" });
+    await button(guest, /^Take it$/);
+    const assigned = (u) => u.page.evaluate((x, y) => window.__tilework.view.map.props.find((p) => p.t === "desk" && p.x === x && p.y === y)?.assign, deskB.x, deskB.y);
+    await waitFor(async () => (await assigned(other)) === guest.id, { what: "everybody sees the desk taken" });
+    check("confirming gives the desk to the member, for everybody", true);
+    check("the taken desk gets its own room", (await roomOf(other, deskB))?.auto === true);
+    await waitFor(async () => !(await hasButton(guest, takeDesk)), { what: "button gone" });
+    check("the button goes once the desk is mine", true);
+    const lockable = await waitFor(() => hasButton(guest, /^Lock desk$/), { timeout: 3000, what: "Lock desk without moving" }).then(() => true, () => false);
+    check("without moving, the new owner is in their desk room and can lock it", lockable);
+    const saved = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "tilework_session=" + cookie } })).json();
+    check("the claim is saved", saved.props.some((p) => p.t === "desk" && p.x === deskB.x && p.y === deskB.y && p.assign === guest.id));
+    const log = await (await fetch(API + "/api/admin/audit", { headers: { Cookie: "tilework_session=" + cookie } })).text();
+    check("the activity log records the claim", log.includes('"desk.claim"'));
+    await walkTo(guest, ...at(deskB.x + 6, deskB.y + 3));
+    await guest.page.keyboard.down("Control");
+    await guest.page.keyboard.press("d");
+    await guest.page.keyboard.up("Control");
+    const deskRoom = await areaIndex(guest, `desk-${deskB.x}-${deskB.y}`);
+    await waitFor(async () => (await here(guest)) === deskRoom && !(await guest.page.evaluate(() => window.__tilework.view.guided)), { timeout: 20000, what: "back at the new desk" });
+    check("Ctrl+D runs back to the desk just taken", true);
+    await walkTo(other, ...at(deskB.x, deskB.y + 2));
+    await sleep(800);
+    check("no Take button next to a taken desk", !(await hasButton(other, takeDesk)));
+    check("only the owner gets Release desk", !(await hasButton(other, /^Release desk$/)));
+
+    // ---- the owner frees it with Release desk, next to Lock desk
+    await walkTo(guest, ...at(deskB.x + 1, deskB.y + 1));
+    await waitFor(() => hasButton(guest, /^Release desk$/), { what: "Release desk button" });
+    check("the owner sees Release desk next to Lock desk in their desk room", await hasButton(guest, /^Lock desk$/));
+    await button(guest, /^Release desk$/);
+    await waitFor(() => guest.page.$("[role=dialog]"), { what: "release confirmation" });
+    await button(guest, /^Release it$/);
+    await waitFor(async () => !(await assigned(other)) && (await roomOf(other, deskB)) === null, { what: "the desk is free again for everybody" });
+    check("releasing frees the desk and removes its room for everybody", true);
+    await waitFor(() => hasButton(guest, takeDesk), { what: "Take button back" });
+    check("the freed desk can be taken again", !(await hasButton(guest, /^Release desk$/)));
+
     // ---- a free office: open to anyone, lockable
     await walkTo(other, ...at(23, 42));
     check("anybody walks into a free office", (await here(other)) === (await areaIndex(other, "office-3")));
