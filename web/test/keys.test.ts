@@ -1,7 +1,7 @@
 // Shortcuts by physical key position, labelled with the user's layout. Run: node --test web/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MOVE_KEYS, codeOf, digitOf, keyLabel, learnKey, moveLabels, setKeyLayout } from "../src/keys.ts";
+import { MOVE_KEYS, codeOf, combo, digitOf, keyLabel, learnKey, moveLabels, setKeyLayout } from "../src/keys.ts";
 
 // What Chrome's navigator.keyboard.getLayoutMap() reports on a French AZERTY keyboard.
 const AZERTY = new Map([["KeyW", "z"], ["KeyA", "q"], ["KeyS", "s"], ["KeyD", "d"], ["KeyZ", "w"], ["KeyM", ","], ["Semicolon", "m"], ["Digit1", "&"], ["KeyR", "r"]]);
@@ -48,4 +48,15 @@ test("events without a key position fall back to what they typed", () => {
   assert.equal(codeOf({ code: "", key: "3" }), "Digit3");
   assert.equal(codeOf({ code: "", key: "ArrowUp" }), "ArrowUp");
   assert.equal(codeOf({ code: "KeyW", key: "z" }), "KeyW");
+});
+
+test("shortcuts are written the way the computer writes them: Mac symbols, or Ctrl/Shift/Alt", () => {
+  assert.equal(combo(["mod"], "U", true), "⌘U");
+  assert.equal(combo(["mod"], "U", false), "Ctrl+U");
+  assert.equal(combo(["shift"], "", true), "⇧");
+  assert.equal(combo(["shift"], "", false), "Shift");
+  assert.equal(combo(["mod", "shift"], "D", true), "⇧⌘D"); // Apple's order: Control, Option, Shift, Command
+  assert.equal(combo(["shift", "mod"], "D", false), "Ctrl+Shift+D");
+  assert.equal(combo(["alt"], "X", true), "⌥X");
+  assert.equal(combo(["mod"], "", false), "Ctrl");
 });

@@ -76,6 +76,18 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 
 /* office */
 .office { position: relative; height: 100%; }
+/* away or busy: the map is greyed out under every other control (no z-index: it sits right after the
+   stage, so everything later in the page paints over it); only the button takes clicks */
+.status-veil { position: absolute; inset: 0; display: grid; place-content: center; pointer-events: none; background: rgba(20, 18, 32, .45); backdrop-filter: grayscale(1) brightness(.8); }
+.veil-card { pointer-events: auto; display: grid; justify-items: center; gap: 14px; padding: 36px 64px; background: #fff; border: 4px solid; border-radius: 10px; box-shadow: 0 0 0 2px #383438, 4px 6px 0 2px rgba(20, 16, 40, .35); }
+.veil-button { cursor: pointer; font-size: 34px; padding: 12px 40px; border-radius: 999px; border: 3px solid #383438; box-shadow: 0 6px 0 #383438; color: #383438; }
+.status-veil[data-status="away"] .veil-card { border-color: #f2d14b; }
+.status-veil[data-status="busy"] .veil-card { border-color: #e5584f; }
+.status-veil[data-status="away"] .veil-button { background: #f2d14b; }
+.status-veil[data-status="busy"] .veil-button { background: #e5584f; }
+.veil-button:active { transform: translateY(3px); box-shadow: 0 3px 0 #383438; }
+.veil-hint { margin: 0; font-size: 15px; color: #5f6170; }
+@media (max-width: 700px) { .veil-card { padding: 22px 20px; max-width: calc(100vw - 32px); } .veil-button { font-size: 26px; padding: 10px 26px; white-space: nowrap; } }
 .stage { position: absolute; inset: 0; background: var(--bg); }
 .topbar { position: absolute; top: 12px; left: 12px; right: 76px; display: flex; gap: 8px; align-items: center; pointer-events: none; }
 .topbar > * { pointer-events: auto; }

@@ -164,6 +164,12 @@ export async function run(ctx) {
     await waitFor(async () => !(await p.$(".modal")), { what: "take desk closed" });
     check("Escape closes the take a desk dialog without taking the desk", !(await p.evaluate((x, y) => window.__tilework.view.map.props.find((d) => d.t === "desk" && d.x === x && d.y === y)?.assign, free.x, free.y)));
 
+    await p.evaluate(() => window.__tilework.session.setStatus("away"));
+    await waitFor(() => p.$(".status-veil"), { what: "away veil" });
+    await audit(p, "the away veil");
+    await click(p, ".veil-button");
+    await waitFor(async () => !(await p.$(".status-veil")), { what: "veil gone" });
+
     await click(p, ".topbar button", "Edit office");
     await waitFor(() => p.$(".editor"), { what: "editor" });
     await audit(p, "the map editor");

@@ -2,7 +2,7 @@ import { Application, BitmapText, Container, Graphics, Sprite, Text } from "pixi
 import type { Ack, AvatarSpec, MapData, Person, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
-import { isHomeKey } from "./home";
+import { isBusyKey, isHomeKey } from "./home";
 import { propSize } from "./mapModel";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
@@ -106,6 +106,7 @@ export interface ViewHooks {
   onView?(cells: number): void;
   /** Ctrl+D / Cmd+D: go back to my desk. */
   onHome?(): void;
+  onBusy?(): void;
 }
 
 export interface ViewStats {
@@ -352,6 +353,12 @@ export class WorldView {
     if (down && isHomeKey(e)) {
       e.preventDefault();
       if (!e.repeat && !document.querySelector(".scrim, .editor")) this.hooks.onHome?.();
+      return;
+    }
+    // Ctrl+U (Cmd+U), "unavailable": busy, or available again; the browser's view-source otherwise
+    if (down && isBusyKey(e)) {
+      e.preventDefault();
+      if (!e.repeat && !document.querySelector(".scrim, .editor")) this.hooks.onBusy?.();
       return;
     }
     const el = e.target as HTMLElement | null;
