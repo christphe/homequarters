@@ -17,6 +17,7 @@ type Config struct {
 	Addr           string
 	DBPath         string
 	StaticDir      string
+	Version        string // the deploy's commit (TILEWORK_VERSION); empty: derived from the built page
 	AllowedOrigins []string
 	OfficeSlug     string
 	OfficeName     string
@@ -77,6 +78,7 @@ func Load() (*Config, error) {
 		Addr:           env("TILEWORK_ADDR", ":8080"),
 		DBPath:         env("TILEWORK_DB", "data/tilework.db"),
 		StaticDir:      env("TILEWORK_STATIC_DIR", ""),
+		Version:        env("TILEWORK_VERSION", ""),
 		OfficeSlug:     env("TILEWORK_OFFICE_SLUG", "default"),
 		OfficeName:     env("TILEWORK_OFFICE_NAME", "Office"),
 		MetricsToken:   env("TILEWORK_METRICS_TOKEN", ""),

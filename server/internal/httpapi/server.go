@@ -2,10 +2,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,11 +29,13 @@ import (
 const cookieName = "tilework_session"
 
 type Server struct {
-	cfg   *config.Config
-	log   *slog.Logger
-	st    *store.Store
-	media *media.Client
-	ctx   context.Context
+	cfg *config.Config
+	// version names this deploy (commit, or a hash of the built page); clients on another version reload
+	version string
+	log     *slog.Logger
+	st      *store.Store
+	media   *media.Client
+	ctx     context.Context
 
 	mu     sync.Mutex
 	worlds map[int64]*world.World
@@ -74,6 +80,8 @@ type posSave struct {
 func New(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.Store, md *media.Client) *Server {
 	s := &Server{cfg: cfg, log: log, st: st, media: md, ctx: ctx, worlds: map[int64]*world.World{},
 		posQ: make(chan posSave, 1024), chatQ: make(chan chatSave, 256), boardQ: make(chan boardSave, 64), joinLim: newLimiter(float64(cfg.JoinRate), float64(cfg.JoinRate)*2), mapLim: newLimiter(1, 5), profLim: newLimiter(0.5, 5), adminLim: newLimiter(5, 20), annLim: newLimiter(1.0/15, 2)}
+	s.version = resolveVersion(cfg.Version, cfg.StaticDir)
+	log.Info("version", "v", s.version)
 	if id, err := st.InstanceID(ctx); err == nil {
 		s.inst = id
 	} else {
@@ -150,6 +158,7 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 	}
 	wc := world.DefaultConfig()
 	wc.TickHz, wc.AOICells, wc.MaxPlayers = s.cfg.TickHz, s.cfg.AOICells, s.cfg.MaxPlayers
+	wc.Version = s.version
 	wc.Prox.MaxGroup = s.cfg.MaxGroup
 	if s.cfg.AOIMaxCells > 0 {
 		wc.AOIMaxCells = s.cfg.AOIMaxCells
@@ -259,7 +268,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.me)
 	mux.HandleFunc("GET /ws", s.ws)
 	if s.cfg.StaticDir != "" {
-		mux.Handle("/", spa(s.cfg.StaticDir))
+		mux.Handle("/", spa(s.cfg.StaticDir, s.version))
 	}
 	return secureHeaders(mux)
 }
@@ -274,14 +283,45 @@ func secureHeaders(h http.Handler) http.Handler {
 	})
 }
 
-func spa(dir string) http.Handler {
+// resolveVersion is the deploy's commit when one is given, otherwise a short hash of the built page
+// (a new client build is a new version), or "dev" without a page.
+func resolveVersion(commit, staticDir string) string {
+	if v := strings.TrimSpace(commit); v != "" {
+		return v
+	}
+	if staticDir != "" {
+		if b, err := os.ReadFile(filepath.Join(staticDir, "index.html")); err == nil {
+			sum := sha256.Sum256(b)
+			return hex.EncodeToString(sum[:6])
+		}
+	}
+	return "dev"
+}
+
+func spa(dir, version string) http.Handler {
 	fsrv := http.FileServer(http.Dir(dir))
+	meta := `<meta name="tilework-version" content="` + html.EscapeString(version) + `">`
+	page := func(w http.ResponseWriter) {
+		b, err := os.ReadFile(filepath.Join(dir, "index.html"))
+		if err != nil {
+			http.Error(w, "client not built", http.StatusNotFound)
+			return
+		}
+		// the page names the server's version: a client loaded from it reloads when hello says otherwise
+		b = bytes.Replace(b, []byte("</head>"), []byte(meta+"</head>"), 1)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(b)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			page(w)
+			return
+		}
 		p := filepath.Join(dir, filepath.Clean("/"+r.URL.Path))
 		if fi, err := os.Stat(p); err != nil || fi.IsDir() {
 			if !strings.HasPrefix(r.URL.Path, "/assets/") {
-				w.Header().Set("Cache-Control", "no-cache")
-				http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+				page(w)
 				return
 			}
 		}

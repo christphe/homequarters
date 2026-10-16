@@ -22,6 +22,7 @@ type Config struct {
 	ProxEvery   time.Duration
 	Prox        ProxConfig
 	MaxChatRune int
+	Version     string // sent in hello: a client loaded from another version reloads
 }
 
 type ProxConfig struct {
