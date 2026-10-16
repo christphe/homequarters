@@ -9,7 +9,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | Message | Fields | Meaning |
 | --- | --- | --- |
 | `in` | `s` seq, `x`, `y` (-1, 0, 1), `b` run | movement intent; sent on change and every 400 ms while held. `b: true` runs at `cfg.run` times the walking speed |
-| `go` | `x`, `y` tile, or `id` of a player | run there along a path the server finds (walls, locked and forbidden rooms respected, portals avoided); any movement key cancels it |
+| `go` | `x`, `y` tile, or `id` of a player | run there along a path the server finds (walls, locked and forbidden rooms respected, portals avoided); any movement key cancels it. To a player, the run ends on their tile, so it enters their room; if that room is closed to you (locked, or somebody else's office), it ends on the closest tile you can reach |
 | `st` | `v` | set status: `available`, `busy`, `away`, `invisible` |
 | `consent` | `b` | opt in or out of automatic conversations |
 | `chat` | `sc` (`o` office, `g` group, `d` direct), `text`, `id` (peer for `d`) | send a message |
@@ -51,7 +51,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `wvr` | `id`, `st` ok / busy / away / offline | what happened to your wave |
 | `ac` | `c` [count per area] | visible people per map area, in map order; sent with `hello` and then at most every 2 s when a count changes |
 | `ann` | `n` sender name, `x` text | an administrator's announcement banner (one line, at most 280 characters, never stored) |
-| `go` | `ok`, `x`, `y` | a walk-to was accepted (the server now steers you, `self` carries the positions) or refused (`ok: false`: no path, nobody there); its end arrives as `fol` with `id` 0 |
+| `go` | `ok`, `x`, `y`, `near` | a walk-to was accepted (the server now steers you, `self` carries the positions) or refused (`ok: false`: no path, nobody there); `near: true` means the person is behind a door you may not open and the run stops at it; its end arrives as `fol` with `id` 0 |
 | `self` | `x`, `y`, `dx`, `dy`, `d`, `tp` | your authoritative position while following or walking to a place, once more where a guided walk stops, and after a portal (`tp`) |
 | `lreq` | `from`, `n` | somebody asks you to follow them |
 | `deny` | `d` denied areas, `lk` locked rooms | your blocked-area list (locks change it for everyone) |

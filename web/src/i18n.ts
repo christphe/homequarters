@@ -86,6 +86,7 @@ const en = {
   "touch.left": "Move left",
   "touch.right": "Move right",
   "go.unreachable": "There is no way to get there from here.",
+  "go.door": "Their room is closed: you will stop at the door.",
   "run.toggle": "Always run",
   "run.hint": "Always run (R). Hold Shift to switch while walking. Double-click the map to run there.",
   "avatar.pet": "Pet",

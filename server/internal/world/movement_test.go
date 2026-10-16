@@ -110,17 +110,58 @@ func TestWalkToATileRunsAroundWallsAndArrives(t *testing.T) {
 	}
 }
 
-func TestWalkToAPersonStopsNextToThem(t *testing.T) {
+// "Walk to" a person ends on their tile, so in a small office or desk room the walker gets in.
+func TestWalkToAPersonEndsOnTheirTile(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		tx, ty float64
+	}{
+		{"reception, behind a wall", 9*16 + 8, 6*16 + 8},
+		{"a small private office", 6*16 + 8, 42*16 + 8}, // office 1, not assigned: open to everybody
+		{"a meeting room", 50*16 + 8, 4*16 + 8},
+	} {
+		h := newHarness(t)
+		target := h.add(1, "member", c.tx, c.ty)
+		p := h.add(2, "member", 9*16+8, 20*16+8)
+		drain(p)
+		h.send(p, ev{kind: evGoto, id: 1})
+		if got := frames(p); !strings.Contains(got, `"ok":true`) || strings.Contains(got, `"near"`) {
+			t.Fatalf("%s: the walk is accepted, straight to them: %q", c.name, got)
+		}
+		h.run(15 * time.Second)
+		if got, want := tileOf(p.X, p.Y), tileOf(target.X, target.Y); got != want {
+			t.Fatalf("%s: must end on the person's tile %v, is on %v (%.0f,%.0f)", c.name, want, got, p.X, p.Y)
+		}
+		if p.area != target.area {
+			t.Fatalf("%s: must end in the same room", c.name)
+		}
+		if p.destOn {
+			t.Fatalf("%s: the walk ends on arrival", c.name)
+		}
+	}
+}
+
+// If the person is behind a door the walker may not open (locked, or somebody else's office), the
+// walk stops on the closest tile it can reach, outside, and says so.
+func TestWalkToAPersonInALockedRoomStopsAtTheDoor(t *testing.T) {
 	h := newHarness(t)
-	target := h.add(1, "member", 9*16+8, 6*16+8)
+	target := h.add(1, "member", 50*16+8, 4*16+8) // in Aurora (an open meeting room)
 	p := h.add(2, "member", 9*16+8, 20*16+8)
+	h.send(target, ev{kind: evLock, b: true})
+	drain(p)
 	h.send(p, ev{kind: evGoto, id: 1})
-	h.run(9 * time.Second)
-	if d := dist(p.X, p.Y, target.X, target.Y); d > followGap+10 {
-		t.Fatalf("must stop next to the person, distance %.1f", d)
+	if got := frames(p); !strings.Contains(got, `"ok":true`) || !strings.Contains(got, `"near":true`) {
+		t.Fatalf("the walk is accepted as far as the door, and says so: %q", got)
+	}
+	h.run(15 * time.Second)
+	if p.area == target.area {
+		t.Fatal("a locked room keeps the walker out")
+	}
+	if d := dist(p.X, p.Y, target.X, target.Y); d > 8*16 {
+		t.Fatalf("must stop at the room's door, %.0f px from the person at (%.0f,%.0f)", d, p.X, p.Y)
 	}
 	if p.destOn {
-		t.Fatal("the walk ends on arrival")
+		t.Fatal("the walk ends at the door")
 	}
 }
 

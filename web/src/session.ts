@@ -187,7 +187,10 @@ class Session {
         break;
       case "self": view.applySelf(m); break;
       case "go":
-        if (m.ok) view.setGuided(true);
+        if (m.ok) {
+          view.setGuided(true);
+          if (m.near) toast(t("go.door"));
+        }
         else { view.clearDest(); toast(t("go.unreachable")); }
         break;
       case "wv":
