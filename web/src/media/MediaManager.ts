@@ -376,7 +376,8 @@ export class MediaManager {
     } else {
       this.micTest = false;
       room.remoteParticipants.forEach((p) => p.setVolume(this.volumes.get(p.identity) ?? 1));
-      if (this.testWasMicOn && this.publishing) await room.localParticipant.setMicrophoneEnabled(true);
+      // with today's device choice, not the one the call started with
+      if (this.testWasMicOn && this.publishing) await room.localParticipant.setMicrophoneEnabled(true, micCapture());
       this.testWasMicOn = false;
     }
     this.refresh();

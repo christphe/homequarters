@@ -6,6 +6,7 @@ import type { AvatarSpec } from "../net/protocol";
 import { AvatarCanvas, PetCanvas } from "./AvatarEditor";
 import { AppearanceDialog } from "./AppearanceDialog";
 import { NoiseDialog } from "./NoiseDialog";
+import { MediaDialog } from "./MediaDialog";
 import { GearIcon } from "./Icons";
 import { askNotifyPermission } from "../notify";
 import { askOsIdle, IDLE_SETTINGS_URL, osIdleSupported } from "../osIdle";
@@ -23,6 +24,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [dressing, setDressing] = useState(false);
   const [idleBlocked, setIdleBlocked] = useState(false);
   const [noiseOpen, setNoiseOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const makeDeviceLink = async () => {
     const r = await fetch("/api/account-link", { method: "POST" });
     if (!r.ok) return toast(t("settings.deviceError"));
@@ -76,6 +78,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <input type="checkbox" checked={s.eco} onChange={(e) => { saveSettings({ eco: e.target.checked, maxVideos: e.target.checked ? Math.min(s.maxVideos, 3) : s.maxVideos }); session.setEco(e.target.checked); media.applySubscriptions(); }} />
         <span>{t("settings.eco")}<small className="muted"> — {t("settings.ecoHint")}</small></span>
       </label>
+      <button className="btn" onClick={() => setDevicesOpen(true)}>{t("media.devices")}</button>
+      {devicesOpen && <MediaDialog mode="devices" onClose={() => setDevicesOpen(false)} />}
       <div className="check-row">
         <label className="check">
           <input type="checkbox" checked={s.denoise} onChange={(e) => { saveSettings({ denoise: e.target.checked }); void media.applyNoiseSuppression(); void spotlightMedia.applyNoiseSuppression(); }} />
