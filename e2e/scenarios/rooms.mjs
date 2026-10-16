@@ -40,6 +40,8 @@ export async function run(ctx) {
     await walkTo(boss, 50 * 16 + 8, 12 * 16 + 8);
     await waitFor(async () => (await st(admin)).conv?.state === "live" && (await st(boss)).conv?.state === "live", { timeout: 15000, what: "admins live in room" });
     const conv = (await st(admin)).conv;
+    const chimes = (u) => u.page.evaluate(() => [...window.__tilework.chimes]);
+    check("a call starting chimes in for both people", (await chimes(admin)).includes("convIn") && (await chimes(boss)).includes("convIn"), JSON.stringify({ admin: await chimes(admin), boss: await chimes(boss) }));
     check("admin joins the private room call", conv.kind === "r" && conv.name === "Boardroom", JSON.stringify({ k: conv.kind, n: conv.name }));
     const room = await admin.page.evaluate(() => window.__tilework.media.currentRoom);
     const claims = b64json(await admin.page.evaluate(() => window.__lastJoin.token));
@@ -136,6 +138,7 @@ export async function run(ctx) {
     const after = await metrics();
     check("leaving the private room ends the call and the server revokes SFU access", after.tilework_media_revocations_total > before.tilework_media_revocations_total && (await lkParticipants(room)).length === 0);
     check("the admin left alone in the room is out of the call too", (await st(boss)).conv === null);
+    check("leaving chimes out, for the one who left and the one left alone", (await chimes(admin)).at(-1) === "convOut" && (await chimes(boss)).at(-1) === "convOut", JSON.stringify({ admin: await chimes(admin), boss: await chimes(boss) }));
     check("the second administrator is made a member again", (await setRole(boss.id, "member")).ok);
 
     const errs = [admin, mem, m2].flatMap((u) => u.logs).filter((l) => !/getDisplayMedia|display-capture/.test(l));
