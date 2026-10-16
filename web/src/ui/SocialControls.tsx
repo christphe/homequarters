@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { session } from "../session";
 import { setState, useStore } from "../store";
 import { t, type Key } from "../i18n";
@@ -28,6 +29,19 @@ export function SocialControls() {
     mq?.addEventListener("change", on);
     return () => mq?.removeEventListener("change", on);
   }, []);
+  // Wide screens: the reactions sit on the top bar's row, centred (OfficeScreen leaves a slot for
+  // them); from 1320px they clear an admin's buttons on the right. The other controls (Lock desk,
+  // knock, wave...) stay where they were.
+  const [wide, setWide] = useState(() => window.matchMedia?.("(min-width: 1320px)").matches ?? false);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSlot(document.getElementById("topbar-reactions"));
+    const mq = window.matchMedia?.("(min-width: 1320px)");
+    const on = () => setWide(mq.matches);
+    mq?.addEventListener("change", on);
+    return () => mq?.removeEventListener("change", on);
+  }, []);
+  const barUp = wide && !compact && !!slot;
   const done = () => { if (compact) setOpen(false); };
   useEffect(() => {
     if (!wave) return;
@@ -88,16 +102,20 @@ export function SocialControls() {
     setConfirmRelease(null);
   };
   const lockKey = (on: boolean): Key => (room?.auto ? (on ? "door.unlockDesk" : "door.lockDesk") : on ? "door.unlock" : "door.lock");
+  const reactions = (
+    <div className="reaction-row">
+      {EMOTES.map((emoji, i) => <button key={i} className="chip" aria-label={t(`emote.${i + 1}` as Key)} title={`${i + 1} · ${t(`emote.${i + 1}` as Key)}`} onClick={() => { session.emote(i + 1); done(); }}>{emoji}</button>)}
+      <button className={"chip run-toggle" + (running ? " on" : "")} aria-pressed={running} aria-label={t("run.toggle")} title={t("run.hint")} onClick={() => { session.toggleRun(); done(); }}>🏃</button>
+      <button className="chip" aria-label={t("dance.action")} title={t("dance.action")} onClick={() => { session.emote(8); done(); }}>💃</button>
+      <button className={"chip" + (handUp ? " on" : "")} aria-pressed={handUp} aria-label={handUp ? t("hand.lower") : t("hand.raise")} title={handUp ? t("hand.lower") : t("hand.raise")} onClick={() => { session.toggleHand(); done(); }}>✋</button>
+    </div>
+  );
   return (
     <>
-      <div className={"social-controls" + (compact && open ? " open" : "")} role="region" aria-label={t("emote.title")}>
+      {barUp && createPortal(reactions, slot!)}
+      <div className={"social-controls" + (compact && open ? " open" : "") + (barUp ? " bar-up" : "")} role="region" aria-label={t("emote.title")}>
         {compact && <button className="chip reaction-toggle" aria-expanded={open} aria-label={t("emote.title")} title={t("emote.title")} onClick={() => setOpen(!open)}>😀</button>}
-        {(!compact || open) && <div className="reaction-row">
-          {EMOTES.map((emoji, i) => <button key={i} className="chip" aria-label={t(`emote.${i + 1}` as Key)} title={`${i + 1} · ${t(`emote.${i + 1}` as Key)}`} onClick={() => { session.emote(i + 1); done(); }}>{emoji}</button>)}
-          <button className={"chip run-toggle" + (running ? " on" : "")} aria-pressed={running} aria-label={t("run.toggle")} title={t("run.hint")} onClick={() => { session.toggleRun(); done(); }}>🏃</button>
-          <button className="chip" aria-label={t("dance.action")} title={t("dance.action")} onClick={() => { session.emote(8); done(); }}>💃</button>
-          <button className={"chip" + (handUp ? " on" : "")} aria-pressed={handUp} aria-label={handUp ? t("hand.lower") : t("hand.raise")} title={handUp ? t("hand.lower") : t("hand.raise")} onClick={() => { session.toggleHand(); done(); }}>✋</button>
-        </div>}
+        {(!compact || open) && !barUp && reactions}
         {wave && (
           <div className="wave-card" role="alert">
             <span>{t("wave.incoming", { name: wave.name })}</span>
