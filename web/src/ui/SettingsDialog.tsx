@@ -3,7 +3,8 @@ import { activeMedia, media, spotlightMedia } from "../media/MediaManager";
 import { session } from "../session";
 import { saveAvatar, saveSettings, toast, useStore } from "../store";
 import type { AvatarSpec } from "../net/protocol";
-import { AvatarEditor } from "./AvatarEditor";
+import { AvatarCanvas, PetCanvas } from "./AvatarEditor";
+import { AppearanceDialog } from "./AppearanceDialog";
 import { askNotifyPermission } from "../notify";
 import { askOsIdle, osIdleSupported } from "../osIdle";
 import { t } from "../i18n";
@@ -17,17 +18,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState(myName);
   const [avatar, setAvatar] = useState<AvatarSpec>(useStore((x) => x.roster.get(x.meId)?.av) ?? myAvatar);
   const [deviceLink, setDeviceLink] = useState("");
+  const [dressing, setDressing] = useState(false);
   const makeDeviceLink = async () => {
     const r = await fetch("/api/account-link", { method: "POST" });
     if (!r.ok) return toast(t("settings.deviceError"));
     const { url } = (await r.json()) as { url: string };
     setDeviceLink(location.origin + url);
   };
-  const saveProfile = async () => {
-    const r = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), avatar }) });
+  const saveProfile = async (look = avatar) => {
+    const n = name.trim() || myName;
+    const r = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n, avatar: look }) });
     if (!r.ok) return toast(t("settings.profileError"));
-    saveAvatar(avatar);
-    localStorage.setItem("tilework.name", name.trim());
+    setAvatar(look);
+    saveAvatar(look);
+    localStorage.setItem("tilework.name", n);
     toast(t("settings.profileSaved"));
   };
   return (
@@ -35,9 +39,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       {meId > 0 && (
         <div className="field">
           <span>{t("settings.profile")}</span>
-          <input maxLength={24} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("join.name")} />
-          <AvatarEditor value={avatar} onChange={setAvatar} />
-          <button className="btn" onClick={saveProfile} disabled={!name.trim()}>{t("settings.saveProfile")}</button>
+          <div className="profile-row">
+            <div className="ae-preview profile-look">
+              <AvatarCanvas av={avatar} dir={0} size={3} />
+              {!!avatar.pt && <PetCanvas kind={avatar.pt} dir={0} size={2} />}
+            </div>
+            <div className="profile-fields">
+              <input maxLength={24} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("join.name")} />
+              <div className="profile-buttons">
+                <button className="btn" onClick={() => setDressing(true)}>{t("appearance.change")}</button>
+                <button className="btn" onClick={() => void saveProfile()} disabled={!name.trim()}>{t("settings.saveProfile")}</button>
+              </div>
+            </div>
+          </div>
+          {dressing && <AppearanceDialog value={avatar} onClose={() => setDressing(false)} onSave={async (look) => { await saveProfile(look); setDressing(false); }} />}
         </div>
       )}
       {meId > 0 && (
