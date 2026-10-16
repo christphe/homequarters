@@ -1,10 +1,8 @@
 // Invites, administrator-only actions and production-mode safety. HTTP-level checks (no browser needed).
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { check, summary, resetChecks, API } from "../lib.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const post = (p, body, cookie) => fetch(API + p, { method: "POST", headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: "tilework_session=" + cookie } : {}) }, body: JSON.stringify(body) });
 const cookieOf = (r) => r.headers.get("set-cookie")?.split(";")[0].split("=")[1];
 
@@ -43,7 +41,7 @@ export async function run(ctx) {
   check("oversized request bodies are rejected", huge.status === 400, "status " + huge.status);
 
   // 4. Production mode refuses insecure configuration
-  const bin = path.join(root, "bin/tilework");
+  const bin = ctx.bin;
   const tries = [
     ["no LiveKit keys", { TILEWORK_ENV: "production" }],
     ["default dev key", { TILEWORK_ENV: "production", LIVEKIT_URL: "wss://x.example", LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret" }],

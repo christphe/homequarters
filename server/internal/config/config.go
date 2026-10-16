@@ -45,6 +45,10 @@ type Config struct {
 	// whiteboards) is reset to the starter office every DemoReset.
 	Demo      bool
 	DemoReset time.Duration
+
+	// StopOnStdinClose shuts the server down gracefully when its stdin closes. Dev only: the test runner
+	// uses it on Windows, where a signal from Node is a hard kill that skips saving.
+	StopOnStdinClose bool
 }
 
 func env(k, d string) string {
@@ -98,6 +102,7 @@ func Load() (*Config, error) {
 		Demo:           env("TILEWORK_DEMO", "") == "1" || env("TILEWORK_DEMO", "") == "true",
 		DemoReset:      time.Duration(envInt("TILEWORK_DEMO_RESET_HOURS", 6)) * time.Hour,
 	}
+	c.StopOnStdinClose = env("TILEWORK_STOP_ON_STDIN_CLOSE", "") == "1"
 	if o := env("TILEWORK_ALLOWED_ORIGINS", ""); o != "" {
 		c.AllowedOrigins = strings.Split(o, ",")
 	}
@@ -120,6 +125,9 @@ func Load() (*Config, error) {
 		return nil, errors.New("TILEWORK_AOI_MAX_CELLS must be within TILEWORK_AOI_CELLS..8")
 	}
 	if c.Env == "production" {
+		if c.StopOnStdinClose {
+			return nil, errors.New("TILEWORK_STOP_ON_STDIN_CLOSE is for local tests only")
+		}
 		if c.LiveKitKey == "" || c.LiveKitSecret == "" || c.LiveKitURL == "" {
 			return nil, errors.New("production requires LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET")
 		}

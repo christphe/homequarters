@@ -81,6 +81,7 @@ Everything is configured through environment variables.
 | `TILEWORK_JOIN_RATE` | `20` | Join requests per second per IP (raise only for load tests) |
 | `TILEWORK_MEDIA_TOKEN_TTL_SECONDS` | `30` | Validity of a media join token |
 | `TILEWORK_MEDIA_RECONCILE_SECONDS` | `10` | How often SFU rooms are compared with the world membership |
+| `TILEWORK_STOP_ON_STDIN_CLOSE` | unset | Local tests only: `1` shuts the server down gracefully when its stdin closes (the browser runner's stop on Windows, where a signal is a hard kill). Production refuses it |
 | `LIVEKIT_URL` | empty | Public `ws(s)://` URL browsers use; empty disables media |
 | `LIVEKIT_API_URL` | derived | `http(s)://` URL the server uses for admin calls |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | empty | LiveKit credentials |

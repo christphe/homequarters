@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -89,6 +90,13 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.StopOnStdinClose { // dev only: the test runner's graceful stop on Windows
+		go func() {
+			io.Copy(io.Discard, os.Stdin)
+			log.Info("stdin closed: shutting down")
+			stop()
+		}()
+	}
 
 	md := media.New(media.Config{PublicURL: cfg.LiveKitURL, APIURL: cfg.LiveKitAPIURL, Key: cfg.LiveKitKey, Secret: cfg.LiveKitSecret, TokenTTL: cfg.MediaTTL}, log)
 	go md.Run(ctx)
