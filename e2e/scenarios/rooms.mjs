@@ -1,5 +1,5 @@
 // Meeting rooms: explicit access rules, server-side enforcement, SFU isolation and revocation, screen share.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, lkParticipants, metrics, API } from "../lib.mjs";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, lkParticipants, metrics, API, rtpBytes } from "../lib.mjs";
 
 const b64json = (tok) => JSON.parse(Buffer.from(tok.split(".")[1], "base64url").toString());
 
@@ -49,6 +49,32 @@ export async function run(ctx) {
     const both = [String(admin.id), String(boss.id)].sort().join();
     await waitFor(async () => (await lkParticipants(room)).sort().join() === both, { timeout: 15000, what: "both admins in the SFU room" }).catch(() => {});
     check("the second person starts the call: the SFU room holds exactly the two admins", (await lkParticipants(room)).sort().join() === both);
+
+    // --- RNNoise, switched on from the real setting in the middle of the call
+    const noise = (u) => u.page.evaluate(() => {
+      const r = window.__tilework.media.room, pub = r.localParticipant.getTrackPublication("microphone");
+      const proc = pub?.track?.getProcessor?.();
+      const sent = r.engine.pcManager.publisher.pc.getSenders().find((x) => x.track?.kind === "audio")?.track;
+      return { name: proc?.name ?? "", sendsProcessed: !!proc && sent?.id === proc.processedTrack?.id, live: sent?.readyState === "live" };
+    });
+    const toggleNoise = async (u) => {
+      await u.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
+      await waitFor(() => u.page.$(".modal"), { what: "settings dialog" });
+      await u.page.evaluate(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("Noise suppression"))?.querySelector("input")?.click());
+      await sleep(300);
+      await u.page.keyboard.press("Escape");
+    };
+    await toggleNoise(admin);
+    await waitFor(async () => (await noise(admin)).sendsProcessed, { timeout: 15000, what: "rnnoise on the microphone" }).catch(() => {});
+    const on = await noise(admin);
+    const heard0 = await rtpBytes(boss, "inbound", "audio");
+    await sleep(2500);
+    const heard1 = await rtpBytes(boss, "inbound", "audio");
+    check("the noise suppression setting puts RNNoise on the published microphone mid-call", on.name === "rnnoise" && on.sendsProcessed && on.live, JSON.stringify(on));
+    check("...and the other person keeps hearing it", heard1 - heard0 > 1000, (heard1 - heard0) + " bytes in 2.5 s");
+    await toggleNoise(admin);
+    await waitFor(async () => (await noise(admin)).name === "", { timeout: 10000, what: "rnnoise off" }).catch(() => {});
+    check("switching it off takes RNNoise off the microphone", (await noise(admin)).name === "");
 
     // --- a member in a proximity call elsewhere gets a token for THAT group only
     const m2 = await joinAs(browser, "Mem2" + t);
