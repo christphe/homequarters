@@ -35,7 +35,9 @@ if (!EXTERNAL && !(await portOpen(7880))) {
 }
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tilework-e2e-"));
-const ctx = { dir, server: null, async startServer() {
+// Checks that only need time to pass (an expiring token) run after the other scenarios instead of sleeping in theirs.
+const deferred = [];
+const ctx = { dir, server: null, defer(name, due, fn) { deferred.push({ name, due, fn }); }, async startServer() {
   const child = spawn(path.join(root, "bin/tilework"), [], {
     env: { ...process.env, TILEWORK_ENV: "dev", TILEWORK_ADDR: `127.0.0.1:${PORT}`, TILEWORK_DB: path.join(dir, "e2e.db"), TILEWORK_STATIC_DIR: path.join(root, "web/dist"),
       TILEWORK_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: "ws://127.0.0.1:7880", LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret",
@@ -72,6 +74,15 @@ try {
   ok = false;
 } finally {
   await ctx.stopServer();
+  // deferred checks run even when a scenario aborted the loop; they need only the SFU (stopped right after)
+  const { resetChecks, summary, check } = await import("./lib.mjs");
+  for (const d of deferred.sort((x, y) => x.due - y.due)) {
+    console.log(`\n== ${d.name} (deferred) ==`);
+    await sleep(Math.max(0, d.due - Date.now()));
+    resetChecks();
+    await d.fn().catch((e) => check("deferred check ran", false, String(e)));
+    ok = summary() && ok;
+  }
   for (const c of children) c.kill("SIGTERM");
 }
 console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
