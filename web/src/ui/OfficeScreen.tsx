@@ -69,8 +69,10 @@ export function OfficeScreen() {
     <div className={"office" + (editing ? " editing" : "")}>
       <div className="stage" ref={host} role="application" aria-label={t("map.label", { keys: moveLabels().join(", ") })} />
       <header className="topbar">
-        <strong className="brand">{office || t("app.name")}</strong>
-        {area && <span className="pill">{area}</span>}
+        <div className="brand-box">
+          <strong className="brand" title={office || undefined}>{office || t("app.name")}</strong>
+          {area && <p className="hint area-hint">{area}</p>}
+        </div>
         {demo && <span className="pill" title={t("demo.reset", { time: new Date(demo.nextReset * 1000).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" }) })}>{t("demo.pill")}</span>}
         {conn !== "open" && conn !== "connecting" && <span className="pill warn" role="status">{conn === "replaced" ? t("conn.replaced") : t("conn.reconnecting")}</span>}
         <div className="spacer topbar-slot" id="topbar-reactions" />
