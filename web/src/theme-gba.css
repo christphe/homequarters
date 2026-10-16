@@ -3,11 +3,12 @@
  * so layout rules stay in one place. The conventions follow 2000s handheld RPG menus: white
  * message frames with a coloured ring and dark lines on both sides, cream panels with an orange
  * header tab, blue message bars, teal scanline backgrounds and a black triangle cursor.
- * Every pixel here is original CSS. Font: Pixelify Sans, SIL Open Font License 1.1
- * (see assets/fonts/PixelifySans-OFL.txt).
+ * Every pixel here is original CSS. Font: Jersey 10, SIL Open Font License 1.1
+ * (see assets/fonts/Jersey10-OFL.txt). It has one weight: no faux bold, which smears pixels.
+ * Its x-height is 0.43 of its size, so font-size-adjust 0.525 draws it about 22 % larger than the
+ * sizes the layout uses, and the line height keeps its tall capitals apart.
  */
-@font-face { font-family: "Pixelify Sans"; font-weight: 400; font-display: swap; src: url("./assets/fonts/pixelify-sans-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Pixelify Sans"; font-weight: 700; font-display: swap; src: url("./assets/fonts/pixelify-sans-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Jersey 10"; font-weight: 400; font-display: swap; src: url("./assets/fonts/jersey-10-latin-400-normal.woff2") format("woff2"); }
 
 :root {
   --dark: #383438; --ink: #484850; --muted: #7a7c8c; --shade: #c8ccd4;
@@ -18,7 +19,7 @@
   --f-out: 0 0 0 2px var(--dark), 3px 5px 0 2px rgba(20, 16, 40, .35);
   --f-in: inset 0 0 0 2px var(--dark), inset -4px -4px 0 0 var(--shade);
 }
-html, body, button, input, select, textarea { font-family: "Pixelify Sans", ui-monospace, Menlo, monospace; }
+html, body, button, input, select, textarea { font-family: "Jersey 10", ui-monospace, Menlo, monospace; font-synthesis: none; font-size-adjust: 0.525; line-height: 1.4; }
 body { font-size: 16px; letter-spacing: .2px; color: var(--ink); }
 h1, h2, h3 { font-weight: 700; }
 :focus-visible { outline: 3px solid var(--coral); outline-offset: 1px; }

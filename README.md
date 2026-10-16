@@ -217,5 +217,5 @@ Using it with your team? Tell us how in an issue: real use cases decide what get
 
 - Code: **AGPL-3.0** ([LICENSE](LICENSE)), with no additional restrictions on commercial use.
 - Sprites, map, UI frames and site art are drawn by this project's own code (`web/src/game/art`, `e2e/art.mjs`); no third-party art, and no Gather, Nintendo or Game Freak assets, are used. The style is inspired by 2000s handheld RPGs, nothing is copied ([details](docs/art-style.md)).
-- Font: [Pixelify Sans](https://github.com/eifetx/Pixelify-Sans), SIL Open Font License 1.1 (`web/src/assets/fonts`).
+- Font: [Jersey 10](https://github.com/scfried/soft-type-jersey), SIL Open Font License 1.1 (`web/src/assets/fonts`).
 - Built on open source: [Go](https://go.dev), [coder/websocket](https://github.com/coder/websocket), [modernc.org/sqlite](https://gitlab.com/cznic/sqlite), [React](https://react.dev), [Vite](https://vite.dev), [PixiJS](https://pixijs.com), [LiveKit](https://livekit.io) and [marked](https://marked.js.org). The third-party licence inventory is in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
