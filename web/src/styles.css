@@ -163,7 +163,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .meter { height: 6px; background: #120f24; border-radius: 4px; overflow: hidden; } .meter i { display: block; height: 100%; background: var(--green); transition: width 0.1s; }
 .check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
-.toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--amber); padding: 8px 16px; border-radius: 10px; z-index: 10; }
+.toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--amber); padding: 8px 16px; border-radius: 10px; z-index: 30; } /* above dialogs (.scrim is 20): messages from a dialog must show */
+.setting-note { margin: -4px 0 0 30px; font-size: 13px; color: #c0392b; display: grid; gap: 6px; }
+.setting-note p { margin: 0; }
+.setting-url { display: flex; gap: 6px; }
+.setting-url input { flex: 1; min-width: 0; background: #120f24; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .debug { position: absolute; left: 12px; bottom: 12px; margin: 0; background: #000b; color: #9fffa8; font: 12px/1.4 ui-monospace, Menlo, monospace; padding: 8px 10px; border-radius: 8px; pointer-events: none; }
 
 /* below 900 px the panel starts under the reaction row and covers the minimap; the map editor's paint

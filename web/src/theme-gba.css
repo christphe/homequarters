@@ -101,6 +101,7 @@ h1, h2, h3 { font-weight: 700; }
 .sw { border: 3px solid var(--dark); border-radius: 4px; }
 .sw.on { border-color: var(--coral); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--dark); }
 .swatches input.sw.sw-custom { border: 3px solid var(--dark); border-radius: 4px; box-shadow: none; }
+.setting-url input { background: #fff; color: var(--ink); border: 3px solid var(--dark); border-radius: 6px; box-shadow: inset 2px 2px 0 rgba(20, 16, 40, .12); }
 .swatches input.sw.sw-custom.on { border-color: var(--coral); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--dark); }
 .ae-label { color: var(--muted); }
 
