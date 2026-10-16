@@ -97,3 +97,17 @@ func TestLargestInterestRadiusDefaultsAndBounds(t *testing.T) {
 		}
 	}
 }
+
+// The test runner stops a server on Windows by closing its stdin (a signal there is a hard kill);
+// production never takes that switch.
+func TestStopOnStdinCloseIsDevOnly(t *testing.T) {
+	t.Setenv("TILEWORK_STOP_ON_STDIN_CLOSE", "1")
+	c, err := Load()
+	if err != nil || !c.StopOnStdinClose {
+		t.Fatalf("dev takes the switch: %v %+v", err, c)
+	}
+	setProd(t)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "TILEWORK_STOP_ON_STDIN_CLOSE") {
+		t.Fatalf("production must refuse it: %v", err)
+	}
+}

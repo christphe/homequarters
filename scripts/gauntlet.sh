@@ -13,12 +13,14 @@ fails=0
 log_dir=$(mktemp -d "${TMPDIR:-/tmp}/tilework-gauntlet.XXXXXX")
 mkdir -p .gauntlet
 record=.gauntlet/last-gates.log
+# shasum ships with Perl, which Git Bash on Windows may lack: sha1sum gives the same digest there
+sha() { if command -v shasum >/dev/null 2>&1; then shasum; else sha1sum; fi; }
 fingerprint() {
   (git rev-parse HEAD; git diff HEAD; git ls-files --others --exclude-standard -z |
     while IFS= read -r -d '' file; do
       printf '%s\0' "$file"
-      if [ -f "$file" ]; then shasum <"$file"; fi
-    done) | shasum | cut -c1-12
+      if [ -f "$file" ]; then sha <"$file"; fi
+    done) | sha | cut -c1-12
 }
 tree=$(fingerprint)
 { echo "gates for: commit $(git rev-parse --short HEAD), tree $tree, started $(date -u +%FT%TZ), scenarios: ${*:-all}"; } >"$record"
