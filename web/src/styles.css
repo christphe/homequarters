@@ -170,7 +170,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .meter { height: 6px; background: #120f24; border-radius: 4px; overflow: hidden; } .meter i { display: block; height: 100%; background: var(--green); transition: width 0.1s; }
 .check { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
-.toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--amber); padding: 8px 16px; border-radius: 10px; z-index: 30; } /* above dialogs (.scrim is 20): messages from a dialog must show */
+.toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); pointer-events: none; background: var(--panel); border: 1px solid var(--amber); padding: 8px 16px; border-radius: 10px; z-index: 30; } /* above dialogs (.scrim is 20): messages from a dialog must show; clicks pass through to the controls under it */
 .check-row { display: flex; align-items: center; gap: 8px; }
 .check-row .check { flex: 1; }
 .check-row .round:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -248,7 +248,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .reaction-row { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   .office:has(.social-controls.open) .side { top: 210px; }
 }
-.room-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.room-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 16px; } /* clear of a toast (top 64px) */
+.bar-up .room-actions { margin-top: 10px; }
 .follow-hint { background: #fff; padding: 4px 8px; border-radius: 8px; display: flex; gap: 8px; align-items: center; }
 .object-note { white-space: pre-wrap; overflow-wrap: anywhere; }
 .demo-note { border: 3px solid #b77908; background: #fff6d8; color: #3a2400; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
