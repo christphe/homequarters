@@ -7,6 +7,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Reload a file only once its size has stopped changing: with several editors (people or
+    // agents) writing at once, hot reload sometimes picked up a half-written file and kept it.
+    watch: { awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 25 } },
     proxy: {
       "/api": "http://127.0.0.1:8080",
       "/ws": { target: "ws://127.0.0.1:8080", ws: true },
