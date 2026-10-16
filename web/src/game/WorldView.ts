@@ -227,8 +227,8 @@ export class WorldView {
     this.world.addChild(this.entLayer, this.fxG);
     this.entLayer.sortableChildren = true;
     this.hud.addChild(this.hudG);
-    this.bannerText = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 30, fill: 0x383858, stroke: { color: 0xdcdcf0, width: 2 } } });
-    this.bannerText.anchor.set(0.5);
+    // no outline: on the light plate it only smeared the pixel letters
+    this.bannerText = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 30, fill: 0x383858 } });
     this.banner.addChild(this.bannerG, this.bannerText);
     this.banner.visible = false;
     this.hud.addChild(this.banner);
@@ -900,7 +900,8 @@ export class WorldView {
       .roundRect(4, 4, w - 8, h - 8, 2).fill(0xf8f8ff)
       .rect(4, h - 8, w - 8, 3).fill(0xdcdcf0)
       .rect(4, 4, w - 8, 2).fill(0xffffff);
-    t.position.set(w / 2, h / 2 + 1);
+    // whole pixels: a centred anchor put odd-width text on half pixels and blurred it
+    t.position.set(20, Math.round((h - t.height) / 2));
     this.bannerT0 = performance.now();
   }
 
