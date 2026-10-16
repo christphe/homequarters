@@ -5,6 +5,7 @@ Two stacks, deliberately different:
 | | `docker-compose.local.yml` | `docker-compose.yml` (production) |
 |---|---|---|
 | `TILEWORK_ENV` | `dev` | `production` (refuses insecure config) |
+| `TILEWORK_VERSION` (names the deploy; browsers on a page from another version are asked to reload) | unset: a hash of the built page | the commit, set at build time in the published image (`--build-arg TILEWORK_VERSION=...` when building yourself) |
 | LiveKit keys | public dev pair (`devkey`/`secret`) | yours, from `.env`; the server aborts on the dev key or a secret shorter than 32 chars |
 | TLS | none (`http://localhost` is a secure context) | Caddy, automatic certificates |
 | Joining | anyone reaching the port | invite links only |

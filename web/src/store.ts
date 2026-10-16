@@ -74,6 +74,8 @@ export interface State {
   locked: number[];
   /** Rooms the server keeps me out of right now (locked and not let in, or somebody else's office). */
   denied: number[];
+  /** The server runs a newer deploy than this page: reload (see UpdateBanner). */
+  outdated: boolean;
   knock: { id: number; name: string; area: string } | null;
   boardKey: string;
   /** The local player runs (Shift held, or "always run" on). */
@@ -127,6 +129,7 @@ const initial: State = {
   leadRequest: null,
   locked: [],
   denied: [],
+  outdated: false,
   knock: null,
   boardKey: "",
   running: false,
