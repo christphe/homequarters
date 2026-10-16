@@ -81,6 +81,8 @@ func (s *Server) demoReset(ctx context.Context) error {
 	if wd != nil && !wd.SameSize(cm) { // never leave a half-done reset behind
 		return errors.New("the starter map changed size: restart the server to reset the demo")
 	}
+	s.mapMu.Lock()
+	defer s.mapMu.Unlock()
 	if err := s.st.ResetDemoContent(ctx, office.ID, string(raw)); err != nil {
 		return err
 	}

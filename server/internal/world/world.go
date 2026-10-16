@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,7 @@ const (
 	evAnnounce
 	evView
 	evForce
+	evClaim
 )
 
 type ev struct {
@@ -81,6 +83,7 @@ type ev struct {
 	errc   chan error
 	x, y   int
 	wb     *BoardMsg
+	claim  chan claimResult
 }
 
 type joinResult struct {
@@ -418,6 +421,14 @@ func (w *World) handle(e ev, now time.Time) {
 	case evAnnounce:
 		w.doAnnounce(e.info.Name, e.s)
 		return
+	case evClaim:
+		claim := w.doClaimDesk
+		if e.b {
+			claim = w.doReleaseDesk
+		}
+		m, err := claim(e.id, e.x, e.y, now)
+		e.claim <- claimResult{m, err}
+		return
 	case evSnapshot:
 		out := make(map[string]map[string]bool, len(w.groups)+1)
 		for _, g := range w.groups {
@@ -583,19 +594,37 @@ func (w *World) doReloadMap(cm *gamemap.Compiled, now time.Time) error {
 			delete(w.locks, a.ID)
 		}
 	}
+	old := w.m
 	w.m = cm
-	w.pruneLocks(true, now)
-	// Room groups are keyed by area index, which may have changed: dissolve them; people re-enter
-	// through the normal dwell rules.
-	for _, g := range w.groups {
-		if g.isRoom {
-			for len(g.members) > 0 {
-				w.leaveGroup(g.members[0])
-			}
-		}
-	}
+	// Areas are counted in the new map's indexes before locks are pruned, or an occupied room
+	// whose index moved would look empty and lose its lock.
 	for _, p := range w.list {
 		p.area = w.m.AreaIndexAt(int(p.X)/gamemap.TilePx, int(p.Y)/gamemap.TilePx)
+	}
+	w.pruneLocks(true, now)
+	// Room groups are keyed by area index, which may have changed. A room that is still there,
+	// unchanged, keeps its call under its new index (claiming a desk adds a room and must not cut
+	// the meetings elsewhere); the others dissolve and people re-enter through the normal dwell rules.
+	kept := make(map[int]*group, len(w.roomGrp))
+	for _, g := range w.groups {
+		if !g.isRoom {
+			continue
+		}
+		if ni := sameRoomIndex(&old.Map.Areas[g.area], cm.Map.Areas); ni >= 0 && kept[ni] == nil {
+			g.area = ni
+			kept[ni] = g
+			continue
+		}
+		for len(g.members) > 0 {
+			w.leaveGroup(g.members[0])
+		}
+	}
+	w.roomGrp = kept
+	for _, p := range w.list {
+		p.area = w.m.AreaIndexAt(int(p.X)/gamemap.TilePx, int(p.Y)/gamemap.TilePx)
+		if g := p.group; g != nil && g.isRoom && g.area != p.area {
+			w.leaveGroup(p) // a new room now covers this tile
+		}
 		moved := false
 		if !w.canStand(p, p.X, p.Y) {
 			p.X, p.Y = w.spawnFor(p, UserInfo{})
@@ -899,6 +928,23 @@ func AllowedIn(a *gamemap.Area, uid uint32, role string) bool {
 		return role == "admin" || !isOwnedOffice(a) || ownsOffice(a, uid)
 	}
 	return false
+}
+
+// sameRoomIndex returns the index in areas of a room identical to a (same id, place, rules), or -1.
+func sameRoomIndex(a *gamemap.Area, areas []gamemap.Area) int {
+	for i := range areas {
+		b := &areas[i]
+		if b.ID != a.ID {
+			continue
+		}
+		if b.Name == a.Name && b.Kind == a.Kind && b.X == a.X && b.Y == a.Y && b.W == a.W && b.H == a.H &&
+			b.Floor == a.Floor && b.Capacity == a.Capacity && b.Auto == a.Auto &&
+			b.Access.Mode == a.Access.Mode && slices.Equal(b.Access.Users, a.Access.Users) {
+			return i
+		}
+		return -1
+	}
+	return -1
 }
 
 // isOwnedOffice reports a private office that has been assigned to somebody.

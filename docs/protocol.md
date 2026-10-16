@@ -84,6 +84,8 @@ Avatars are `{sk, hs, hc, sh, pa, pt, bd, ht, hk}`. The colours `sk` (skin, 12 s
 | `POST /api/join` | invite (production) | create a member; `{name, avatar, invite}`; sets the session cookie |
 | `GET /api/me` | cookie | current session or `{"authenticated": false}` |
 | `PUT /api/profile` | cookie | change your name and avatar |
+| `POST /api/desk` | cookie | take the free desk at tile `{x, y}`: you must be connected, next to it, have no desk or office, and the desk must not be inside a room. The new map goes to everybody; refusals return `{error}` = `offline`, `far`, `taken`, `room`, `has_place` (409) or `no_desk` (404) ([decision 0020](decisions/0020-members-take-free-desks.md)) |
+| `POST /api/desk/release` | cookie | free your own desk at tile `{x, y}` while you stand in its room; refusals: `offline`, `far` (not in the desk's room), `not_mine` (409) or `no_desk` (404) |
 | `POST /api/invites` | admin | mint an invite `{role, maxUses, hours}`; the secret is returned once |
 | `GET /api/admin/invites` | admin | list invites (id, role, uses, expiry, creator, status); never the secret |
 | `DELETE /api/admin/invites/{id}` | admin | revoke an invite |

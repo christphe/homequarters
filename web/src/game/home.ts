@@ -1,4 +1,4 @@
-import type { Area, MapData } from "../net/protocol";
+import type { Area, MapData, Prop } from "../net/protocol";
 
 // Where "go back to my desk" leads: next to the desk assigned to me, otherwise inside the private
 // office I own. Pure so it can be tested without a browser.
@@ -37,6 +37,25 @@ export function homeTile(map: MapData, me: number): { x: number; y: number } | n
     if (best) return best;
   }
   return null;
+}
+
+/** px between my feet and a desk's rectangle to take it; the server's useReach. */
+export const CLAIM_REACH = 20;
+
+/** The free desk I stand next to and may take, or null. Same rules as the server (world.doClaimDesk):
+ * I have no desk and no office, the desk is unassigned and not inside a room. */
+export function claimableDesk(map: MapData, me: number, px: number, py: number): Prop | null {
+  if (map.props.some((p) => p.t === "desk" && p.assign === me) || map.areas.some((a) => mine(a, me))) return null;
+  const T = map.tile || 16;
+  let best: Prop | null = null, bestD = CLAIM_REACH;
+  for (const p of map.props) {
+    if (p.t !== "desk" || p.assign) continue;
+    if (map.areas.some((a) => a.kind === "room" && !a.auto && p.x >= a.x && p.y >= a.y && p.x < a.x + a.w && p.y < a.y + a.h)) continue;
+    const w = p.w ?? 2, h = p.h ?? 1;
+    const d = Math.hypot(Math.max(p.x * T - px, 0, px - (p.x + w) * T), Math.max(p.y * T - py, 0, py - (p.y + h) * T));
+    if (d <= bestD) { bestD = d; best = p; }
+  }
+  return best;
 }
 
 /** Ctrl+D, or Cmd+D on a Mac (where Ctrl+D deletes forward in text fields). */

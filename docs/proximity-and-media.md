@@ -18,7 +18,7 @@ There are two kinds of group, each mapped to one small SFU room (see [decision 0
 
 - **Proximity groups** form between free people outside meeting rooms, up to 8 people.
 - **Meeting rooms** correspond to map areas with an explicit access rule: open, members only, admins only, a list, or a private office (open while unassigned; then its owners, admins and visitors an owner lets in). A room's call starts with two people: alone in a room you get no call and nothing is captured.
-- **Assigned desks** are small rooms the server derives from the map: the desk and the two rows in front of it. Whoever comes over to a desk shares its call; the neighbouring desks do not hear it ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)).
+- **Assigned desks** are small rooms the server derives from the map: the desk and the two rows in front of it. Whoever comes over to a desk shares its call; the neighbouring desks do not hear it ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)). A member without a desk can take a free one with the button that appears next to it (and release it from inside its room); a map change (a desk taken, an editor save) keeps the calls of rooms that did not change ([decision 0020](decisions/0020-members-take-free-desks.md)).
 
 | Rule | Default |
 | --- | --- |

@@ -4,7 +4,7 @@ import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
 import { Socket, type ConnState } from "./net/socket";
-import type { BoardCommand, Person, ServerMsg, Status } from "./net/protocol";
+import type { BoardCommand, Person, Prop, ServerMsg, Status } from "./net/protocol";
 import { boardModel } from "./game/boardModel";
 import { media, spotlightMedia } from "./media/MediaManager";
 import { getState, setState, toast, type ChatMsg } from "./store";
@@ -312,6 +312,24 @@ class Session {
     const tile = map && homeTile(map, getState().meId);
     if (tile) this.view!.goTo(tile.x, tile.y);
     else toast(t("home.none"));
+  }
+  /** Takes the free desk I stand next to; the server checks everything and sends everybody the new map. */
+  async claimDesk(desk: Prop): Promise<boolean> {
+    const name = desk.label || t("desk.name");
+    const r = await fetch("/api/desk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x: desk.x, y: desk.y }) }).catch(() => null);
+    if (r?.ok) {
+      toast(t("desk.claimed", { name }));
+      return true;
+    }
+    const reason = ((await r?.json().catch(() => null)) as { error?: string } | null)?.error;
+    toast(t(reason === "far" || reason === "taken" || reason === "has_place" || reason === "room" ? `desk.err.${reason}` : "desk.err.other"));
+    return false;
+  }
+  /** Frees my own desk (I stand in its room); the server checks it and sends everybody the new map. */
+  async releaseDesk(desk: Prop): Promise<boolean> {
+    const r = await fetch("/api/desk/release", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x: desk.x, y: desk.y }) }).catch(() => null);
+    toast(r?.ok ? t("desk.released", { name: desk.label || t("desk.name") }) : t("desk.err.release"));
+    return !!r?.ok;
   }
   wave(id: number) { this.socket?.send({ t: "wave", id }); }
   hand(up: boolean) { this.handWanted = up; this.handAskedAt = Date.now(); this.socket?.send({ t: "hand", b: up }); }
