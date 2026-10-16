@@ -5,6 +5,7 @@ import { saveAvatar, saveSettings, toast, useStore } from "../store";
 import type { AvatarSpec } from "../net/protocol";
 import { AvatarEditor } from "./AvatarEditor";
 import { askNotifyPermission } from "../notify";
+import { askOsIdle, osIdleSupported } from "../osIdle";
 import { t } from "../i18n";
 import { Modal } from "./Modal";
 
@@ -83,6 +84,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           saveSettings({ notify: on });
         }} />
         <span>{t("settings.notify")}</span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={s.osIdle} disabled={!osIdleSupported()} onChange={async (e) => {
+          const on = e.target.checked;
+          if (on && !(await askOsIdle())) return toast(t("settings.osIdleDenied"));
+          saveSettings({ osIdle: on });
+          session.setOsIdle(on);
+        }} />
+        <span>{t("settings.osIdle")}<small className="muted"> — {osIdleSupported() ? t("settings.osIdleHint") : t("settings.osIdleUnsupported")}</small></span>
       </label>
       <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
     </Modal>
