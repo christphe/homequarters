@@ -74,7 +74,7 @@ const en = {
   "note.clear": "Clear",
   "notify.dm": "{name} sent you a message",
   "notify.open": "Open Tilework to read it.",
-  "settings.sounds": "Sounds for waves, knocks and direct messages",
+  "settings.sounds": "Sounds for waves, knocks, direct messages and conversations starting or ending",
   "settings.notify": "Desktop notifications while this tab is in the background",
   "settings.notifyDenied": "The browser blocked notifications for this site.",
   "settings.minimap": "Show the minimap (M)",

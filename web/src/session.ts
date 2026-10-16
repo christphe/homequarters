@@ -9,7 +9,8 @@ import { boardModel } from "./game/boardModel";
 import { media, spotlightMedia } from "./media/MediaManager";
 import { getState, setState, toast, type ChatMsg } from "./store";
 import { t } from "./i18n";
-import { chime, desktopNotify } from "./notify";
+import { chime, chimeLog, desktopNotify } from "./notify";
+import { convChange } from "./convChime";
 
 const AWAY_AFTER_MS = 5 * 60 * 1000;
 
@@ -78,7 +79,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, get state() { return getState(); }, session: this };
+    (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this };
   }
 
   private applyAutoStatus(inactive: boolean) {
@@ -256,6 +257,9 @@ class Session {
 
   private onConv(m: Extract<ServerMsg, { t: "conv" }>) {
     const view = this.view!;
+    const prev = getState().conv?.members ?? null;
+    const cue = m.op === "join" ? "in" : convChange(prev, m.op === "leave" ? null : m.m, getState().meId);
+    if (cue) chime(cue === "in" ? "convIn" : "convOut");
     if (m.op === "join") {
       setState({ conv: { kind: m.k, name: m.name, members: m.m, state: "connecting" } });
       view.setInConversation(new Set(m.m));
