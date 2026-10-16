@@ -329,12 +329,19 @@ export async function run(ctx) {
     // ---- away from the computer's own idle state (Idle Detection), opted in from the real setting
     {
       const c = await joinAs(browser, "Idler" + sfx);
-      await c.ctx.overridePermissions(APP, ["idle-detection"]);
       const cdp = await c.page.createCDPSession();
       await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
       await c.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
       await waitFor(() => c.page.$(".modal"), { what: "settings dialog" });
-      const box = await c.page.evaluateHandle(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("computer is idle"))?.querySelector("input"));
+      const idleBox = () => c.page.evaluateHandle(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("computer is idle"))?.querySelector("input"));
+      // blocked by the browser: the click must say so (asking would never answer), and the setting stays off
+      await cdp.send("Browser.setPermission", { permission: { name: "idle-detection" }, setting: "denied" });
+      await (await idleBox()).click();
+      await waitFor(() => c.page.evaluate(() => !!document.querySelector(".modal .setting-note")), { timeout: 5000, what: "blocked note" }).catch(() => {});
+      const blocked = await c.page.evaluate(() => ({ note: document.querySelector(".modal .setting-note")?.textContent ?? "", on: window.__tilework.state.settings.osIdle }));
+      check("a browser that blocks idle detection gets an explanation next to the setting, which stays off", blocked.note.includes("blocks idle detection") && !blocked.on, JSON.stringify(blocked));
+      await c.ctx.overridePermissions(APP, ["idle-detection"]);
+      const box = await idleBox();
       await box.click();
       await waitFor(() => c.page.evaluate(() => window.__tilework.state.settings.osIdle), { what: "idle setting on" });
       await c.page.keyboard.press("Escape");

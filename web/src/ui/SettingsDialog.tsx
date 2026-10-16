@@ -6,7 +6,7 @@ import type { AvatarSpec } from "../net/protocol";
 import { AvatarCanvas, PetCanvas } from "./AvatarEditor";
 import { AppearanceDialog } from "./AppearanceDialog";
 import { askNotifyPermission } from "../notify";
-import { askOsIdle, osIdleSupported } from "../osIdle";
+import { askOsIdle, IDLE_SETTINGS_URL, osIdleSupported } from "../osIdle";
 import { t } from "../i18n";
 import { Modal } from "./Modal";
 
@@ -19,6 +19,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [avatar, setAvatar] = useState<AvatarSpec>(useStore((x) => x.roster.get(x.meId)?.av) ?? myAvatar);
   const [deviceLink, setDeviceLink] = useState("");
   const [dressing, setDressing] = useState(false);
+  const [idleBlocked, setIdleBlocked] = useState(false);
   const makeDeviceLink = async () => {
     const r = await fetch("/api/account-link", { method: "POST" });
     if (!r.ok) return toast(t("settings.deviceError"));
@@ -103,12 +104,22 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       <label className="check">
         <input type="checkbox" checked={s.osIdle} disabled={!osIdleSupported()} onChange={async (e) => {
           const on = e.target.checked;
-          if (on && !(await askOsIdle())) return toast(t("settings.osIdleDenied"));
+          if (on && (await askOsIdle()) !== "granted") return setIdleBlocked(true);
+          setIdleBlocked(false);
           saveSettings({ osIdle: on });
           session.setOsIdle(on);
         }} />
         <span>{t("settings.osIdle")}<small className="muted"> — {osIdleSupported() ? t("settings.osIdleHint") : t("settings.osIdleUnsupported")}</small></span>
       </label>
+      {idleBlocked && (
+        <div className="setting-note" role="alert">
+          <p>{t("settings.osIdleDenied")}</p>
+          <div className="setting-url">
+            <input readOnly value={IDLE_SETTINGS_URL} aria-label={t("settings.osIdleUrl")} onFocus={(e) => e.currentTarget.select()} />
+            <button className="btn" onClick={() => void navigator.clipboard?.writeText(IDLE_SETTINGS_URL).then(() => toast(t("settings.copied")), () => {})}>{t("settings.copy")}</button>
+          </div>
+        </div>
+      )}
       <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
     </Modal>
   );

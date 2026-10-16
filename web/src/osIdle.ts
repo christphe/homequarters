@@ -17,14 +17,29 @@ const detectorClass = () => (globalThis as unknown as { IdleDetector?: IdleDetec
 
 export const osIdleSupported = () => !!detectorClass();
 
-/** Asks for the permission; call it from a click. */
-export async function askOsIdle(): Promise<boolean> {
+/**
+ * Asks for the permission; call it from a click. A permission the browser already blocks is reported
+ * without asking: there, requestPermission never settles (seen in Chrome with the site blocked), which
+ * would leave the click looking like it did nothing.
+ */
+export async function askOsIdle(): Promise<"granted" | "denied"> {
   try {
-    return (await detectorClass()?.requestPermission()) === "granted";
+    if ((await navigator.permissions.query({ name: "idle-detection" as PermissionName })).state === "denied") return "denied";
   } catch {
-    return false;
+    /* no Permissions API entry for it: ask directly */
+  }
+  try {
+    return (await detectorClass()?.requestPermission()) === "granted" ? "granted" : "denied";
+  } catch {
+    return "denied";
   }
 }
+
+/**
+ * Where to allow the site again. Pages cannot open this address themselves, so the settings show it to
+ * copy into a new tab; Chromium browsers (Brave, Edge) map chrome:// to their own scheme.
+ */
+export const IDLE_SETTINGS_URL = "chrome://settings/content/idleDetection";
 
 /** Whether the permission was already given (then watching needs no click). */
 export async function osIdleGranted(): Promise<boolean> {
