@@ -7,6 +7,7 @@ import { EMOTES } from "../game/emotes";
 import { Modal } from "./Modal";
 import { isOwnedOffice, type Prop } from "../net/protocol";
 import { claimableDesk } from "../game/home";
+import { combo } from "../keys";
 
 /** Low-rate UI state only: avatar reactions themselves are drawn by Pixi, not React. */
 export function SocialControls() {
@@ -105,7 +106,7 @@ export function SocialControls() {
   const reactions = (
     <div className="reaction-row">
       {EMOTES.map((emoji, i) => <button key={i} className="chip" aria-label={t(`emote.${i + 1}` as Key)} title={`${i + 1} · ${t(`emote.${i + 1}` as Key)}`} onClick={() => { session.emote(i + 1); done(); }}>{emoji}</button>)}
-      <button className={"chip run-toggle" + (running ? " on" : "")} aria-pressed={running} aria-label={t("run.toggle")} title={t("run.hint")} onClick={() => { session.toggleRun(); done(); }}>🏃</button>
+      <button className={"chip run-toggle" + (running ? " on" : "")} aria-pressed={running} aria-label={t("run.toggle")} title={t("run.hint", { shift: combo(["shift"]) })} onClick={() => { session.toggleRun(); done(); }}>🏃</button>
       <button className="chip" aria-label={t("dance.action")} title={t("dance.action")} onClick={() => { session.emote(8); done(); }}>💃</button>
       <button className={"chip" + (handUp ? " on" : "")} aria-pressed={handUp} aria-label={handUp ? t("hand.lower") : t("hand.raise")} title={handUp ? t("hand.lower") : t("hand.raise")} onClick={() => { session.toggleHand(); done(); }}>✋</button>
     </div>
