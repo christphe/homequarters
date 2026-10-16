@@ -58,9 +58,14 @@ export function claimableDesk(map: MapData, me: number, px: number, py: number):
   return best;
 }
 
-/** Ctrl+D, or Cmd+D on a Mac (where Ctrl+D deletes forward in text fields). */
 export const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-export function isHomeKey(e: { code: string; key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }, mac = isMac()) {
+type ModKeyEvent = { code: string; key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean };
+/** Ctrl+<letter>, or Cmd+<letter> on a Mac (where Ctrl+letter edits text fields), by key position. */
+function isModKey(e: ModKeyEvent, code: string, mac: boolean) {
   const mod = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-  return mod && !e.altKey && !e.shiftKey && (e.code ? e.code === "KeyD" : e.key.toLowerCase() === "d");
+  return mod && !e.altKey && !e.shiftKey && (e.code ? e.code === code : e.key.toLowerCase() === code.slice(3).toLowerCase());
 }
+/** Ctrl+D / Cmd+D: back to my desk. */
+export const isHomeKey = (e: ModKeyEvent, mac = isMac()) => isModKey(e, "KeyD", mac);
+/** Ctrl+U / Cmd+U ("unavailable"): busy, or available again. */
+export const isBusyKey = (e: ModKeyEvent, mac = isMac()) => isModKey(e, "KeyU", mac);

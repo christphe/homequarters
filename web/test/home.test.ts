@@ -1,7 +1,7 @@
 // Ctrl+D / Cmd+D: where "go back to my desk" leads. Run: node --test web/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { claimableDesk, homeTile, isHomeKey } from "../src/game/home.ts";
+import { claimableDesk, homeTile, isBusyKey, isHomeKey } from "../src/game/home.ts";
 import type { MapData } from "../src/net/protocol.ts";
 
 // 8x6 room: walls around, a 2x1 desk at (2,2) assigned to 7, a private office (5..6, 1..4) owned by 9
@@ -63,4 +63,14 @@ test("claim: nothing for a taken desk, a desk in a room, or one out of reach", (
   assert.equal(claimableDesk(inRoom, 3, 5 * 16 + 8, 3 * 16 + 8), null, "inside office-1");
   assert.equal(claimableDesk(free, 3, 2 * 16 + 8, 5 * 16 + 8 + 24), null, "two tiles away");
   assert.ok(claimableDesk(free, 3, 2 * 16 + 8, 5 * 16 + 4), "within reach");
+});
+
+test("Ctrl+U (Cmd+U on a Mac) toggles busy, by key position", () => {
+  const k = (o: Partial<{ code: string; key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }>) => ({ code: "KeyU", key: "u", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...o });
+  assert.equal(isBusyKey(k({ ctrlKey: true }), false), true);
+  assert.equal(isBusyKey(k({ metaKey: true }), true), true);
+  assert.equal(isBusyKey(k({ ctrlKey: true }), true), false);
+  assert.equal(isBusyKey(k({ ctrlKey: true, altKey: true }), false), false); // Ctrl+Alt+U is not ours
+  assert.equal(isBusyKey(k({ code: "KeyD", key: "d", ctrlKey: true }), false), false);
+  assert.equal(isHomeKey(k({ ctrlKey: true }), false), false);
 });

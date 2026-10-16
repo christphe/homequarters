@@ -178,6 +178,21 @@ export async function run(ctx) {
     await waitFor(() => read(b, (n) => [...document.querySelectorAll(".people .note")].some((el) => el.textContent === n), "Deep work until 4"), { what: "note in people panel" });
     check("a status note set in the status menu shows in everyone's people panel", true);
 
+    // ---- Ctrl+U: busy, the map greyed out under a big button that makes you available again ----
+    await a.page.keyboard.press("Escape");
+    await a.page.keyboard.down("Control"); await a.page.keyboard.press("u"); await a.page.keyboard.up("Control");
+    await waitFor(() => read(b, (id) => window.__tilework.state.roster.get(id)?.s === "busy", a.id), { what: "busy by Ctrl+U" });
+    check("Ctrl+U makes you busy, for everybody", true);
+    check("busy greys the map out under a big button", await read(a, () => !!document.querySelector('.status-veil[data-status="busy"] .veil-button')));
+    await a.page.click(".veil-button");
+    await waitFor(() => read(b, (id) => window.__tilework.state.roster.get(id)?.s === "available", a.id), { what: "available by the button" });
+    check("the big button makes you available again and the veil goes", !(await a.page.$(".status-veil")));
+    await read(a, () => window.__tilework.session.setStatus("away"));
+    await waitFor(() => a.page.$('.status-veil[data-status="away"]'), { what: "away veil" });
+    await a.page.keyboard.down("Control"); await a.page.keyboard.press("u"); await a.page.keyboard.up("Control");
+    await waitFor(() => read(a, () => window.__tilework.state.status === "available" && !document.querySelector(".status-veil")), { what: "Ctrl+U from away" });
+    check("away shows the veil too, and Ctrl+U brings you back from it", true);
+
     // ---- shortcuts follow key positions: an AZERTY keyboard types "z" on KeyW and "&" on Digit1 ----
     const key = (type, key, code) => read(a, (type, key, code) => window.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true })), type, key, code);
     await sleep(800); // emote cooldown
