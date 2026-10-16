@@ -157,6 +157,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .scrim { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; padding: 16px; z-index: 20; }
 .modal { width: min(460px, 100%); max-height: 92vh; overflow: auto; background: #1f1b3a; border: 1px solid var(--line); border-radius: 16px; padding: 22px; display: grid; gap: 12px; }
 .modal h2 { margin: 0; } .modal p { margin: 0; }
+/* one size for every button in a dialog, whatever it sits in (a .field sets 13px for its labels) */
+.modal .btn, .modal .primary { font-size: 14px; }
+.check small { font-size: 12px; }
 .preview { position: relative; aspect-ratio: 16/9; background: #120f24; border-radius: 12px; overflow: hidden; display: grid; place-items: center; }
 .preview video { width: 100%; height: 100%; object-fit: cover; }
 .preview .ph { position: absolute; color: var(--muted); }
@@ -233,8 +236,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .admin-form { display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 8px; align-items: end; }
 .inline { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .social-controls { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; max-width: calc(100vw - 24px); z-index: 5; }
-.reaction-row { display: flex; gap: 4px; padding: 4px; background: #ffffffdf; border-radius: 12px; }
-.reaction-row .chip { padding: 3px 7px; font-family: system-ui; font-size: 19px; }
+.reaction-row { display: flex; gap: 3px; padding: 3px; background: #ffffffdf; border-radius: 12px; }
+.reaction-row .chip { padding: 0 5px; font-family: system-ui; font-size: 19px; line-height: 1.3; border-width: 2px; }
 @media (max-width: 700px) {
   .social-controls { width: min(340px, calc(100vw - 24px)); }
   .reaction-row { flex-wrap: wrap; justify-content: center; max-width: 100%; }
