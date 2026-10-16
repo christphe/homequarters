@@ -19,7 +19,9 @@ const WHEEL_GAP_MS = 120; // at most one zoom step per this long, so a trackpad 
 // and my predicted position running ahead of the server's
 const VIEW_PAD = 24;
 const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
-const FONT = '"Pixelify Sans", ui-monospace, Menlo, monospace';
+// Jersey 10 is drawn on a 10 px grid and has a small x-height: map text uses twice its grid (20 px,
+// 30 for the area banner), which stays crisp and reads like the interface.
+const FONT = '"Jersey 10", ui-monospace, Menlo, monospace';
 const BOX_HW = 5;
 const BOX_HH = 3;
 // Movement rules shared with the server (world.move): sub-steps of at most SUB_STEP_PX so no wall
@@ -205,7 +207,7 @@ export class WorldView {
   constructor(private hooks: ViewHooks) {}
 
   async init(host: HTMLElement, eco: boolean) {
-    await document.fonts.load('700 14px "Pixelify Sans"').catch(() => []);
+    await document.fonts.load('16px "Jersey 10"').catch(() => []);
     this.eco = eco;
     const app = new Application();
     await app.init({
@@ -225,7 +227,7 @@ export class WorldView {
     this.world.addChild(this.entLayer, this.fxG);
     this.entLayer.sortableChildren = true;
     this.hud.addChild(this.hudG);
-    this.bannerText = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 16, fontWeight: "700", fill: 0x383858, stroke: { color: 0xdcdcf0, width: 2 } } });
+    this.bannerText = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 30, fill: 0x383858, stroke: { color: 0xdcdcf0, width: 2 } } });
     this.bannerText.anchor.set(0.5);
     this.banner.addChild(this.bannerG, this.bannerText);
     this.banner.visible = false;
@@ -494,7 +496,7 @@ export class WorldView {
       if (a.auto) return []; // the desk's own label already names it
       const text = new BitmapText({
         text: a.name + (this.deny.has(ai) ? " 🔒" : ""),
-        style: { fontFamily: FONT, fontSize: 12, fontWeight: "700", fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
+        style: { fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
       });
       text.anchor.set(0.5, 0);
       text.alpha = 0.85;
@@ -507,7 +509,7 @@ export class WorldView {
       .filter((p) => p.t === "desk" && p.assign && p.label)
       .map((p) => {
         const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
-        const text = new BitmapText({ text: p.label! + (this.deny.has(ai) ? " 🔒" : ""), style: { fontFamily: FONT, fontSize: 12, fontWeight: "700", fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
+        const text = new BitmapText({ text: p.label! + (this.deny.has(ai) ? " 🔒" : ""), style: { fontFamily: FONT, fontSize: 20, fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
         this.hud.addChild(text);
@@ -786,7 +788,7 @@ export class WorldView {
     const dot = new Graphics();
     const text = new BitmapText({
       text: p?.n ?? "…",
-      style: { fontFamily: FONT, fontSize: 14, fontWeight: "700", fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
+      style: { fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
     });
     text.anchor.set(0.5, 1);
     label.addChild(dot, text);

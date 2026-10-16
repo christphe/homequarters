@@ -54,4 +54,4 @@ All visual assets are **original to this project**: avatars, tiles, furniture an
 
 | Bundled font | License | Where |
 |---|---|---|
-| Pixelify Sans 5.3.0 (latin 400 and 700, from the `@fontsource/pixelify-sans` package) | SIL Open Font License 1.1 | `web/src/assets/fonts/` (licence text in `PixelifySans-OFL.txt`) |
+| Jersey 10 5.3.0 (latin 400, from the `@fontsource/jersey-10` package) | SIL Open Font License 1.1 | `web/src/assets/fonts/` (licence text in `Jersey10-OFL.txt`) |
