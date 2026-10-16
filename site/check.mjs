@@ -19,7 +19,8 @@ const html = files.filter((f) => f.endsWith(".html"));
 if (!html.length) fail(DIST, "no HTML pages; run node build.mjs first");
 
 const meta = (src, attr, key) => (new RegExp("<meta " + attr + "=\"" + key + "\" content=\"([^\"]*)\"").exec(src) ?? [])[1];
-const urlOf = (file) => SITE + path.relative(DIST, file).replace(/index\.html$/, "");
+// URLs use forward slashes on every OS (path.relative gives docs\status\ on Windows)
+const urlOf = (file) => SITE + path.relative(DIST, file).split(path.sep).join("/").replace(/index\.html$/, "");
 const decode = (s) => s.replace(/&quot;/g, "\"").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
 const text = (s) => decode(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
 
