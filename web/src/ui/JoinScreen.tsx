@@ -47,7 +47,7 @@ function SignInScreen() {
             {t("signin.notMe", { name: link.name })}
           </button>
         )}
-        <p className="join-foot"><a href="/privacy" target="_blank" rel="noopener">{t("join.privacy")}</a></p>
+        <p className="join-foot"><a href="/about" target="_blank" rel="noopener">{t("join.about")}</a> · <a href="/privacy" target="_blank" rel="noopener">{t("join.privacy")}</a></p>
       </div>
     </main>
   );
@@ -108,7 +108,7 @@ function ProfileForm() {
         <AvatarEditor value={av} onChange={saveAvatar} />
         {err && <p className="error" role="alert">{err}</p>}
         <button className="primary" disabled={busy || !name.trim()}>{t("join.enter")}</button>
-        <p className="join-foot"><a href="/privacy" target="_blank" rel="noopener">{t("join.privacy")}</a></p>
+        <p className="join-foot"><a href="/about" target="_blank" rel="noopener">{t("join.about")}</a> · <a href="/privacy" target="_blank" rel="noopener">{t("join.privacy")}</a></p>
       </form>
     </main>
   );

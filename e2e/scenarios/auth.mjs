@@ -82,8 +82,10 @@ export async function run(ctx) {
     await audit(ana, "the sign-in screen");
     const policy = await (await browser.createBrowserContext()).newPage();
     await policy.goto(BASE, { waitUntil: "domcontentloaded" });
-    await policy.waitForSelector(".join-foot a");
-    const foot = await policy.$eval(".join-foot a", (a) => {
+    await policy.waitForSelector('.join-foot a[href="/privacy"]');
+    const about = await policy.$eval('.join-foot a[href="/about"]', (a) => ({ target: a.target, text: a.textContent })).catch(() => null);
+    check("the sign-in screen links the public page about the office", about?.target === "_blank" && about.text === "About this office", JSON.stringify(about));
+    const foot = await policy.$eval('.join-foot a[href="/privacy"]', (a) => {
       const lum = (c) => { const [r, g, b] = c.match(/\d+/g).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
       const fg = lum(getComputedStyle(a).color), bg = lum(getComputedStyle(a.closest(".join-card")).backgroundColor);
       return { href: a.getAttribute("href"), target: a.target, text: a.textContent, ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) };
@@ -92,6 +94,10 @@ export async function run(ctx) {
     await policy.goto(BASE + "/privacy", { waitUntil: "domcontentloaded" });
     check("the policy describes the sign-in account and leads back", (await text(policy)).includes("Your sign-in account") && (await policy.$('a[href="/"]')) !== null);
     await audit(policy, "the privacy policy");
+    await policy.goto(BASE + "/about", { waitUntil: "domcontentloaded" });
+    const aboutText = await text(policy);
+    check("the page about the office says what it is, without signing in", aboutText.includes("virtual office") && aboutText.includes("Walk up to colleagues") && (await policy.$('a[href="/privacy"]')) !== null && (await policy.$('a[href="/"]')) !== null);
+    await audit(policy, "the page about the office");
     await Promise.all([ana.waitForNavigation(), click(ana, ".signin a", "Continue with fake sign-in (development)")]);
     check("the button leads to the provider's consent page", ana.url().includes("/auth/fake-oidc/authorize") && (await text(ana)).includes("Authorize"), ana.url());
     const anaEmail = await ana.$eval("#fake-email", (e) => e.textContent);

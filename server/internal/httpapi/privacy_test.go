@@ -47,3 +47,40 @@ func TestPrivacyPolicyFollowsTheConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestAboutPageIsPublicAndExplainsTheOffice(t *testing.T) {
+	get := func(ts string) string {
+		t.Helper()
+		resp, err := http.Get(ts + "/about")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+			t.Fatalf("about: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+		}
+		return string(b)
+	}
+	plain := get(newRig(t, nil).ts.URL)
+	for _, want := range []string{"virtual office", "Walk up to colleagues", `href="/privacy"`, `href="/"`, "after an administrator invited them"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("without sign-in the page lacks %q", want)
+		}
+	}
+	if strings.Contains(plain, "Google") && !strings.Contains(plain, "not affiliated with Google") {
+		t.Errorf("without Google the page talks about Google sign-in")
+	}
+	// with sign-in on and no session: still readable, it is what Google's review looks at
+	r := newAuthRig(t, func(c *config.Config) {
+		c.AuthProviders = []string{"google", "fake-oidc"}
+		c.GoogleClientID, c.GoogleClientSecret = "id", "secret"
+		c.Operator = `Fantastic <Jam>`
+	})
+	google := get(r.ts.URL)
+	for _, want := range []string{"Sign in with Google", "identifier and email address", "Fantastic &lt;Jam&gt;", "acme.test", "Everyone signs in first"} {
+		if !strings.Contains(google, want) {
+			t.Errorf("with Google the page lacks %q", want)
+		}
+	}
+}
