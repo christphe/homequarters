@@ -8,7 +8,7 @@ Two stacks, deliberately different:
 | `TILEWORK_VERSION` (names the deploy; browsers on a page from another version are asked to reload) | unset: a hash of the built page | the commit, set at build time in the published image (`--build-arg TILEWORK_VERSION=...` when building yourself) |
 | LiveKit keys | public dev pair (`devkey`/`secret`) | yours, from `.env`; the server aborts on the dev key or a secret shorter than 32 chars |
 | TLS | none (`http://localhost` is a secure context) | Caddy, automatic certificates |
-| Joining | anyone reaching the port | invite links only |
+| Joining | anyone reaching the port | invite links only, or [sign-in with Google](#sign-in-with-google) |
 | Exposed | 127.0.0.1 only | 80/443, 7881/tcp, 7882/udp, 3478/udp |
 
 ## Local evaluation
@@ -31,6 +31,27 @@ The stack uses the prebuilt image `ghcr.io/guhcostan/tilework:latest` (linux/amd
 ### No domain yet?
 
 Any wildcard-IP DNS service works for a first try, for example `APP_DOMAIN=office.203-0-113-7.sslip.io` and `LIVEKIT_DOMAIN=rtc.203-0-113-7.sslip.io` (replace with your public IP, dots as dashes). Caddy gets real certificates for them. Use your own domain for anything that matters: these hostnames depend on a third-party resolver and share Let's Encrypt rate limits with everyone else using them.
+
+## Sign in with Google
+
+Optional. Without it (`TILEWORK_AUTH_PROVIDERS=none`, the default) the session cookie is the account and people join with invite links. With it, everybody signs in with a Google account; the name and avatar are still chosen in Tilework ([decision 0021](../docs/decisions/0021-sign-in-providers.md)).
+
+1. In the Google Cloud console (any project, no Workspace administrator rights needed): *APIs & Services > OAuth consent screen*, user type **External** (so invited guests outside your organisation can sign in), scopes `openid` and `email` only, then **Publish app** (in *Testing*, only listed test users can sign in). With only these scopes Google does not review the app. Home page `https://APP_DOMAIN`, privacy policy `https://APP_DOMAIN/privacy`: Tilework serves it, written from what this server stores; set `OPERATOR` and `CONTACT` in `.env` so it names you and an address for data requests.
+2. *Credentials > Create credentials > OAuth client ID*, type **Web application**, authorised redirect URI `https://APP_DOMAIN/auth/google/callback`.
+3. In `deploy/.env` (Compose passes them as `TILEWORK_AUTH_PROVIDERS`, `TILEWORK_AUTH_DOMAINS`, `TILEWORK_GOOGLE_CLIENT_ID`, `TILEWORK_GOOGLE_CLIENT_SECRET`, and `TILEWORK_PUBLIC_URL=https://APP_DOMAIN`):
+
+   ```sh
+   AUTH_PROVIDERS=google
+   GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=...
+   AUTH_DOMAINS=example.com      # Workspace accounts of this domain enter on their own; others need an invite
+   ```
+
+4. Restart. Accounts of the domain come in by themselves as members; invite links still let anybody else in, once signed in. The first administrator of a new office still comes from `tilework -invite admin` (step 4 of Production).
+
+Switching it on for an office that already has members: each member who comes back with a valid session is asked, by name, to connect a Google account once and keeps their account (desk, role, history). For a member whose session has expired, print their personal link with `docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec tilework /app/tilework -account-link "Name"`: it opens their session, which then asks them to connect. Sessions last `TILEWORK_SESSION_DAYS` (30) from when they were created.
+
+If your Workspace administrators block unconfigured third-party apps, colleagues cannot sign in until they allow this client id; try it with your own account first. Removing a member is not a ban: someone from the domain who signs in again becomes a new member.
 
 ## Public demo mode
 

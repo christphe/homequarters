@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -46,6 +47,24 @@ type Config struct {
 	Demo      bool
 	DemoReset time.Duration
 
+	// AuthProviders lists how people sign in, in the order the join screen shows them. Empty means
+	// "none": today's behaviour (an invite in production, an open join in dev, the cookie is the account).
+	// With a provider, signing in is mandatory and nobody enters without an identity.
+	AuthProviders []string
+	// AuthDomains admits, without an invite, anybody whose provider proves an address in one of these
+	// domains (Google: the hd claim of a Workspace account). Lower case.
+	AuthDomains []string
+	// PublicURL is the address people open (scheme and host, no path); the sign-in callback is built from
+	// it. Required by google, whose console only accepts registered callback URLs.
+	PublicURL          string
+	GoogleClientID     string
+	GoogleClientSecret string
+
+	// Operator and Contact name who runs this office and how to reach them about personal data, on the
+	// privacy policy page (/privacy). Both optional; the page falls back to "the administrators".
+	Operator string
+	Contact  string
+
 	// StopOnStdinClose shuts the server down gracefully when its stdin closes. Dev only: the test runner
 	// uses it on Windows, where a signal from Node is a hard kill that skips saving.
 	StopOnStdinClose bool
@@ -68,6 +87,84 @@ func envInt(k string, d int) int {
 }
 
 func (c *Config) Dev() bool { return c.Env != "production" }
+
+// AuthEnabled reports whether signing in with a provider is required.
+func (c *Config) AuthEnabled() bool { return len(c.AuthProviders) > 0 }
+
+// The providers this build knows. "email" is planned and refused until it exists.
+var knownProviders = map[string]bool{"google": true, "fake-oidc": true}
+
+// loadAuth reads and checks the sign-in configuration.
+func (c *Config) loadAuth() error {
+	c.GoogleClientID = env("TILEWORK_GOOGLE_CLIENT_ID", "")
+	c.GoogleClientSecret = env("TILEWORK_GOOGLE_CLIENT_SECRET", "")
+	c.PublicURL = strings.TrimRight(env("TILEWORK_PUBLIC_URL", ""), "/")
+	raw := strings.TrimSpace(env("TILEWORK_AUTH_PROVIDERS", "none"))
+	if raw != "none" {
+		seen := map[string]bool{}
+		for _, p := range strings.Split(raw, ",") {
+			p = strings.ToLower(strings.TrimSpace(p))
+			switch {
+			case p == "":
+				return errors.New("TILEWORK_AUTH_PROVIDERS has an empty entry")
+			case p == "none":
+				return errors.New("TILEWORK_AUTH_PROVIDERS: none cannot be combined with a provider")
+			case !knownProviders[p]:
+				return fmt.Errorf("TILEWORK_AUTH_PROVIDERS: unknown provider %q (known: google, fake-oidc)", p)
+			case seen[p]:
+				return fmt.Errorf("TILEWORK_AUTH_PROVIDERS lists %s twice", p)
+			}
+			seen[p] = true
+			c.AuthProviders = append(c.AuthProviders, p)
+		}
+	}
+	if d := env("TILEWORK_AUTH_DOMAINS", ""); d != "" {
+		for _, x := range strings.Split(d, ",") {
+			x = strings.ToLower(strings.TrimSpace(x))
+			if x == "" || strings.ContainsAny(x, "@/: ") || !strings.Contains(x, ".") {
+				return fmt.Errorf("TILEWORK_AUTH_DOMAINS: %q is not a domain (write acme.com)", x)
+			}
+			c.AuthDomains = append(c.AuthDomains, x)
+		}
+	}
+	if !c.AuthEnabled() {
+		if len(c.AuthDomains) > 0 {
+			return errors.New("TILEWORK_AUTH_DOMAINS needs a sign-in provider in TILEWORK_AUTH_PROVIDERS")
+		}
+		return nil
+	}
+	if c.Demo {
+		return errors.New("the public demo is anonymous: TILEWORK_DEMO cannot be combined with TILEWORK_AUTH_PROVIDERS")
+	}
+	if c.PublicURL != "" {
+		u, err := url.Parse(c.PublicURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" {
+			return errors.New("TILEWORK_PUBLIC_URL must be a scheme and a host, like https://office.example.com")
+		}
+	}
+	for _, p := range c.AuthProviders {
+		switch p {
+		case "fake-oidc":
+			if !c.Dev() {
+				return errors.New("fake-oidc signs anybody in: it is for development and tests, never production")
+			}
+		case "google":
+			if c.GoogleClientID == "" {
+				return errors.New("google sign-in requires TILEWORK_GOOGLE_CLIENT_ID")
+			}
+			if c.GoogleClientSecret == "" {
+				return errors.New("google sign-in requires TILEWORK_GOOGLE_CLIENT_SECRET")
+			}
+			if c.PublicURL == "" {
+				return errors.New("google sign-in requires TILEWORK_PUBLIC_URL (the address registered as callback)")
+			}
+			if !c.Dev() && !strings.HasPrefix(c.PublicURL, "https://") {
+				return errors.New("production requires TILEWORK_PUBLIC_URL to use https")
+			}
+		}
+	}
+	return nil
+}
 
 func Load() (*Config, error) {
 	// Reject retired configuration so a production upgrade cannot silently use dev defaults.
@@ -101,6 +198,8 @@ func Load() (*Config, error) {
 		MediaReconcile: time.Duration(envInt("TILEWORK_MEDIA_RECONCILE_SECONDS", 10)) * time.Second,
 		Demo:           env("TILEWORK_DEMO", "") == "1" || env("TILEWORK_DEMO", "") == "true",
 		DemoReset:      time.Duration(envInt("TILEWORK_DEMO_RESET_HOURS", 6)) * time.Hour,
+		Operator:       env("TILEWORK_OPERATOR", ""),
+		Contact:        env("TILEWORK_CONTACT", ""),
 	}
 	c.StopOnStdinClose = env("TILEWORK_STOP_ON_STDIN_CLOSE", "") == "1"
 	if o := env("TILEWORK_ALLOWED_ORIGINS", ""); o != "" {
@@ -108,6 +207,9 @@ func Load() (*Config, error) {
 	}
 	if c.Env != "dev" && c.Env != "production" {
 		return nil, errors.New("TILEWORK_ENV must be dev or production")
+	}
+	if err := c.loadAuth(); err != nil {
+		return nil, err
 	}
 	if c.LiveKitAPIURL == "" && c.LiveKitURL != "" {
 		u := c.LiveKitURL

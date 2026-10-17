@@ -35,7 +35,11 @@ func (s *Store) CreateAccountLink(ctx context.Context, userID, officeID int64) (
 // laptop, a Mac and a desktop is what this is for, and one live session per
 // account means a stolen link cannot be used quietly - the person it was taken
 // from is logged out, which is the only signal a bearer token can give.
-func (s *Store) RedeemAccountLink(ctx context.Context, tok string, ttl time.Duration) (session string, userID, officeID int64, err error) {
+//
+// providers are the sign-in providers configured now: a member who signs in
+// with one of them has no use for a bearer link, and honouring one would let a
+// leaked link bypass the sign-in.
+func (s *Store) RedeemAccountLink(ctx context.Context, tok string, ttl time.Duration, providers []string) (session string, userID, officeID int64, err error) {
 	if tok == "" || len(tok) > 128 {
 		return "", 0, 0, ErrAccountLinkInvalid
 	}
@@ -53,6 +57,15 @@ func (s *Store) RedeemAccountLink(ctx context.Context, tok string, ttl time.Dura
 	if err := s.DB.QueryRowContext(ctx, `SELECT 1 FROM memberships WHERE user_id=? AND office_id=?`,
 		userID, officeID).Scan(&one); err != nil {
 		return "", 0, 0, ErrAccountLinkInvalid
+	}
+	if len(providers) > 0 {
+		linked, err := s.HasIdentityFor(ctx, userID, providers)
+		if err != nil {
+			return "", 0, 0, err
+		}
+		if linked {
+			return "", 0, 0, ErrAccountLinkInvalid
+		}
 	}
 	if _, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND office_id=?`,
 		userID, officeID); err != nil {

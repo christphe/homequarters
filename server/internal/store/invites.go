@@ -41,11 +41,40 @@ func (s *Store) CreateInvite(ctx context.Context, officeID int64, role string, m
 
 // ConsumeInvite atomically spends one use of a valid invite.
 func (s *Store) ConsumeInvite(ctx context.Context, tok string) (*Invite, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	inv, err := consumeInvite(ctx, tx, tok)
+	if err != nil {
+		return nil, err
+	}
+	return inv, tx.Commit()
+}
+
+// InviteUsable reports whether an invite could be spent now, without spending
+// it: sign-in checks it before the person picks a name, and the use is only
+// counted when the member is created.
+func (s *Store) InviteUsable(ctx context.Context, tok string) (*Invite, error) {
 	if tok == "" || len(tok) > 128 {
 		return nil, ErrInviteInvalid
 	}
 	inv := &Invite{}
-	err := s.DB.QueryRowContext(ctx, `UPDATE invites SET uses = uses + 1
+	err := s.DB.QueryRowContext(ctx, `SELECT office_id, role FROM invites
+WHERE token_hash = ? AND revoked = 0 AND uses < max_uses AND expires_at > ?`, hashToken(tok), time.Now().Unix()).Scan(&inv.OfficeID, &inv.Role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrInviteInvalid
+	}
+	return inv, err
+}
+
+func consumeInvite(ctx context.Context, tx *sql.Tx, tok string) (*Invite, error) {
+	if tok == "" || len(tok) > 128 {
+		return nil, ErrInviteInvalid
+	}
+	inv := &Invite{}
+	err := tx.QueryRowContext(ctx, `UPDATE invites SET uses = uses + 1
 WHERE token_hash = ? AND revoked = 0 AND uses < max_uses AND expires_at > ?
 RETURNING office_id, role`, hashToken(tok), time.Now().Unix()).Scan(&inv.OfficeID, &inv.Role)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -4,7 +4,7 @@ import { hasKey, t, type Key } from "../i18n";
 import { Modal } from "./Modal";
 
 type Tab = "members" | "invites" | "activity" | "announce" | "office";
-interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number }
+interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number; email?: string }
 interface InviteRow { id: number; role: string; maxUses: number; uses: number; expiresAt: number; createdAt: number; createdBy: string; status: string }
 interface AuditRow { id: number; actor: string; action: string; target: string; detail: string; at: number }
 
@@ -75,6 +75,7 @@ function Members() {
   const [rows, setRows] = useState<Member[] | null>(null);
   const [you, setYou] = useState(0);
   const [confirm, setConfirm] = useState(0);
+  const signsIn = useStore((s) => s.auth.providers.length > 0);
   const load = useCallback(async () => {
     const r = await api<{ members: Member[]; you: number }>("GET", "/api/admin/members");
     if (r.ok) { setRows(r.json.members); setYou(r.json.you); } else toast(t("admin.error"));
@@ -99,7 +100,7 @@ function Members() {
       <tbody>
         {rows.map((m) => (
           <tr key={m.id}>
-            <td>{m.name}{m.id === you && <em> ({t("hud.you")})</em>}</td>
+            <td>{m.name}{m.id === you && <em> ({t("hud.you")})</em>}{signsIn && <small className="muted member-login">{m.email ? t("admin.linked", { email: m.email }) : t("admin.unlinked")}</small>}</td>
             <td>
               <select value={m.role} aria-label={t("admin.roleOf", { name: m.name })} onChange={(e) => void setRole(m, e.target.value)}>
                 <option value="member">{t("admin.role.member")}</option>

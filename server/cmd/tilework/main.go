@@ -78,6 +78,13 @@ func main() {
 			fmt.Fprintln(os.Stderr, "account link:", err)
 			os.Exit(1)
 		}
+		if cfg.AuthEnabled() {
+			// the link would bypass the sign-in of somebody who has one
+			if linked, err := st.HasIdentityFor(context.Background(), uid, cfg.AuthProviders); err != nil || linked {
+				fmt.Fprintln(os.Stderr, "account link: this member signs in with a provider; personal links only serve members who have not linked one yet")
+				os.Exit(1)
+			}
+		}
 		tok, err := st.CreateAccountLink(context.Background(), uid, office.ID)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "account link:", err)

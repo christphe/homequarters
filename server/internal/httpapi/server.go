@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"tilework/internal/auth"
 	"tilework/internal/config"
 	"tilework/internal/gamemap"
 	"tilework/internal/media"
@@ -56,6 +57,11 @@ type Server struct {
 	annLim    *limiter
 	renameLim *limiter // office renames: each is a broadcast to everybody
 	demoLim   *limiter
+
+	// sign-in (TILEWORK_AUTH_PROVIDERS); nil maps when it is off
+	providers map[string]*auth.Provider
+	fake      *auth.Fake
+	sealer    *auth.Sealer // signs the cookies of sign-ins in progress
 }
 
 type chatSave struct {
@@ -84,6 +90,9 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.St
 	s := &Server{cfg: cfg, log: log, st: st, media: md, ctx: ctx, worlds: map[int64]*world.World{},
 		posQ: make(chan posSave, 1024), chatQ: make(chan chatSave, 256), boardQ: make(chan boardSave, 64), joinLim: newLimiter(float64(cfg.JoinRate), float64(cfg.JoinRate)*2), mapLim: newLimiter(1, 5), profLim: newLimiter(0.5, 5), adminLim: newLimiter(5, 20), annLim: newLimiter(1.0/15, 2), renameLim: newLimiter(1.0/10, 3)}
 	s.version = resolveVersion(cfg.Version, cfg.StaticDir)
+	if cfg.AuthEnabled() {
+		s.setupAuth()
+	}
 	log.Info("version", "v", s.version)
 	if id, err := st.InstanceID(ctx); err == nil {
 		s.inst = id
@@ -260,6 +269,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/join", s.join)
 	// Before any session exists, so it cannot be an authenticated API call.
 	mux.HandleFunc("GET /link/{token}", s.accountLink)
+	s.authRoutes(mux)
 	mux.HandleFunc("POST /api/account-link", s.newAccountLink)
 	mux.HandleFunc("POST /api/invites", s.createInvite)
 	mux.HandleFunc("GET /api/admin/members", s.listMembers)
@@ -276,6 +286,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/desk/release", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, true) })
 	mux.HandleFunc("PUT /api/profile", s.putProfile)
 	mux.HandleFunc("GET /api/me", s.me)
+	mux.HandleFunc("GET /privacy", s.privacy)
 	mux.HandleFunc("GET /ws", s.ws)
 	if s.cfg.StaticDir != "" {
 		mux.Handle("/", spa(s.cfg.StaticDir, s.version))
@@ -391,6 +402,10 @@ func (s *Server) join(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
+	if s.cfg.AuthEnabled() { // nobody joins without an identity, not even in dev
+		s.joinSignedIn(w, r, name, NormalizeAvatar(req.Avatar))
+		return
+	}
 	var o *store.Office
 	forced := ""
 	var err error
@@ -450,7 +465,7 @@ func (s *Server) accountLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
-	tok, uid, oid, err := s.st.RedeemAccountLink(r.Context(), r.PathValue("token"), s.cfg.SessionTTL)
+	tok, uid, oid, err := s.st.RedeemAccountLink(r.Context(), r.PathValue("token"), s.cfg.SessionTTL, s.cfg.AuthProviders)
 	if err != nil {
 		// This URL is a credential. Say that it did not work, never why.
 		http.Error(w, "this link is not valid", http.StatusForbidden)
@@ -466,6 +481,10 @@ func (s *Server) accountLink(w http.ResponseWriter, r *http.Request) {
 // is no shape of this call that hands one person another person's account.
 // Minting replaces the previous link, which is how it is revoked.
 func (s *Server) newAccountLink(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.AuthEnabled() { // a member who signs in reaches their account from any machine already
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "personal links are replaced by sign-in"})
+		return
+	}
 	se, err := s.session(r)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
@@ -481,21 +500,58 @@ func (s *Server) newAccountLink(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"url": "/link/" + tok})
 }
 
+// session is the caller's session, for every endpoint that acts in the office.
+// While sign-in is required, a session without an identity (a member from
+// before sign-in) reaches nothing until it links one.
 func (s *Server) session(r *http.Request) (*store.Session, error) {
+	se, err := s.rawSession(r)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg.AuthEnabled() && !se.Linked {
+		return nil, store.ErrNotFound
+	}
+	return se, nil
+}
+
+// rawSession is the session cookie's session, linked or not. Linked means an
+// identity of a provider configured now: a member who only has one of a
+// provider since removed links again, rather than being let in by it.
+func (s *Server) rawSession(r *http.Request) (*store.Session, error) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
 		return nil, store.ErrNotFound
 	}
-	return s.st.LookupSession(r.Context(), c.Value)
+	se, err := s.st.LookupSession(r.Context(), c.Value)
+	if err != nil || !s.cfg.AuthEnabled() {
+		return se, err
+	}
+	if se.Linked, err = s.st.HasIdentityFor(r.Context(), se.UserID, s.cfg.AuthProviders); err != nil {
+		return nil, err
+	}
+	return se, nil
 }
 
+// me tells the client where it stands: in the office, or which screen to show
+// first (sign-in buttons, the name form of a new identity, or linking).
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	se, err := s.session(r)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"authenticated": false, "dev": s.cfg.Dev(), "demo": s.demoInfo()})
-		return
+	providers := s.cfg.AuthProviders
+	if providers == nil {
+		providers = []string{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "id": se.UserID, "name": se.Name, "role": se.Role, "avatar": se.Avatar, "dev": s.cfg.Dev(), "demo": s.demoInfo()})
+	out := map[string]any{"authenticated": false, "dev": s.cfg.Dev(), "demo": s.demoInfo(), "auth": providers}
+	se, err := s.rawSession(r)
+	switch {
+	case err == nil && (!s.cfg.AuthEnabled() || se.Linked):
+		out["authenticated"], out["id"], out["name"], out["role"], out["avatar"] = true, se.UserID, se.Name, se.Role, se.Avatar
+	case err == nil:
+		out["link"] = map[string]string{"name": se.Name}
+	default:
+		if su, ok := s.pendingSignup(r); ok {
+			out["signup"] = map[string]string{"email": su.Email}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 var errBadOrigin = errors.New("origin not allowed")
