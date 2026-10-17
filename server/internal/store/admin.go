@@ -18,12 +18,14 @@ type Member struct {
 	Name     string `json:"name"`
 	Role     string `json:"role"`
 	JoinedAt int64  `json:"joinedAt"`
+	// Email is the address of the sign-in identity, empty while the member has none.
+	Email string `json:"email"`
 }
 
 // ListMembers returns the office members, admins first, then by join time.
 func (s *Store) ListMembers(ctx context.Context, officeID int64) ([]Member, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-SELECT u.id, u.name, m.role, m.joined_at
+SELECT u.id, u.name, m.role, m.joined_at, COALESCE((SELECT MIN(i.email) FROM identities i WHERE i.user_id = u.id), '')
 FROM memberships m JOIN users u ON u.id = m.user_id
 WHERE m.office_id = ?
 ORDER BY (m.role = 'admin') DESC, m.joined_at, u.id`, officeID)
@@ -34,7 +36,7 @@ ORDER BY (m.role = 'admin') DESC, m.joined_at, u.id`, officeID)
 	out := []Member{}
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.ID, &m.Name, &m.Role, &m.JoinedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.Role, &m.JoinedAt, &m.Email); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -79,7 +81,9 @@ func (s *Store) SetRole(ctx context.Context, officeID, userID int64, role string
 
 // RemoveMember deletes the membership and every session of the user in that
 // office. The user row stays so that old chat lines and the audit trail keep a
-// name. The last admin cannot be removed.
+// name. The last admin cannot be removed. The sign-in identity goes with the
+// last membership: removal is not a ban, so signing in again is a fresh
+// admission (a new member), never a way back into the removed account.
 func (s *Store) RemoveMember(ctx context.Context, officeID, userID int64) (name string, err error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -107,6 +111,9 @@ func (s *Store) RemoveMember(ctx context.Context, officeID, userID int64) (name 
 		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM memberships WHERE office_id=? AND user_id=?`, officeID, userID); err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM identities WHERE user_id=? AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id=?)`, userID, userID); err != nil {
 		return "", err
 	}
 	return name, tx.Commit()

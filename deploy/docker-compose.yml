@@ -21,6 +21,15 @@ services:
       TILEWORK_DEMO_RESET_HOURS: "${DEMO_RESET_HOURS:-6}"
       TILEWORK_MAX_PLAYERS: "${MAX_PLAYERS:-2000}"
       TILEWORK_SESSION_DAYS: "${SESSION_DAYS:-30}"
+      # Sign-in (see deploy/README.md "Sign in with Google"): none keeps invite links and the cookie as the account.
+      TILEWORK_AUTH_PROVIDERS: "${AUTH_PROVIDERS:-none}"
+      TILEWORK_AUTH_DOMAINS: "${AUTH_DOMAINS:-}"
+      TILEWORK_PUBLIC_URL: "https://${APP_DOMAIN}"
+      TILEWORK_GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      TILEWORK_GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      # Named on the privacy policy (https://APP_DOMAIN/privacy).
+      TILEWORK_OPERATOR: "${OPERATOR:-}"
+      TILEWORK_CONTACT: "${CONTACT:-}"
       LIVEKIT_URL: "wss://${LIVEKIT_DOMAIN:?set LIVEKIT_DOMAIN}"
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}"

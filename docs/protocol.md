@@ -82,15 +82,22 @@ Avatars are `{sk, hs, hc, sh, pa, pt, bd, ht, hk}`. The colours `sk` (skin, 12 s
 | --- | --- | --- |
 | `GET /healthz`, `GET /readyz` | none | liveness, readiness (database) |
 | `GET /metrics` | bearer `TILEWORK_METRICS_TOKEN`; open in dev; **disabled (404) in production without a token** | Prometheus text |
-| `POST /api/join` | invite (production) | create a member; `{name, avatar, invite}`; sets the session cookie |
-| `GET /api/me` | cookie | current session or `{"authenticated": false}` |
+| `POST /api/join` | invite (production); with sign-in, a completed sign-in | create a member; `{name, avatar, invite}`; sets the session cookie. With `TILEWORK_AUTH_PROVIDERS`, only after a sign-in that admitted a new identity; the invite then comes from the sign-in, not the body. Refusals carry `code`: `expired` (no sign-in, 403), `invite` (spent meanwhile, 403), `taken` (the account already has a member, 409) |
+| `GET /api/me` | cookie | `{authenticated, auth, dev, demo}` plus the member (`id, name, role, avatar`) when signed in. `auth` lists the sign-in providers (empty without sign-in). Not signed in: `signup: {email}` when an admitted identity has yet to pick a name, `link: {name}` when a member from before sign-in must connect an account |
+| `GET /auth/{provider}/start` | none | with sign-in only: begins an OpenID Connect sign-in and redirects to the provider; `invite` and `login_hint` are passed through. With a session that has no identity, the sign-in links one to it ([decision 0021](decisions/0021-sign-in-providers.md)) |
+| `GET /auth/{provider}/callback` | state cookie | the provider's return: signs in a known identity, sends a new admitted one to the name form, links one, or redirects to `/?auth=` `denied`, `taken`, `cancelled` or `failed` (with the sign-in's `invite` and `login_hint`, so a retry keeps them), or `linked` after linking. Nothing is kept on the server between start and callback: the flow travels in a cookie signed with a key drawn at start |
+| `POST /api/signout` | cookie | with sign-in only: this browser forgets its session cookie and any sign-up in progress ("Not you?" on the link screen); the session itself stays valid |
+| `GET, POST /auth/fake-oidc/authorize`, `POST /auth/fake-oidc/token` | none | `fake-oidc` only (refused in production): the development provider's consent page and token endpoint |
+| `GET /privacy` | none | the office's privacy policy, generated from the configuration (sign-in, demo, `TILEWORK_OPERATOR`, `TILEWORK_CONTACT`); linked from the join screen |
+| `GET /link/{token}` | the link | a personal link: opens that member's session. Refused (403) for a member who signs in with a provider |
+| `POST /api/account-link` | cookie | mint your own personal link. Refused (403) while sign-in is on |
 | `PUT /api/profile` | cookie | change your name and avatar |
 | `POST /api/desk` | cookie | take the free desk at tile `{x, y}`: you must be connected, next to it, have no desk or office, and the desk must not be inside a room. The new map goes to everybody; refusals return `{error}` = `offline`, `far`, `taken`, `room`, `has_place` (409) or `no_desk` (404) ([decision 0020](decisions/0020-members-take-free-desks.md)) |
 | `POST /api/desk/release` | cookie | free your own desk at tile `{x, y}` while you stand in its room; refusals: `offline`, `far` (not in the desk's room), `not_mine` (409) or `no_desk` (404) |
 | `POST /api/invites` | admin | mint an invite `{role, maxUses, hours}`; the secret is returned once |
 | `GET /api/admin/invites` | admin | list invites (id, role, uses, expiry, creator, status); never the secret |
 | `DELETE /api/admin/invites/{id}` | admin | revoke an invite |
-| `GET /api/admin/members` | admin | list members `{members: [{id, name, role, joinedAt}], you}` |
+| `GET /api/admin/members` | admin | list members `{members: [{id, name, role, joinedAt, email}], you}`; `email` is the signed-in account's address, empty while the member has none |
 | `PATCH /api/admin/members/{id}` | admin | change a role `{role: "admin"|"member"}`; the member is disconnected and reconnects with the new role. The last admin cannot be demoted (409) |
 | `DELETE /api/admin/members/{id}` | admin | remove a member: sessions deleted, socket closed, call ended. Not yourself, not the last admin (409) |
 | `GET /api/admin/audit` | admin | the latest 100 admin actions, newest first |

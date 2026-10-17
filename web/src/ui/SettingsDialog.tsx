@@ -16,6 +16,7 @@ import { Modal } from "./Modal";
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const s = useStore((x) => x.settings);
   const meId = useStore((x) => x.meId);
+  const signsIn = useStore((x) => x.auth.providers.length > 0);
   const myName = useStore((x) => x.roster.get(x.meId)?.n ?? "");
   const myAvatar = useStore((x) => x.myAvatar);
   const [name, setName] = useState(myName);
@@ -61,7 +62,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           {dressing && <AppearanceDialog value={avatar} onClose={() => setDressing(false)} onSave={async (look) => { await saveProfile(look); setDressing(false); }} />}
         </div>
       )}
-      {meId > 0 && (
+      {meId > 0 && !signsIn && (
         <div className="field">
           <span>{t("settings.device")}</span>
           {deviceLink ? (

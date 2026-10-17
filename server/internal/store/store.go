@@ -42,6 +42,9 @@ type Session struct {
 	Role     string
 	LastX    *float64
 	LastY    *float64
+	// Linked: the user signs in through one of the configured providers. Set by
+	// the caller, which knows the configuration (HasIdentityFor).
+	Linked bool
 }
 
 var ErrNotFound = errors.New("not found")
@@ -161,6 +164,14 @@ func (s *Store) AddMember(ctx context.Context, officeID int64, name string, avat
 		return 0, "", err
 	}
 	defer tx.Rollback()
+	userID, role, err = addMember(ctx, tx, officeID, name, avatar, forceRole)
+	if err != nil {
+		return 0, "", err
+	}
+	return userID, role, tx.Commit()
+}
+
+func addMember(ctx context.Context, tx *sql.Tx, officeID int64, name string, avatar json.RawMessage, forceRole string) (userID int64, role string, err error) {
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `INSERT INTO users(name,avatar_json,created_at) VALUES (?,?,?)`, name, string(avatar), now)
 	if err != nil {
@@ -181,7 +192,7 @@ func (s *Store) AddMember(ctx context.Context, officeID int64, name string, avat
 	if _, err := tx.ExecContext(ctx, `INSERT INTO memberships(office_id,user_id,role,joined_at) VALUES (?,?,?,?)`, officeID, userID, role, now); err != nil {
 		return 0, "", err
 	}
-	return userID, role, tx.Commit()
+	return userID, role, nil
 }
 
 func hashToken(t string) []byte { h := sha256.Sum256([]byte(t)); return h[:] }

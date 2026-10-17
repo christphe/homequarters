@@ -12,6 +12,10 @@ export default defineConfig({
     watch: { awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 25 } },
     proxy: {
       "/api": "http://127.0.0.1:8080",
+      // keep the browser's Host: the sign-in callback is built from it and must come back through Vite
+      "/auth": { target: "http://127.0.0.1:8080", changeOrigin: false },
+      "/link": "http://127.0.0.1:8080",
+      "/privacy": "http://127.0.0.1:8080",
       "/ws": { target: "ws://127.0.0.1:8080", ws: true },
     },
   },
