@@ -37,4 +37,4 @@ An organisation that already has Google Workspace wants its people to come in wi
 - A member from before sign-in links whatever account they sign in with; on a shared browser the link screen offers "Not <name>?", which signs that browser out first. Linking ends on a confirmation in the office.
 - Maintenance: `internal/auth` is the only package that speaks to a provider; `httpapi` decides admission. Go tests drive the whole flow through `fake-oidc` (domain, invite, refusal, return, linking, removal, forged and replayed states, logs), and the `auth` browser scenario does it through the real screens.
 - Installation: optional. Google needs an OAuth client (type Web, user type External so invited guests can sign in), its callback `https://<office>/auth/google/callback` registered, and `TILEWORK_GOOGLE_CLIENT_ID`, `TILEWORK_GOOGLE_CLIENT_SECRET`, `TILEWORK_PUBLIC_URL` set. No Workspace administrator rights are needed: the domain is checked by this server.
-- Not verified: signing in with the real Google service; it cannot run in the automated suite.
+- Signing in with the real Google service was checked by hand by the maintainer; it cannot run in the automated suite.
