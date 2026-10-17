@@ -209,6 +209,12 @@ func (s *Store) CreateSession(ctx context.Context, userID, officeID int64, ttl t
 	return tok, err
 }
 
+// DeleteSession ends one session (signing out of a linked account); the member and their other sessions stay.
+func (s *Store) DeleteSession(ctx context.Context, tok string) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash=?`, hashToken(tok))
+	return err
+}
+
 func (s *Store) LookupSession(ctx context.Context, tok string) (*Session, error) {
 	if tok == "" || len(tok) > 128 {
 		return nil, ErrNotFound

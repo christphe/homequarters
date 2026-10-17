@@ -355,6 +355,8 @@ const en = {
   "settings.ecoHint": "30 FPS, fewer animations and reduced video.",
   "settings.title": "Settings",
   "settings.close": "Close",
+  "settings.signOut": "Sign out",
+  "settings.signOutFailed": "Could not sign out. Try again.",
   "settings.videoLimit": "Simultaneous videos",
   "settings.debug": "Show metrics",
   "hud.you": "you",
