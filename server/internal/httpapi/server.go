@@ -286,6 +286,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/desk/release", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, true) })
 	mux.HandleFunc("PUT /api/profile", s.putProfile)
 	mux.HandleFunc("GET /api/me", s.me)
+	mux.HandleFunc("GET /about", s.about)
 	mux.HandleFunc("GET /privacy", s.privacy)
 	mux.HandleFunc("GET /ws", s.ws)
 	if s.cfg.StaticDir != "" {
