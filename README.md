@@ -1,158 +1,69 @@
-<p align="center">
-  <img src="site/assets/banner.png" alt="Tilework: a lightweight, open source virtual office" width="100%">
-</p>
+# Tilework (fork)
 
-<p align="center">
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-3cc9b0?style=flat-square"></a>
-  <a href="https://github.com/guhcostan/tilework/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/guhcostan/tilework/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/guhcostan/tilework/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/guhcostan/tilework?style=flat-square&color=ffb84d"></a>
-  <a href="https://github.com/guhcostan/tilework/pkgs/container/tilework"><img alt="Docker image on GHCR" src="https://img.shields.io/badge/docker-ghcr.io%2Fguhcostan%2Ftilework-2496ED?style=flat-square&logo=docker&logoColor=white"></a>
-  <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-ffb84d?style=flat-square">
-</p>
+**An opinionated fork of [guhcostan/tilework](https://github.com/guhcostan/tilework): an open source, self-hosted 2D virtual office.** Everyone has a pixel-art avatar on a shared map; a call starts with proximity audio and video when you walk up to someone and ends when you walk away. It runs in the browser and you host it yourself: one Go binary, SQLite and a LiveKit media server, no paid service.
 
-<h1 align="center">Tilework</h1>
+This fork keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) and makes its own product choices. It is alpha software; the documentation lives in [docs/](docs/).
 
-<p align="center">
-  <b>A lightweight, open source, self-hosted 2D virtual office.</b><br>
-  Walk around a pixel-art map, meet your team and talk with proximity audio and video, without burning CPU, RAM, GPU or bandwidth.
-</p>
+## What this fork changes
 
-<p align="center">
-  <a href="https://office.152-67-49-137.sslip.io"><b>Live demo</b></a> ·
-  <a href="https://guhcostan.github.io/tilework/">Website</a> ·
-  <a href="https://guhcostan.github.io/tilework/docs/">Docs</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="docs/faq.md">FAQ</a> ·
-  <a href="#status">Status</a> ·
-  <a href="#contributing">Contributing</a>
-</p>
-
-Tilework is an open source alternative to Gather for remote and hybrid teams: everyone has a pixel-art avatar on a shared 2D map, and a call starts when you walk up to someone and ends when you walk away. It runs in the browser, you host it yourself with one Docker Compose file (one Go binary, SQLite and a LiveKit media server), and it needs no paid service.
-
-**Try it now:** the **[live demo](https://office.152-67-49-137.sslip.io)** runs on a free Oracle Cloud VM (1 GB of RAM, so be gentle). No sign-up beyond a name; anyone can join, and the map, office chat and whiteboards reset every 6 hours. Open it in two browser profiles and walk the avatars together to see a call start.
-
-> **MVP / alpha.** The whole loop works and is tested in real browsers: avatars, movement, proximity audio and video through a real SFU, private meeting rooms, screen sharing, chat, invites, an admin map editor and a Docker install. **Capacity is not established yet**: on the free 1 GB demo VM a single run over the internet stayed smooth at 100 bots and saturated at 500, and only small calls (4 people with video, 20 in audio groups) ran clean. Read [Status](#status) before you rely on anything. Tilework is an independent open source alternative to Gather and is not affiliated with the original Gather product.
-
-## About this fork
-
-**This is a (very) opinionated fork** of [guhcostan/tilework](https://github.com/guhcostan/tilework). It keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) but makes its own product choices, and some of them will not suit everyone. The badges, website, docs site and live demo above are the original project's. The main differences from the original:
-
-- **Desks and offices.** A room's call starts with two people, so nobody captures alone. An assigned desk is a small room with its own call that its owner can lock; one desk or private office per person. A member without one takes a free desk with a button next to it and gives it back from its room. Ctrl+D (Cmd+D) runs back to your desk. Administrators knock at closed doors like anyone, or force them on purpose, which is announced and logged. A room that did not change keeps its call when the map changes. Decisions [0019](docs/decisions/0019-room-calls-from-two-and-desk-rooms.md) and [0020](docs/decisions/0020-members-take-free-desks.md).
-- **Getting around.** Shortcuts follow key positions (ZQSD works on AZERTY), Ctrl+wheel zooms one level per notch and further out, left-drag looks around, the camera stays within the office, and "Walk to" goes onto the person's tile or stops at a closed door. Everybody's position survives a server restart. Decision [0018](docs/decisions/0018-physical-keys-and-map-zoom.md).
-- **Presence.** You go away when the computer is idle or locked (Idle Detection, never during a call or a presentation), busy and away people can still be waved at, a chime marks entering and leaving a conversation, and a page from an older deploy asks to reload.
-- **Audio and video.** Optional noise suppression (RNNoise, Speex or GTCRN), and the microphone, camera and speaker can be changed from the settings at any time.
-- **Avatars.** Beards, hats, a hijab, more hair styles, more colours or any colour, a taller sprite cell for hats, a bounded texture cache, and appearance in its own dialog.
-- **Accounts.** A one-time sign-in link lets you use your account on a second machine.
-- **Look.** The Jersey 10 pixel font, the people panel's main actions on each row, the reaction bar on the top bar's row on wide screens, and one button size across dialogs.
-- **Operations.** Abnormal disconnects are logged at WARN (normal leaves never are), and the tooling and docs work on Windows.
-
-⭐ **If you would like a virtual office you can own, star the repository.** It is the simplest way to help other teams find it and to tell us this is worth building.
-
-## Why Tilework
-
-Virtual offices are usually heavy on the browser, the server and the bill. Tilework is built around an efficiency budget:
-
-- **A world server that does less work.** One Go goroutine owns each office. A spatial grid and areas of interest mean a player is only ever compared with the people near them, updates are batched at 10-15 Hz, and because walking is deterministic the server sends *state changes* instead of a position stream (about 5x less traffic than the first version in our local runs, see [decision 0006](docs/decisions/0006-state-change-records.md)).
-- **Slow clients cannot hurt fast ones.** Queues are bounded; stale positions are overwritten while chat and control messages are kept.
-- **A frugal browser client.** The whole static map is baked into one texture, only what the camera sees is drawn, hidden tabs stop rendering (calls keep running) and there is an economy mode.
-- **Real media infrastructure, used sparingly.** Audio and video go through a self-hosted [LiveKit](https://livekit.io) SFU. Rooms are small and created on demand, tokens are scoped to a single room and access is revoked on the server when you leave.
-
-<p align="center">
-  <img src="site/assets/game-social.png" alt="In-game screenshot: three avatars in the social area with couches, a rug and a table" width="49%">
-  <img src="site/assets/game-desks.png" alt="In-game screenshot: an avatar walking through the desk area" width="49%">
-  <br><sub>In-game screenshots (UI hidden). The look is an original take on a 2000s handheld-RPG style, see <a href="docs/art-style.md">Art style</a>.</sub>
-</p>
-
-<p align="center">
-  <img src="site/assets/map.png" alt="The starter office: reception, twelve individual desks, four meeting rooms and a social area" width="720">
-  <br><sub>The starter office: reception, individual desks, four meeting rooms with different access rules and a social area. This image is baked by the game itself.</sub>
-</p>
+- **Desks and offices.** A room's call starts with two people, so nobody captures alone. An assigned desk is a small room with its own call that its owner can lock; one desk or private office per person. A member without one takes a free desk with the button next to it and gives it back from its room. Ctrl+D (Cmd+D) runs back to your desk. Administrators knock at closed doors like anyone, or force them on purpose, which is announced and logged. A room that did not change keeps its call when the map changes. Decisions [0019](docs/decisions/0019-room-calls-from-two-and-desk-rooms.md) and [0020](docs/decisions/0020-members-take-free-desks.md).
+- **Sign-in.** Optional Google sign-in with admission by Workspace domain or by invite, a privacy policy page and a public page about the office generated from the configuration ([decision 0021](docs/decisions/0021-sign-in-providers.md)). A one-time sign-in link opens your account on a second machine.
+- **Getting around.** Shortcuts follow key positions (ZQSD works on AZERTY), Ctrl+wheel zooms one level per notch, left-drag looks around, the camera stays within the office, and "Walk to" goes onto the person's tile or stops at a closed door. Everybody's position survives a server restart. [Decision 0018](docs/decisions/0018-physical-keys-and-map-zoom.md).
+- **Presence.** You go away when the computer is idle or locked (never during a call or a presentation); busy and away grey the map out, Ctrl+U toggles busy, and busy or away people can still be waved at. A chime marks entering and leaving a conversation, and a page from an older deploy asks to reload.
+- **Audio and video.** Optional noise suppression (RNNoise, Speex or GTCRN); microphone, camera and speaker can be changed from the settings at any time.
+- **Avatars.** Beards, hats, a hijab, more hair styles, any colour, and appearance in its own dialog.
+- **Administration.** Administrators rename the office live for everybody.
+- **Look.** The Jersey 10 pixel font, the people panel's main actions on each row, and one button size across dialogs.
+- **Operations.** Abnormal disconnects are logged at WARN, and the tooling, the browser suite and the gauntlet run on Windows.
 
 ## Features
 
-| | |
-| --- | --- |
-| **Proximity conversations** | Audio and video start when you get close and stop when you leave, with hysteresis and small groups. |
-| **Consent and status** | Nothing is captured before you opt in. Available, busy, away and invisible; busy never joins a call automatically. |
-| **Avatars** | Procedural pixel-art characters with big heads and a three-frame walk cycle: skin, eleven hairstyles, hair colour (12 skin tones, 16 hair colours and 24 for clothes and hats, or any colour from a picker), five beards, eight hats (cap, beanie, headphones, bowler, top hat, beret, tricorne, party hat) and a hijab, with their own colour, shirt, trousers. |
-| **Look** | 16 px tiles, outlined and shaded props, textured floors and walls, dialog-window UI and a pixel font. All original. |
-| **World** | Keyboard movement with collisions (shortcuts follow key positions, so ZQSD works on AZERTY), mouse-wheel zoom, left-drag to look around, camera follow, animation, prediction for you and dead-reckoned movement for others. |
-| **Getting around** | Run with Shift or toggle it with R (2x speed); double-click any spot to run there along a path the server finds; "Walk to" anyone from the people panel. |
-| **Pets** | Pick a companion (cat, dog, bunny, fox, chick, slime, owl, axolotl) that walks your trail a step behind, goes around corners with you and sits beside you when you stop. Drawn by code, animated locally: zero bandwidth. |
-| **Presence** | Ctrl+D (Cmd+D on a Mac) runs back to your desk or private office; Ctrl+U (Cmd+U) makes you busy, or available again. While you are busy or away the map is greyed out under a big button that makes you available. Wave at anyone in the office (they can run straight to you), raise your hand (H), set a status note, dance (Z). Busy keeps you out of automatic calls; people can still wave at you (at most once every 30 s each). |
-| **Minimap** | The whole office at a glance with live head counts per area; click to run there (M toggles). |
-| **Phones and tablets** | An on-screen movement pad appears on touch screens. Optional sounds and desktop notifications for waves, knocks and direct messages. |
-| **Announcements and help** | Administrators can send a banner to everyone online (audited, never stored). Press ? for every shortcut. Turn anyone in a call down or mute them for yourself only. |
-| **Meeting rooms** | Map areas with explicit access rules (open, members, admins, list) enforced by the server. |
-| **Lockable rooms and knocking** | Anyone inside can lock a room; outsiders knock and are let in one at a time; empty rooms unlock themselves. |
-| **Private offices** | Six small offices behind a hall, each with its own call. A free office is open and lockable; an administrator assigns one to a person from the editor, and from then on only the owner (and admins) walk in, while visitors knock and the owner decides. |
-| **Reactions** | Seven quick emotes over your avatar, keys 1-7. |
-| **Interactive objects** | Notes, embedded sites and images (press X nearby), drawn by code and editable by admins. |
-| **Follow and portals** | Server-guided following with request-to-lead, and portals that teleport across the office. |
-| **Spotlight** | Step on the pad to broadcast audio, video and screen share to the whole office. |
-| **Shared whiteboards** | Collaborative pen and text boards that persist and survive restarts. |
-| **Chat** | Office (last messages are kept), conversation and direct messages (never stored). |
-| **Invites, roles and administration** | Administrators mint, list and revoke invite links, promote or demote members, remove people, rename the office (live for everybody, also in the browser tab) and read an activity log; production joins require an invite. |
-| **Office editor** | Administrators paint walls, place objects, draw meeting rooms with access rules and assign desks; changes go live for everyone and persist. A member without a desk can also take a free one with the button that appears next to it, and give it back with "Release desk". |
-| **Profile** | Change your name and avatar any time. |
-| **Screen sharing** | Inside a live conversation, up to 1080p with cheap low layers for small tiles; expand over the map, full screen or picture-in-picture; a badge shows who is presenting. |
-| **Self-hosted** | One Go binary, SQLite in WAL mode, LiveKit. No paid service required. |
+Inherited from the original and kept:
 
-<p align="center">
-  <img src="site/assets/cast.png" alt="Six pixel-art avatars" width="640"><br>
-  <img src="site/assets/walk.gif" alt="An avatar walking in four directions" width="360">
-</p>
+- **Proximity conversations** with hysteresis and small groups; nothing is captured before you opt in. Available, busy, away and invisible.
+- **Meeting rooms** with access rules enforced by the server (open, members, admins, list), lockable rooms and knocking.
+- **Screen sharing** up to 1080p, expandable over the map, full screen or picture-in-picture; a **spotlight** pad broadcasts to the whole office.
+- **Chat**: office (last 500 messages kept), conversation and direct messages (never stored).
+- **Office editor** for administrators: walls, objects, rooms and their access rules, desk assignments; changes go live and persist.
+- **Invites, roles and an activity log**; the last administrator can never be removed.
+- Reactions, waves, raised hands, status notes, follow, portals, shared whiteboards, interactive objects (notes, embedded sites, images), a minimap, pets, a touch pad on phones and tablets, and every shortcut behind `?`.
+- **Efficiency**: one goroutine per office, a spatial grid and areas of interest, state changes sent at 10-15 Hz instead of a position stream, bounded queues, a map baked into one texture and rendering on demand. See [Efficiency and benchmarks](docs/efficiency-and-benchmarks.md).
 
 ## Quick start
 
-Three ways in, from zero effort to hacking on the code.
-
-**1. Use the [live demo](https://office.152-67-49-137.sslip.io).** Nothing to install.
-
-**2. Self-host with Docker.** Evaluate the whole stack locally (the first person to join becomes the administrator):
+**Self-host with Docker.** Try the whole stack locally; the first person to join becomes the administrator:
 
 ~~~bash
-git clone https://github.com/guhcostan/tilework.git
+git clone https://github.com/christphe/tilework.git
 cd tilework
 docker compose -f deploy/docker-compose.local.yml up --build
 # open http://localhost:8080
 ~~~
 
-For a real server, the production Compose file uses the prebuilt image `ghcr.io/guhcostan/tilework` (linux/amd64 and linux/arm64) and adds automatic HTTPS (Caddy), a LiveKit media server and invite-only joins. Follow the [self-hosting guide](deploy/README.md); it also shows how to try it without owning a domain.
+For a real server, follow the [self-hosting guide](deploy/README.md) (Caddy for HTTPS, LiveKit, invite-only joins). This fork's CI publishes its image to `ghcr.io/christphe/tilework`; the production Compose file still defaults to the original's image, so set `TILEWORK_IMAGE=ghcr.io/christphe/tilework:latest` in `.env`.
 
-**3. Develop.** You need **Go**, **Node.js with pnpm** and a **LiveKit server** binary (on macOS: `brew install livekit`).
+**Develop.** You need Go, Node.js with pnpm and a LiveKit server binary. On Windows, run the scripts from Git Bash.
 
 ~~~bash
-git clone https://github.com/guhcostan/tilework.git
-cd tilework
 ./scripts/dev.sh
 ~~~
 
-Then open http://127.0.0.1:5173 in **two different browser profiles**, pick a name and avatar, walk toward each other and enable audio and video when asked.
-
-> The dev stack uses LiveKit's public development keys and an unauthenticated join endpoint. It is for local use only. Production mode refuses to start with those defaults.
-
-Tests:
+Open http://localhost:5173 in two browser profiles, walk the avatars toward each other and enable audio and video when asked. The dev stack uses LiveKit's public development keys and an unauthenticated join; production mode refuses to start with those defaults.
 
 ~~~bash
-cd server && go test -race ./...      # world simulation, store, media
+cd server && go test -race ./...      # world, store, media
 cd web && pnpm exec tsc --noEmit      # type-check the client
-cd e2e && pnpm install && node run.mjs   # real Chrome + real LiveKit, own server and database
+scripts/gauntlet.sh                   # every gate, including the real-browser suite
 ~~~
 
-More in the [getting started guide](docs/getting-started.md), including every environment variable.
+Every environment variable is in [Getting started](docs/getting-started.md). More answers in the [FAQ](docs/faq.md).
 
-## FAQ
+## Status
 
-**Is it an open source Gather alternative?** It is an independent, AGPL-3.0 project inspired by the classic Gather experience, with no affiliation and no shared code, maps, sprites or branding. If you want a 2D virtual office with proximity video that you host and inspect yourself, that is the use case.
+What was run, on which machine, and what was not, is in [docs/status.md](docs/status.md). In short:
 
-**What does it cost?** Nothing but the machine. No paid service is required, and the public demo runs on a free 1 GB VM.
-
-**How many people can it hold?** We do not claim a number yet. One run on the free 1 GB Oracle VM, loaded over the internet, was smooth at 100 bots, slower in the worst cases at 200 and saturated at 500; a 4-person video call and 20 people in audio groups were clean, larger media runs lost packets. Details in [Benchmark results](docs/benchmark-results.md).
-
-**Is anything recorded?** No. Audio, video and screen shares only pass through the media server, direct and conversation chat are never stored, and nothing is captured before you opt in. The office chat keeps its last 500 messages. See [Privacy and security](docs/privacy-and-security.md).
-
-More answers in the [FAQ](docs/faq.md). AI assistants and tools can read a summary of the whole project at [llms.txt](https://guhcostan.github.io/tilework/llms.txt) or every doc page in one file at [llms-full.txt](https://guhcostan.github.io/tilework/llms-full.txt).
+- The Go tests (with the race detector) and the real-browser suite (Chrome with a real LiveKit) pass on Windows 11 for this fork's changes. On Windows, the video RTP checks of `proximity` and `spotlight` cannot run (Docker Desktop's network); CI runs them.
+- Sign-in with the real Google service was checked by hand; the suite uses a development provider that walks the same path.
 
 ## Architecture
 
@@ -177,60 +88,15 @@ flowchart LR
   LK <-- WebRTC --> SFU
 ~~~
 
-World state, durable data and media transport are deliberately separate, so the media server can move to its own host and offices can be spread across instances later. Details: [architecture](docs/architecture.md) and the [decision records](docs/decisions/).
-
-## Status
-
-Last updated 2026-10-02. Everything below was executed on macOS (Apple M1 Pro), Go 1.26.5, Google Chrome with fake camera and microphone, LiveKit 1.13.7. Details and the exact counts: [Status](docs/status.md).
-
-Planned next: breakout rooms, a stage, audio-only areas set by administrators and a lounge, see the [Roadmap](docs/roadmap.md). Hosted plans are being planned on top of the open source project: [Business model](docs/business-model.md).
-
-| Area | State |
-| --- | --- |
-| Tilework identity: app, site, module, CLI, configuration, metrics and deployment names | **renamed and verified locally**; see [Status](docs/status.md#tilework-rename) and [migration instructions](deploy/README.md#upgrading-to-tilework) |
-| Go tests (world rules, proximity groups, dead reckoning, map reload, store, media tokens and reconciliation), also with the race detector | **pass** |
-| Real-browser suite (Chrome + real LiveKit): proximity calls with real audio/video RTP, consent and busy, private rooms, screen share, invites and admin-only actions, map editor, chat and profile, token replay/tamper/expiry attacks, reconnection and restart persistence, member administration, an automated accessibility audit (axe-core), reactions/objects/follow/portals/lockable rooms/whiteboards, spotlight broadcasts with real RTP, running and walk-to, pets, shared-screen view controls, waves, raised hands, status notes, the minimap and the touch pad, administrator announcements, the shortcuts help, per-person call volume and private offices (assign, knock, let in, shared call) | **pass** |
-| Movement under 0-120 ms of injected input jitter (never drawn stepping back, server and client stop on the same pixel at walls) and render on demand (a still office draws ~4 FPS, changes are drawn at once) | **pass** locally; not yet on the public demo, see [Status](docs/status.md) |
-| World tick microbenchmark (300 players) 1.99 -> 0.52 ms; idle browser renderer + GPU CPU about 26 % -> 9 % of a core | **measured once on an M1 Pro**, not a capacity claim ([efficiency](docs/efficiency-and-benchmarks.md#researched-techniques)) |
-| Avatar beards, hats and hair styles: old avatars render pixel-identical, the server clamps the new fields, the editor works through its real controls and the join screen scrolls at three sizes | **pass** on Windows 11 (see [Status](docs/status.md)); `proximity`, `spotlight` and one restart step of `features` not verifiable there |
-| Gauntlet regression checks: chat composer survives repeated sends; small-screen chat controls and expanded reactions are clickable; pet trail, catch-up and resting visibility | Local results and limitations in [Status](docs/status.md); [review procedure](docs/gauntlet.md) |
-| Taking a free desk yourself: the button, its confirmation and every refusal are decided by the server; room calls survive map changes | **pass** on Windows 11 (Go tests, `offices` through the real button; see [Status](docs/status.md)) |
-| Renaming the office from the admin dialog: stored, audited, pushed live to everybody (top bar and browser tab); the area shows under the office name | **pass** on Windows 11 (Go tests with `-race`, `admin` through the real Office tab, whole suite except the known `features` restart step; see [Status](docs/status.md)) |
-| Sign in with Google (optional): admission by Workspace domain or invite, existing members keep their account by linking it, a development provider that walks the same path, a privacy policy and a public page about the office generated from the configuration; "Sign out" in the settings ends the session | **pass** on Windows 11 with the development provider (Go tests with `-race`, browser scenario `auth`); the real Google service is **not verified** ([decision 0021](docs/decisions/0021-sign-in-providers.md)) |
-| Docker: image builds, Compose local stack passes the browser scenarios, production mode in the container refuses insecure config and requires invites | **verified locally** |
-| Production Compose (Caddy, TLS, LiveKit) on a public host: the public demo on an Oracle Always Free micro VM, real audio/video over UDP across the internet | **verified** (one smoke run, 2 people); TURN relay through UDP-blocked networks and load on that host are **not tested** |
-| Load, scenario A (no media, up to 1,000 bots) and a 500-client mass reconnect | **run locally, generator on the same host**: not a capacity claim, see [results](docs/benchmark-results.md) |
-| Media through a real SFU with synthetic Opus/VP8 (scenarios B and D, a scaled C): clean up to 40 people in calls, 20-person meeting with 6-video cap and a screen share, all 0 % loss | **run locally, generator on the same laptop**; full-size C (100 people) attempted and **invalid** on one machine |
-| The same load on the free Oracle micro VM (production stack, generator on another machine over the internet): 500 bots joined with nothing kicked; 100 smooth, 200 working with slower worst cases, 500 saturated; one 4-person video call and 20 people in audio groups clean, larger media runs lost packets (most likely the VM's capped CPU; the generator side was not measured) | **measured once** ([results](docs/benchmark-results.md#on-a-free-cloud-vm-over-the-internet)); not a capacity claim |
-| TURN through restrictive networks, two-hour soak (a 10-minute presence soak was run), browser FPS on the *reference* laptop (an M1 Pro reaches 60 FPS with 300 bots around), the 2 vCPU / 4 GB reference server | **not run** |
-| Cost numbers | **formula only** ([bench/cost.py](bench/cost.py)); no prices verified |
-
-### Targets we want to validate
-
-Remote movement latency p95 below 150 ms (locally about 65 ms on loopback; not yet measured across a network), about 60 FPS on a laptop with integrated graphics (30 FPS or better in economy mode) and no unexplained memory growth. See [Efficiency and benchmarks](docs/efficiency-and-benchmarks.md).
-
-## Repository layout
-
-~~~text
-server/   Go: HTTP + WebSocket, authoritative world, SQLite, LiveKit integration, load generator
-web/      TypeScript + React + Vite + PixiJS client
-e2e/      real-browser end-to-end tests and art generation
-bench/    benchmark scripts, raw results and the cost model
-deploy/   Dockerfile, Compose files (local and production), Caddyfile
-site/     landing page and docs site (GitHub Pages)
-docs/     documentation sources and architecture decision records
-scripts/  local development stack
-~~~
+Details in [Architecture](docs/architecture.md) and the [decision records](docs/decisions/). The repository map and the rules every change follows are in [AGENTS.md](AGENTS.md).
 
 ## Contributing
 
-Issues, careful bug reports, tests and measurements are all welcome. Read [CONTRIBUTING](docs/contributing.md) and [AGENTS.md](AGENTS.md) (also useful for humans) first. Everything in the repository is written in **English**. Found a security problem? Follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
-
-Using it with your team? Tell us how in an issue: real use cases decide what gets built next.
+Read [CONTRIBUTING](docs/contributing.md) and [AGENTS.md](AGENTS.md) first. Everything in the repository is written in English. Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
 ## Licence and credits
 
-- Code: **AGPL-3.0** ([LICENSE](LICENSE)), with no additional restrictions on commercial use.
-- Sprites, map, UI frames and site art are drawn by this project's own code (`web/src/game/art`, `e2e/art.mjs`); no third-party art, and no Gather, Nintendo or Game Freak assets, are used. The style is inspired by 2000s handheld RPGs, nothing is copied ([details](docs/art-style.md)).
-- Font: [Jersey 10](https://github.com/scfried/soft-type-jersey), SIL Open Font License 1.1 (`web/src/assets/fonts`).
-- Built on open source: [Go](https://go.dev), [coder/websocket](https://github.com/coder/websocket), [modernc.org/sqlite](https://gitlab.com/cznic/sqlite), [React](https://react.dev), [Vite](https://vite.dev), [PixiJS](https://pixijs.com), [LiveKit](https://livekit.io) and [marked](https://marked.js.org). The third-party licence inventory is in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+- Code: **AGPL-3.0** ([LICENSE](LICENSE)), from the original project by [guhcostan](https://github.com/guhcostan/tilework).
+- Sprites, map and UI are drawn by the project's own code (`web/src/game/art`), see [Art style](docs/art-style.md).
+- Font: [Jersey 10](https://github.com/scfried/soft-type-jersey), SIL Open Font License 1.1.
+- Third-party licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
