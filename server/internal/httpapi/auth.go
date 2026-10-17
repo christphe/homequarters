@@ -380,12 +380,25 @@ func (s *Server) joinSignedIn(w http.ResponseWriter, r *http.Request, name strin
 	writeJSON(w, http.StatusOK, map[string]any{"id": uid, "name": name, "role": role})
 }
 
-// signOut makes this browser forget its session (and any sign-up in progress):
-// how a person on a borrowed browser says "this is not me" before linking an
-// account to somebody else's membership. The session itself is left alone: for
-// a member from before sign-in it may be their only way in, from their own
-// browser.
+// signOut makes this browser forget its session (and any sign-up in progress).
+// A session linked to an account ends for good (a copy of the cookie stops
+// working too): signing in again finds the same member. A session not linked
+// yet is only forgotten here: it is how a person on a borrowed browser says
+// "this is not me" before linking, and for a member from before sign-in it may
+// be their only way in, from their own browser.
 func (s *Server) signOut(w http.ResponseWriter, r *http.Request) {
+	se, err := s.rawSession(r)
+	if err != nil && !errors.Is(err, store.ErrNotFound) { // never say "signed out" while the session may live on
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	if err == nil && se.Linked {
+		c, _ := r.Cookie(cookieName)
+		if err := s.st.DeleteSession(r.Context(), c.Value); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+			return
+		}
+	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: !s.cfg.Dev(), MaxAge: -1})
 	s.authCookie(w, signupCookie, "", "/", -1)
 	w.WriteHeader(http.StatusNoContent)

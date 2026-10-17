@@ -587,3 +587,29 @@ func TestProductionDomainMemberIsNeverTheFirstAdmin(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestSigningOutOfALinkedAccountEndsTheSession(t *testing.T) {
+	r := newAuthRig(t, nil)
+	b := r.browser()
+	landed(t, b.signIn("", "allow"), "")
+	if code, _ := b.joinNamed("Ana"); code != http.StatusOK {
+		t.Fatal("setup")
+	}
+	base, _ := url.Parse(r.ts.URL)
+	stolen := r.browser() // a copy of the cookie, as a thief or a forgotten tab would hold it
+	stolen.c.Jar.SetCookies(base, b.c.Jar.Cookies(base))
+	if code, _ := b.do("POST", "/api/signout", nil); code != http.StatusNoContent {
+		t.Fatalf("sign out: %d", code)
+	}
+	if me := b.me(); me["authenticated"] != false {
+		t.Fatalf("this browser is nobody: %v", me)
+	}
+	if me := stolen.me(); me["authenticated"] != false || me["link"] != nil {
+		t.Fatalf("the session is over, not just forgotten here: %v", me)
+	}
+	// the account is intact: signing in again (the provider remembers this browser) lands in it
+	landed(t, b.signIn("", "allow"), "")
+	if me := b.me(); me["authenticated"] != true || me["name"] != "Ana" {
+		t.Fatalf("signing in again finds the same member: %v", me)
+	}
+}

@@ -41,6 +41,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     localStorage.setItem("tilework.name", n);
     toast(t("settings.profileSaved"));
   };
+  // the session ends on the server; the reload stops the call and capture and shows the sign-in screen
+  const signOut = async () => {
+    const r = await fetch("/api/signout", { method: "POST" }).catch(() => null);
+    if (r?.ok) location.reload();
+    else toast(t("settings.signOutFailed"));
+  };
   return (
     <Modal title={t("settings.title")} onClose={onClose}>
       {meId > 0 && (
@@ -136,7 +142,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )}
-      <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
+      <div className="modal-actions">
+        {/* only with a sign-in provider: without one the cookie is the account, and signing out would lose it */}
+        {meId > 0 && signsIn && <button className="btn" onClick={() => void signOut()}>{t("settings.signOut")}</button>}
+        <button className="primary" onClick={onClose}>{t("settings.close")}</button>
+      </div>
     </Modal>
   );
 }
