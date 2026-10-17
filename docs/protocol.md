@@ -88,6 +88,7 @@ Avatars are `{sk, hs, hc, sh, pa, pt, bd, ht, hk}`. The colours `sk` (skin, 12 s
 | `GET /auth/{provider}/callback` | state cookie | the provider's return: signs in a known identity, sends a new admitted one to the name form, links one, or redirects to `/?auth=` `denied`, `taken`, `cancelled` or `failed` (with the sign-in's `invite` and `login_hint`, so a retry keeps them), or `linked` after linking. Nothing is kept on the server between start and callback: the flow travels in a cookie signed with a key drawn at start |
 | `POST /api/signout` | cookie | with sign-in only: this browser forgets its session cookie and any sign-up in progress ("Not you?" on the link screen); the session itself stays valid |
 | `GET, POST /auth/fake-oidc/authorize`, `POST /auth/fake-oidc/token` | none | `fake-oidc` only (refused in production): the development provider's consent page and token endpoint |
+| `GET /about` | none | a public page saying what the office is, who runs it, who can enter and what a sign-in provider is used for; Google's branding review reads it as the app's home page; linked from the join screen |
 | `GET /privacy` | none | the office's privacy policy, generated from the configuration (sign-in, demo, `TILEWORK_OPERATOR`, `TILEWORK_CONTACT`); linked from the join screen |
 | `GET /link/{token}` | the link | a personal link: opens that member's session. Refused (403) for a member who signs in with a provider |
 | `POST /api/account-link` | cookie | mint your own personal link. Refused (403) while sign-in is on |

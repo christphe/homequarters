@@ -226,6 +226,7 @@ const en = {
   "join.error": "Could not join. Please try again.",
   "join.avatar": "Avatar",
   "signin.subtitle": "Sign in to enter the office.",
+  "join.about": "About this office",
   "join.privacy": "Privacy policy",
   "signin.with.google": "Continue with Google",
   "signin.with.fake-oidc": "Continue with fake sign-in (development)",

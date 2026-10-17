@@ -39,19 +39,22 @@ func (s *Server) privacy(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-var privacyPage = template.Must(template.New("privacy").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Privacy policy - {{.Office}}</title>
-<style>
+// pageStyle is shared by the server-rendered public pages (/about, /privacy).
+const pageStyle = `<style>
 :root{color-scheme:light dark;--bg:#f6f4ee;--fg:#1d1d1f;--muted:#5b5b63;--line:#d8d4ca;--link:#1d4ea8}
 @media (prefers-color-scheme:dark){:root{--bg:#17171c;--fg:#ececf1;--muted:#a8a8b3;--line:#33333b;--link:#8fb4ff}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:720px;margin:0 auto;padding:32px 16px 64px}
 h1{font-size:28px;margin:0 0 4px}h2{font-size:19px;margin:32px 0 8px;padding-top:8px;border-top:1px solid var(--line)}
 p.lead{color:var(--muted);margin-top:0}a{color:var(--link)}li{margin:4px 0}
-</style></head>
+</style>`
+
+var privacyPage = template.Must(template.New("privacy").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy policy - {{.Office}}</title>
+` + pageStyle + `</head>
 <body><main>
-<p><a href="/">Back to the office</a></p>
+<p><a href="/">Back to the office</a> · <a href="/about">About this office</a></p>
 <h1>Privacy policy</h1>
 <p class="lead">{{.Office}}</p>
 
