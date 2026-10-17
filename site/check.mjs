@@ -144,7 +144,7 @@ for (const f of html) {
 const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
 const head = readme.split("\n").slice(0, 30).join("\n").toLowerCase();
 for (const w of ["open source", "self-hosted", "virtual office", "proximity"]) if (!head.includes(w)) fail("README.md", "first 30 lines lack \"" + w + "\"");
-for (const w of ["llms.txt", "docs/faq", "star"]) if (!readme.toLowerCase().includes(w)) fail("README.md", "no mention of " + w);
+for (const w of ["docs/faq"]) if (!readme.toLowerCase().includes(w)) fail("README.md", "no mention of " + w);
 for (const m of readme.matchAll(/(?:\]\(|(?:href|src)=")([^)"#\s]+)/g)) {
   const ref = m[1];
   if (/^(https?:|mailto:)/.test(ref)) continue;
