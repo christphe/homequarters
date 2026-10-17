@@ -1,16 +1,19 @@
 import { useEffect } from "react";
 import { JoinScreen } from "./JoinScreen";
 import { OfficeScreen } from "./OfficeScreen";
-import { setState, useStore } from "../store";
+import { toast, useStore } from "../store";
+import { t } from "../i18n";
+import { loadMe } from "../me";
 
 export function App() {
   const phase = useStore((s) => s.phase);
   useEffect(() => {
-    fetch("/api/me")
-      .then((r) => r.json())
-      .then((j: { authenticated?: boolean; demo?: { resetHours: number; nextReset: number } | null }) =>
-        setState({ phase: j.authenticated ? "play" : "join", demo: j.demo ?? null }))
-      .catch(() => setState({ phase: "join" }));
+    // back from linking an account: say so once, and keep the address clean
+    if (new URLSearchParams(location.search).get("auth") === "linked") {
+      history.replaceState(null, "", location.pathname);
+      toast(t("signin.linked"), 6000);
+    }
+    void loadMe();
   }, []);
   if (phase === "boot") return <div className="boot" />;
   if (phase === "join") return <JoinScreen />;

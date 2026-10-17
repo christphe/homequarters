@@ -163,3 +163,45 @@ func TestInstanceIDIsStablePerDatabaseAndDiffersBetweenDatabases(t *testing.T) {
 		t.Fatal("two installations must not share an id")
 	}
 }
+
+func TestLinkIdentityRules(t *testing.T) {
+	s, o := open(t)
+	ctx := context.Background()
+	s.AddMember(ctx, o.ID, "Admin", json.RawMessage(`{}`), "admin")
+	ann, _, _ := s.AddMember(ctx, o.ID, "Ann", json.RawMessage(`{}`), "member")
+	bob, _, _ := s.AddMember(ctx, o.ID, "Bob", json.RawMessage(`{}`), "member")
+	g := Identity{Provider: "google", Subject: "1", Email: "Ann@X.com"}
+	if err := s.LinkIdentity(ctx, o.ID, ann, g); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.LinkIdentity(ctx, o.ID, ann, g); err != nil {
+		t.Fatalf("linking the same identity again is a no-op: %v", err)
+	}
+	if err := s.LinkIdentity(ctx, o.ID, bob, g); err != ErrIdentityTaken {
+		t.Fatalf("an identity has one owner: %v", err)
+	}
+	if err := s.LinkIdentity(ctx, o.ID, ann, Identity{Provider: "google", Subject: "2"}); err != ErrIdentityTaken {
+		t.Fatalf("one identity per provider and member: %v", err)
+	}
+	if uid, err := s.UserByIdentity(ctx, o.ID, "google", "1"); err != nil || uid != ann {
+		t.Fatalf("lookup: %d %v", uid, err)
+	}
+	if ok, _ := s.HasIdentityFor(ctx, ann, []string{"fake-oidc", "google"}); !ok {
+		t.Fatal("Ann signs in with google")
+	}
+	if ok, _ := s.HasIdentityFor(ctx, ann, []string{"fake-oidc"}); ok {
+		t.Fatal("only configured providers count")
+	}
+	if _, err := s.RemoveMember(ctx, o.ID, bob); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.LinkIdentity(ctx, o.ID, bob, Identity{Provider: "google", Subject: "3"}); err != ErrNotFound {
+		t.Fatalf("a removed member links nothing: %v", err)
+	}
+	if _, err := s.RemoveMember(ctx, o.ID, ann); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UserByIdentity(ctx, o.ID, "google", "1"); err != ErrNotFound {
+		t.Fatalf("removal drops the identity: %v", err)
+	}
+}

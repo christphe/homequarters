@@ -111,3 +111,107 @@ func TestStopOnStdinCloseIsDevOnly(t *testing.T) {
 		t.Fatalf("production must refuse it: %v", err)
 	}
 }
+
+func TestAuthProvidersDefaultToNone(t *testing.T) {
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AuthEnabled() || len(c.AuthProviders) != 0 {
+		t.Fatalf("no provider must mean today's behaviour, got %v", c.AuthProviders)
+	}
+}
+
+func TestAuthProvidersAreParsedInOrder(t *testing.T) {
+	t.Setenv("TILEWORK_AUTH_PROVIDERS", " fake-oidc , google ")
+	t.Setenv("TILEWORK_GOOGLE_CLIENT_ID", "id.apps.googleusercontent.com")
+	t.Setenv("TILEWORK_GOOGLE_CLIENT_SECRET", "secret")
+	t.Setenv("TILEWORK_PUBLIC_URL", "http://localhost:5173/")
+	t.Setenv("TILEWORK_AUTH_DOMAINS", "Acme.com, example.org")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(c.AuthProviders, ",") != "fake-oidc,google" || !c.AuthEnabled() {
+		t.Fatalf("providers: %v", c.AuthProviders)
+	}
+	if strings.Join(c.AuthDomains, ",") != "acme.com,example.org" {
+		t.Fatalf("domains are compared lower case: %v", c.AuthDomains)
+	}
+	if c.PublicURL != "http://localhost:5173" {
+		t.Fatalf("public URL keeps no trailing slash: %q", c.PublicURL)
+	}
+}
+
+func TestAuthConfigurationIsRefusedWhenIncoherent(t *testing.T) {
+	google := func(t *testing.T) {
+		t.Setenv("TILEWORK_AUTH_PROVIDERS", "google")
+		t.Setenv("TILEWORK_GOOGLE_CLIENT_ID", "id.apps.googleusercontent.com")
+		t.Setenv("TILEWORK_GOOGLE_CLIENT_SECRET", "secret")
+		t.Setenv("TILEWORK_PUBLIC_URL", "https://office.example.com")
+	}
+	for name, c := range map[string]struct {
+		prod bool
+		set  func(*testing.T)
+		want string
+	}{
+		"unknown provider":       {set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_PROVIDERS", "github") }, want: "unknown"},
+		"email is not built yet": {set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_PROVIDERS", "email") }, want: "unknown"},
+		"none with a provider":   {set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_PROVIDERS", "none,fake-oidc") }, want: "none"},
+		"duplicate provider":     {set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_PROVIDERS", "fake-oidc,fake-oidc") }, want: "twice"},
+		"empty entry":            {set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_PROVIDERS", "fake-oidc,,") }, want: "empty"},
+		"demo with a provider": {set: func(t *testing.T) {
+			t.Setenv("TILEWORK_AUTH_PROVIDERS", "fake-oidc")
+			t.Setenv("TILEWORK_DEMO", "1")
+		}, want: "demo"},
+		"domains without a provider": {set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_DOMAINS", "acme.com") }, want: "TILEWORK_AUTH_DOMAINS"},
+		"malformed domain": {set: func(t *testing.T) {
+			t.Setenv("TILEWORK_AUTH_PROVIDERS", "fake-oidc")
+			t.Setenv("TILEWORK_AUTH_DOMAINS", "@acme.com")
+		}, want: "domain"},
+		"google without a client id": {set: func(t *testing.T) {
+			google(t)
+			t.Setenv("TILEWORK_GOOGLE_CLIENT_ID", "")
+		}, want: "TILEWORK_GOOGLE_CLIENT_ID"},
+		"google without a secret": {set: func(t *testing.T) {
+			google(t)
+			t.Setenv("TILEWORK_GOOGLE_CLIENT_SECRET", "")
+		}, want: "TILEWORK_GOOGLE_CLIENT_SECRET"},
+		"google without a public URL": {set: func(t *testing.T) {
+			google(t)
+			t.Setenv("TILEWORK_PUBLIC_URL", "")
+		}, want: "TILEWORK_PUBLIC_URL"},
+		"public URL with a path": {set: func(t *testing.T) {
+			google(t)
+			t.Setenv("TILEWORK_PUBLIC_URL", "https://office.example.com/tilework")
+		}, want: "TILEWORK_PUBLIC_URL"},
+		"production with fake-oidc": {prod: true, set: func(t *testing.T) { t.Setenv("TILEWORK_AUTH_PROVIDERS", "fake-oidc") }, want: "fake-oidc"},
+		"production google over http": {prod: true, set: func(t *testing.T) {
+			google(t)
+			t.Setenv("TILEWORK_PUBLIC_URL", "http://office.example.com")
+		}, want: "https"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if c.prod {
+				setProd(t)
+			}
+			c.set(t)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("want an error mentioning %q, got %v", c.want, err)
+			}
+		})
+	}
+}
+
+func TestProductionAcceptsGoogle(t *testing.T) {
+	setProd(t)
+	t.Setenv("TILEWORK_AUTH_PROVIDERS", "google")
+	t.Setenv("TILEWORK_GOOGLE_CLIENT_ID", "id.apps.googleusercontent.com")
+	t.Setenv("TILEWORK_GOOGLE_CLIENT_SECRET", "secret")
+	t.Setenv("TILEWORK_PUBLIC_URL", "https://office.example.com")
+	t.Setenv("TILEWORK_AUTH_DOMAINS", "acme.com")
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+}

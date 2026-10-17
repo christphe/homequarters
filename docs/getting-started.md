@@ -73,6 +73,11 @@ Everything is configured through environment variables.
 | `TILEWORK_ALLOWED_ORIGINS` | empty | WebSocket origin patterns; **required in production** |
 | `TILEWORK_OFFICE_SLUG` / `TILEWORK_OFFICE_NAME` | `default` / `Office` | Single-office deployment identity. The name only applies when the office is created; afterwards an administrator renames it under Administration > Office |
 | `TILEWORK_SESSION_DAYS` | `30` | Session cookie lifetime |
+| `TILEWORK_AUTH_PROVIDERS` | `none` | How people sign in: `none` (the session cookie is the account, joins by invite) or a list of `google`, `fake-oidc` (development only). With a provider, signing in is mandatory ([decision 0021](decisions/0021-sign-in-providers.md)) |
+| `TILEWORK_AUTH_DOMAINS` | empty | Domains whose accounts enter without an invite (Google: Workspace accounts of that domain), comma separated; others need an invite |
+| `TILEWORK_PUBLIC_URL` | empty | The address people open, like `https://office.example.com`; required by Google sign-in (the callback is built from it), https in production |
+| `TILEWORK_GOOGLE_CLIENT_ID` / `TILEWORK_GOOGLE_CLIENT_SECRET` | empty | The Google OAuth client, required with `google` |
+| `TILEWORK_OPERATOR` / `TILEWORK_CONTACT` | empty | Who runs the office and an address for questions about personal data, shown on the privacy policy (`/privacy`) |
 | `TILEWORK_TICK_HZ` | `15` | World tick rate, 5 to 30 |
 | `TILEWORK_AOI_CELLS` | `2` | Area-of-interest radius in 128 px cells |
 | `TILEWORK_AOI_MAX_CELLS` | `8` (or `TILEWORK_AOI_CELLS` if wider) | Largest radius a zoomed-out player may ask for (`TILEWORK_AOI_CELLS`..8); bounds how far the map zooms out |
@@ -92,6 +97,7 @@ See the endpoint table in [WebSocket protocol](protocol.md#http-endpoints). The 
 
 ~~~bash
 tilework -invite admin       # print a new invite path (bootstrap the first production administrator)
+tilework -account-link Name  # print a member's personal link (refused for a member who signs in with a provider)
 tilework -backup out.db      # consistent online backup of the SQLite database
 tilework -healthcheck        # exit 0 if /readyz answers (used by the container health check)
 ~~~

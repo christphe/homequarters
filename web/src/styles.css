@@ -30,6 +30,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .error { color: #ff9a92; margin: 0; }
 .primary { background: var(--amber); color: #2a1d05; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; }
 .primary:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.signin { display: grid; gap: 10px; }
+.signin a.primary { display: block; text-align: center; text-decoration: none; }
+.member-login { display: block; }
+.join-foot { margin: 0; font-size: 13px; text-align: center; }
+.join-foot a { color: #1d4ea8; }
+.signin-out { justify-content: center; }
 .btn { background: #241f42; border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; display: inline-flex; align-items: center; gap: 8px; }
 .btn:hover { background: #2d2752; }
 
