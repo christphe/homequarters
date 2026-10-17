@@ -72,6 +72,9 @@ export interface State {
   notice: string;
   /** Set when this server is a public demo: content resets periodically. */
   demo: { resetHours: number; nextReset: number } | null;
+  /** Sign-in: the providers offered (empty: none, the cookie is the account), and which step the
+   *  join screen is on - a new identity picking its name, or a member from before sign-in linking one. */
+  auth: { providers: string[]; signup: { email: string } | null; link: { name: string } | null };
   nearby: Prop | null;
   object: ObjectReply | null;
   following: { id: number; name: string } | null;
@@ -128,6 +131,7 @@ const initial: State = {
   myAvatar: load<AvatarSpec>("tilework.avatar", { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 }),
   notice: "",
   demo: null,
+  auth: { providers: [], signup: null, link: null },
   nearby: null,
   object: null,
   following: null,
