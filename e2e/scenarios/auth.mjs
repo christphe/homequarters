@@ -116,6 +116,22 @@ export async function run(ctx) {
     await waitFor(() => ana.$(".modal"), { what: "settings" });
     check("settings offer no personal link while sign-in is on", !(await text(ana)).includes("Use this account on another machine"));
 
+    // Sign out from the settings: the session ends (a copy of the cookie stops working), the sign-in screen
+    // comes back, and signing in again with the same account lands in the same member.
+    const anaId = await ana.evaluate(() => window.__tilework.state.meId);
+    const anaCookie = (await ana.browserContext().cookies()).find((c) => c.name === "tilework_session").value;
+    check("with sign-in on, the settings offer to sign out", await ana.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.trim() === "Sign out")));
+    await Promise.all([ana.waitForNavigation(), click(ana, ".modal button", "Sign out")]);
+    await ana.waitForSelector(".signin a");
+    check("signing out leads to the sign-in screen", (await text(ana)).includes("Sign in to enter the office"));
+    const copy = await (await fetch(BASE + "/api/me", { headers: { Cookie: "tilework_session=" + anaCookie } })).json();
+    check("the old session no longer opens the office, even from a copy of its cookie", copy.authenticated === false && !copy.link, JSON.stringify(copy));
+    await Promise.all([ana.waitForNavigation(), click(ana, ".signin a", "Continue with fake sign-in (development)")]);
+    await Promise.all([ana.waitForNavigation(), click(ana, "button", "Authorize")]);
+    await waitFor(() => inOffice(ana), { timeout: 30000, what: "Ana back after signing in again" });
+    const back = await ana.evaluate(() => ({ id: window.__tilework.state.meId, name: window.__tilework.state.roster.get(window.__tilework.state.meId)?.n }));
+    check("signing in again lands in the same member, without the name form", back.id === anaId && back.name === "Ana", JSON.stringify(back));
+
     // An outsider without invite is refused, with a message.
     const bob = await (await browser.createBrowserContext()).newPage();
     await bob.goto(BASE + "/?login_hint=bob@gmail.com", { waitUntil: "domcontentloaded" });

@@ -77,6 +77,8 @@ export async function run(ctx) {
     // ---- profile change through the real settings dialog
     await b.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
     await waitFor(() => b.page.$('.modal input[aria-label]'), { what: "settings dialog" });
+    // no sign-in provider here: the cookie is the account, so there is nothing to sign out of
+    check("without sign-in the settings offer no sign out", !(await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((x) => x.textContent.trim() === "Sign out"))));
     await b.page.$eval('.modal input[aria-label]', (el) => el.select());
     await b.page.type('.modal input[aria-label]', "Novo" + t);
     // the look is edited in its own dialog, opened from the settings
