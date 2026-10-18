@@ -1,7 +1,8 @@
 // Types of the Home Quarters plugin API in the browser: the global `hq` a plugin's client code gets inside its
 // sandboxed iframe. Reference: docs/plugin-api.md. Use it from public/tsconfig.json:
-//   { "compilerOptions": { "strict": true, "noEmit": true, "target": "ES2020", "lib": ["ES2020"], "types": [] },
+//   { "compilerOptions": { "strict": true, "noEmit": true, "target": "ES2020", "lib": ["ES2020", "DOM"], "types": [] },
 //     "include": ["*.ts", "../../sdk/client.d.ts"] }
+// The iframe is a page: with "DOM" in lib, console, fetch, OffscreenCanvas and createImageBitmap are typed (and work).
 // The server compiles TypeScript without checking types: run tsc (or your editor) to check them.
 
 declare global {
@@ -43,7 +44,9 @@ declare global {
     /** One cell of a PNG of public/: frame [x, y, w, h] (w, h at most 128), scale 1-6 (default 2), and a tint
      * "#rrggbb" that multiplies its colours, as hq.setTint does on the map. */
     interface SpriteCell {
-      src: string;
+      /** a PNG of public/, or sheet: the key of a sheet loaded with hq.loadSprite (image data included); one of the two */
+      src?: string;
+      sheet?: string;
       frame: [x: number, y: number, w: number, h: number];
       scale?: number;
       tint?: string;
@@ -98,6 +101,10 @@ declare global {
       /** A PNG sheet of public/ (at most 2048 px a side), cut into frameW x frameH cells. */
       /** With from, a PNG of that other plugin's public/shared/ folder (path starting with "shared/"). */
       loadSprite(key: string, path: string, opts: { frameW: number; frameH: number; anims?: Anims; from?: string }): void;
+      /** A sheet from image data the plugin made or downloaded (from a host its manifest declares in externalHosts):
+       * a Blob of an image of at most 1 MB, or an ImageBitmap; at most 2048 px a side. An invalid one is not drawn
+       * (a console warning), like a missing PNG. */
+      loadSprite(key: string, image: Blob | ImageBitmap, opts: { frameW: number; frameH: number; anims?: Anims }): void;
       /** Without x/y a new sprite waits for follow/moveTo, an existing one keeps its place (only its sheet changes). */
       spawn(id: string, key: string, opts?: { x?: number; y?: number; anim?: string }): void;
       remove(id: string): void;
@@ -125,8 +132,6 @@ declare global {
   }
 
   const hq: HQ.Client;
-  /** The iframe's console: warnings and errors show in the browser's developer tools. */
-  const console: { log(...parts: unknown[]): void; info(...parts: unknown[]): void; warn(...parts: unknown[]): void; error(...parts: unknown[]): void };
 }
 
 export {};

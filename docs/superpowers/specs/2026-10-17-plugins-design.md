@@ -29,7 +29,7 @@ The scope of this change is the **plugin engine** only, sized by one target: *ju
 - A plugin can make the office slow, kick players or crash the server or the page. Every queue stays bounded, every Lua call has a time budget, and a misbehaving plugin is stopped and reported, not tolerated.
 - Per-frame traffic: no message per display frame between iframe and page, and none on the network.
 - Plugin JS able to reach the session cookie, `window.__hq`, media devices or the DOM of the page.
-- Any Pokémon or other third-party game asset in the repository (AGENTS.md invariant 10). The sample creature is original, drawn in code.
+- Any third-party game asset in the repository (AGENTS.md invariant 10). The sample creature is original, drawn in code.
 
 ## Constraints from the codebase
 
@@ -177,7 +177,7 @@ Calls are fire-and-forget commands batched to the host; errors in the plugin's o
 
 ## Part 2: plugin UI and app tokens (2026-10-17)
 
-Asked by the user after part 1: "APIs to generate tokens and the UI for a copyable text; the Plugins screen shows each plugin's name in a button that opens a modal the plugin configures; plugins can add a button where they want, at anchor points: right panel, bottom bar, top action bar, minimap, top right, and a screen anchor; a plugin can open a modal by itself and choose its size and position." The driving use: a desktop companion (like PokeTokenBar) posts a member's state to a plugin route, which needs a per-member token the member copies from the plugin's modal.
+Asked by the user after part 1: "APIs to generate tokens and the UI for a copyable text; the Plugins screen shows each plugin's name in a button that opens a modal the plugin configures; plugins can add a button where they want, at anchor points: right panel, bottom bar, top action bar, minimap, top right, and a screen anchor; a plugin can open a modal by itself and choose its size and position." The driving use: a desktop companion posts a member's state to a plugin route, which needs a per-member token the member copies from the plugin's modal.
 
 ### UI model (decided)
 
