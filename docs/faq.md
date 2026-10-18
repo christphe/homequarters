@@ -2,11 +2,11 @@
 
 Short answers to the questions people ask first. Most answers link to the page with the details and the evidence behind them.
 
-## What is Tilework?
+## What is Home Quarters?
 
 An open source, self-hosted 2D virtual office. Your team walks pixel-art avatars around a shared map and audio and video start when people get close, like bumping into someone in a hallway. It also has meeting rooms with access rules, private offices, screen sharing, chat, whiteboards, invites and a map editor. See the [overview](overview.md).
 
-## Is Tilework an open source alternative to Gather?
+## Is Home Quarters an open source alternative to Gather?
 
 It is an independent project inspired by the classic Gather (gather.town) experience: a 2D map with proximity video. It is not affiliated with or endorsed by Gather, and it uses none of its code, maps, sprites or branding. Sprites, tiles and the map are drawn by the project's own code, the code is AGPL-3.0, and every third-party dependency is listed in [THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md). If you want a virtual office you can host and inspect yourself, that is exactly the use case.
 
@@ -14,13 +14,13 @@ It is an independent project inspired by the classic Gather (gather.town) experi
 
 Yes. The code is AGPL-3.0 and running it needs no paid service: one Go binary, SQLite and a self-hosted [LiveKit](https://livekit.io) media server. You only pay for the machine you run it on. The public demo runs on an Oracle Cloud Always Free VM with 1 GB of RAM.
 
-## How do I try it without installing anything?
+## How do I try it on my machine?
 
-Open the [public demo](https://office.152-67-49-137.sslip.io), pick a name and an avatar, and walk toward someone. Anyone can join; the map, office chat and whiteboards reset every 6 hours. To try proximity video alone, open it in two browser profiles.
+Run the local Docker stack: clone the repository, run `docker compose -f deploy/docker-compose.local.yml up --build` and open http://localhost:8080. The first person to join becomes the administrator. To try proximity video alone, open it in two browser profiles and walk the avatars toward each other.
 
 ## How do I self-host it?
 
-Use the Docker image `ghcr.io/guhcostan/tilework` (linux/amd64 and linux/arm64) with the production Docker Compose file, which adds Caddy for automatic HTTPS and LiveKit for media. You need two DNS names, a few open ports and an invite for the first administrator. The [self-hosting guide](../deploy/README.md) walks through it, including a trick for trying it without owning a domain.
+Use the Docker image `ghcr.io/christphe/homequarters` (linux/amd64 and linux/arm64) with the production Docker Compose file, which adds Caddy for automatic HTTPS and LiveKit for media. You need two DNS names, a few open ports and an invite for the first administrator. The [self-hosting guide](../deploy/README.md) walks through it, including a trick for trying it without owning a domain.
 
 ## How many people can one server handle?
 
@@ -56,4 +56,4 @@ It is planned: a dedicated instance per customer, kept updated and backed up, in
 
 ## How can I help?
 
-Try the demo and open an issue with what broke or felt wrong, star the repository on [GitHub](https://github.com/guhcostan/tilework) so others can find it, or contribute tests, measurements and fixes following [Contributing](contributing.md).
+Try the demo and open an issue with what broke or felt wrong, star the repository on [GitHub](https://github.com/christphe/homequarters) so others can find it, or contribute tests, measurements and fixes following [Contributing](contributing.md).

@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"tilework/internal/auth"
-	"tilework/internal/config"
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
-	"tilework/internal/store"
+	"homequarters/internal/auth"
+	"homequarters/internal/config"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
+	"homequarters/internal/store"
 )
 
 // authRig is a server with fake-oidc sign-in and acme.test as authorised domain.
@@ -61,7 +61,7 @@ func newAuthRig(t *testing.T, mutate func(*config.Config)) *authRig {
 		ts.Start()
 	}
 	t.Cleanup(ts.Close)
-	srv.providers["fake-oidc"].TokenURL = ts.URL + "/auth/fake-oidc/token" // the test server's port, not TILEWORK_ADDR
+	srv.providers["fake-oidc"].TokenURL = ts.URL + "/auth/fake-oidc/token" // the test server's port, not HQ_ADDR
 	return &authRig{rig: &rig{t: t, ts: ts, st: st, cfg: cfg, srv: srv}, logs: logs}
 }
 
@@ -172,7 +172,7 @@ func TestDomainMemberSignsUpThenComesBack(t *testing.T) {
 	again := r.browser()
 	fakeURL, _ := url.Parse(r.ts.URL + "/auth/fake-oidc/authorize")
 	for _, c := range b.c.Jar.Cookies(fakeURL) {
-		if c.Name == "tilework_fake_oidc" {
+		if c.Name == "hq_fake_oidc" {
 			again.c.Jar.SetCookies(fakeURL, []*http.Cookie{c})
 		}
 	}
@@ -524,7 +524,7 @@ func TestOnlyConfiguredProvidersCountAsLinked(t *testing.T) {
 }
 
 func TestTheDefaultJoinRateFitsSignIns(t *testing.T) {
-	r := newAuthRig(t, func(c *config.Config) { c.JoinRate = 20 }) // TILEWORK_JOIN_RATE's default
+	r := newAuthRig(t, func(c *config.Config) { c.JoinRate = 20 }) // HQ_JOIN_RATE's default
 	for i := range 4 {
 		b := r.browser()
 		landed(t, b.signIn("", "allow"), "")
@@ -611,5 +611,44 @@ func TestSigningOutOfALinkedAccountEndsTheSession(t *testing.T) {
 	landed(t, b.signIn("", "allow"), "")
 	if me := b.me(); me["authenticated"] != true || me["name"] != "Ana" {
 		t.Fatalf("signing in again finds the same member: %v", me)
+	}
+}
+
+// A browser signed in before the rename holds its session under the old cookie
+// name: it stays signed in, and the cookie moves to the new name.
+func TestSessionFromBeforeTheRenameStaysSignedIn(t *testing.T) {
+	r := newAuthRig(t, nil)
+	b := r.browser()
+	landed(t, b.signIn("", "allow"), "")
+	if code, _ := b.joinNamed("Ana"); code != http.StatusOK {
+		t.Fatal("join")
+	}
+	base, _ := url.Parse(r.ts.URL)
+	var tok string
+	for _, c := range b.c.Jar.Cookies(base) {
+		if c.Name == cookieName {
+			tok = c.Value
+		}
+	}
+	old := r.browser()
+	old.c.Jar.SetCookies(base, []*http.Cookie{{Name: legacyCookieName, Value: tok, Path: "/"}})
+	if me := old.me(); me["authenticated"] != true || me["name"] != "Ana" {
+		t.Fatalf("the old cookie keeps the session: %v", me)
+	}
+	names := map[string]string{}
+	for _, c := range old.c.Jar.Cookies(base) {
+		names[c.Name] = c.Value
+	}
+	if names[cookieName] != tok {
+		t.Fatalf("the session moves to %s: %v", cookieName, names)
+	}
+	if _, still := names[legacyCookieName]; still {
+		t.Fatalf("the old cookie is cleared: %v", names)
+	}
+	if code, _ := old.do("POST", "/api/signout", nil); code != http.StatusNoContent {
+		t.Fatalf("sign out: %d", code)
+	}
+	if me := old.me(); me["authenticated"] != false {
+		t.Fatalf("signed out after the move: %v", me)
 	}
 }

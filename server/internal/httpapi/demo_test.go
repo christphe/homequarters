@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"tilework/internal/config"
-	"tilework/internal/gamemap"
+	"homequarters/internal/config"
+	"homequarters/internal/gamemap"
 )
 
 func demoRig(t *testing.T) *rig {

@@ -38,7 +38,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     if (!r.ok) return toast(t("settings.profileError"));
     setAvatar(look);
     saveAvatar(look);
-    localStorage.setItem("tilework.name", n);
+    localStorage.setItem("hq.name", n);
     toast(t("settings.profileSaved"));
   };
   // the session ends on the server; the reload stops the call and capture and shows the sign-in screen

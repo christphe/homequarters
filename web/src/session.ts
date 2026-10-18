@@ -81,7 +81,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __tilework: unknown }).__tilework = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this };
+    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this };
   }
 
   private applyAutoStatus(inactive: boolean) {
@@ -156,7 +156,7 @@ class Session {
         const s = getState();
         if (s.consent) this.socket?.send({ t: "consent", b: true });
         if (s.status !== "available") this.socket?.send({ t: "st", v: s.status });
-        const note = localStorage.getItem("tilework.note");
+        const note = localStorage.getItem("hq.note");
         if (note) this.socket?.send({ t: "note", text: note }); // the note lives in memory on the server
         break;
       }
@@ -307,7 +307,7 @@ class Session {
   }
   setConsent(b: boolean) {
     setState({ consent: b });
-    localStorage.setItem("tilework.consent", b ? "1" : "0");
+    localStorage.setItem("hq.consent", b ? "1" : "0");
     this.socket?.send({ t: "consent", b });
   }
   chat(scope: "o" | "g" | "d", text: string, to?: number) {
@@ -351,8 +351,8 @@ class Session {
     this.hand(!(pending ?? !!s.roster.get(s.meId)?.h));
   }
   note(text: string) {
-    if (text) localStorage.setItem("tilework.note", text);
-    else localStorage.removeItem("tilework.note");
+    if (text) localStorage.setItem("hq.note", text);
+    else localStorage.removeItem("hq.note");
     this.socket?.send({ t: "note", text });
   }
   toggleRun() { this.view?.toggleRun(); }

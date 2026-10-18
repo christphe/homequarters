@@ -1,4 +1,4 @@
-// Sign-in with a provider (TILEWORK_AUTH_PROVIDERS=fake-oidc), through the real screens: the fake provider's
+// Sign-in with a provider (HQ_AUTH_PROVIDERS=fake-oidc), through the real screens: the fake provider's
 // consent page, the name form, an outsider refused then invited, members from before sign-in linking their
 // account, personal links refused once linked, and the admin list showing who has signed in.
 // It runs its own server (another port, its own database): first without sign-in to create members the old
@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
 const WIN = process.platform === "win32";
-const PORT = Number(process.env.TILEWORK_TEST_PORT ?? "18080") + 10;
+const PORT = Number(process.env.HQ_TEST_PORT ?? "18080") + 10;
 const BASE = `http://127.0.0.1:${PORT}`;
 const portOpen = (p) => new Promise((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
 
@@ -30,15 +30,15 @@ const click = (page, selector, text) => page.evaluate((selector, text) => {
   return !!b;
 }, selector, text);
 const text = (page) => page.evaluate(() => document.body.innerText);
-const inOffice = (page) => page.evaluate(() => window.__tilework?.state?.meId > 0 && window.__tilework.state.conn === "open");
+const inOffice = (page) => page.evaluate(() => window.__hq?.state?.meId > 0 && window.__hq.state.conn === "open");
 
 export async function run(ctx) {
   resetChecks();
   const root = path.resolve(path.dirname(ctx.bin), "..");
   const db = path.join(ctx.dir, "auth.db");
-  const env = (extra) => ({ ...process.env, TILEWORK_ENV: "dev", TILEWORK_ADDR: `127.0.0.1:${PORT}`, TILEWORK_DB: db, TILEWORK_STATIC_DIR: path.join(root, "web/dist"),
-    TILEWORK_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: "ws://127.0.0.1:7880", LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret", TILEWORK_JOIN_RATE: "5000",
-    TILEWORK_AUTH_PROVIDERS: "", TILEWORK_AUTH_DOMAINS: "", ...(WIN ? { TILEWORK_STOP_ON_STDIN_CLOSE: "1" } : {}), ...extra });
+  const env = (extra) => ({ ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: db, HQ_STATIC_DIR: path.join(root, "web/dist"),
+    HQ_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: process.env.HQ_TEST_LK_URL ?? "ws://127.0.0.1:7880", LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret", HQ_JOIN_RATE: "5000",
+    HQ_AUTH_PROVIDERS: "", HQ_AUTH_DOMAINS: "", ...(WIN ? { HQ_STOP_ON_STDIN_CLOSE: "1" } : {}), ...extra });
   let server = null;
   const start = async (extra) => {
     server = spawn(ctx.bin, [], { env: env(extra), stdio: [WIN ? "pipe" : "ignore", fs.openSync(path.join(ctx.dir, "auth-server.log"), "a"), fs.openSync(path.join(ctx.dir, "auth-server.log"), "a")] });
@@ -54,7 +54,7 @@ export async function run(ctx) {
     clearTimeout(timer);
   };
   const cli = (args) => {
-    try { return { ok: true, out: execFileSync(ctx.bin, args, { env: env({ TILEWORK_AUTH_PROVIDERS: "fake-oidc", TILEWORK_AUTH_DOMAINS: "acme.test" }), stdio: ["ignore", "pipe", "pipe"] }).toString().trim() }; }
+    try { return { ok: true, out: execFileSync(ctx.bin, args, { env: env({ HQ_AUTH_PROVIDERS: "fake-oidc", HQ_AUTH_DOMAINS: "acme.test" }), stdio: ["ignore", "pipe", "pipe"] }).toString().trim() }; }
     catch (e) { return { ok: false, out: String(e.stderr ?? e) }; }
   };
   const browser = await launch([], { waitEmpty: false });
@@ -69,7 +69,7 @@ export async function run(ctx) {
     await stop();
 
     // ---- the office switches sign-in on
-    await start({ TILEWORK_AUTH_PROVIDERS: "fake-oidc", TILEWORK_AUTH_DOMAINS: "acme.test" });
+    await start({ HQ_AUTH_PROVIDERS: "fake-oidc", HQ_AUTH_DOMAINS: "acme.test" });
     const r = await fetch(BASE + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Sneaky" }) });
     check("nobody joins without signing in, even in dev", r.status === 403, String(r.status));
 
@@ -107,7 +107,7 @@ export async function run(ctx) {
     await ana.type(".join-card input", "Ana");
     await click(ana, "button.primary", "Enter");
     await waitFor(() => inOffice(ana), { timeout: 30000, what: "Ana in the office" });
-    const anaName = await ana.evaluate(() => window.__tilework.state.roster.get(window.__tilework.state.meId)?.n);
+    const anaName = await ana.evaluate(() => window.__hq.state.roster.get(window.__hq.state.meId)?.n);
     check("Ana is in the office under the name she chose", anaName === "Ana", anaName);
     await ana.reload({ waitUntil: "domcontentloaded" });
     await waitFor(() => inOffice(ana), { timeout: 30000, what: "Ana after reload" });
@@ -118,18 +118,18 @@ export async function run(ctx) {
 
     // Sign out from the settings: the session ends (a copy of the cookie stops working), the sign-in screen
     // comes back, and signing in again with the same account lands in the same member.
-    const anaId = await ana.evaluate(() => window.__tilework.state.meId);
-    const anaCookie = (await ana.browserContext().cookies()).find((c) => c.name === "tilework_session").value;
+    const anaId = await ana.evaluate(() => window.__hq.state.meId);
+    const anaCookie = (await ana.browserContext().cookies()).find((c) => c.name === "hq_session").value;
     check("with sign-in on, the settings offer to sign out", await ana.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.trim() === "Sign out")));
     await Promise.all([ana.waitForNavigation(), click(ana, ".modal button", "Sign out")]);
     await ana.waitForSelector(".signin a");
     check("signing out leads to the sign-in screen", (await text(ana)).includes("Sign in to enter the office"));
-    const copy = await (await fetch(BASE + "/api/me", { headers: { Cookie: "tilework_session=" + anaCookie } })).json();
+    const copy = await (await fetch(BASE + "/api/me", { headers: { Cookie: "hq_session=" + anaCookie } })).json();
     check("the old session no longer opens the office, even from a copy of its cookie", copy.authenticated === false && !copy.link, JSON.stringify(copy));
     await Promise.all([ana.waitForNavigation(), click(ana, ".signin a", "Continue with fake sign-in (development)")]);
     await Promise.all([ana.waitForNavigation(), click(ana, "button", "Authorize")]);
     await waitFor(() => inOffice(ana), { timeout: 30000, what: "Ana back after signing in again" });
-    const back = await ana.evaluate(() => ({ id: window.__tilework.state.meId, name: window.__tilework.state.roster.get(window.__tilework.state.meId)?.n }));
+    const back = await ana.evaluate(() => ({ id: window.__hq.state.meId, name: window.__hq.state.roster.get(window.__hq.state.meId)?.n }));
     check("signing in again lands in the same member, without the name form", back.id === anaId && back.name === "Ana", JSON.stringify(back));
 
     // An outsider without invite is refused, with a message.
@@ -143,7 +143,7 @@ export async function run(ctx) {
 
     // Olga, admin from before sign-in, links an account and keeps hers.
     const olgaCtx = await browser.createBrowserContext();
-    await olgaCtx.setCookie({ name: "tilework_session", value: legacy.Olga.cookie, url: BASE, httpOnly: true, sameSite: "Lax" });
+    await olgaCtx.setCookie({ name: "hq_session", value: legacy.Olga.cookie, url: BASE, httpOnly: true, sameSite: "Lax" });
     const olga = await olgaCtx.newPage();
     await olga.setViewport({ width: 1280, height: 720 });
     await olga.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -155,7 +155,7 @@ export async function run(ctx) {
     await Promise.all([olga.waitForNavigation(), click(olga, ".signin a", "Continue with fake sign-in (development)")]);
     await Promise.all([olga.waitForNavigation(), click(olga, "button", "Authorize")]);
     await waitFor(() => inOffice(olga), { timeout: 30000, what: "Olga in the office" });
-    check("after linking, Olga is back in her own account", (await olga.evaluate(() => window.__tilework.state.meId)) === legacy.Olga.id);
+    check("after linking, Olga is back in her own account", (await olga.evaluate(() => window.__hq.state.meId)) === legacy.Olga.id);
     check("linking ends on a confirmation and a clean address", (await text(olga)).includes("Your account is connected") && !olga.url().includes("auth="), olga.url());
 
     // Olga invites Bob; Bob signs in with the invite through the real screen.
@@ -173,7 +173,7 @@ export async function run(ctx) {
     await Promise.all([bob.waitForNavigation(), click(bob, "button", "Authorize")]);
     await bob.waitForSelector(".join-card input");
     // a sign-in that expired before the name was sent goes back to the buttons, saying why
-    await bob.deleteCookie({ name: "tilework_signup", url: BASE });
+    await bob.deleteCookie({ name: "hq_signup", url: BASE });
     await bob.type(".join-card input", "Bob");
     await click(bob, "button.primary", "Enter");
     await bob.waitForSelector(".signin a");

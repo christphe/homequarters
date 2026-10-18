@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { AvatarSpec, ObjectReply, Person, Prop, Role, Status } from "./net/protocol";
+import { migrateStorage } from "./storageMigration";
 
 export interface ChatMsg {
   id: number;
@@ -97,6 +98,9 @@ export interface State {
   spotlight: { id: number; name: string; me: boolean; state: ConvState } | null;
 }
 
+// Before the first read below: an upgraded browser keeps what it saved under the old name.
+try { migrateStorage(localStorage); } catch { /* no storage at all */ }
+
 const load = <T,>(k: string, d: T): T => {
   try {
     const v = localStorage.getItem(k);
@@ -114,13 +118,13 @@ const initial: State = {
   status: "available",
   office: "",
   mediaAvailable: false,
-  consent: localStorage.getItem("tilework.consent") === "1",
+  consent: localStorage.getItem("hq.consent") === "1",
   roster: new Map(),
   conv: null,
   chat: [],
   unread: 0,
-  settings: load<Settings>("tilework.settings", { eco: false, maxVideos: 6, audioOnly: false, debug: false, sounds: true, notify: false, minimap: true, osIdle: false, denoise: false, noiseEngine: "gtcrn" }),
-  prefs: load<MediaPrefs>("tilework.prefs", { micOn: true, camOn: false, micId: "", camId: "", spkId: "" }),
+  settings: load<Settings>("hq.settings", { eco: false, maxVideos: 6, audioOnly: false, debug: false, sounds: true, notify: false, minimap: true, osIdle: false, denoise: false, noiseEngine: "gtcrn" }),
+  prefs: load<MediaPrefs>("hq.prefs", { micOn: true, camOn: false, micId: "", camId: "", spkId: "" }),
   mic: false,
   cam: false,
   sharing: false,
@@ -128,7 +132,7 @@ const initial: State = {
   currentArea: "",
   areaIndex: -1,
   toast: "",
-  myAvatar: load<AvatarSpec>("tilework.avatar", { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 }),
+  myAvatar: load<AvatarSpec>("hq.avatar", { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 }),
   notice: "",
   demo: null,
   auth: { providers: [], signup: null, link: null },
@@ -168,16 +172,16 @@ export function useStore<T>(sel: (s: State) => T): T {
 
 export function saveSettings(s: Partial<Settings>) {
   const settings = { ...state.settings, ...s };
-  localStorage.setItem("tilework.settings", JSON.stringify(settings));
+  localStorage.setItem("hq.settings", JSON.stringify(settings));
   setState({ settings });
 }
 export function savePrefs(p: Partial<MediaPrefs>) {
   const prefs = { ...state.prefs, ...p };
-  localStorage.setItem("tilework.prefs", JSON.stringify(prefs));
+  localStorage.setItem("hq.prefs", JSON.stringify(prefs));
   setState({ prefs });
 }
 export function saveAvatar(a: AvatarSpec) {
-  localStorage.setItem("tilework.avatar", JSON.stringify(a));
+  localStorage.setItem("hq.avatar", JSON.stringify(a));
   setState({ myAvatar: a });
 }
 

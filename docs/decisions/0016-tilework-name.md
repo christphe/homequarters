@@ -1,6 +1,6 @@
 # 0016: Tilework identity and runtime namespace
 
-Date: 2026-10-02. Status: accepted.
+Date: 2026-10-02. Status: superseded by [0024](0024-home-quarters.md), which renamed the project Home Quarters; this record keeps the names of its time.
 
 ## Context
 
@@ -10,7 +10,7 @@ The project needs its own stable name while remaining describable as an independ
 
 Use **Tilework** as the brand and `tilework` as the repository, Go module, command and Docker service name. Application environment variables use `TILEWORK_`, Prometheus metrics use `tilework_`, the session cookie is `tilework_session`, browser preferences use `tilework.*`, and the test hook is `window.__tilework`. Gather appears only in comparisons and affiliation or asset disclaimers.
 
-Reject non-empty retired `OG_` variables at startup with a migration message. This prevents an old production environment from being mistaken for an unconfigured development environment. Existing databases retain their schema and data; production Compose exposes explicit volume and database overrides to reuse them and Caddy's TLS state. See [Upgrading to Tilework](../../deploy/README.md#upgrading-to-tilework).
+Reject non-empty retired `OG_` variables at startup with a migration message. This prevents an old production environment from being mistaken for an unconfigured development environment. Existing databases retain their schema and data; production Compose exposes explicit volume and database overrides to reuse them and Caddy's TLS state. See [the earlier rename](../../deploy/README.md#earlier-rename-opengather-to-tilework-2026-10-02).
 
 Preserve historical benchmark inputs byte-for-byte and read both container naming schemes in the report generator. A rebrand is not a new capacity measurement.
 

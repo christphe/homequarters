@@ -65,7 +65,7 @@ export async function run(ctx) {
     await sleep(500);
     await audit(p, "the office (people panel)");
     await waitFor(() => p.$('.people button[aria-label^="More actions for"]'), { what: "more actions button" });
-    await p.screenshot({ path: path.join(os.tmpdir(), "tilework-people-row.png") });
+    await p.screenshot({ path: path.join(os.tmpdir(), "homequarters-people-row.png") });
     const fit = await p.evaluate(() => { const ul = document.querySelector(".people"), b = document.querySelector('.people button[aria-label^="More actions for"]').getBoundingClientRect(), u = ul.getBoundingClientRect(); return { sw: ul.scrollWidth, cw: ul.clientWidth, inside: b.right <= u.right + 0.5 }; });
     check("people rows fit the panel: no sideways scroll, the more button fully visible", fit.sw <= fit.cw && fit.inside, JSON.stringify(fit));
     await p.evaluate(() => document.querySelector('.people button[aria-label^="More actions for"]').click());
@@ -73,7 +73,7 @@ export async function run(ctx) {
     await audit(p, "a person's more actions menu");
     const onScreen = await p.evaluate(() => { const r = document.querySelector(".more-menu").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; });
     check("the more actions menu is entirely on screen", onScreen);
-    await p.screenshot({ path: path.join(os.tmpdir(), "tilework-people-menu.png") });
+    await p.screenshot({ path: path.join(os.tmpdir(), "homequarters-people-menu.png") });
     await p.keyboard.press("Escape");
     await click(p, ".tabs button[aria-selected]", undefined); // toggles people off
     await p.evaluate(() => [...document.querySelectorAll(".tabs button")][1].click());
@@ -136,7 +136,7 @@ export async function run(ctx) {
     await waitFor(async () => !(await p.$(".modal")), { what: "media closed" });
 
     await walkTo(admin, 4 * 16 + 8, 6 * 16 + 8);
-    await waitFor(() => p.evaluate(() => window.__tilework.state.nearby?.t === "note"), { what: "nearby note" });
+    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "note"), { what: "nearby note" });
     await p.keyboard.press("x");
     await waitFor(() => p.$(".object-note"), { what: "note dialog" });
     await audit(p, "the interactive note dialog");
@@ -144,7 +144,7 @@ export async function run(ctx) {
     await waitFor(async () => !(await p.$(".modal")), { what: "note closed" });
 
     await walkTo(admin, 49 * 16 + 8, 16 * 16 + 8);
-    await waitFor(() => p.evaluate(() => window.__tilework.state.nearby?.t === "whiteboard"), { what: "nearby whiteboard" });
+    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "whiteboard"), { what: "nearby whiteboard" });
     await p.keyboard.press("x");
     await waitFor(() => p.$("canvas.whiteboard"), { what: "whiteboard" });
     await audit(p, "the shared whiteboard");
@@ -153,7 +153,7 @@ export async function run(ctx) {
 
     // a free desk: its Take button and the confirmation (Escape leaves the desk free)
     // earlier scenarios may have assigned some desks: take the first free one in the desk area
-    const free = await p.evaluate(() => window.__tilework.view.map.props.find((d) => d.t === "desk" && !d.assign && d.y < 14));
+    const free = await p.evaluate(() => window.__hq.view.map.props.find((d) => d.t === "desk" && !d.assign && d.y < 14));
     await walkTo(admin, free.x * 16 + 8, (free.y + 1) * 16 + 8);
     await waitFor(() => p.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Take this desk")), { what: "take desk button" });
     await audit(p, "the office with the Take this desk button");
@@ -162,9 +162,9 @@ export async function run(ctx) {
     await audit(p, "the take a desk dialog");
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "take desk closed" });
-    check("Escape closes the take a desk dialog without taking the desk", !(await p.evaluate((x, y) => window.__tilework.view.map.props.find((d) => d.t === "desk" && d.x === x && d.y === y)?.assign, free.x, free.y)));
+    check("Escape closes the take a desk dialog without taking the desk", !(await p.evaluate((x, y) => window.__hq.view.map.props.find((d) => d.t === "desk" && d.x === x && d.y === y)?.assign, free.x, free.y)));
 
-    await p.evaluate(() => window.__tilework.session.setStatus("away"));
+    await p.evaluate(() => window.__hq.session.setStatus("away"));
     await waitFor(() => p.$(".status-veil"), { what: "away veil" });
     await audit(p, "the away veil");
     await click(p, ".veil-button");

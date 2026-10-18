@@ -1,8 +1,8 @@
-# Tilework (fork)
+# Home Quarters
 
-**An opinionated fork of [guhcostan/tilework](https://github.com/guhcostan/tilework): an open source, self-hosted 2D virtual office.** Everyone has a pixel-art avatar on a shared map; a call starts with proximity audio and video when you walk up to someone and ends when you walk away. It runs in the browser and you host it yourself: one Go binary, SQLite and a LiveKit media server, no paid service.
+**Home Quarters (HQ) is an open source, self-hosted 2D virtual office, forked from [guhcostan/tilework](https://github.com/guhcostan/tilework).** Everyone has a pixel-art avatar on a shared map; a call starts with proximity audio and video when you walk up to someone and ends when you walk away. It runs in the browser and you host it yourself: one Go binary, SQLite and a LiveKit media server, no paid service.
 
-This fork keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) and makes its own product choices. It is alpha software; the documentation lives in [docs/](docs/).
+It was called Tilework until 2026-10-18 and took its own name once it had diverged enough ([decision 0024](docs/decisions/0024-home-quarters.md); existing installations follow [Upgrading to Home Quarters](deploy/README.md#upgrading-to-home-quarters)). This fork keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) and makes its own product choices. It is alpha software; the documentation lives in [docs/](docs/).
 
 ## What this fork changes
 
@@ -34,13 +34,13 @@ Inherited from the original and kept:
 **Self-host with Docker.** Try the whole stack locally; the first person to join becomes the administrator:
 
 ~~~bash
-git clone https://github.com/christphe/tilework.git
-cd tilework
+git clone https://github.com/christphe/homequarters.git
+cd homequarters
 docker compose -f deploy/docker-compose.local.yml up --build
 # open http://localhost:8080
 ~~~
 
-For a real server, follow the [self-hosting guide](deploy/README.md) (Caddy for HTTPS, LiveKit, invite-only joins). This fork's CI publishes its image to `ghcr.io/christphe/tilework`; the production Compose file still defaults to the original's image, so set `TILEWORK_IMAGE=ghcr.io/christphe/tilework:latest` in `.env`.
+For a real server, follow the [self-hosting guide](deploy/README.md) (Caddy for HTTPS, LiveKit, invite-only joins). This fork's CI publishes its image to `ghcr.io/christphe/homequarters`, which the production Compose file uses by default.
 
 **Develop.** You need Go, Node.js with pnpm and a LiveKit server binary. On Windows, run the scripts from Git Bash.
 
@@ -64,6 +64,7 @@ What was run, on which machine, and what was not, is in [docs/status.md](docs/st
 
 - The Go tests (with the race detector) and the real-browser suite (Chrome with a real LiveKit) pass on Windows 11 for this fork's changes. On Windows, the video RTP checks of `proximity` and `spotlight` cannot run (Docker Desktop's network); CI runs them.
 - Sign-in with the real Google service was checked by hand; the suite uses a development provider that walks the same path.
+- The rename to Home Quarters (2026-10-18) passed every gate and 16 browser scenarios on Windows 11; `proximity` and `spotlight` ran up to their video RTP checks. The upgrade path of an existing installation is documented, not yet run on a real one.
 
 ## Architecture
 
@@ -96,7 +97,7 @@ Read [CONTRIBUTING](docs/contributing.md) and [AGENTS.md](AGENTS.md) first. Ever
 
 ## Licence and credits
 
-- Code: **AGPL-3.0** ([LICENSE](LICENSE)), from the original project by [guhcostan](https://github.com/guhcostan/tilework).
+- Code: **AGPL-3.0** ([LICENSE](LICENSE)), a fork of [Tilework](https://github.com/guhcostan/tilework) by guhcostan.
 - Sprites, map and UI are drawn by the project's own code (`web/src/game/art`), see [Art style](docs/art-style.md).
-- Font: [Jersey 10](https://github.com/scfried/soft-type-jersey), SIL Open Font License 1.1.
+- Fonts: [Jersey 10](https://github.com/scfried/soft-type-jersey) for the interface and [Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) for the name and the HQ icon, both SIL Open Font License 1.1.
 - Third-party licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

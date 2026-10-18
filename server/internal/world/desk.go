@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"tilework/internal/gamemap"
+	"homequarters/internal/gamemap"
 )
 
 // Why a desk claim was refused.

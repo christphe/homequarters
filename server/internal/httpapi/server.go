@@ -19,15 +19,19 @@ import (
 	"sync"
 	"time"
 
-	"tilework/internal/auth"
-	"tilework/internal/config"
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
-	"tilework/internal/store"
-	"tilework/internal/world"
+	"homequarters/internal/auth"
+	"homequarters/internal/config"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
+	"homequarters/internal/store"
+	"homequarters/internal/world"
 )
 
-const cookieName = "tilework_session"
+const cookieName = "hq_session"
+
+// legacyCookieName is the session cookie from before the rename to Home
+// Quarters (ADR 0024); moveLegacySession carries it over so nobody signs in again.
+const legacyCookieName = "tilework_session"
 
 type Server struct {
 	cfg *config.Config
@@ -58,7 +62,7 @@ type Server struct {
 	renameLim *limiter // office renames: each is a broadcast to everybody
 	demoLim   *limiter
 
-	// sign-in (TILEWORK_AUTH_PROVIDERS); nil maps when it is off
+	// sign-in (HQ_AUTH_PROVIDERS); nil maps when it is off
 	providers map[string]*auth.Provider
 	fake      *auth.Fake
 	sealer    *auth.Sealer // signs the cookies of sign-ins in progress
@@ -292,7 +296,29 @@ func (s *Server) Handler() http.Handler {
 	if s.cfg.StaticDir != "" {
 		mux.Handle("/", spa(s.cfg.StaticDir, s.version))
 	}
-	return secureHeaders(mux)
+	return secureHeaders(s.moveLegacySession(mux))
+}
+
+// moveLegacySession serves a request that carries only the old session cookie
+// as if it carried the new one, and answers with the new cookie set and the
+// old one cleared. The token itself is checked by the handlers as usual.
+func (s *Server) moveLegacySession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := r.Cookie(cookieName); err == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		old, err := r.Cookie(legacyCookieName)
+		if err != nil || old.Value == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		r = r.Clone(r.Context())
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: old.Value})
+		s.setCookie(w, old.Value)
+		http.SetCookie(w, &http.Cookie{Name: legacyCookieName, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: !s.cfg.Dev(), MaxAge: -1})
+		next.ServeHTTP(w, r)
+	})
 }
 
 func secureHeaders(h http.Handler) http.Handler {
@@ -322,7 +348,7 @@ func resolveVersion(commit, staticDir string) string {
 
 func spa(dir, version string) http.Handler {
 	fsrv := http.FileServer(http.Dir(dir))
-	meta := `<meta name="tilework-version" content="` + html.EscapeString(version) + `">`
+	meta := `<meta name="hq-version" content="` + html.EscapeString(version) + `">`
 	page := func(w http.ResponseWriter) {
 		b, err := os.ReadFile(filepath.Join(dir, "index.html"))
 		if err != nil {

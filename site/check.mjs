@@ -6,8 +6,8 @@ import path from "node:path";
 const HERE = import.meta.dirname;
 const DIST = path.join(HERE, "dist");
 const ROOT = path.resolve(HERE, "..");
-const SITE = "https://guhcostan.github.io/tilework/";
-const BASE = new URL(SITE).pathname; // "/tilework/"
+const SITE = "https://christphe.github.io/homequarters/";
+const BASE = new URL(SITE).pathname; // "/homequarters/"
 const fails = [];
 const fail = (file, msg) => fails.push((file ? path.relative(DIST, file) || file : "") + ": " + msg);
 
@@ -40,7 +40,7 @@ const titles = new Map();
 const ld = new Map();
 for (const f of html) {
   const src = fs.readFileSync(f, "utf8");
-  if (meta(src, "property", "og:site_name") !== "Tilework") fail(f, "site brand must be Tilework");
+  if (meta(src, "property", "og:site_name") !== "Home Quarters") fail(f, "site brand must be Home Quarters");
   const is404 = path.basename(f) === "404.html";
   const title = (/<title>([^<]*)<\/title>/.exec(src) ?? [])[1];
   if (!title) fail(f, "missing <title>");
@@ -61,7 +61,7 @@ for (const f of html) {
   if (!meta(src, "name", "twitter:image")) fail(f, "twitter:image missing");
   for (const m of src.matchAll(/(?:href|src)="([^"]+)"/g)) {
     const ref = m[1];
-    const gh = /^https:\/\/github\.com\/guhcostan\/tilework\/(?:blob|tree)\/main\/([^"#?]+)/.exec(ref);
+    const gh = /^https:\/\/github\.com\/christphe\/homequarters\/(?:blob|tree)\/main\/([^"#?]+)/.exec(ref);
     if (gh && !fs.existsSync(path.join(ROOT, decodeURIComponent(gh[1])))) fail(f, "GitHub link to a file that does not exist: " + gh[1]);
     if (/^(https?:|mailto:|data:|#)/.test(ref) && !ref.startsWith(SITE)) continue;
     if (is404 && !ref.startsWith("/")) { fail(f, "relative link in 404 page breaks at depth: " + ref); continue; }

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"tilework/internal/config"
+	"homequarters/internal/config"
 )
 
 func privacyBody(t *testing.T, ts string) string {

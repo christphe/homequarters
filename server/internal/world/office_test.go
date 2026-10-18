@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"tilework/internal/gamemap"
+	"homequarters/internal/gamemap"
 )
 
 // Private offices: a row of small rooms under the social area, behind a hall. Office 1 spans tiles

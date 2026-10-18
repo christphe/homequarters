@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
 )
 
 type fakeMedia struct {

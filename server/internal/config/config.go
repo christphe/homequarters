@@ -1,5 +1,5 @@
 // Package config loads runtime configuration from environment variables.
-// TILEWORK_ENV=dev enables developer conveniences; TILEWORK_ENV=production refuses to
+// HQ_ENV=dev enables developer conveniences; HQ_ENV=production refuses to
 // start with insecure defaults.
 package config
 
@@ -18,7 +18,7 @@ type Config struct {
 	Addr           string
 	DBPath         string
 	StaticDir      string
-	Version        string // the deploy's commit (TILEWORK_VERSION); empty: derived from the built page
+	Version        string // the deploy's commit (HQ_VERSION); empty: derived from the built page
 	AllowedOrigins []string
 	OfficeSlug     string
 	OfficeName     string
@@ -96,50 +96,50 @@ var knownProviders = map[string]bool{"google": true, "fake-oidc": true}
 
 // loadAuth reads and checks the sign-in configuration.
 func (c *Config) loadAuth() error {
-	c.GoogleClientID = env("TILEWORK_GOOGLE_CLIENT_ID", "")
-	c.GoogleClientSecret = env("TILEWORK_GOOGLE_CLIENT_SECRET", "")
-	c.PublicURL = strings.TrimRight(env("TILEWORK_PUBLIC_URL", ""), "/")
-	raw := strings.TrimSpace(env("TILEWORK_AUTH_PROVIDERS", "none"))
+	c.GoogleClientID = env("HQ_GOOGLE_CLIENT_ID", "")
+	c.GoogleClientSecret = env("HQ_GOOGLE_CLIENT_SECRET", "")
+	c.PublicURL = strings.TrimRight(env("HQ_PUBLIC_URL", ""), "/")
+	raw := strings.TrimSpace(env("HQ_AUTH_PROVIDERS", "none"))
 	if raw != "none" {
 		seen := map[string]bool{}
 		for _, p := range strings.Split(raw, ",") {
 			p = strings.ToLower(strings.TrimSpace(p))
 			switch {
 			case p == "":
-				return errors.New("TILEWORK_AUTH_PROVIDERS has an empty entry")
+				return errors.New("HQ_AUTH_PROVIDERS has an empty entry")
 			case p == "none":
-				return errors.New("TILEWORK_AUTH_PROVIDERS: none cannot be combined with a provider")
+				return errors.New("HQ_AUTH_PROVIDERS: none cannot be combined with a provider")
 			case !knownProviders[p]:
-				return fmt.Errorf("TILEWORK_AUTH_PROVIDERS: unknown provider %q (known: google, fake-oidc)", p)
+				return fmt.Errorf("HQ_AUTH_PROVIDERS: unknown provider %q (known: google, fake-oidc)", p)
 			case seen[p]:
-				return fmt.Errorf("TILEWORK_AUTH_PROVIDERS lists %s twice", p)
+				return fmt.Errorf("HQ_AUTH_PROVIDERS lists %s twice", p)
 			}
 			seen[p] = true
 			c.AuthProviders = append(c.AuthProviders, p)
 		}
 	}
-	if d := env("TILEWORK_AUTH_DOMAINS", ""); d != "" {
+	if d := env("HQ_AUTH_DOMAINS", ""); d != "" {
 		for _, x := range strings.Split(d, ",") {
 			x = strings.ToLower(strings.TrimSpace(x))
 			if x == "" || strings.ContainsAny(x, "@/: ") || !strings.Contains(x, ".") {
-				return fmt.Errorf("TILEWORK_AUTH_DOMAINS: %q is not a domain (write acme.com)", x)
+				return fmt.Errorf("HQ_AUTH_DOMAINS: %q is not a domain (write acme.com)", x)
 			}
 			c.AuthDomains = append(c.AuthDomains, x)
 		}
 	}
 	if !c.AuthEnabled() {
 		if len(c.AuthDomains) > 0 {
-			return errors.New("TILEWORK_AUTH_DOMAINS needs a sign-in provider in TILEWORK_AUTH_PROVIDERS")
+			return errors.New("HQ_AUTH_DOMAINS needs a sign-in provider in HQ_AUTH_PROVIDERS")
 		}
 		return nil
 	}
 	if c.Demo {
-		return errors.New("the public demo is anonymous: TILEWORK_DEMO cannot be combined with TILEWORK_AUTH_PROVIDERS")
+		return errors.New("the public demo is anonymous: HQ_DEMO cannot be combined with HQ_AUTH_PROVIDERS")
 	}
 	if c.PublicURL != "" {
 		u, err := url.Parse(c.PublicURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" {
-			return errors.New("TILEWORK_PUBLIC_URL must be a scheme and a host, like https://office.example.com")
+			return errors.New("HQ_PUBLIC_URL must be a scheme and a host, like https://office.example.com")
 		}
 	}
 	for _, p := range c.AuthProviders {
@@ -150,16 +150,16 @@ func (c *Config) loadAuth() error {
 			}
 		case "google":
 			if c.GoogleClientID == "" {
-				return errors.New("google sign-in requires TILEWORK_GOOGLE_CLIENT_ID")
+				return errors.New("google sign-in requires HQ_GOOGLE_CLIENT_ID")
 			}
 			if c.GoogleClientSecret == "" {
-				return errors.New("google sign-in requires TILEWORK_GOOGLE_CLIENT_SECRET")
+				return errors.New("google sign-in requires HQ_GOOGLE_CLIENT_SECRET")
 			}
 			if c.PublicURL == "" {
-				return errors.New("google sign-in requires TILEWORK_PUBLIC_URL (the address registered as callback)")
+				return errors.New("google sign-in requires HQ_PUBLIC_URL (the address registered as callback)")
 			}
 			if !c.Dev() && !strings.HasPrefix(c.PublicURL, "https://") {
-				return errors.New("production requires TILEWORK_PUBLIC_URL to use https")
+				return errors.New("production requires HQ_PUBLIC_URL to use https")
 			}
 		}
 	}
@@ -167,46 +167,39 @@ func (c *Config) loadAuth() error {
 }
 
 func Load() (*Config, error) {
-	// Reject retired configuration so a production upgrade cannot silently use dev defaults.
-	for _, entry := range os.Environ() {
-		key, value, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(key, "OG_") && value != "" {
-			return nil, fmt.Errorf("rename environment variable %s to TILEWORK_%s before starting Tilework", key, strings.TrimPrefix(key, "OG_"))
-		}
-	}
 	c := &Config{
-		Env:            env("TILEWORK_ENV", "dev"),
-		Addr:           env("TILEWORK_ADDR", ":8080"),
-		DBPath:         env("TILEWORK_DB", "data/tilework.db"),
-		StaticDir:      env("TILEWORK_STATIC_DIR", ""),
-		Version:        env("TILEWORK_VERSION", ""),
-		OfficeSlug:     env("TILEWORK_OFFICE_SLUG", "default"),
-		OfficeName:     env("TILEWORK_OFFICE_NAME", "Office"),
-		MetricsToken:   env("TILEWORK_METRICS_TOKEN", ""),
-		SessionTTL:     time.Duration(envInt("TILEWORK_SESSION_DAYS", 30)) * 24 * time.Hour,
+		Env:            env("HQ_ENV", "dev"),
+		Addr:           env("HQ_ADDR", ":8080"),
+		DBPath:         env("HQ_DB", "data/homequarters.db"),
+		StaticDir:      env("HQ_STATIC_DIR", ""),
+		Version:        env("HQ_VERSION", ""),
+		OfficeSlug:     env("HQ_OFFICE_SLUG", "default"),
+		OfficeName:     env("HQ_OFFICE_NAME", "Office"),
+		MetricsToken:   env("HQ_METRICS_TOKEN", ""),
+		SessionTTL:     time.Duration(envInt("HQ_SESSION_DAYS", 30)) * 24 * time.Hour,
 		LiveKitURL:     env("LIVEKIT_URL", ""),
 		LiveKitAPIURL:  env("LIVEKIT_API_URL", ""),
 		LiveKitKey:     env("LIVEKIT_API_KEY", ""),
 		LiveKitSecret:  env("LIVEKIT_API_SECRET", ""),
-		TickHz:         envInt("TILEWORK_TICK_HZ", 15),
-		AOICells:       envInt("TILEWORK_AOI_CELLS", 2),
-		AOIMaxCells:    envInt("TILEWORK_AOI_MAX_CELLS", 0),
-		MaxPlayers:     envInt("TILEWORK_MAX_PLAYERS", 2000),
-		MaxGroup:       envInt("TILEWORK_MAX_GROUP", 8),
-		JoinRate:       envInt("TILEWORK_JOIN_RATE", 20),
-		MediaTTL:       time.Duration(envInt("TILEWORK_MEDIA_TOKEN_TTL_SECONDS", 30)) * time.Second,
-		MediaReconcile: time.Duration(envInt("TILEWORK_MEDIA_RECONCILE_SECONDS", 10)) * time.Second,
-		Demo:           env("TILEWORK_DEMO", "") == "1" || env("TILEWORK_DEMO", "") == "true",
-		DemoReset:      time.Duration(envInt("TILEWORK_DEMO_RESET_HOURS", 6)) * time.Hour,
-		Operator:       env("TILEWORK_OPERATOR", ""),
-		Contact:        env("TILEWORK_CONTACT", ""),
+		TickHz:         envInt("HQ_TICK_HZ", 15),
+		AOICells:       envInt("HQ_AOI_CELLS", 2),
+		AOIMaxCells:    envInt("HQ_AOI_MAX_CELLS", 0),
+		MaxPlayers:     envInt("HQ_MAX_PLAYERS", 2000),
+		MaxGroup:       envInt("HQ_MAX_GROUP", 8),
+		JoinRate:       envInt("HQ_JOIN_RATE", 20),
+		MediaTTL:       time.Duration(envInt("HQ_MEDIA_TOKEN_TTL_SECONDS", 30)) * time.Second,
+		MediaReconcile: time.Duration(envInt("HQ_MEDIA_RECONCILE_SECONDS", 10)) * time.Second,
+		Demo:           env("HQ_DEMO", "") == "1" || env("HQ_DEMO", "") == "true",
+		DemoReset:      time.Duration(envInt("HQ_DEMO_RESET_HOURS", 6)) * time.Hour,
+		Operator:       env("HQ_OPERATOR", ""),
+		Contact:        env("HQ_CONTACT", ""),
 	}
-	c.StopOnStdinClose = env("TILEWORK_STOP_ON_STDIN_CLOSE", "") == "1"
-	if o := env("TILEWORK_ALLOWED_ORIGINS", ""); o != "" {
+	c.StopOnStdinClose = env("HQ_STOP_ON_STDIN_CLOSE", "") == "1"
+	if o := env("HQ_ALLOWED_ORIGINS", ""); o != "" {
 		c.AllowedOrigins = strings.Split(o, ",")
 	}
 	if c.Env != "dev" && c.Env != "production" {
-		return nil, errors.New("TILEWORK_ENV must be dev or production")
+		return nil, errors.New("HQ_ENV must be dev or production")
 	}
 	if err := c.loadAuth(); err != nil {
 		return nil, err
@@ -218,17 +211,17 @@ func Load() (*Config, error) {
 		c.LiveKitAPIURL = u
 	}
 	if c.TickHz < 5 || c.TickHz > 30 {
-		return nil, errors.New("TILEWORK_TICK_HZ must be within 5..30")
+		return nil, errors.New("HQ_TICK_HZ must be within 5..30")
 	}
 	if c.AOIMaxCells == 0 { // unset: 8, or the default radius if that is already wider
 		c.AOIMaxCells = max(8, c.AOICells)
 	}
 	if c.AOIMaxCells < c.AOICells || c.AOIMaxCells > max(8, c.AOICells) {
-		return nil, errors.New("TILEWORK_AOI_MAX_CELLS must be within TILEWORK_AOI_CELLS..8")
+		return nil, errors.New("HQ_AOI_MAX_CELLS must be within HQ_AOI_CELLS..8")
 	}
 	if c.Env == "production" {
 		if c.StopOnStdinClose {
-			return nil, errors.New("TILEWORK_STOP_ON_STDIN_CLOSE is for local tests only")
+			return nil, errors.New("HQ_STOP_ON_STDIN_CLOSE is for local tests only")
 		}
 		if c.LiveKitKey == "" || c.LiveKitSecret == "" || c.LiveKitURL == "" {
 			return nil, errors.New("production requires LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET")
@@ -240,10 +233,10 @@ func Load() (*Config, error) {
 			return nil, errors.New("production requires LIVEKIT_URL to use wss://")
 		}
 		if c.MetricsToken != "" && len(c.MetricsToken) < 16 {
-			return nil, errors.New("TILEWORK_METRICS_TOKEN must have at least 16 characters")
+			return nil, errors.New("HQ_METRICS_TOKEN must have at least 16 characters")
 		}
 		if len(c.AllowedOrigins) == 0 {
-			return nil, errors.New("production requires TILEWORK_ALLOWED_ORIGINS (e.g. office.example.com)")
+			return nil, errors.New("production requires HQ_ALLOWED_ORIGINS (e.g. office.example.com)")
 		}
 	}
 	return c, nil

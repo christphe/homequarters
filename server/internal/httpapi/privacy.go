@@ -58,7 +58,7 @@ var privacyPage = template.Must(template.New("privacy").Parse(`<!doctype html>
 <h1>Privacy policy</h1>
 <p class="lead">{{.Office}}</p>
 
-<p>This office runs on Tilework, open source virtual office software{{if .Operator}}, and is operated by {{.Operator}} ("we"){{end}}. This page says what the office stores about you, why, and who can see it.</p>
+<p>This office runs on Home Quarters, open source virtual office software{{if .Operator}}, and is operated by {{.Operator}} ("we"){{end}}. This page says what the office stores about you, why, and who can see it.</p>
 
 <h2>Who is responsible</h2>
 {{if .Operator}}<p>{{.Operator}} runs this office and decides what happens to the data described here.</p>{{else}}<p>The organisation that runs this office decides what happens to the data described here.</p>{{end}}

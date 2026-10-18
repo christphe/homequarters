@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"tilework/internal/store"
+	"homequarters/internal/store"
 )
 
 // adminSession authenticates the caller and requires the admin role. It writes the error response itself.
@@ -85,7 +85,7 @@ func (s *Server) announce(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// renameOffice changes the office's name: stored (it outlives restarts, TILEWORK_OFFICE_NAME only names a new
+// renameOffice changes the office's name: stored (it outlives restarts, HQ_OFFICE_NAME only names a new
 // office), audited with the old and new name, and pushed to everybody online.
 func (s *Server) renameOffice(w http.ResponseWriter, r *http.Request) {
 	se := s.adminSession(w, r)
