@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"tilework/internal/config"
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
-	"tilework/internal/store"
+	"homequarters/internal/config"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
+	"homequarters/internal/store"
 )
 
 type rig struct {

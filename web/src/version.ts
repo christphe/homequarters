@@ -3,7 +3,7 @@
 // cannot be dismissed asks to reload onto the new code.
 
 /** The version this page was served with, or "" outside a server-served page (the Vite dev server). */
-export const pageVersion = (): string => document.querySelector<HTMLMetaElement>('meta[name="tilework-version"]')?.content ?? "";
+export const pageVersion = (): string => document.querySelector<HTMLMetaElement>('meta[name="hq-version"]')?.content ?? "";
 
 /** Outdated when both sides name a version and they differ. */
 export const isOutdated = (page: string, server: string | undefined): boolean => !!page && !!server && page !== server;

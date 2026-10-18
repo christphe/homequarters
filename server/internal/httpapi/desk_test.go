@@ -10,7 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"tilework/internal/gamemap"
+	"homequarters/internal/gamemap"
 )
 
 // online connects u's game socket; incoming frames are read and dropped.

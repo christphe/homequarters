@@ -1,7 +1,7 @@
 // Static site generator for the landing page and documentation.
 // Input : ../docs/*.md, ../docs/decisions/*.md, ../deploy/README.md, src/*, assets/*
 // Output: dist/ (deployed to GitHub Pages). Page links are relative, so the site works under a
-// project sub-path such as /tilework/; canonical, social and sitemap URLs use SITE.
+// project sub-path such as /homequarters/; canonical, social and sitemap URLs use SITE.
 // Also writes what search engines and AI assistants read: sitemap.xml, llms.txt, llms-full.txt,
 // a Markdown copy of every doc page (docs/<slug>.md), JSON-LD and a 404 page.
 // Check the output with: node check.mjs
@@ -14,11 +14,10 @@ const HERE = import.meta.dirname;
 const REPO_ROOT = path.resolve(HERE, "..");
 const DOCS = path.join(REPO_ROOT, "docs");
 const OUT = path.join(HERE, "dist");
-export const REPO = "https://github.com/guhcostan/tilework";
-export const SITE = "https://guhcostan.github.io/tilework/";
+export const REPO = "https://github.com/christphe/homequarters";
+export const SITE = "https://christphe.github.io/homequarters/";
 const BASE_PATH = new URL(SITE).pathname;
-const DEMO = "https://office.152-67-49-137.sslip.io";
-const IMAGE = { url: SITE + "assets/banner.png", width: 1280, height: 640, alt: "Tilework: pixel-art avatars in a lightweight, open source virtual office" };
+const IMAGE = { url: SITE + "assets/banner.png", width: 1280, height: 640, alt: "Home Quarters, the open source virtual office you host yourself: pixel-art people at their assigned desks, two chatting and two walking their pets" };
 const SUMMARY = "Open source (AGPL-3.0), self-hosted 2D virtual office with pixel-art avatars, proximity audio and video, meeting rooms, screen sharing and chat. Built with Go, PixiJS and LiveKit to be cheap to host.";
 
 const NAV = [
@@ -37,16 +36,16 @@ const NAV = [
 ];
 // Hand-written descriptions for the pages people search for; the rest use their first paragraph.
 const DESCRIPTIONS = {
-  overview: "What Tilework is: an open source, self-hosted 2D virtual office with proximity audio and video, built to be light on CPU, RAM, GPU and bandwidth.",
-  "getting-started": "Run Tilework locally in minutes: Go, Node.js with pnpm and LiveKit, one dev script, every environment variable and how to run the tests.",
-  "self-hosting": "Self-host Tilework with Docker Compose: HTTPS through Caddy, a LiveKit SFU, invite-only joins, firewall ports, backups and a public demo mode.",
-  faq: "Answers about Tilework: what it is, how it relates to Gather, cost, self-hosting, capacity, privacy, browsers, phones and how to contribute.",
-  architecture: "How Tilework is built: an authoritative Go world server with a spatial grid, SQLite in WAL mode, a PixiJS client and a LiveKit SFU for media.",
-  "proximity-and-media": "How proximity conversations form in Tilework: hysteresis, small groups, no chains, isolated rooms, scoped LiveKit tokens and revocation.",
-  "privacy-and-security": "What Tilework stores and never stores, how media access is enforced by the server and the SFU, and the security limits still open.",
-  status: "Tilework status and roadmap: what has been tested in real browsers and on a public host, what was measured locally and what has not been run.",
-  roadmap: "What Tilework plans next: breakout rooms, a stage, audio-only areas set by administrators, a lounge, hosted-plan prerequisites and the evidence still missing.",
-  "business-model": "How Tilework plans to sustain itself: AGPL open source for everyone, plus hosted instances in Team, Business and Enterprise plans with seats.",
+  overview: "What Home Quarters is: an open source, self-hosted 2D virtual office with proximity audio and video, built to be light on CPU, RAM, GPU and bandwidth.",
+  "getting-started": "Run Home Quarters locally in minutes: Go, Node.js with pnpm and LiveKit, one dev script, every environment variable and how to run the tests.",
+  "self-hosting": "Self-host Home Quarters with Docker Compose: HTTPS through Caddy, a LiveKit SFU, invite-only joins, firewall ports, backups and a public demo mode.",
+  faq: "Answers about Home Quarters: what it is, how it relates to Gather, cost, self-hosting, capacity, privacy, browsers, phones and how to contribute.",
+  architecture: "How Home Quarters is built: an authoritative Go world server with a spatial grid, SQLite in WAL mode, a PixiJS client and a LiveKit SFU for media.",
+  "proximity-and-media": "How proximity conversations form in Home Quarters: hysteresis, small groups, no chains, isolated rooms, scoped LiveKit tokens and revocation.",
+  "privacy-and-security": "What Home Quarters stores and never stores, how media access is enforced by the server and the SFU, and the security limits still open.",
+  status: "Home Quarters status and roadmap: what has been tested in real browsers and on a public host, what was measured locally and what has not been run.",
+  roadmap: "What Home Quarters plans next: breakout rooms, a stage, audio-only areas set by administrators, a lounge, hosted-plan prerequisites and missing evidence.",
+  "business-model": "How Home Quarters plans to sustain itself: AGPL open source for everyone, plus hosted instances in Team, Business and Enterprise plans with seats.",
 };
 const PAGES = NAV.flatMap((g) => g.items.map(([slug, title, file]) => ({ slug, title: title.replace(/^\d+ · /, ""), file, group: g.group, src: path.resolve(DOCS, file) })));
 const byFile = new Map(PAGES.map((p) => [p.src, p.slug]));
@@ -81,8 +80,8 @@ function describe(p, src) {
   if (DESCRIPTIONS[p.slug]) return DESCRIPTIONS[p.slug];
   const para = src.split(/\n\s*\n/).map((s) => s.trim()).find((s) => s && !/^(#|>|-|\*|\||~~~|\x60\x60\x60|<|\d+\.)/.test(s)) ?? "";
   let d = plain(para);
-  if (p.group === "Decisions") d = "Tilework design decision, " + p.title + ": " + d;
-  if (d.length < 50) d += " Part of the Tilework docs, an open source, self-hosted virtual office.";
+  if (p.group === "Decisions") d = "Home Quarters design decision, " + p.title + ": " + d;
+  if (d.length < 50) d += " Part of the Home Quarters docs, an open source, self-hosted virtual office.";
   return clip(d, 158);
 }
 
@@ -134,20 +133,19 @@ function render(mdText, root, srcFile) {
   return { html: md.parse(mdText), toc };
 }
 
-const ICON = "<svg class=\"logo\" viewBox=\"0 0 16 16\" width=\"28\" height=\"28\" shape-rendering=\"crispEdges\" aria-hidden=\"true\"><rect width=\"16\" height=\"16\" rx=\"3\" fill=\"#241f42\"/><rect x=\"5\" y=\"2\" width=\"6\" height=\"2\" fill=\"#3a2a1c\"/><rect x=\"5\" y=\"4\" width=\"6\" height=\"4\" fill=\"#e8b98f\"/><rect x=\"6\" y=\"5\" width=\"1\" height=\"2\" fill=\"#1d1a2b\"/><rect x=\"9\" y=\"5\" width=\"1\" height=\"2\" fill=\"#1d1a2b\"/><rect x=\"4\" y=\"8\" width=\"8\" height=\"5\" fill=\"#3cc9b0\"/><rect x=\"5\" y=\"13\" width=\"2\" height=\"2\" fill=\"#4a5a7a\"/><rect x=\"9\" y=\"13\" width=\"2\" height=\"2\" fill=\"#4a5a7a\"/></svg>";
 const GH = "<svg viewBox=\"0 0 16 16\" width=\"18\" height=\"18\" aria-hidden=\"true\" fill=\"currentColor\"><path d=\"M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0z\"/></svg>";
 
 function header(root, active) {
   return "<header class=\"site-header\"><div class=\"wrap bar\">" +
-    "<a class=\"brand\" href=\"" + root + "\">" + ICON + "<span>Tilework</span></a>" +
+    "<a class=\"brand\" href=\"" + root + "\">Home Quarters</a>" +
     "<nav class=\"main-nav\" aria-label=\"Main\">" +
     (active === "home" ? "<a href=\"#features\">Features</a><a href=\"#how\">How it works</a><a href=\"#faq\">FAQ</a>" : "") +
     "<a href=\"" + root + "docs/\"" + (active === "docs" ? " aria-current=\"page\"" : "") + ">Docs</a>" +
     "<a class=\"gh\" href=\"" + REPO + "\" rel=\"noopener\">" + GH + "<span>GitHub</span></a></nav></div></header>";
 }
 function footer(root) {
-  return "<footer class=\"site-footer\"><div class=\"wrap\"><p>Tilework is free software under the <a href=\"" + REPO + "/blob/main/LICENSE\">AGPL-3.0</a>. All pixel art is drawn by this project's own code.</p>" +
-    "<p class=\"fine\">Tilework is an independent open source alternative to Gather. This project has no affiliation with, and is not endorsed by, the original Gather product.</p>" +
+  return "<footer class=\"site-footer\"><div class=\"wrap\"><p>Home Quarters is free software under the <a href=\"" + REPO + "/blob/main/LICENSE\">AGPL-3.0</a>. All pixel art is drawn by this project's own code.</p>" +
+    "<p class=\"fine\">Home Quarters is an independent open source alternative to Gather. This project has no affiliation with, and is not endorsed by, the original Gather product.</p>" +
     "<p class=\"fine\"><a href=\"" + root + "docs/\">Docs</a> · <a href=\"" + root + "docs/faq/\">FAQ</a> · <a href=\"" + REPO + "\">Source</a> · <a href=\"" + REPO + "/issues\">Issues</a> · <a href=\"" + root + "llms.txt\">llms.txt</a> · <a href=\"" + REPO + "/stargazers\">Star on GitHub</a></p></div></footer>";
 }
 function shell({ title, description, root, urlPath, type = "website", body, bodyClass = "", active = "docs", ld = [], markdown, noindex = false }) {
@@ -157,7 +155,7 @@ function shell({ title, description, root, urlPath, type = "website", body, body
     (url ? "<link rel=\"canonical\" href=\"" + url + "\">\n" : "") +
     (noindex ? "<meta name=\"robots\" content=\"noindex\">\n" : "") +
     "<meta name=\"color-scheme\" content=\"dark\">\n<meta name=\"theme-color\" content=\"#1b1830\">\n" +
-    "<meta property=\"og:type\" content=\"" + type + "\">\n<meta property=\"og:site_name\" content=\"Tilework\">\n" +
+    "<meta property=\"og:type\" content=\"" + type + "\">\n<meta property=\"og:site_name\" content=\"Home Quarters\">\n" +
     "<meta property=\"og:title\" content=\"" + esc(title) + "\">\n<meta property=\"og:description\" content=\"" + esc(description) + "\">\n" +
     (url ? "<meta property=\"og:url\" content=\"" + url + "\">\n" : "") +
     "<meta property=\"og:image\" content=\"" + IMAGE.url + "\">\n<meta property=\"og:image:width\" content=\"" + IMAGE.width + "\">\n<meta property=\"og:image:height\" content=\"" + IMAGE.height + "\">\n<meta property=\"og:image:alt\" content=\"" + esc(IMAGE.alt) + "\">\n" +
@@ -169,7 +167,7 @@ function shell({ title, description, root, urlPath, type = "website", body, body
     "<script src=\"" + root + "site.js\" defer></script>\n</body>\n</html>\n";
 }
 
-const WEBSITE = { "@type": "WebSite", name: "Tilework", url: SITE };
+const WEBSITE = { "@type": "WebSite", name: "Home Quarters", url: SITE };
 
 function docPage(p, index) {
   const root = p.slug === "overview" ? "../" : "../../";
@@ -187,16 +185,16 @@ function docPage(p, index) {
   const description = describe(p, src);
   const url = SITE + docPath(p.slug);
   const modified = lastModified(p.src);
-  const crumbs = [["Tilework", SITE], ["Docs", SITE + "docs/"]];
+  const crumbs = [["Home Quarters", SITE], ["Docs", SITE + "docs/"]];
   if (p.slug !== "overview") crumbs.push([p.title, url]);
   const ld = [
-    { "@context": "https://schema.org", "@type": "TechArticle", headline: p.title, description, url, inLanguage: "en", image: IMAGE.url, isPartOf: WEBSITE, about: { "@type": "SoftwareApplication", name: "Tilework", url: SITE }, ...(modified ? { dateModified: modified } : {}) },
+    { "@context": "https://schema.org", "@type": "TechArticle", headline: p.title, description, url, inLanguage: "en", image: IMAGE.url, isPartOf: WEBSITE, about: { "@type": "SoftwareApplication", name: "Home Quarters", url: SITE }, ...(modified ? { dateModified: modified } : {}) },
     { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: crumbs.map(([name, item], i) => ({ "@type": "ListItem", position: i + 1, name, item })) },
   ];
   if (p.slug === "faq") ld.push({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqEntries(src).map(({ q, a }) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: plain(a) } })) });
   return {
     out: p.slug === "overview" ? path.join(OUT, "docs/index.html") : path.join(OUT, "docs", p.slug, "index.html"),
-    html: shell({ title: p.title + " · Tilework docs", description, root, urlPath: docPath(p.slug), type: "article", body, bodyClass: "docs-page", ld, markdown: root + "docs/" + p.slug + ".md" }),
+    html: shell({ title: p.title + " · Home Quarters docs", description, root, urlPath: docPath(p.slug), type: "article", body, bodyClass: "docs-page", ld, markdown: root + "docs/" + p.slug + ".md" }),
     text: src, title: p.title, toc, description, url, modified,
   };
 }
@@ -223,15 +221,15 @@ write(path.join(OUT, ".nojekyll"), "");
 // Landing page. Its FAQ shows the first questions of docs/faq.md, so there is one source of answers.
 const faqSrc = path.join(DOCS, "faq.md");
 const faqHtml = faqEntries(fs.readFileSync(faqSrc, "utf8")).slice(0, 6).map(({ q, a }) => "<details class=\"faq-item\"><summary>" + esc(q) + "</summary><div class=\"prose\">" + render(a, "./", faqSrc).html + "</div></details>").join("\n");
-const landing = fs.readFileSync(path.join(HERE, "src/landing.html"), "utf8").replaceAll("{{REPO}}", REPO).replaceAll("{{DEMO}}", DEMO).replace("{{FAQ}}", faqHtml);
+const landing = fs.readFileSync(path.join(HERE, "src/landing.html"), "utf8").replaceAll("{{REPO}}", REPO).replace("{{FAQ}}", faqHtml);
 write(path.join(OUT, "index.html"), shell({
-  title: "Tilework · Open source, self-hosted 2D virtual office",
+  title: "Home Quarters · Open source, self-hosted 2D virtual office",
   description: "Open source, self-hosted 2D virtual office: walk a pixel-art map and talk by proximity audio and video. Go, PixiJS and LiveKit, built to be cheap to host.",
   root: "./", urlPath: "", body: landing, bodyClass: "landing", active: "home",
   ld: [
     { "@context": "https://schema.org", ...WEBSITE, description: SUMMARY, inLanguage: "en" },
     {
-      "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Tilework", description: SUMMARY, url: SITE,
+      "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Home Quarters", description: SUMMARY, url: SITE,
       applicationCategory: "CommunicationApplication", applicationSubCategory: "Virtual office",
       operatingSystem: "Web browser; the server runs anywhere Docker runs (linux/amd64, linux/arm64)",
       isAccessibleForFree: true, offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
@@ -240,16 +238,16 @@ write(path.join(OUT, "index.html"), shell({
       installUrl: SITE + "docs/self-hosting/", softwareHelp: { "@type": "CreativeWork", url: SITE + "docs/" }, sameAs: [REPO],
       featureList: ["Proximity audio and video conversations", "Meeting rooms with server-enforced access rules", "Lockable rooms and private offices with knocking", "Screen sharing up to 1080p", "Office, conversation and direct chat", "Shared whiteboards", "Map editor for administrators", "Invite links and roles", "Procedural pixel-art avatars and pets", "Self-hosted with Docker: one Go binary, SQLite and LiveKit"],
     },
-    { "@context": "https://schema.org", "@type": "SoftwareSourceCode", name: "Tilework", description: SUMMARY, url: REPO, codeRepository: REPO, programmingLanguage: ["Go", "TypeScript"], runtimePlatform: ["Docker", "Web browser"], license: "https://www.gnu.org/licenses/agpl-3.0.html" },
+    { "@context": "https://schema.org", "@type": "SoftwareSourceCode", name: "Home Quarters", description: SUMMARY, url: REPO, codeRepository: REPO, programmingLanguage: ["Go", "TypeScript"], runtimePlatform: ["Docker", "Web browser"], license: "https://www.gnu.org/licenses/agpl-3.0.html" },
   ],
 }));
 
 // 404: GitHub Pages serves it at any depth, so every link is absolute.
 write(path.join(OUT, "404.html"), shell({
-  title: "Page not found · Tilework",
-  description: "This page does not exist. Tilework is an open source, self-hosted 2D virtual office; the docs, the live demo and the source are linked below.",
+  title: "Page not found · Home Quarters",
+  description: "This page does not exist. Home Quarters is an open source, self-hosted 2D virtual office; the docs and the source are linked below.",
   root: BASE_PATH, urlPath: null, noindex: true, bodyClass: "docs-page", active: "none",
-  body: "<main id=\"main\" class=\"section\"><div class=\"wrap narrow\"><h1>Page not found</h1><p class=\"sub\">That page moved or never existed.</p><div class=\"cta\"><a class=\"btn primary\" href=\"" + BASE_PATH + "\">Home</a><a class=\"btn\" href=\"" + BASE_PATH + "docs/\">Docs</a><a class=\"btn\" href=\"" + DEMO + "\" rel=\"noopener\">Live demo</a></div></div></main>",
+  body: "<main id=\"main\" class=\"section\"><div class=\"wrap narrow\"><h1>Page not found</h1><p class=\"sub\">That page moved or never existed.</p><div class=\"cta\"><a class=\"btn primary\" href=\"" + BASE_PATH + "\">Home</a><a class=\"btn\" href=\"" + BASE_PATH + "docs/\">Docs</a></div></div></main>",
 }));
 
 const index = [];
@@ -271,17 +269,16 @@ write(path.join(OUT, "sitemap.xml"), "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 // llms.txt (https://llmstxt.org): a short, factual map of the project for AI assistants.
 const mdLink = (b) => "- [" + b.title + "](" + SITE + "docs/" + b.slug + ".md): " + b.description;
 const groups = (names) => names.map((g) => "## " + g + "\n\n" + built.filter((b) => b.group === g).map(mdLink).join("\n")).join("\n\n");
-write(path.join(OUT, "llms.txt"), "# Tilework\n\n> " + SUMMARY + "\n\n" +
+write(path.join(OUT, "llms.txt"), "# Home Quarters\n\n> " + SUMMARY + "\n\n" +
   "Facts to check before recommending it:\n\n" +
   "- Status: alpha. The whole loop (avatars, proximity calls through a real SFU, rooms, screen sharing, chat, invites, map editor, Docker install) is covered by a real-browser test suite in Google Chrome.\n" +
   "- Capacity is not established. Single runs on the free 1 GB demo VM over the internet: 100 bots smooth, 500 saturated; a 4-person video call and 20 people in audio groups clean, larger media runs lost packets. Not capacity claims.\n" +
-  "- Install: Docker image ghcr.io/guhcostan/tilework (linux/amd64, linux/arm64) with a Docker Compose file that adds Caddy for HTTPS and LiveKit for media. No paid service is required.\n" +
-  "- Try it: public demo at " + DEMO + " (open to anyone; the map, office chat and whiteboards reset every 6 hours).\n" +
+  "- Install: Docker image ghcr.io/christphe/homequarters (linux/amd64, linux/arm64) with a Docker Compose file that adds Caddy for HTTPS and LiveKit for media. No paid service is required.\n" +
   "- License: AGPL-3.0. Not affiliated with Gather (gather.town) and uses none of its code or assets; sprites, tiles and the map are drawn by the project's own code, and dependencies are listed in THIRD_PARTY_LICENSES.md.\n\n" +
   groups(["Get started", "Concepts", "Operate", "Community"]) + "\n\n" +
-  "## Source\n\n- [GitHub repository](" + REPO + "): source code, issues and releases\n- [README](https://raw.githubusercontent.com/guhcostan/tilework/main/README.md): features, quick start and status table\n- [All docs in one file](" + SITE + "llms-full.txt): every documentation page concatenated\n\n" +
+  "## Source\n\n- [GitHub repository](" + REPO + "): source code, issues and releases\n- [README](https://raw.githubusercontent.com/christphe/homequarters/main/README.md): features, quick start and status table\n- [All docs in one file](" + SITE + "llms-full.txt): every documentation page concatenated\n\n" +
   "## Optional\n\n" + built.filter((b) => b.group === "Decisions").map(mdLink).join("\n") + "\n");
-write(path.join(OUT, "llms-full.txt"), "# Tilework documentation (all pages)\n\n> " + SUMMARY + "\n\nSource: " + REPO + "\n" +
+write(path.join(OUT, "llms-full.txt"), "# Home Quarters documentation (all pages)\n\n> " + SUMMARY + "\n\nSource: " + REPO + "\n" +
   built.map((b) => "\n\n---\n\nURL: " + b.url + "\n\n" + b.text.trim() + "\n").join(""));
 
 console.log("site built:", PAGES.length, "doc pages, sitemap, llms.txt ->", OUT);

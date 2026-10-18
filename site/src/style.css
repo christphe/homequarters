@@ -1,3 +1,5 @@
+/* The wordmark: Schibsted Grotesk 800 (SIL OFL), Latin subset, served with the site. */
+@font-face { font-family: "Schibsted Grotesk"; src: url("assets/schibsted-grotesk-latin-800-normal.woff2") format("woff2"); font-weight: 800; font-display: swap; }
 :root {
   --bg: #1b1830; --bg2: #120f24; --panel: #241f42; --panel2: #2d2752; --line: #3a3560;
   --ink: #f2eefc; --muted: #a49fc4; --amber: #ffb84d; --teal: #3cc9b0; --red: #e5584f; --green: #5ec26a;
@@ -20,8 +22,7 @@ a:hover { color: #7ee8d4; }
 /* header */
 .site-header { position: sticky; top: 0; z-index: 50; background: rgba(27,24,48,.9); backdrop-filter: blur(10px); border-bottom: 2px solid var(--line); }
 .bar { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 800; font-size: 19px; letter-spacing: -.3px; }
-.logo { image-rendering: pixelated; }
+.brand { color: #dcf3ec; text-decoration: none; font-family: "Schibsted Grotesk", var(--sans); font-weight: 800; font-size: 22px; letter-spacing: -.015em; line-height: 1; }
 .main-nav { display: flex; align-items: center; gap: 22px; }
 .main-nav a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 15px; }
 .main-nav a:hover, .main-nav a[aria-current] { color: var(--ink); }

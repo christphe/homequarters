@@ -8,8 +8,8 @@ const click = (u, selector, text) => u.page.evaluate((selector, text) => {
   b?.click();
   return !!b;
 }, selector, text);
-const cookieOf = async (u) => (await u.ctx.cookies()).find((c) => c.name === "tilework_session").value;
-const api = (cookie, method, path, body) => fetch(API + path, { method, headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + cookie }, body: body ? JSON.stringify(body) : undefined });
+const cookieOf = async (u) => (await u.ctx.cookies()).find((c) => c.name === "hq_session").value;
+const api = (cookie, method, path, body) => fetch(API + path, { method, headers: { "Content-Type": "application/json", Cookie: "hq_session=" + cookie }, body: body ? JSON.stringify(body) : undefined });
 
 export async function run(ctx) {
   resetChecks();
@@ -33,12 +33,12 @@ export async function run(ctx) {
 
     // ---- promote Mia: she is disconnected, reconnects and gets the new role
     await admin.page.select('.modal select[aria-label="Role of Mia' + t + '"]', "admin");
-    await waitFor(() => mia.page.evaluate(() => window.__tilework.state.role === "admin" && window.__tilework.state.conn === "open"), { timeout: 20000, what: "Mia reconnects as admin" });
+    await waitFor(() => mia.page.evaluate(() => window.__hq.state.role === "admin" && window.__hq.state.conn === "open"), { timeout: 20000, what: "Mia reconnects as admin" });
     check("a role change reaches the online member without a reload (evict, reconnect, new role)", true);
     check("the new admin now sees the Admin button", await waitFor(() => click(mia, ".topbar button", "Admin"), { timeout: 5000 }).then(() => true).catch(() => false));
     await mia.page.keyboard.press("Escape");
     await admin.page.select('.modal select[aria-label="Role of Mia' + t + '"]', "member");
-    await waitFor(() => mia.page.evaluate(() => window.__tilework.state.role === "member" && window.__tilework.state.conn === "open"), { timeout: 20000, what: "Mia back to member" });
+    await waitFor(() => mia.page.evaluate(() => window.__hq.state.role === "member" && window.__hq.state.conn === "open"), { timeout: 20000, what: "Mia back to member" });
     check("demoting works the same way", true);
     // earlier scenarios may have minted other admins in this shared office: demote them, so that ours is the last one
     const all = await (await api(ctx.adminCookie, "GET", "/api/admin/members")).json();
@@ -65,8 +65,8 @@ export async function run(ctx) {
     const errors = [];
     admin.page.on("pageerror", (e) => errors.push(e.message));
     admin.page.on("response", (r) => { if (r.url().includes("/api/admin/office")) errors.push("PATCH " + r.status()); });
-    const before = await mia.page.evaluate(() => window.__tilework.state.office);
-    check("the browser tab names the office", (await mia.page.title()) === "Tilework - " + before, await mia.page.title());
+    const before = await mia.page.evaluate(() => window.__hq.state.office);
+    check("the browser tab names the office", (await mia.page.title()) === "Home Quarters - " + before, await mia.page.title());
     await click(admin, ".modal [role=tab]", "Office");
     const field = await waitFor(() => admin.page.$("#office-name"), { what: "office name field" });
     await field.click();
@@ -76,7 +76,7 @@ export async function run(ctx) {
     const seen = await waitFor(() => mia.page.evaluate((n) => document.querySelector(".topbar .brand")?.textContent === n, "Harbour " + t), { timeout: 5000 }).then(() => true, () => false);
     const why = seen ? "" : JSON.stringify(await Promise.all([mia.page.evaluate(() => document.querySelector(".topbar .brand")?.textContent), admin.page.evaluate(() => ({ field: document.querySelector("#office-name")?.value, toast: document.querySelector(".toast")?.textContent, brand: document.querySelector(".topbar .brand")?.textContent }))]));
     check("a rename reaches an online member's top bar without a reload", seen, why + " " + errors.join(" | ") + " " + admin.page.url());
-    check("and her browser tab", (await mia.page.title()) === "Tilework - Harbour " + t, await mia.page.title());
+    check("and her browser tab", (await mia.page.title()) === "Home Quarters - Harbour " + t, await mia.page.title());
     const stored = await (await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: "" })).status;
     check("an empty name is refused (400)", stored === 400, String(stored));
     const byMember = (await api(miaCookie, "PATCH", "/api/admin/office", { name: "Mine" })).status;
@@ -84,19 +84,19 @@ export async function run(ctx) {
 
     // ---- the office name has no red frame; the current area hangs under it in the hint style
     await walkTo(mia, 8 * 16 + 8, 28 * 16 + 8); // social area
-    await waitFor(() => mia.page.evaluate(() => !!window.__tilework.state.currentArea), { what: "Mia in an area" });
+    await waitFor(() => mia.page.evaluate(() => !!window.__hq.state.currentArea), { what: "Mia in an area" });
     const look = await mia.page.evaluate(() => {
       const brand = document.querySelector(".topbar .brand"), hint = document.querySelector(".topbar .area-hint");
       const b = brand.getBoundingClientRect(), h = hint?.getBoundingClientRect();
-      return { border: getComputedStyle(brand).borderTopWidth, area: hint?.textContent, want: window.__tilework.state.currentArea, below: h ? h.top >= b.bottom && Math.abs(h.left - b.left) < 2 : false, pill: [...document.querySelectorAll(".topbar .pill")].some((p) => p.textContent === window.__tilework.state.currentArea), hintStyle: !!hint?.classList.contains("hint") };
+      return { border: getComputedStyle(brand).borderTopWidth, area: hint?.textContent, want: window.__hq.state.currentArea, below: h ? h.top >= b.bottom && Math.abs(h.left - b.left) < 2 : false, pill: [...document.querySelectorAll(".topbar .pill")].some((p) => p.textContent === window.__hq.state.currentArea), hintStyle: !!hint?.classList.contains("hint") };
     });
     check("the office name has no border", look.border === "0px", look.border);
     check("the current area shows under the office name, left-aligned, as a hint (not a pill)", look.area === look.want && look.below && !look.pill && look.hintStyle, JSON.stringify(look));
-    await mia.page.screenshot({ path: path.join(os.tmpdir(), "tilework-office-name.png"), clip: { x: 0, y: 0, width: 420, height: 110 } });
+    await mia.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-office-name.png"), clip: { x: 0, y: 0, width: 420, height: 110 } });
     // ---- a touch phone with a 40-character name: one line, the area readable, every top-bar control on screen
     const phone = await joinAs(browser, "Pho" + t, { viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
     await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: "The Very Long Office Name Of Forty Chars" });
-    await waitFor(() => phone.page.evaluate(() => window.__tilework.state.office.length === 40), { what: "phone sees the long name" });
+    await waitFor(() => phone.page.evaluate(() => window.__hq.state.office.length === 40), { what: "phone sees the long name" });
     await walkTo(phone, 8 * 16 + 8, 28 * 16 + 8); // social area
     await waitFor(() => phone.page.evaluate(() => !!document.querySelector(".topbar .area-hint")), { what: "area under the name on the phone" });
     const small = await phone.page.evaluate(() => {
@@ -116,7 +116,7 @@ export async function run(ctx) {
     check("on a phone a long office name stays on one line", small.brandH < 50, JSON.stringify(small));
     check("on a phone the area under the name is not covered by the minimap", !small.overlaps && small.hintOnTop, JSON.stringify(small));
     check("on a phone every top-bar button stays on screen", small.off.length === 0, JSON.stringify(small.off));
-    await phone.page.screenshot({ path: path.join(os.tmpdir(), "tilework-office-name-phone.png"), clip: { x: 0, y: 0, width: 390, height: 260 } });
+    await phone.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-office-name-phone.png"), clip: { x: 0, y: 0, width: 390, height: 260 } });
     await phone.ctx.close();
     await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: before }); // shared office: put the name back
 
@@ -135,9 +135,9 @@ export async function run(ctx) {
     await waitFor(() => rem.page.evaluate(() => !!document.querySelector(".join-card")), { timeout: 20000, what: "removed member lands on the join screen" });
     const note = await rem.page.evaluate(() => document.querySelector(".join-card .error")?.textContent ?? "");
     check("a removed member is disconnected at once and told why", note.includes("removed from this office"), note);
-    const me = await (await fetch(API + "/api/me", { headers: { Cookie: "tilework_session=" + remCookie } })).json();
+    const me = await (await fetch(API + "/api/me", { headers: { Cookie: "hq_session=" + remCookie } })).json();
     check("the removed member's session no longer works", me.authenticated === false);
-    await waitFor(() => admin.page.evaluate((n) => ![...window.__tilework.state.roster.values()].some((p) => p.n === n && p.s !== "offline"), "Rem" + t), { what: "roster no longer shows Rem online" });
+    await waitFor(() => admin.page.evaluate((n) => ![...window.__hq.state.roster.values()].some((p) => p.n === n && p.s !== "offline"), "Rem" + t), { what: "roster no longer shows Rem online" });
     check("everybody sees the removed member leave", true);
     const ws = await api(remCookie, "GET", "/api/admin/members");
     check("the removed session cannot use the admin API either (401)", ws.status === 401);

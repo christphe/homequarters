@@ -1,42 +1,42 @@
-# PRODUCTION single-node stack: Caddy (automatic HTTPS) + Tilework + LiveKit.
+# PRODUCTION single-node stack: Caddy (automatic HTTPS) + Home Quarters + LiveKit.
 # 1) cp deploy/.env.example deploy/.env and fill it in (the file refuses to start without the required values)
-# 2) create the first admin invite:  docker compose run --rm tilework -invite admin
+# 2) create the first admin invite:  docker compose run --rm homequarters -invite admin
 # 3) docker compose up -d --build
-name: tilework
+name: homequarters
 services:
-  tilework:
+  homequarters:
     # Prebuilt multi-arch image (amd64/arm64) published by .github/workflows/docker.yml. "--build" builds locally.
-    image: "${TILEWORK_IMAGE:-ghcr.io/guhcostan/tilework:latest}"
+    image: "${HQ_IMAGE:-ghcr.io/christphe/homequarters:latest}"
     build: { context: .., dockerfile: deploy/Dockerfile }
     restart: unless-stopped
     environment:
-      TILEWORK_ENV: production
-      TILEWORK_ADDR: ":8080"
-      TILEWORK_DB: "${TILEWORK_DB:-/data/tilework.db}"
-      TILEWORK_ALLOWED_ORIGINS: "${APP_DOMAIN:?set APP_DOMAIN}"
-      TILEWORK_OFFICE_NAME: "${OFFICE_NAME:-Office}"
-      TILEWORK_METRICS_TOKEN: "${METRICS_TOKEN:-}"
+      HQ_ENV: production
+      HQ_ADDR: ":8080"
+      HQ_DB: "${HQ_DB:-/data/homequarters.db}"
+      HQ_ALLOWED_ORIGINS: "${APP_DOMAIN:?set APP_DOMAIN}"
+      HQ_OFFICE_NAME: "${OFFICE_NAME:-Office}"
+      HQ_METRICS_TOKEN: "${METRICS_TOKEN:-}"
       # Public sandbox (see deploy/README.md "Public demo"): invite-less member joins, content reset every N hours.
-      TILEWORK_DEMO: "${DEMO:-}"
-      TILEWORK_DEMO_RESET_HOURS: "${DEMO_RESET_HOURS:-6}"
-      TILEWORK_MAX_PLAYERS: "${MAX_PLAYERS:-2000}"
-      TILEWORK_SESSION_DAYS: "${SESSION_DAYS:-30}"
+      HQ_DEMO: "${DEMO:-}"
+      HQ_DEMO_RESET_HOURS: "${DEMO_RESET_HOURS:-6}"
+      HQ_MAX_PLAYERS: "${MAX_PLAYERS:-2000}"
+      HQ_SESSION_DAYS: "${SESSION_DAYS:-30}"
       # Sign-in (see deploy/README.md "Sign in with Google"): none keeps invite links and the cookie as the account.
-      TILEWORK_AUTH_PROVIDERS: "${AUTH_PROVIDERS:-none}"
-      TILEWORK_AUTH_DOMAINS: "${AUTH_DOMAINS:-}"
-      TILEWORK_PUBLIC_URL: "https://${APP_DOMAIN}"
-      TILEWORK_GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
-      TILEWORK_GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      HQ_AUTH_PROVIDERS: "${AUTH_PROVIDERS:-none}"
+      HQ_AUTH_DOMAINS: "${AUTH_DOMAINS:-}"
+      HQ_PUBLIC_URL: "https://${APP_DOMAIN}"
+      HQ_GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      HQ_GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
       # Named on the privacy policy (https://APP_DOMAIN/privacy).
-      TILEWORK_OPERATOR: "${OPERATOR:-}"
-      TILEWORK_CONTACT: "${CONTACT:-}"
+      HQ_OPERATOR: "${OPERATOR:-}"
+      HQ_CONTACT: "${CONTACT:-}"
       LIVEKIT_URL: "wss://${LIVEKIT_DOMAIN:?set LIVEKIT_DOMAIN}"
       LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET (>= 32 chars)}"
-    volumes: ["tilework-data:/data"]
+    volumes: ["homequarters-data:/data"]
     healthcheck:
-      test: ["CMD", "/app/tilework", "-healthcheck"]
+      test: ["CMD", "/app/homequarters", "-healthcheck"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -77,12 +77,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [tilework, livekit]
+    depends_on: [homequarters, livekit]
 
 volumes:
-  tilework-data:
-    name: "${TILEWORK_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-tilework}_tilework-data}"
+  homequarters-data:
+    name: "${HQ_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-homequarters}_homequarters-data}"
   caddy-data:
-    name: "${TILEWORK_CADDY_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-tilework}_caddy-data}"
+    name: "${HQ_CADDY_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-homequarters}_caddy-data}"
   caddy-config:
-    name: "${TILEWORK_CADDY_CONFIG_VOLUME:-${COMPOSE_PROJECT_NAME:-tilework}_caddy-config}"
+    name: "${HQ_CADDY_CONFIG_VOLUME:-${COMPOSE_PROJECT_NAME:-homequarters}_caddy-config}"

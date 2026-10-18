@@ -38,7 +38,7 @@ price >= (server + media bandwidth + backups + monitoring + support time + payme
 - *media bandwidth*: grows with the number of people in calls at the same time and with video, much more than with registered seats;
 - *support time*: hours per month the plan includes, at the cost of that time.
 
-`bench/cost.py` holds the server part of the formula and needs these prices filled in. Reference points, checked on 2026-10-02 (they are inputs and comparisons, not Tilework prices):
+`bench/cost.py` holds the server part of the formula and needs these prices filled in. Reference points, checked on 2026-10-02 (they are inputs and comparisons, not Home Quarters prices):
 
 | Item | Price | Source |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ For scale: 25 people on Gather's annual price is about US$300 per month.
 ## Selling and support
 
 - **Payments:** Paddle, as merchant of record: it sells to the customer, collects and remits sales tax and VAT in each country and handles refunds and chargebacks. Stripe can be reconsidered if volume makes its lower fee worth handling taxes directly.
-- **Trial:** the [public demo](https://office.152-67-49-137.sslip.io) is the trial, and the first month of a paid plan can be refunded.
+- **Trial:** the first month of a paid plan can be refunded.
 - **Support:** Team and Business get email support during business hours (São Paulo time), with no formal service-level agreement. Enterprise gets an agreement with an availability commitment, negotiated per contract.
 
 ## Contributions and licensing
@@ -61,7 +61,7 @@ Because nothing will be sold under another licence, outside contributions need n
 
 ## Name
 
-The hosted service uses the **Tilework** name. Before it is announced, check the domain and run trademark searches in the markets it is sold to (USPTO, EUIPO and INPI).
+The hosted service uses the **Home Quarters** name. Before it is announced, check the domain and run trademark searches in the markets it is sold to (USPTO, EUIPO and INPI).
 
 ## Goal
 

@@ -36,12 +36,13 @@ def host(samples, ctr):
     return cpu, steal, tx, rx, c, m, mem
 
 def container(samples, service):
-    # Archived samples retain their original container names; new runs use Tilework.
-    current = "tilework-" + service + "-1"
-    if any(current in s["ctr"] for s in samples):
-        return current
-    legacy = "opengather" if service == "tilework" else service
-    return "opengather-" + legacy + "-1"
+    # Archived samples keep the container names they were measured with (OpenGather, then Tilework);
+    # new runs use Home Quarters names. Each time, the app service had the project's name.
+    for project in ("homequarters", "tilework", "opengather"):
+        name = project + "-" + (project if service == "app" else service) + "-1"
+        if any(name in s["ctr"] for s in samples):
+            return name
+    return "homequarters-" + ("homequarters" if service == "app" else service) + "-1"
 
 def main(d):
     rows_a, rows_m = [], []
@@ -59,7 +60,7 @@ def main(d):
                 pass  # a partial line (sampler killed mid-write, or an older sampler's "--" from docker)
         if "Bots" in r:  # loadgen
             w = window(samples, r["WindowStart"], r["WindowEnd"])
-            cpu, steal, tx, rx, c, m, mem = host(w, container(w, "tilework"))
+            cpu, steal, tx, rx, c, m, mem = host(w, container(w, "app"))
             caddy_ctr = container(w, "caddy")
             caddy = stats([s["ctr"].get(caddy_ctr, {}).get("cpu") for s in w])
             rows_a.append((r["Bots"], f"| {label} | {r['Joined']}/{r['Failed']} | {fmt(cpu[0])} / {fmt(cpu[1])} | {fmt(steal[0])} | "

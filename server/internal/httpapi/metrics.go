@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"tilework/internal/media"
-	"tilework/internal/world"
+	"homequarters/internal/media"
+	"homequarters/internal/world"
 )
 
 // metricsAllowed applies the /metrics policy: a bearer token when one is configured; otherwise open in
@@ -77,38 +77,38 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 			buckets[i] += st.TickBuckets[i].Load()
 		}
 	}
-	g("tilework_players", "Players known to the world (connected or in reconnect grace)", players)
-	g("tilework_players_connected", "Players with a live WebSocket", connected)
-	g("tilework_players_moving", "Players currently moving", moving)
-	g("tilework_conversation_groups", "Active conversation groups", groups)
-	g("tilework_inbox_depth", "World inbox depth", inbox)
-	c("tilework_ws_frames_out_total", "WebSocket frames queued to clients", framesOut)
-	c("tilework_ws_bytes_out_total", "Payload bytes queued to clients", bytesOut)
-	c("tilework_positions_sent_total", "Entity position records sent", posSent)
-	c("tilework_positions_coalesced_total", "Stale positions overwritten for slow clients", coalesced)
-	c("tilework_flush_skipped_total", "Frame flushes skipped due to backpressure", skipped)
-	c("tilework_clients_kicked_total", "Clients dropped for overflowing reliable queue", kicked)
-	c("tilework_input_msgs_total", "Movement input messages processed", inputs)
-	c("tilework_group_joins_total", "Conversation joins", joins)
-	c("tilework_group_leaves_total", "Conversation leaves", leaves)
-	c("tilework_tick_seconds_sum", "Total tick processing time", float64(tickSum)/1e9)
-	c("tilework_tick_seconds_count", "Ticks executed", ticks)
-	g("tilework_tick_seconds_max", "Max tick processing time", float64(maxNs)/1e9)
-	fmt.Fprintf(w, "# TYPE tilework_tick_seconds histogram\n")
+	g("hq_players", "Players known to the world (connected or in reconnect grace)", players)
+	g("hq_players_connected", "Players with a live WebSocket", connected)
+	g("hq_players_moving", "Players currently moving", moving)
+	g("hq_conversation_groups", "Active conversation groups", groups)
+	g("hq_inbox_depth", "World inbox depth", inbox)
+	c("hq_ws_frames_out_total", "WebSocket frames queued to clients", framesOut)
+	c("hq_ws_bytes_out_total", "Payload bytes queued to clients", bytesOut)
+	c("hq_positions_sent_total", "Entity position records sent", posSent)
+	c("hq_positions_coalesced_total", "Stale positions overwritten for slow clients", coalesced)
+	c("hq_flush_skipped_total", "Frame flushes skipped due to backpressure", skipped)
+	c("hq_clients_kicked_total", "Clients dropped for overflowing reliable queue", kicked)
+	c("hq_input_msgs_total", "Movement input messages processed", inputs)
+	c("hq_group_joins_total", "Conversation joins", joins)
+	c("hq_group_leaves_total", "Conversation leaves", leaves)
+	c("hq_tick_seconds_sum", "Total tick processing time", float64(tickSum)/1e9)
+	c("hq_tick_seconds_count", "Ticks executed", ticks)
+	g("hq_tick_seconds_max", "Max tick processing time", float64(maxNs)/1e9)
+	fmt.Fprintf(w, "# TYPE hq_tick_seconds histogram\n")
 	var cum int64
 	for i, le := range world.TickBucketLE {
 		cum += buckets[i]
 		if i == len(buckets)-1 {
-			fmt.Fprintf(w, "tilework_tick_seconds_bucket{le=\"+Inf\"} %d\n", cum)
+			fmt.Fprintf(w, "hq_tick_seconds_bucket{le=\"+Inf\"} %d\n", cum)
 		} else {
-			fmt.Fprintf(w, "tilework_tick_seconds_bucket{le=\"%g\"} %d\n", le, cum)
+			fmt.Fprintf(w, "hq_tick_seconds_bucket{le=\"%g\"} %d\n", le, cum)
 		}
 	}
 	if s.media != nil {
-		c("tilework_media_tokens_issued_total", "SFU join tokens issued", s.media.Issued.Load())
-		c("tilework_media_revocations_total", "SFU participants removed", s.media.Revoked.Load())
-		c("tilework_media_revoke_errors_total", "SFU revocations that failed", s.media.RevokeErrors.Load())
-		c("tilework_media_reconcile_removals_total", "SFU participants removed by reconciliation (not members of the room)", media.ReconcileRemovals.Load())
+		c("hq_media_tokens_issued_total", "SFU join tokens issued", s.media.Issued.Load())
+		c("hq_media_revocations_total", "SFU participants removed", s.media.Revoked.Load())
+		c("hq_media_revoke_errors_total", "SFU revocations that failed", s.media.RevokeErrors.Load())
+		c("hq_media_reconcile_removals_total", "SFU participants removed by reconciliation (not members of the room)", media.ReconcileRemovals.Load())
 	}
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)

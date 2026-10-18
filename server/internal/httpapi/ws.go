@@ -13,8 +13,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"tilework/internal/store"
-	"tilework/internal/world"
+	"homequarters/internal/store"
+	"homequarters/internal/world"
 )
 
 type inMsg struct {

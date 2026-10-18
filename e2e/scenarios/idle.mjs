@@ -16,14 +16,14 @@ async function cpu(browser) {
 
 async function window_(browser, u, ms, during = async () => {}) {
   const c0 = await cpu(browser);
-  const n0 = await read(u, () => window.__tilework.view.rendersTotal);
+  const n0 = await read(u, () => window.__hq.view.rendersTotal);
   const t0 = Date.now();
   await during();
   const left = ms - (Date.now() - t0);
   if (left > 0) await sleep(left);
   const secs = (Date.now() - t0) / 1000;
   const c1 = await cpu(browser);
-  const n1 = await read(u, () => window.__tilework.view.rendersTotal);
+  const n1 = await read(u, () => window.__hq.view.rendersTotal);
   return { draws: (n1 - n0) / secs, renderer: ((c1.renderer - c0.renderer) / secs) * 100, gpu: ((c1.GPU - c0.GPU) / secs) * 100 };
 }
 
@@ -38,14 +38,14 @@ export async function run() {
     await sleep(1500);
     const idle = await window_(browser, a, 8000);
     check("an idle office is drawn a few times a second, not every frame", idle.draws <= 6, idle.draws.toFixed(1) + " draws/s; CPU renderers " + idle.renderer.toFixed(1) + " %, GPU " + idle.gpu.toFixed(1) + " % (both pages)");
-    const fps = await read(a, () => window.__tilework.view.stats.fps);
+    const fps = await read(a, () => window.__hq.view.stats.fps);
     check("the frame loop itself keeps running (input, extrapolation)", fps >= 25, fps + " fps");
     // somebody else walking in view is drawn every frame
     const shot0 = await a.page.screenshot({ encoding: "base64" });
     // frame by frame on the observer: every frame where the other person's sprite moved or changed
     // picture must have been drawn (rAF callbacks run before Pixi's ticker, so look one frame back)
     const watch = read(a, (id) => new Promise((resolve) => {
-      const v = window.__tilework.view;
+      const v = window.__hq.view;
       let seen = 0, drawn = 0, last = v.rendersTotal, prev = "";
       const t0 = performance.now();
       const tick = (now) => {
@@ -58,7 +58,7 @@ export async function run() {
       };
       requestAnimationFrame(tick);
     }), b.id);
-    await read(b, () => { const v = window.__tilework.view; v.setDirection(0, -1); setTimeout(() => v.setDirection(0, 0), 1200); });
+    await read(b, () => { const v = window.__hq.view; v.setDirection(0, -1); setTimeout(() => v.setDirection(0, 0), 1200); });
     const moving = await watch;
     const shot1 = await a.page.screenshot({ encoding: "base64" });
     check("a person walking in view is drawn on every frame it changes", moving.seen >= 12 && moving.drawn === moving.seen, moving.drawn + " of " + moving.seen + " changed frames drawn");
@@ -68,7 +68,7 @@ export async function run() {
     // Frames and draws are both counted in the page over the exact walk window: on a slow software
     // renderer the display rate itself drops, so draws are judged against the frames that ran.
     const walk = await read(a, () => new Promise((resolve) => {
-      const v = window.__tilework.view;
+      const v = window.__hq.view;
       const r0 = v.rendersTotal, t0 = performance.now();
       let frames = 0;
       v.setDirection(1, 0);
@@ -85,7 +85,7 @@ export async function run() {
     check("my own walk is drawn at full rate", walk.frames > 10 && walk.draws >= walk.frames * 0.8, walk.draws + " draws over " + walk.frames + " frames");
     await sleep(800);
     const before = await a.page.screenshot({ encoding: "base64" });
-    await read(b, () => window.__tilework.session.setStatus?.("busy"));
+    await read(b, () => window.__hq.session.setStatus?.("busy"));
     await sleep(600);
     const after = await a.page.screenshot({ encoding: "base64" });
     check("a status change seen while everybody stands still shows up within a moment", before !== after);

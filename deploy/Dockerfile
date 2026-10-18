@@ -16,18 +16,18 @@ WORKDIR /s
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/tilework ./cmd/tilework \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/homequarters ./cmd/homequarters \
  && mkdir /data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 # The deploy's commit: clients loaded from another version are asked to reload. Without it the server
 # uses a hash of the built page, which also changes with every client build.
-ARG TILEWORK_VERSION=
-COPY --from=server /out/tilework /app/tilework
+ARG HQ_VERSION=
+COPY --from=server /out/homequarters /app/homequarters
 COPY --from=web /w/dist /app/web
 COPY --from=server --chown=65532:65532 /data /data
-ENV TILEWORK_STATIC_DIR=/app/web TILEWORK_DB=/data/tilework.db TILEWORK_ADDR=:8080 TILEWORK_VERSION=$TILEWORK_VERSION
+ENV HQ_STATIC_DIR=/app/web HQ_DB=/data/homequarters.db HQ_ADDR=:8080 HQ_VERSION=$HQ_VERSION
 VOLUME /data
 EXPOSE 8080
 USER nonroot
-ENTRYPOINT ["/app/tilework"]
+ENTRYPOINT ["/app/homequarters"]

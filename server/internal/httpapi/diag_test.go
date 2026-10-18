@@ -9,7 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"tilework/internal/world"
+	"homequarters/internal/world"
 )
 
 type timeoutErr struct{}

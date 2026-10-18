@@ -2,7 +2,7 @@
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, lkParticipants, metrics, LK } from "../lib.mjs";
 
 const prefixOf = (room) => room.split(".").slice(0, 2).join(".");
-const TTL = Number(process.env.TILEWORK_MEDIA_TOKEN_TTL_SECONDS ?? 20);
+const TTL = Number(process.env.HQ_MEDIA_TOKEN_TTL_SECONDS ?? 20);
 // the SFU's own token check (the one a signal connection runs): 200 accepted, 401 rejected
 const validate = async (token) => (await fetch(LK + "/rtc/validate?access_token=" + encodeURIComponent(token))).status;
 
@@ -14,16 +14,16 @@ export async function run(ctx) {
     const a = await joinAs(browser, "Xa" + t);
     const b = await joinAs(browser, "Xb" + t);
     await a.page.evaluate(() => {
-      const m = window.__tilework.media;
+      const m = window.__hq.media;
       const j = m.join.bind(m);
       m.join = (i) => { window.__stale = i; window.__RoomCtor = null; return j(i).then(() => { window.__RoomCtor = m.room.constructor; }); };
     });
     await walkTo(a, 12 * 16 + 8, 30 * 16 + 8);
     await walkTo(b, 12 * 16 + 40, 30 * 16 + 8);
-    await Promise.all([a, b].map((u) => u.page.evaluate(() => window.__tilework.session.setConsent(true))));
+    await Promise.all([a, b].map((u) => u.page.evaluate(() => window.__hq.session.setConsent(true))));
     await waitFor(async () => (await st(a)).conv?.state === "live" && (await st(b)).conv?.state === "live", { timeout: 20000, what: "conversation" });
     await waitFor(() => a.page.evaluate(() => !!window.__RoomCtor), { what: "room constructor captured" });
-    const room = await a.page.evaluate(() => window.__tilework.media.currentRoom);
+    const room = await a.page.evaluate(() => window.__hq.media.currentRoom);
     await a.page.evaluate((r) => { window.__privateRoom = r; }, prefixOf(room) + ".r.boardroom");
     const issued = Date.now();
 
@@ -72,8 +72,8 @@ export async function run(ctx) {
     const evicted = seen && await waitFor(async () => (await lkParticipants(room)).length === 0, { timeout: 15000, every: 250, what: "attacker evicted" }).then(() => true).catch(() => false);
     const rm = await metrics();
     check("the reconciler evicts the replayed connection within seconds", evicted, ((Date.now() - t0) / 1000).toFixed(1) + " s");
-    const removals = [before.tilework_media_reconcile_removals_total ?? 0, rm.tilework_media_reconcile_removals_total];
-    check("the eviction is counted (tilework_media_reconcile_removals_total)", removals[1] > removals[0], removals.join(" -> "));
+    const removals = [before.hq_media_reconcile_removals_total ?? 0, rm.hq_media_reconcile_removals_total];
+    check("the eviction is counted (hq_media_reconcile_removals_total)", removals[1] > removals[0], removals.join(" -> "));
     await a.page.evaluate(() => window.__attacker?.disconnect());
 
     // Attack 2: change the room inside the token (private room) without the signing secret.
