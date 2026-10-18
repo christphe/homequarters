@@ -35,9 +35,12 @@ export function hiddenShare(px: number, py: number, ox: number, oy: number) {
 
 /**
  * Advances the pet one frame. ox/oy/odir: the owner now; ownerV: the owner's current speed in px/s
- * (walk or run); dt in seconds; now in ms; canStand: whether a pet may stand at a point (walls).
+ * (walk or run); dt in seconds; now in ms; canStand: whether a pet may stand at a point (walls);
+ * gap: px along the trail between the owner and the pet (plugin creatures keep a larger one);
+ * rest: once the owner stands still, sit `beside` px to their side, away from x `avoid` (their own pet)
+ * when given, so a second follower does not queue up behind the owner or sit on the pet.
  */
-export function followOwner(s: PetState, ox: number, oy: number, odir: number, ownerV: number, dt: number, now: number, canStand: (x: number, y: number) => boolean = () => true) {
+export function followOwner(s: PetState, ox: number, oy: number, odir: number, ownerV: number, dt: number, now: number, canStand: (x: number, y: number) => boolean = () => true, gap = PET_GAP, rest?: { beside: number; avoid?: number }) {
   const tr = s.trail;
   const lx = tr[tr.length - 2], ly = tr[tr.length - 1];
   if (!Number.isFinite(s.px) || tr.length === 0 || Math.hypot(ox - lx, oy - ly) > PET_SNAP) {
@@ -45,7 +48,7 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
     // side instead, where it is not hidden behind them
     const back = [[-1, 0], [1, 0], [-1, 0], [0, 1]][odir] ?? [-1, 0];
     tr.length = 0;
-    tr.push(ox + back[0] * PET_GAP, oy + back[1] * PET_GAP, ox, oy);
+    tr.push(ox + back[0] * gap, oy + back[1] * gap, ox, oy);
     s.px = tr[0];
     s.py = tr[1];
     s.ownerMoved = now;
@@ -77,7 +80,7 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
   }
   const still = now - s.ownerMoved > SETTLE_MS;
   // walk back from the owner along the trail to find the pet's spot; drop what lies beyond it
-  let need = PET_GAP, gx = tr[0], gy = tr[1], cut = 0, found = false;
+  let need = gap, gx = tr[0], gy = tr[1], cut = 0, found = false;
   let ax = ox, ay = oy;
   for (let i = tr.length - 2; i >= 0; i -= 2) {
     const bx = tr[i], by = tr[i + 1];
@@ -104,11 +107,22 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
     }
   }
   if (cut > 2) tr.splice(0, cut - 2); // keep one point behind the spot
-  if (still && hiddenShare(gx, gy, ox, oy) > 0.25) {
+  if (still && rest) {
+    const side = rest.avoid !== undefined ? (rest.avoid >= ox ? -1 : 1) : s.px >= ox ? 1 : -1;
+    for (const sx of [ox + side * rest.beside, ox - side * rest.beside]) {
+      if (canStand(sx, oy)) {
+        tr.length = 0;
+        tr.push(sx, oy, ox, oy);
+        gx = sx;
+        gy = oy;
+        break;
+      }
+    }
+  } else if (still && hiddenShare(gx, gy, ox, oy) > 0.25) {
     // the spot is behind the owner (they face the camera): sit beside them instead. The trail now ends
     // at that side spot, so when the owner walks off the pet leaves from there without a jump.
     const side = s.px >= ox ? 1 : -1;
-    for (const sx of [ox + side * PET_GAP, ox - side * PET_GAP]) {
+    for (const sx of [ox + side * gap, ox - side * gap]) {
       if (canStand(sx, oy)) {
         tr.length = 0;
         tr.push(sx, oy, ox, oy);

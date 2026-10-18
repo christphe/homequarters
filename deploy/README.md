@@ -53,6 +53,10 @@ Switching it on for an office that already has members: each member who comes ba
 
 If your Workspace administrators block unconfigured third-party apps, colleagues cannot sign in until they allow this client id; try it with your own account first. Removing a member is not a ban: someone from the domain who signs in again becomes a new member.
 
+## Plugins
+
+The image ships the sample plugin in `/app/plugins` and sets `HQ_PLUGINS_DIR=/app/plugins`; it stays off until an administrator turns it on (Administration > Plugins). To install your own, mount a folder over it, for example `- ./plugins:/app/plugins:ro` under the `tilework` service, and restart. Plugins are trusted code that runs in the server: install only what you have read. See [Plugins](../docs/plugins.md).
+
 ## Public demo mode
 
 `DEMO=1` turns a production stack into a public sandbox ([decision 0011](../docs/decisions/0011-public-demo.md)):

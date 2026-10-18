@@ -49,7 +49,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		worlds = append(worlds, wd)
 	}
 	s.mu.Unlock()
-	var players, connected, moving, groups, ticks, tickSum, framesOut, bytesOut, posSent, coalesced, skipped, kicked, inputs, inbox, joins, leaves int64
+	var players, connected, moving, groups, ticks, tickSum, framesOut, bytesOut, posSent, coalesced, skipped, kicked, plugDropped, inputs, inbox, joins, leaves int64
 	var maxNs int64
 	var buckets [10]int64
 	for _, wd := range worlds {
@@ -69,6 +69,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		coalesced += st.PosCoalesced.Load()
 		skipped += st.Skipped.Load()
 		kicked += st.Kicked.Load()
+		plugDropped += st.PluginDropped.Load()
 		inputs += st.InputMsgs.Load()
 		inbox += st.InboxDepth.Load()
 		joins += st.GroupJoins.Load()
@@ -88,6 +89,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	c("hq_positions_coalesced_total", "Stale positions overwritten for slow clients", coalesced)
 	c("hq_flush_skipped_total", "Frame flushes skipped due to backpressure", skipped)
 	c("hq_clients_kicked_total", "Clients dropped for overflowing reliable queue", kicked)
+	c("hq_plugin_frames_dropped_total", "Plugin frames not delivered: recipient queue at least half full or world inbox full", plugDropped)
 	c("hq_input_msgs_total", "Movement input messages processed", inputs)
 	c("hq_group_joins_total", "Conversation joins", joins)
 	c("hq_group_leaves_total", "Conversation leaves", leaves)

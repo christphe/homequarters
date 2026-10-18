@@ -18,5 +18,7 @@ const art = await page.evaluate(() => window.artExport);
 const save = (name, url) => fs.writeFileSync(path.join(OUT, name), Buffer.from(url.split(",")[1], "base64"));
 for (const [name, url] of Object.entries(art.sheets)) save("sheet-" + name + ".png", url);
 save("map.png", art.map);
+// the sample plugin's creature (plugins/sample-pet), drawn by web/src/game/art/sampleCreature.ts
+fs.writeFileSync(path.resolve(import.meta.dirname, "../plugins/sample-pet/public/creatures.png"), Buffer.from(art.sprout.split(",")[1], "base64"));
 await browser.close();
 console.log("exported", Object.keys(art.sheets).length, "sheets and the map to", OUT);

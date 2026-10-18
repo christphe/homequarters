@@ -8,6 +8,7 @@ import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } fro
 import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
 import { followOwner, newPet, type PetState } from "./petFollow";
 import { bakeMap } from "./mapArt";
+import { PluginLayer } from "./pluginLayer";
 
 const T = 16;
 // Reference view in world pixels. A 240x160 handheld screen would be 15x10 tiles; an office wants a little more room.
@@ -134,6 +135,19 @@ export class WorldView {
   private areaLabels: { text: BitmapText; ai: number }[] = [];
   private deskLabels: { text: BitmapText; x: number; y: number; label: string; ai: number }[] = [];
   private ents = new Map<number, Ent>();
+  /** Sprites drawn for plugins (src/plugins): they sort with avatars and pets. */
+  readonly plugins = new PluginLayer(this.entLayer, {
+    owner: (id) => {
+      const e = this.ents.get(id);
+      if (!e) return null;
+      const fast = e.id === this.meId ? this.running || this.guided : e.run;
+      const petX = e.pet?.visible && Number.isFinite(e.ps.px) ? e.ps.px : undefined;
+      return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible, petX };
+    },
+    canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
+    avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
+    me: () => this.meId,
+  });
   private people = new Map<number, Person>();
   private map: MapData | null = null;
   private solid = new Uint8Array(0);
@@ -1294,6 +1308,8 @@ export class WorldView {
         this.banner.position.set(Math.round((W - this.bannerW) / 2), Math.round(-h + (h + 60) * e));
       }
     }
+
+    if (this.plugins.step(deltaMS, now)) changed = true;
 
     // animations that redraw on their own every frame
     if (this.emotes.size || this.dest || this.locate || this.banner.visible) changed = true;

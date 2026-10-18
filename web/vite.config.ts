@@ -17,6 +17,7 @@ export default defineConfig({
       "/link": "http://127.0.0.1:8080",
       "/about": "http://127.0.0.1:8080",
       "/privacy": "http://127.0.0.1:8080",
+      "/plugins": "http://127.0.0.1:8080",
       "/ws": { target: "ws://127.0.0.1:8080", ws: true },
     },
   },

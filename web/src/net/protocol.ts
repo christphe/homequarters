@@ -141,4 +141,9 @@ export type BoardEvent =
 export type BoardCommand = { op: "draw" | "del" | "undo" | "clear" | "close"; bk: string; i?: number; o?: number; k?: number; c?: number; w?: number; p?: number[]; tx?: string };
 export type Spotlight = { t: "spot"; op: "off" } | { t: "spot"; op: "on"; sid: number; n: string; me: boolean; room?: string; url?: string; tok?: string };
 
-export type ServerMsg = MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;
+/** A plugin's server code talking to its browser code (docs/plugins.md). */
+export type PluginMsg = { t: "plg"; pl: string; d: unknown };
+/** The set of running plugins changed: fetch GET /api/plugins again. */
+export type PluginsChanged = { t: "plgs" };
+
+export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

@@ -143,3 +143,33 @@ test("the trail stays bounded", () => {
   walk(s, o, 1, 0, 30);
   assert.ok(s.trail.length < 2 * (PET_GAP + 4), `trail has ${s.trail.length / 2} points`);
 });
+
+test("a larger gap keeps the pet that far behind (plugin creatures)", () => {
+  const s = newPet(), o = { x: 100, y: 100, t: 0 };
+  const g: number[] = [];
+  for (let i = 0; i < 120; i++) {
+    o.x += WALK * DT;
+    o.t += DT * 1000;
+    followOwner(s, o.x, o.y, 2, WALK, DT, o.t, () => true, 36);
+    if (i >= 30) g.push(Math.hypot(s.px - o.x, s.py - o.y));
+  }
+  assert.ok(Math.min(...g) >= 34 && Math.max(...g) <= 38, `gaps ${Math.min(...g)}..${Math.max(...g)}`);
+});
+
+test("with rest beside, a resting creature sits at the owner's side, away from their own pet", () => {
+  for (const [avoid, want] of [[undefined, 0], [130, -1], [70, 1]] as const) {
+    const s = newPet(), o = { x: 100, y: 100, t: 0 };
+    for (let i = 0; i < 60; i++) { // walk up, then stop facing the camera
+      o.y -= WALK * DT;
+      o.t += DT * 1000;
+      followOwner(s, o.x, o.y, 3, WALK, DT, o.t, () => true, 36, { beside: 22, avoid });
+    }
+    for (let i = 0; i < 180; i++) {
+      o.t += DT * 1000;
+      followOwner(s, o.x, o.y, 0, WALK, DT, o.t, () => true, 36, { beside: 22, avoid: avoid === undefined ? undefined : o.x + (avoid - 100) });
+    }
+    const dx = s.px - o.x, dy = s.py - o.y;
+    assert.ok(Math.abs(Math.abs(dx) - 22) < 1.5 && Math.abs(dy) < 1.5, `rest at ${dx.toFixed(1)},${dy.toFixed(1)}`);
+    if (want) assert.equal(Math.sign(dx), want, `side away from the pet at ${avoid}`);
+  }
+});

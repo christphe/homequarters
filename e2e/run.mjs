@@ -18,7 +18,7 @@ const LK_PORT = Number(process.env.HQ_TEST_LK_PORT ?? "7880");
 process.env.HQ_LK_HTTP ??= `http://127.0.0.1:${LK_PORT}`;
 process.env.HQ_TEST_LK_URL = `ws://127.0.0.1:${LK_PORT}`;
 
-const all = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "a11y", "security", "resilience", "features", "spotlight", "movement", "presence", "offices", "idle", "update", "auth"];
+const all = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "a11y", "security", "resilience", "features", "spotlight", "movement", "presence", "offices", "idle", "update", "auth"];
 const wanted = process.argv.slice(2).length ? process.argv.slice(2) : EXTERNAL ? ["proximity", "consent", "rooms"] : all;
 
 // Windows: go build names the binary as given, while spawning "bin/homequarters" runs a stale homequarters.exe;
@@ -48,11 +48,14 @@ if (!EXTERNAL && !(await portOpen(LK_PORT))) {
 }
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "homequarters-e2e-"));
+// the shipped plugins plus the suite's own test plugins (e2e/fixtures/plugins), all disabled until a scenario enables one
+const pluginsDir = path.join(dir, "plugins");
+for (const from of [path.join(root, "plugins"), path.join(root, "e2e/fixtures/plugins")]) fs.cpSync(from, pluginsDir, { recursive: true });
 // Checks that only need time to pass (an expiring token) run after the other scenarios instead of sleeping in theirs.
 const deferred = [];
 const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push({ name, due, fn }); }, async startServer() {
   const child = spawn(BIN, [], {
-    env: { ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: path.join(dir, "e2e.db"), HQ_STATIC_DIR: path.join(root, "web/dist"),
+    env: { ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: path.join(dir, "e2e.db"), HQ_STATIC_DIR: path.join(root, "web/dist"), HQ_PLUGINS_DIR: pluginsDir,
       HQ_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: process.env.HQ_TEST_LK_URL, LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret",
       HQ_JOIN_RATE: "5000", HQ_MEDIA_TOKEN_TTL_SECONDS: process.env.HQ_MEDIA_TOKEN_TTL_SECONDS ?? "20", HQ_MEDIA_RECONCILE_SECONDS: process.env.HQ_MEDIA_RECONCILE_SECONDS ?? "3",
       ...(WIN ? { HQ_STOP_ON_STDIN_CLOSE: "1" } : {}) },

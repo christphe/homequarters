@@ -296,3 +296,33 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .audit { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; font-size: 13px; }
 .audit time { color: var(--muted); margin-right: 6px; font-size: 12px; }
 @media (max-width: 640px) { .admin-form { grid-template-columns: 1fr 1fr; } }
+
+/* Plugins: their code runs in hidden sandboxed iframes; their buttons live in the side panel. */
+.plugin-frame { position: fixed; width: 0; height: 0; border: 0; visibility: hidden; pointer-events: none; }
+.plugins-panel .plugin-group { margin: 0 0 12px; }
+.plugins-panel h3 { margin: 0 0 6px; font-size: 1em; }
+.plugins-panel .plugin-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.plugins-table .plugin-desc, .plugins-table .plugin-error { display: block; }
+.plugins-table .nowrap, .plugins-table .nowrap .btn { white-space: nowrap; }
+.plugins-table .plugin-error { max-width: 32ch; overflow-wrap: anywhere; }
+/* plugin UI (src/ui/PluginUI.tsx): anchored buttons, boxes on the map, the plugin modal */
+.plugin-anchor { display: inline-flex; gap: 8px; align-items: center; pointer-events: auto; }
+.plugin-anchor:empty { display: none; }
+.plugin-icon { width: 20px; height: 20px; image-rendering: pixelated; display: block; }
+.plugin-slot.on { background: var(--amber); color: #2a1d05; border-color: var(--amber); }
+.minimap-plugins { position: absolute; top: 4px; right: 4px; line-height: normal; }
+.minimap-plugins .btn { padding: 2px 6px; font-size: .85em; }
+.plugin-screen { position: absolute; z-index: 3; max-width: min(240px, calc(100vw - 24px)); max-height: 160px; overflow: auto; background: var(--panel); border: 3px solid #1a1526; border-radius: 8px; padding: 8px 10px; box-shadow: 0 3px 0 #1a1526; display: grid; gap: 6px; }
+.plugin-screen p { margin: 0; }
+.plugin-modal.size-small { width: min(360px, 100%); }
+.plugin-modal.size-large { width: min(720px, 100%); }
+.plugin-modal.place-right { position: fixed; top: 12px; right: 12px; bottom: 12px; max-height: none; }
+.scrim:has(> .plugin-modal.place-right) { place-items: stretch end; }
+.plugin-body { display: grid; gap: 10px; }
+.plugin-body p { margin: 0; }
+.plugin-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.plugin-image { max-width: 128px; max-height: 128px; image-rendering: pixelated; }
+.copy-field { display: grid; gap: 4px; }
+.copy-row { display: flex; gap: 6px; }
+.copy-row input { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; }
+.app-token { display: grid; gap: 8px; }

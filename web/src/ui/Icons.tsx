@@ -41,6 +41,11 @@ export const LeaveIcon = () => (
     <path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M16 8l4 4-4 4M20 12H9" />
   </I>
 );
+export const PuzzleIcon = () => (
+  <I>
+    <path d="M10 4a2 2 0 0 1 4 0v2h4v4h-2a2 2 0 0 0 0 4h2v4h-4v-2a2 2 0 0 0-4 0v2H6v-4h2a2 2 0 0 0 0-4H6V6h4z" />
+  </I>
+);
 export const UsersIcon = () => (
   <I>
     <circle cx="9" cy="8" r="3" />

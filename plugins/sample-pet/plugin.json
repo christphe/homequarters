@@ -1,0 +1,8 @@
+{
+  "name": "sample-pet",
+  "title": "Sample pet",
+  "version": "1.0.0",
+  "description": "A seedling that follows every member around the office. Each member shows or hides theirs, picks its colour and lets it wander.",
+  "server": "main.ts",
+  "client": "client.ts"
+}

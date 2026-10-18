@@ -1,3 +1,4 @@
+import { PluginSlots } from "./PluginUI";
 import { useEffect, useRef } from "react";
 import { session } from "../session";
 import { getState, saveSettings, useStore } from "../store";
@@ -98,6 +99,7 @@ export function Minimap() {
   return (
     <section className="minimap" aria-label={t("minimap.title")}>
       <canvas ref={ref} style={{ width: W }} onClick={click} role="img" aria-label={t("minimap.hint")} title={t("minimap.hint")} />
+      <div className="plugin-anchor minimap-plugins" data-anchor="minimap"><PluginSlots anchor="minimap" /></div>
     </section>
   );
 }

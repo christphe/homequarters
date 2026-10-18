@@ -1,0 +1,1 @@
+{"name":"echo","title":"Echo","version":"1.0.0","description":"Test plugin.","server":"main.ts","client":"client.js","appTokens":true}

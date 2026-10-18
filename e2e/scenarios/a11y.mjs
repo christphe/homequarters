@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP } from "../lib.mjs";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, API } from "../lib.mjs";
 
 const require = createRequire(import.meta.url);
 const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
@@ -126,8 +126,23 @@ export async function run(ctx) {
     await click(p, ".modal [role=tab]", "Activity");
     await waitFor(() => p.$(".modal .audit li"), { what: "activity" });
     await audit(p, "the administration dialog (activity)");
+    await click(p, ".modal [role=tab]", "Plugins");
+    await waitFor(() => p.$('.modal tr[data-plugin="sample-pet"]'), { what: "plugins tab" });
+    await audit(p, "the administration dialog (plugins)");
+    await p.evaluate(() => document.querySelector('.modal button[aria-label="Turn on Sample pet"]')?.click());
+    await waitFor(() => p.evaluate(() => document.querySelector('.modal tr[data-plugin="sample-pet"]')?.textContent.includes("Running")), { what: "sample plugin running" });
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "admin closed" });
+    await waitFor(() => p.evaluate(() => { const b = document.querySelector('.side .tabs button[aria-label="Plugins"]'); b?.click(); return !!b; }), { what: "side panel plugins tab" });
+    await waitFor(() => p.$(".plugins-panel button"), { what: "plugin buttons" });
+    await audit(p, "the side panel (plugins)");
+    await p.evaluate(() => [...document.querySelectorAll(".plugins-panel button")].find((b) => b.textContent === "Sample pet")?.click());
+    await waitFor(() => p.$(".modal.plugin-modal"), { what: "plugin modal" });
+    await audit(p, "a plugin's modal");
+    await p.keyboard.press("Escape");
+    await waitFor(async () => !(await p.$(".modal")), { what: "plugin modal closed" });
+    await fetch(API + "/api/admin/plugins/sample-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
+    await waitFor(() => p.evaluate(() => !document.querySelector(".plugins-panel")), { what: "plugins panel gone" });
 
     await p.evaluate(() => [...document.querySelectorAll("button")].find((b) => /enable audio/i.test(b.textContent + (b.getAttribute("aria-label") ?? "")))?.click());
     await waitFor(() => p.$(".modal"), { what: "media dialog" });

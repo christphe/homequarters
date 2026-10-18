@@ -1,3 +1,4 @@
+import { PluginSlots } from "./PluginUI";
 import { session } from "../session";
 import { activeMedia, canShareScreen } from "../media/MediaManager";
 import { savePrefs, setState, toast, useStore } from "../store";
@@ -61,6 +62,7 @@ export function MediaBar({ onEnable, onSettings }: { onEnable: () => void; onSet
             <button className="round danger" onClick={() => { session.setConsent(false); toast(t("media.disabledHint")); }} title={t("media.leave")}><LeaveIcon /></button>
           </>
         )}
+        <PluginSlots anchor="bottombar" className="round ghost" />
         <button className="round ghost" onClick={onSettings} title={t("settings.title")}><GearIcon /></button>
       </div>
       {available && !consent && <p className="hint">{t("media.disabledHint")}</p>}

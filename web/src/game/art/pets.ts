@@ -222,7 +222,7 @@ export function drawPet(ctx: Ctx, ox: number, oy: number, dir: number, frame: nu
 }
 
 /** 1 px outline around opaque pixels of one cell, tinted by the neighbouring colour. */
-function outline(ctx: Ctx, cx: number, cy: number) {
+export function outline(ctx: Ctx, cx: number, cy: number) {
   const img = ctx.getImageData(cx, cy, PET_W, PET_H);
   const d = img.data;
   const src = new Uint8ClampedArray(d);

@@ -3,7 +3,8 @@ import { toast, useStore } from "../store";
 import { hasKey, t, type Key } from "../i18n";
 import { Modal } from "./Modal";
 
-type Tab = "members" | "invites" | "activity" | "announce" | "office";
+type Tab = "members" | "invites" | "activity" | "announce" | "office" | "plugins";
+interface PluginRow { name: string; title: string; version: string; description: string; state: "disabled" | "running" | "crashed" | "broken"; error: string }
 interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number; email?: string }
 interface InviteRow { id: number; role: string; maxUses: number; uses: number; expiresAt: number; createdAt: number; createdBy: string; status: string }
 interface AuditRow { id: number; actor: string; action: string; target: string; detail: string; at: number }
@@ -20,7 +21,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title={t("admin.title")} onClose={onClose} wide>
       <div className="chips" role="tablist" aria-label={t("admin.title")}>
-        {(["members", "invites", "activity", "announce", "office"] as Tab[]).map((k) => (
+        {(["members", "invites", "activity", "announce", "office", "plugins"] as Tab[]).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{t(("admin.tab." + k) as Key)}</button>
         ))}
       </div>
@@ -29,6 +30,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
       {tab === "activity" && <Activity />}
       {tab === "announce" && <Announce />}
       {tab === "office" && <OfficeName />}
+      {tab === "plugins" && <Plugins />}
       <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
     </Modal>
   );
@@ -214,4 +216,53 @@ export function AdminButton({ onOpen }: { onOpen: () => void }) {
   const role = useStore((s) => s.role);
   if (role !== "admin") return null;
   return <button className="btn" onClick={onOpen}>{t("admin.open")}</button>;
+}
+
+/** Installed plugins (folders on the server) and a switch for each. */
+function Plugins() {
+  const [rows, setRows] = useState<PluginRow[] | null>(null);
+  const [busy, setBusy] = useState("");
+  const load = useCallback(async () => {
+    const r = await api<PluginRow[]>("GET", "/api/admin/plugins");
+    if (r.ok) setRows(r.json); else toast(t("admin.error"));
+  }, []);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 3000); // a plugin can stop by itself while the tab is open
+    return () => window.clearInterval(timer);
+  }, [load]);
+  const set = async (p: PluginRow, enabled: boolean) => {
+    setBusy(p.name);
+    const r = await api<{ state: string }>("PUT", "/api/admin/plugins/" + encodeURIComponent(p.name), { enabled });
+    setBusy("");
+    if (r.ok) toast(t(enabled ? "admin.plugins.enabled" : "admin.plugins.disabled", { name: p.title }));
+    else toast(t("admin.plugins.failed", { name: p.title, error: r.json.error ?? String(r.status) }));
+    void load();
+  };
+  if (!rows) return <p className="muted" role="status">{t("admin.loading")}</p>;
+  if (rows.length === 0) return <p className="muted">{t("admin.plugins.none")}</p>;
+  return (
+    <table className="admin-table plugins-table">
+      <caption className="sr-only">{t("admin.tab.plugins")}</caption>
+      <thead><tr><th scope="col">{t("admin.plugins.plugin")}</th><th scope="col">{t("admin.plugins.state")}</th><th scope="col"><span className="sr-only">{t("admin.actions")}</span></th></tr></thead>
+      <tbody>
+        {rows.map((p) => {
+          const on = p.state === "running";
+          return (
+            <tr key={p.name} data-plugin={p.name}>
+              <td>{p.title} <small className="muted">{p.version}</small>{p.description && <small className="muted plugin-desc">{p.description}</small>}</td>
+              <td>{t(("admin.plugins.state." + p.state) as Key)}{p.error && <small className="muted plugin-error">{p.error}</small>}</td>
+              <td className="nowrap">
+                {p.state !== "broken" && (
+                  <button className={"btn" + (on ? "" : " primary")} disabled={busy === p.name} aria-label={t(on ? "admin.plugins.disableOf" : "admin.plugins.enableOf", { name: p.title })} onClick={() => void set(p, !on)}>
+                    {t(on ? "admin.plugins.disable" : "admin.plugins.enable")}
+                  </button>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 }

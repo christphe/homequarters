@@ -27,11 +27,14 @@ Build against written acceptance criteria, reproduce behaviour failures with **r
 | `server/internal/store` | SQLite (WAL), embedded migrations, sessions, members, invites, chat history, admin audit log |
 | `server/internal/httpapi` | routes, admin API (`admin.go`), WebSocket session, rate limits, Prometheus metrics |
 | `server/internal/config` | environment configuration and production guard rails |
+| `server/internal/plugin` | operator-installed plugins: catalog, TypeScript compiled by esbuild and run by QuickJS, limits ([`docs/plugins.md`](docs/plugins.md)) |
 | `web/src/game` | PixiJS world (`WorldView.ts`), avatar textures, map texture |
 | `web/src/game/art` | pure-canvas painters: `pixel.ts` helpers, `tiles.ts` floors/walls/props/map baker, `characters.ts` sprites |
 | `web/src/theme-gba.css` | dialog-window UI skin layered over `styles.css` |
 | `web/dev` | server-free art preview page and its map fixture |
 | `web/src/media` | LiveKit room management |
+| `web/src/plugins`, `web/src/game/pluginLayer.ts` | plugin iframes (SDK, command validation, host) and the sprites they draw |
+| `plugins/` | the sample plugin (`sample-pet`) |
 | `web/src/ui` | React UI (panels, dialogs) |
 | `web/src/session.ts` | glue between socket, world view, media and store |
 | `e2e/` | real-browser test suite (`run.mjs` + `scenarios/`) and art generation |

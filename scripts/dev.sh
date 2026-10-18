@@ -41,7 +41,7 @@ pids+=($!)
 
 ( cd server && go build -o ../bin/homequarters ./cmd/homequarters )
 HQ_ENV=dev HQ_ADDR=127.0.0.1:8080 HQ_DB="${HQ_DB:-server/data/dev.db}" \
-  HQ_ALLOWED_ORIGINS="localhost:*,127.0.0.1:*" \
+  HQ_ALLOWED_ORIGINS="localhost:*,127.0.0.1:*" HQ_PLUGINS_DIR="${HQ_PLUGINS_DIR:-plugins}" \
   LIVEKIT_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret \
   ./bin/homequarters > $LOG/server.log 2>&1 &
 pids+=($!)
