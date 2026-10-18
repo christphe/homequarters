@@ -17,10 +17,10 @@ import (
 // configuration refuses it in production.
 const (
 	FakeName     = "fake-oidc"
-	FakeIssuer   = "tilework-fake-oidc"
-	FakeClientID = "tilework-dev"
+	FakeIssuer   = "homequarters-fake-oidc"
+	FakeClientID = "homequarters-dev"
 	FakeSecret   = "fake-oidc-secret"
-	fakeCookie   = "tilework_fake_oidc"
+	fakeCookie   = "hq_fake_oidc"
 	fakeBase     = "/auth/" + FakeName
 )
 
@@ -99,7 +99,7 @@ main{background:#fff;border:2px solid #1d1d1d;padding:24px;max-width:360px;margi
 button{font:inherit;padding:8px 16px;margin-right:8px;cursor:pointer;border:1px solid #1d1d1d}.primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
 p.note{color:#555;font-size:14px}</style></head>
 <body><main><h1>Fake sign-in</h1>
-<p>Development only. Tilework asks who you are.</p>
+<p>Development only. Home Quarters asks who you are.</p>
 <p>You will sign in as <strong id="fake-email">{{.Email}}</strong>.</p>
 <form method="post" action="` + fakeBase + `/authorize">
 {{range $k, $v := .Fields}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}

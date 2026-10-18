@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"tilework/internal/auth"
-	"tilework/internal/store"
+	"homequarters/internal/auth"
+	"homequarters/internal/store"
 )
 
-// Sign-in with a provider (TILEWORK_AUTH_PROVIDERS). Without one, nothing here
+// Sign-in with a provider (HQ_AUTH_PROVIDERS). Without one, nothing here
 // is routed and the office behaves as before: the session cookie is the account.
 //
 // With one, a person reaches the office only through an identity:
@@ -33,8 +33,8 @@ import (
 // and lock others out.
 
 const (
-	stateCookie  = "tilework_auth_" // + the first characters of the state: one per tab
-	signupCookie = "tilework_signup"
+	stateCookie  = "hq_auth_" // + the first characters of the state: one per tab
+	signupCookie = "hq_signup"
 	flowTTL      = 10 * time.Minute
 	signupTTL    = 30 * time.Minute
 )
@@ -338,7 +338,7 @@ func (s *Server) joinSignedIn(w http.ResponseWriter, r *http.Request, name strin
 		return
 	}
 	// Without an invite, a production member is a member: the first admin of a
-	// new office comes from an admin invite (tilework -invite admin). In dev the
+	// new office comes from an admin invite (homequarters -invite admin). In dev the
 	// first member becomes admin, as without sign-in.
 	forced := ""
 	if !s.cfg.Dev() {

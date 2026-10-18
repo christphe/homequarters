@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"tilework/internal/gamemap"
+	"homequarters/internal/gamemap"
 )
 
 // BenchmarkTick measures one world tick (simulation, interest management and encoding of every

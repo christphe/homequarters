@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Questions (FAQ)
-    url: https://guhcostan.github.io/tilework/docs/faq/
+    url: https://christphe.github.io/homequarters/docs/faq/
     about: Short answers about cost, self-hosting, capacity, privacy and browsers.
   - name: Self-hosting guide
-    url: https://guhcostan.github.io/tilework/docs/self-hosting/
+    url: https://christphe.github.io/homequarters/docs/self-hosting/
     about: Docker Compose, HTTPS, LiveKit, ports and invites.
   - name: Security vulnerability
-    url: https://github.com/guhcostan/tilework/security/advisories/new
+    url: https://github.com/christphe/homequarters/security/advisories/new
     about: Report vulnerabilities privately, never in a public issue.

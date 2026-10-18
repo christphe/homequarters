@@ -107,7 +107,7 @@ func TestAuthCodeURLAsksForNoProfile(t *testing.T) {
 		}
 	}
 	if strings.Contains(u, "profile") {
-		t.Errorf("the name and picture are chosen in Tilework: %s", u)
+		t.Errorf("the name and picture are chosen in Home Quarters: %s", u)
 	}
 }
 

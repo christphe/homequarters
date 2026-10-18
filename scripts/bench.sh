@@ -6,13 +6,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 LABEL=${1:?label}; N=${2:?bots}; shift 2
-PORT=${TILEWORK_BENCH_PORT:-18090}
+PORT=${HQ_BENCH_PORT:-18090}
 ulimit -n 20000 2>/dev/null || true
 DIR=$(mktemp -d)
 OUT=${OUT_DIR:-bench/results}
 mkdir -p "$OUT"
-TILEWORK_ENV=dev TILEWORK_ADDR=127.0.0.1:$PORT TILEWORK_DB=$DIR/bench.db TILEWORK_JOIN_RATE=100000 TILEWORK_MAX_PLAYERS=10000 \
-  ${TILEWORK_BENCH_ENV:-} ./bin/tilework > $DIR/server.log 2>&1 &
+HQ_ENV=dev HQ_ADDR=127.0.0.1:$PORT HQ_DB=$DIR/bench.db HQ_JOIN_RATE=100000 HQ_MAX_PLAYERS=10000 \
+  ${HQ_BENCH_ENV:-} ./bin/homequarters > $DIR/server.log 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true' EXIT
 for i in $(seq 1 50); do curl -sf http://127.0.0.1:$PORT/healthz >/dev/null && break; sleep 0.1; done

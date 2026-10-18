@@ -3,8 +3,8 @@ package world
 import (
 	"time"
 
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
 )
 
 // Spotlight. Standing on a spotlight pad, with audio and video enabled and the status Available, puts

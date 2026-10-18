@@ -1,8 +1,8 @@
 # Third-party licenses
 
-Tilework's own code is **AGPL-3.0-only** (see [LICENSE](LICENSE)); using it commercially is allowed under that license, with no additional restrictions. All dependencies below are permissively licensed (MIT, BSD, ISC, Apache-2.0, 0BSD) and are compatible with distributing the combined work under AGPL-3.0.
+Home Quarters' own code is **AGPL-3.0-only** (see [LICENSE](LICENSE)); using it commercially is allowed under that license, with no additional restrictions. All dependencies below are permissively licensed (MIT, BSD, ISC, Apache-2.0, 0BSD) and are compatible with distributing the combined work under AGPL-3.0.
 
-Generated on 2026-09-29 from `pnpm licenses list --prod` and the Go module cache (`go list -deps` for `cmd/tilework` and `cmd/loadgen`). Re-generate before every release; license texts ship inside each package.
+Generated on 2026-09-29 from `pnpm licenses list --prod` and the Go module cache (`go list -deps` for `cmd/homequarters` and `cmd/loadgen`). Re-generate before every release; license texts ship inside each package.
 
 ## Web client (production dependencies)
 
@@ -55,3 +55,4 @@ All visual assets are **original to this project**: avatars, tiles, furniture an
 | Bundled font | License | Where |
 |---|---|---|
 | Jersey 10 5.3.0 (latin 400, from the `@fontsource/jersey-10` package) | SIL Open Font License 1.1 | `web/src/assets/fonts/` (licence text in `Jersey10-OFL.txt`) |
+| Schibsted Grotesk 1.100 (weight 800, Basic Latin subset, from [google/fonts](https://github.com/google/fonts/tree/main/ofl/schibstedgrotesk)), the wordmark; the favicons use its H and Q as outlines | SIL Open Font License 1.1 | `site/assets/` (licence text in `SchibstedGrotesk-OFL.txt`), outlines in `web/src/assets/favicon.svg` and `site/assets/logo.svg` |

@@ -56,7 +56,7 @@ function SignInScreen() {
 /** Name and avatar: the whole join without sign-in, the last step after it. */
 function ProfileForm() {
   const av = useStore((s) => s.myAvatar);
-  const [name, setName] = useState(() => localStorage.getItem("tilework.name") ?? "");
+  const [name, setName] = useState(() => localStorage.getItem("hq.name") ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const notice = useStore((s) => s.notice);
@@ -80,7 +80,7 @@ function ProfileForm() {
       }
       if (!r.ok) throw new Error(String(r.status));
       if (location.search) history.replaceState(null, "", location.pathname); // do not keep the invite token in the address bar
-      localStorage.setItem("tilework.name", name.trim());
+      localStorage.setItem("hq.name", name.trim());
       setState({ phase: "play" });
     } catch {
       setErr(t("join.error"));
@@ -97,7 +97,7 @@ function ProfileForm() {
           <div className="demo-note" role="note">
             <strong>{t("demo.title")}</strong>
             <p>{t("demo.join", { hours: demo.resetHours })}</p>
-            <p><a href="https://github.com/guhcostan/tilework" target="_blank" rel="noopener noreferrer">{t("demo.repo")}</a></p>
+            <p><a href="https://github.com/christphe/homequarters" target="_blank" rel="noopener noreferrer">{t("demo.repo")}</a></p>
           </div>
         )}
         <p className="muted">{signup ? t("signin.as", { email: signup.email }) : t("join.subtitle")}</p>

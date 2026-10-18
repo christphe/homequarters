@@ -27,19 +27,21 @@ func (s *Server) about(w http.ResponseWriter, r *http.Request) {
 		"Domains":  s.cfg.AuthDomains,
 		"Google":   google,
 		"Demo":     s.cfg.Demo,
+		"Source":   s.cfg.SourceURL,
+		"Version":  s.version,
 	})
 }
 
 var aboutPage = template.Must(template.New("about").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{.Office}} - Tilework virtual office</title>
-<meta name="description" content="{{.Office}} is a virtual office running Tilework: a 2D map where a team meets, talks and works together.">
+<title>{{.Office}} - Home Quarters virtual office</title>
+<meta name="description" content="{{.Office}} is a virtual office running Home Quarters: a 2D map where a team meets, talks and works together.">
 ` + pageStyle + `
 <style>.cta{display:inline-block;margin:16px 0 0;padding:10px 18px;border-radius:8px;background:var(--link);color:var(--bg);font-weight:600;text-decoration:none}</style>
 </head>
 <body><main>
 <h1>{{.Office}}</h1>
-<p class="lead">A virtual office{{if .Operator}} run by {{.Operator}}{{end}}, built with Tilework.</p>
+<p class="lead">A virtual office{{if .Operator}} run by {{.Operator}}{{end}}, built with Home Quarters.</p>
 
 <p>{{.Office}} is where {{if .Operator}}the {{.Operator}} team{{else}}this team{{end}} works together online. Each member has a small pixel-art character on a shared map of the office. Walk up to colleagues to start talking with them by voice or video, step into a meeting room for a private discussion, share your screen, write in the office chat, and see at a glance who is around, busy or away.</p>
 <p><a class="cta" href="/">Open the office</a></p>
@@ -65,6 +67,6 @@ var aboutPage = template.Must(template.New("about").Parse(`<!doctype html>
 <h2>More</h2>
 <ul>
 <li><a href="/privacy">Privacy policy</a>: what is stored, why, who can see it and how to delete it.</li>
-<li><a href="https://github.com/guhcostan/tilework">Tilework</a> is open source software. It is not affiliated with Google.</li>
+<li>Home Quarters is free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License v3</a>, a modified version of Tilework by guhcostan. <a href="{{.Source}}">Source code</a>{{if .Version}} (this office runs version {{.Version}}){{end}}. It is not affiliated with Google.</li>
 </ul>
 </main></body></html>`))

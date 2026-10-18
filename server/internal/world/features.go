@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"tilework/internal/gamemap"
+	"homequarters/internal/gamemap"
 )
 
 // Social features that are decided on the server: emotes, interactive objects, guided walking

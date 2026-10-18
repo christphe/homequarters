@@ -10,7 +10,7 @@ set -u
 cd "$(dirname "$0")/.."
 root=$PWD
 fails=0
-log_dir=$(mktemp -d "${TMPDIR:-/tmp}/tilework-gauntlet.XXXXXX")
+log_dir=$(mktemp -d "${TMPDIR:-/tmp}/homequarters-gauntlet.XXXXXX")
 mkdir -p .gauntlet
 record=.gauntlet/last-gates.log
 # shasum ships with Perl, which Git Bash on Windows may lack: sha1sum gives the same digest there

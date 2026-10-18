@@ -1,5 +1,6 @@
-// Offline art pipeline: sprite cast, walking GIF and social banner, built from the
-// sheets/map exported by assets.mjs. Needs Chrome + ffmpeg, no running server.
+// Offline art pipeline: sprite cast and walking GIF, built from the sheets exported by
+// export-art.mjs. Needs Chrome + ffmpeg, no running server. The social banner comes from a real
+// in-game scene instead: see banner.mjs.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +19,6 @@ const A = path.resolve(import.meta.dirname, "../site/assets");
 const b64 = (f) => "data:image/png;base64," + fs.readFileSync(path.join(A, f)).toString("base64");
 const NAMES = ["marina", "bruno", "carla", "diego", "elisa", "fabio"];
 const sheets = Object.fromEntries(NAMES.map((n) => [n, b64(`sheet-${n}.png`)]));
-const map = b64("map.png");
 
 const browser = await launch();
 const page = await browser.newPage();
@@ -31,7 +31,7 @@ await page.evaluate(() => {
   window.sprite = (ctx, img, dir, frame, x, y, s) => {
     ctx.imageSmoothingEnabled = false;
     // cells are 18 x 30; rows 4..28 hold a hatless avatar (rows 0..3 are room for hats, row 29 can hold
-    // outline pixels bled from the next sheet row), so the cast, GIF and banner keep their framing
+    // outline pixels bled from the next sheet row), so the cast and GIF keep their framing
     ctx.drawImage(img, frame * 18, dir * 30 + 4, 18, 25, x, y, 18 * s, 25 * s);
   };
 });
@@ -54,7 +54,7 @@ const cast = await page.evaluate(async (sheets, S) => {
 fs.writeFileSync(path.join(A, "cast.png"), Buffer.from(cast.split(",")[1], "base64"));
 
 // ---- walk.gif: 4 directions walking, Marina ----
-const frames = fs.mkdtempSync(path.join(os.tmpdir(), "tilework-walk-"));
+const frames = fs.mkdtempSync(path.join(os.tmpdir(), "homequarters-walk-"));
 const cyc = [1, 0, 2, 0];
 const W = 4 * (18 * S + 32) + 32;
 for (let f = 0; f < 4; f++) {
@@ -76,31 +76,5 @@ for (let f = 0; f < 4; f++) {
 }
 execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", "6", "-i", path.join(frames, "f%d.png"), "-vf", "split[a][b];[a]palettegen=max_colors=32[p];[b][p]paletteuse=dither=none", "-loop", "0", path.join(A, "walk.gif")]);
 
-// ---- banner.png (1280x640, also used as social preview) ----
-await page.setContent(`
-<body style="margin:0;width:1280px;height:640px;position:relative;overflow:hidden;background:#1b1830;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif">
-  <img src="${map}" style="position:absolute;left:-40px;top:-10px;width:1920px;image-rendering:pixelated;filter:saturate(1.1)">
-  <div style="position:absolute;inset:0;background:linear-gradient(90deg,#1b1830f2 0%,#1b1830e6 42%,#1b183055 100%)"></div>
-  <div style="position:absolute;left:72px;top:118px;color:#f2eefc">
-    <div style="display:inline-block;background:#ffb84d;color:#2a1d05;font-weight:800;letter-spacing:1px;font-size:20px;padding:6px 14px;border-radius:8px">ALPHA · AGPL-3.0</div>
-    <div style="font-size:104px;font-weight:900;letter-spacing:-3px;line-height:1;margin-top:22px">Tile<span style="color:#3cc9b0">work</span></div>
-    <div style="font-size:36px;margin-top:22px;color:#cfc9ea;line-height:1.25;max-width:660px">A lightweight, open source virtual office.</div>
-    <div style="font-size:24px;margin-top:20px;color:#a49fc4">Proximity chat · Real SFU · Go + PixiJS</div>
-  </div>
-  <canvas id="c" width="620" height="150" style="position:absolute;right:28px;bottom:44px"></canvas>
-</body>`);
-await page.evaluate(async (sheets) => {
-  const ctx = document.getElementById("c").getContext("2d");
-  const dirs = [2, 0, 0, 0, 0, 1];
-  const dy = [14, 0, 20, 4, 18, 8];
-  let i = 0;
-  for (const src of Object.values(sheets)) {
-    const img = await window.loadImg(src);
-    window.sprite(ctx, img, dirs[i], 0, 6 + i * 102, dy[i], 5);
-    i++;
-  }
-}, sheets);
-await new Promise((r) => setTimeout(r, 200));
-await page.screenshot({ path: path.join(A, "banner.png") });
 await browser.close();
 console.log("art done");

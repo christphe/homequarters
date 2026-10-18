@@ -1,6 +1,6 @@
 ---
 name: gauntlet
-description: The build-and-critique loop every change in this repo goes through. Use for any feature, fix, refactor or review in tilework, and when asked to review, critique or verify work.
+description: The build-and-critique loop every change in this repo goes through. Use for any feature, fix, refactor or review in Home Quarters, and when asked to review, critique or verify work.
 ---
 
 # Gauntlet

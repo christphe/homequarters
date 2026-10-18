@@ -1,6 +1,6 @@
 # Publishes the server image (web client included) to GitHub Container Registry:
-#   ghcr.io/guhcostan/tilework:latest   on every push to main
-#   ghcr.io/guhcostan/tilework:vX.Y.Z   on version tags
+#   ghcr.io/christphe/homequarters:latest   on every push to main
+#   ghcr.io/christphe/homequarters:vX.Y.Z   on version tags
 name: Docker image
 on:
   push:
@@ -38,6 +38,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: TILEWORK_VERSION=${{ github.sha }}
+          build-args: HQ_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

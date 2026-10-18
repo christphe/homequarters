@@ -1,6 +1,6 @@
 # Art style
 
-Tilework looks like a 2000s handheld RPG: a top-down 3/4 view, 16 px tiles, chunky characters with big heads, outlined props with three-tone shading, and white dialog-window menus. The goal is that style, **not** any existing game's assets.
+Home Quarters looks like a 2000s handheld RPG: a top-down 3/4 view, 16 px tiles, chunky characters with big heads, outlined props with three-tone shading, and white dialog-window menus. The goal is that style, **not** any existing game's assets.
 
 > **Original work only.** Every tile, prop, sprite, colour and UI frame is drawn by code in this repository. We do not use, trace, extract or re-colour assets from Pokémon or any other Nintendo, Game Freak or third-party game, and the project has no affiliation with them. A visual *style* (proportions, palette feel, pixel conventions) can be studied; assets and characters cannot be copied. See also [Contributing](contributing.md).
 
@@ -46,10 +46,14 @@ To refresh the images used by the README and the website:
 ~~~bash
 cd e2e
 node export-art.mjs   # sprite sheets and the baked map (needs only the Vite preview above)
-node art.mjs          # cast, walking GIF and banner (needs Chrome and ffmpeg)
+node art.mjs          # cast and walking GIF (needs Chrome and ffmpeg)
 # in-game shots (needs a game server that serves the built client):
-TILEWORK_APP=http://127.0.0.1:8091 TILEWORK_API=http://127.0.0.1:8091 node screens.mjs
+HQ_APP=http://127.0.0.1:8091 HQ_API=http://127.0.0.1:8091 node screens.mjs
+# social banner (site/assets/banner.png, the og:image), from a real in-game scene:
+CHROME=/path/to/chrome node banner.mjs   # SKIP_BUILD=1 reuses web/dist and bin/; HQ_BANNER_PORT (38090)
 ~~~
+
+`banner.mjs` builds the client and the server, starts its own server on a free port with a fresh database in the temp dir and no media (LiveKit points at a closed port and nobody opts in, so no camera or microphone is touched). An administrator assigns desks to named people through the map API, nine players with varied looks (beards, hats, a hijab) and pets take their places (two talking at a desk, others at their desks, two walking down the aisle with their pets trailing), and an observer outside the frame captures the world only at 3x: UI, area labels and the players' name tags hidden except for the two walkers, desk owner labels kept. The 768x640 crop sits 1:1 beside a solid navy panel with the wordmark (Schibsted Grotesk 800, mint) and "The open source virtual office you host yourself". Look at the result before committing: the walkers' place depends on timing (`BANNER_WALK_MS`).
 
 `web/dev/default-map.json` is a copy of the starter map from the Go server (`gamemap.Default()`); refresh it if that map changes.
 
