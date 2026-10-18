@@ -51,7 +51,14 @@ type Manifest struct {
 	AppTokens bool `json:"appTokens"`
 	// Settings are the office's choices an administrator makes for this plugin in the admin dialog
 	Settings []Setting `json:"settings"`
+	// ExternalHosts are the only hosts the plugin's browser code may fetch from (images it cannot ship,
+	// say), over https: shown to administrators, enforced in its iframe by a Content Security Policy
+	ExternalHosts []string `json:"externalHosts"`
 }
+
+var hostRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+
+const maxExternalHosts = 8
 
 // Setting is one administrator's choice a plugin declares: Home Quarters draws it in the admin dialog,
 // checks and stores it, and the plugin reads it (hq.settings()). Only whole numbers for now.
@@ -279,6 +286,14 @@ func load(dir, source string) Info {
 	}
 	if n := len([]rune(m.LongDescription)); n > maxLongDescription {
 		return fail("longDescription: %d characters, at most %d", n, maxLongDescription)
+	}
+	if len(m.ExternalHosts) > maxExternalHosts {
+		return fail("externalHosts: at most %d", maxExternalHosts)
+	}
+	for _, h := range m.ExternalHosts {
+		if len(h) > 253 || !hostRE.MatchString(h) {
+			return fail("externalHosts: %q must be a lower-case host name, like raw.githubusercontent.com", h)
+		}
 	}
 	if err := checkSettings(m.Settings); err != nil {
 		return fail("settings: %v", err)

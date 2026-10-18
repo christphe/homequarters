@@ -8,7 +8,7 @@ export interface Anim {
 }
 
 export type Cmd =
-  | { op: "sprite"; key: string; url: string; frameW: number; frameH: number; anims: Record<string, Anim>; from?: string }
+  | { op: "sprite"; key: string; url?: string; image?: Blob | ImageBitmap; frameW: number; frameH: number; anims: Record<string, Anim>; from?: string }
   | { op: "spawn"; id: string; key: string; x?: number; y?: number; anim?: string }
   | { op: "remove"; id: string }
   | { op: "moveTo"; id: string; x: number; y: number; speed?: number }
@@ -34,7 +34,7 @@ export type Corner = (typeof CORNERS)[number];
 
 /** Plugin UI, drawn by Home Quarters. Callbacks are ids the page sends back to the plugin's iframe. */
 /** One cell of a PNG of the plugin's public/ folder, scaled up with crisp pixels and optionally tinted. */
-export interface SpriteSpec { src: string; frame: [number, number, number, number]; scale: number; tint?: string }
+export interface SpriteSpec { src?: string; sheet?: string; frame: [number, number, number, number]; scale: number; tint?: string }
 
 export type UINode =
   | { type: "text"; text: string; muted?: boolean }
@@ -69,6 +69,7 @@ export const LIMITS = {
   depth: 4,
   text: 500,
   hoverLabel: 24, // characters of a sprite's hover label
+  imageBytes: 1 << 20, // a sprite sheet the plugin hands over as image data
   field: 200, // characters of a text field
   copy: 2000,
   callbacks: 256,
@@ -117,8 +118,12 @@ const sprite = (v: unknown): SpriteSpec => {
   const f = o.frame;
   if (!Array.isArray(f) || f.length !== 4) throw new Bad("frame must be [x, y, w, h]");
   const frame: [number, number, number, number] = [num(f[0], "x", 0, LIMITS.image, true), num(f[1], "y", 0, LIMITS.image, true), num(f[2], "w", 1, 128, true), num(f[3], "h", 1, 128, true)];
-  return { src: url(o.src), frame, scale: num(o.scale ?? 2, "scale", 1, 6, true), tint: opt(o.tint, (x) => colour(x, "tint")) };
+  // a PNG of public/ (src), or a sheet the plugin loaded (sheet: its key, maybe made from image data)
+  if ((o.src === undefined) === (o.sheet === undefined)) throw new Bad("a sprite needs src or sheet, not both");
+  return { src: opt(o.src, url), sheet: opt(o.sheet, (x) => str(x, "sheet")), frame, scale: num(o.scale ?? 2, "scale", 1, 6, true), tint: opt(o.tint, (x) => colour(x, "tint")) };
 };
+
+const isImage = (v: unknown) => (typeof Blob !== "undefined" && v instanceof Blob) || (typeof ImageBitmap !== "undefined" && v instanceof ImageBitmap);
 
 /** Another plugin whose shared/ images a plugin may draw (only those: the rest of its public/ is its own). */
 const from = (v: unknown, path: unknown): string => {
@@ -200,7 +205,11 @@ function parseOne(c: unknown): Cmd {
   const o = c as Record<string, unknown>;
   switch (o.op) {
     case "sprite":
-      return { op: "sprite", key: str(o.key, "key"), url: url(o.url), frameW: num(o.frameW, "frameW", 1, 256, true), frameH: num(o.frameH, "frameH", 1, 256, true), anims: anims(o.anims ?? {}), from: opt(o.from, (v) => from(v, o.url)) };
+      if ((o.url === undefined) === (o.image === undefined)) throw new Bad("loadSprite needs a path or image data, not both");
+      // image data (a Blob or an ImageBitmap the plugin made): its size and type are checked when it is decoded
+      if (o.image !== undefined && !isImage(o.image)) throw new Bad("image must be a Blob or an ImageBitmap");
+      if (o.image !== undefined && o.from !== undefined) throw new Bad("from goes with a path, not image data");
+      return { op: "sprite", key: str(o.key, "key"), url: opt(o.url, url), image: o.image as Blob | ImageBitmap | undefined, frameW: num(o.frameW, "frameW", 1, 256, true), frameH: num(o.frameH, "frameH", 1, 256, true), anims: anims(o.anims ?? {}), from: opt(o.from, (v) => from(v, o.url)) };
     case "spawn": {
       // without a position an existing sprite keeps its place (only its picture changes)
       if ((o.x === undefined) !== (o.y === undefined)) throw new Bad("spawn needs both x and y, or neither");

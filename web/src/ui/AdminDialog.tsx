@@ -5,7 +5,7 @@ import { Modal } from "./Modal";
 import { GearIcon, InfoIcon } from "./Icons";
 
 type Tab = "members" | "invites" | "activity" | "announce" | "office" | "plugins";
-interface PluginRow { name: string; title: string; version: string; description: string; state: "disabled" | "running" | "crashed" | "broken"; error: string; source: "bundled" | "installed"; refused: boolean; settings?: PluginSetting[]; longDescription?: string }
+interface PluginRow { name: string; title: string; version: string; description: string; state: "disabled" | "running" | "crashed" | "broken"; error: string; source: "bundled" | "installed"; refused: boolean; settings?: PluginSetting[]; longDescription?: string; externalHosts?: string[] }
 interface PluginSetting { key: string; label: string; min: number; max: number; value: number; help?: string }
 interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number; email?: string }
 interface InviteRow { id: number; role: string; maxUses: number; uses: number; expiresAt: number; createdAt: number; createdBy: string; status: string }
@@ -305,7 +305,8 @@ function Plugins() {
           const on = p.state === "running";
           return (
             <tr key={p.source + "/" + p.name} data-plugin={p.name} data-source={p.source}>
-              <td>{p.title} <small className="muted">{p.version}</small> <span className={"plugin-source " + p.source}>{t(("admin.plugins.source." + p.source) as Key)}</span>{p.description && <small className="muted plugin-desc">{p.description}</small>}</td>
+              <td>{p.title} <small className="muted">{p.version}</small> <span className={"plugin-source " + p.source}>{t(("admin.plugins.source." + p.source) as Key)}</span>{p.description && <small className="muted plugin-desc">{p.description}</small>}
+                {!!p.externalHosts?.length && <small className="muted plugin-desc plugin-hosts">{t("admin.plugins.hosts", { hosts: p.externalHosts.join(", ") })}</small>}</td>
               <td>{t(("admin.plugins.state." + p.state) as Key)}{p.error && <small className="muted plugin-error">{p.error}</small>}</td>
               <td className="nowrap"><span className="plugin-actions">
                 {!!p.longDescription && (

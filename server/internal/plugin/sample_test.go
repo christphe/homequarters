@@ -296,8 +296,8 @@ func TestSampleGuestPetsThroughHooks(t *testing.T) {
 	}
 	root := t.TempDir()
 	write(t, root, map[string]string{
-		"poke/plugin.json": manifest("poke", "main.ts", ""),
-		"poke/main.ts": `
+		"caller/plugin.json": manifest("caller", "main.ts", ""),
+		"caller/main.ts": `
 export async function onMessage(p: HQ.Player, m: { hook: string; args: unknown }) {
   hq.broadcast({ hook: m.hook, r: await hq.plugins.call("hq-pets", m.hook, m.args) });
 }
@@ -313,7 +313,7 @@ export async function update() {
 	h := NewHost(append(cat, extra...), sink, newMemKV(), quiet)
 	t.Cleanup(h.Close)
 	h.Presence(bob, true)
-	for _, p := range []string{pets, "poke"} {
+	for _, p := range []string{pets, "caller"} {
 		if err := h.Start(p); err != nil {
 			t.Fatal(p, err)
 		}
@@ -340,7 +340,7 @@ export async function update() {
 				before++
 			}
 		}
-		h.Message(bob, "poke", []byte(`{"hook":"`+hook+`","args":`+args+`}`))
+		h.Message(bob, "caller", []byte(`{"hook":"`+hook+`","args":`+args+`}`))
 		var got map[string]any
 		eventually(t, hook, func() bool {
 			n := 0
@@ -386,8 +386,8 @@ export async function update() {
 			}
 		}
 	}
-	if len(guests) != 3 || guests[0].(map[string]any)["from"] != "poke" {
-		t.Fatalf("three guests left, from poke: %v", guests)
+	if len(guests) != 3 || guests[0].(map[string]any)["from"] != "caller" {
+		t.Fatalf("three guests left, from caller: %v", guests)
 	}
 	running(t, h)
 }

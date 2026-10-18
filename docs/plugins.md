@@ -48,7 +48,7 @@ To pick up edits to a plugin's files, turn it off and on again: it is compiled a
 
 Both are compiled by the server with [esbuild](https://esbuild.github.io/) (built in, nothing to install), together with the files they import. Imports must be relative paths to `.ts`, `.tsx`, `.js`, `.mjs` or `.json` files inside the plugin's folder (inside `public/` for the browser code), wherever links or `package.json` fields point: no npm packages, nothing outside. The server code must not sit in `public/`. The compiled code of each side is at most 256 KB, and a plugin folder at most 2000 files (`node_modules` and dot folders are ignored).
 
-**Types.** The server only strips the types; it does not check them. Your editor and `tsc` do: copy [`plugins/sdk`](../plugins/sdk) somewhere near your plugin and point the two `tsconfig.json` files of the sample at it. `server.d.ts` and `client.d.ts` describe everything below. The repository's checks run `tsc` on the sample, so the declarations always match what Home Quarters does.
+**Types.** The server only strips the types; it does not check them. For the browser code, put `"DOM"` in `lib` (`"lib": ["ES2020", "DOM"]`): the iframe is a page, and `console`, `fetch`, `OffscreenCanvas` or `createImageBitmap` are then typed. Your editor and `tsc` do: copy [`plugins/sdk`](../plugins/sdk) somewhere near your plugin and point the two `tsconfig.json` files of the sample at it. `server.d.ts` and `client.d.ts` describe everything below. The repository's checks run `tsc` on the sample, so the declarations always match what Home Quarters does.
 
 Only `public/` is served, at `/plugins/<name>/assets/<path>`, and only while the plugin runs. Allowed types are `.png`, `.js`, `.json` and `.css`, at most 1 MB each. Hidden files, `..` and symlinks that leave the folder are refused. These files are public, with no session needed, because the plugin's sandboxed iframe sends no cookie. Never put secrets there. The browser code is served compiled, at `/plugins/<name>/client.js`; the server code is never served.
 
@@ -150,6 +150,7 @@ Your `client` code runs in a hidden iframe with `sandbox="allow-scripts"`. That 
 | `hq.onMessage(fn(msg))` | A message from your server code. |
 | `hq.send(msg)` | Sends JSON, at most 1500 bytes, to your server code's `onMessage`. The page sends at most 8 messages a second for all its plugins together (burst 16), under the server's own limit; the rest are dropped with a console warning, so a plugin never gets its member disconnected. |
 | `hq.loadSprite(key, path, { frameW, frameH, anims })` | A PNG sheet from `public/` (at most 2048 px a side and 4096 frames), cut into frames. `anims = { name: { row, frames: [..], fps } }`. |
+| `hq.loadSprite(key, image, { frameW, frameH, anims })` | The same from image data your code made: a `Blob` of at most 1 MB or an `ImageBitmap`, drawn on an `OffscreenCanvas` or downloaded from a host you declare (below). |
 | `hq.spawn(id, key, { x, y, anim })` and `hq.remove(id)` | Put a sprite in the world, anchored at the bottom centre of its frame, or take it away. Spawning an existing id replaces it. |
 | `hq.moveTo(id, x, y, { speed })` | Walk there in a straight line (px/s, default 72). |
 | `hq.walkTo(id, x, y, { speed })` | Walk there along a path around walls; somewhere it cannot reach, it stays where it is. |
@@ -162,6 +163,16 @@ Your `client` code runs in a hidden iframe with `sandbox="allow-scripts"`. That 
 While a sprite moves (`moveTo`, `follow`), the page plays the animation named `walk-<facing>` (or `walk`). While it stands, it plays the one set with `setAnim`, else `idle-<facing>` (or `idle`). Facings are `down`, `left`, `right` and `up`.
 
 Sprites sort with avatars and pets by their feet. The page redraws only when one of your sprites moves or changes frame. Calls made in the same callback travel to the page as one batch. `moveTo` stops at the first wall on its way.
+
+### Images your plugin cannot ship
+
+Some pictures cannot go in `public/`: their licence forbids redistributing them, or there are too many for the limits. Your browser code can fetch them from where they live and hand the page the image data (`hq.loadSprite(key, blob, ...)`), cropping or recomposing them on an `OffscreenCanvas` first if needed. Declare those hosts in the manifest:
+
+~~~json
+"externalHosts": ["raw.githubusercontent.com"]
+~~~
+
+**Privacy.** Each page that runs your plugin then asks that host for the images, so the host sees the address of everybody in the office. Administrators see the hosts in Administration > Plugins before they turn the plugin on. The list is enforced: the plugin's iframe may fetch from its own folder and these hosts only (a Content Security Policy), so an undeclared host is never reached. The host must answer with CORS (`Access-Control-Allow-Origin`) for the image to be readable.
 
 ### Interface: buttons, boxes and a modal
 

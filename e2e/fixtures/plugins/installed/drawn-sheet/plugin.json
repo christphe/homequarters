@@ -1,0 +1,8 @@
+{
+  "name": "drawn-sheet",
+  "title": "Drawn sheet",
+  "version": "1.0.0",
+  "description": "Test plugin: a sprite sheet drawn on an OffscreenCanvas, handed to the page as image data.",
+  "client": "client.ts",
+  "externalHosts": ["images.invalid"]
+}

@@ -77,7 +77,7 @@
     text: (text, opts = {}) => ({ type: "text", text: String(text), muted: opts.muted ? true : undefined }),
     button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, sprite: opts.sprite }),
     /** One cell of a PNG of public/: { src, frame: [x, y, w, h], scale, tint, alt }. */
-    sprite: (opts) => ({ type: "sprite", sprite: { src: opts.src, frame: opts.frame, scale: opts.scale, tint: opts.tint }, alt: opts.alt }),
+    sprite: (opts) => ({ type: "sprite", sprite: { src: opts.src, sheet: opts.sheet, frame: opts.frame, scale: opts.scale, tint: opts.tint }, alt: opts.alt }),
     copy: (opts) => ({ type: "copy", label: opts.label, value: String(opts.value) }),
     image: (opts) => ({ type: "image", src: opts.src, alt: opts.alt }),
     row: (children) => ({ type: "row", children }),
@@ -129,7 +129,9 @@
     },
     /** Loads a sprite sheet from the plugin's public/ folder. anims: { name: { row, frames: [..], fps } } */
     loadSprite(key, path, opts = {}) {
-      push({ op: "sprite", key, url: path, frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {}, from: opts.from });
+      // a path of public/ (or of another plugin's shared/ with from), or image data the plugin made (Blob, ImageBitmap)
+      const data = typeof path !== "string";
+      push({ op: "sprite", key, url: data ? undefined : path, image: data ? path : undefined, frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {}, from: opts.from });
     },
     spawn(id, key, opts = {}) {
       push({ op: "spawn", id, key, x: opts.x, y: opts.y, anim: opts.anim });

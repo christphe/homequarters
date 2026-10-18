@@ -40,6 +40,8 @@ interface Sheet {
   frames: Texture[][] | null; // [row][col], null while loading
   anims: Record<string, Anim>;
   failed: boolean;
+  /** the decoded picture, for previews in the plugin's interface (hq.ui.sprite with sheet) */
+  bitmap: ImageBitmap | null;
 }
 
 interface PEnt {
@@ -135,11 +137,12 @@ export class PluginLayer {
         case "sprite": {
           if (g.sheets.has(c.key)) break;
           if (g.sheets.size >= LIMITS.sprites) return `more than ${LIMITS.sprites} sprite sheets`;
-          const sheet: Sheet = { frames: null, anims: c.anims, failed: false };
+          const sheet: Sheet = { frames: null, anims: c.anims, failed: false, bitmap: null };
           g.sheets.set(c.key, sheet);
-          // another plugin's shared/ image: the same assets URL, under that plugin's name
+          // image data the plugin made, or a PNG: its own, or another plugin's shared/ one (same assets URL,
+          // under that plugin's name)
           const base = c.from ? g.base.replace(/\/plugins\/[^/]+\/assets\/$/, "/plugins/" + c.from + "/assets/") : g.base;
-          this.load(g, sheet, base + c.url, c.frameW, c.frameH);
+          this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH);
           break;
         }
         case "spawn": {
@@ -270,11 +273,19 @@ export class PluginLayer {
     e.manual = name;
   }
 
-  private async load(g: Gfx, sheet: Sheet, url: string, fw: number, fh: number) {
+  /** Decodes a sheet: a URL of plugin assets, or image data the plugin handed over (at most 1 MB, an image). */
+  private async load(g: Gfx, sheet: Sheet, from: string | Blob | ImageBitmap, fw: number, fh: number) {
+    const what = typeof from === "string" ? from : "image data";
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(String(res.status));
-      const bmp = await createImageBitmap(await res.blob());
+      let bmp: ImageBitmap;
+      if (typeof from === "string") {
+        const res = await fetch(from);
+        if (!res.ok) throw new Error(String(res.status));
+        bmp = await createImageBitmap(await res.blob());
+      } else if (from instanceof Blob) {
+        if (from.size > LIMITS.imageBytes || !from.type.startsWith("image/")) throw new Error("not an image of at most 1 MB");
+        bmp = await createImageBitmap(from);
+      } else bmp = from;
       if (bmp.width > LIMITS.image || bmp.height > LIMITS.image || bmp.width < fw || bmp.height < fh || !framesFit(bmp.width, bmp.height, fw, fh)) {
         bmp.close();
         throw new Error("image size");
@@ -283,6 +294,7 @@ export class PluginLayer {
         bmp.close();
         return; // the plugin stopped meanwhile
       }
+      sheet.bitmap = bmp;
       const base = Texture.from(bmp);
       base.source.scaleMode = "nearest";
       const rows = Math.floor(bmp.height / fh), cols = Math.floor(bmp.width / fw);
@@ -291,7 +303,7 @@ export class PluginLayer {
       this.loaded = true;
     } catch (err) {
       sheet.failed = true;
-      console.warn("plugin sprite failed to load", url, err);
+      console.warn("plugin sprite failed to load", what, err);
     }
   }
 
@@ -468,6 +480,11 @@ export class PluginLayer {
   /** What a plugin's update() sees: the avatars on screen and who I am. */
   worldSnapshot() {
     return { me: this.host.me(), avatars: this.host.avatars() };
+  }
+
+  /** A plugin's decoded sheet, for a preview in its interface; null while it loads or if it failed. */
+  sheetImage(plugin: string, key: string): ImageBitmap | null {
+    return this.plugins.get(plugin)?.sheets.get(key)?.bitmap ?? null;
   }
 
   /** The labelled sprite drawn at world point (x, y), the front-most one, for the hover tag. */

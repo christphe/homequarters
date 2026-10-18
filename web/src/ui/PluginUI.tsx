@@ -81,12 +81,12 @@ function Nodes({ nodes, plugin, base }: { nodes: UINode[]; plugin: string; base:
           case "button":
             return (
               <button key={i} className={"btn" + (n.primary ? " primary" : "") + (n.pressed ? " on" : "") + (n.sprite ? " with-sprite" : "")} aria-pressed={n.pressed} onClick={() => run(plugin, n.click)}>
-                {n.sprite && <SpriteView spec={n.sprite} base={base} />}
+                {n.sprite && <SpriteView spec={n.sprite} base={base} plugin={plugin} />}
                 {n.label}
               </button>
             );
           case "sprite":
-            return <SpriteView key={i} spec={n.sprite} base={base} alt={n.alt} />;
+            return <SpriteView key={i} spec={n.sprite} base={base} alt={n.alt} plugin={plugin} />;
           case "copy":
             return <CopyField key={i} label={n.label} value={n.value} />;
           case "image":
@@ -163,9 +163,9 @@ function ColorField({ label, hideLabel, value, onCommit }: { label: string; hide
 }
 
 // sheets loaded for plugin UI, by URL: a modal redrawn on every change does not fetch them again
-const sheets = new Map<string, Promise<HTMLImageElement>>();
-function sheet(src: string): Promise<HTMLImageElement> {
-  let p = sheets.get(src);
+const sheets = new Map<string, Promise<HTMLImageElement | ImageBitmap>>();
+function sheet(src: string): Promise<HTMLImageElement | ImageBitmap> {
+  let p: Promise<HTMLImageElement | ImageBitmap> | undefined = sheets.get(src);
   if (!p) {
     p = new Promise((resolve, reject) => {
       const img = new Image();
@@ -179,12 +179,23 @@ function sheet(src: string): Promise<HTMLImageElement> {
 }
 
 /** One cell of a plugin's sheet, scaled with crisp pixels; a tint multiplies its colours, as on the map. */
-function SpriteView({ spec, base, alt }: { spec: SpriteSpec; base: string; alt?: string }) {
+function SpriteView({ spec, base, alt, plugin }: { spec: SpriteSpec; base: string; alt?: string; plugin: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [x, y, w, h] = spec.frame;
   useEffect(() => {
     let live = true;
-    sheet(base + spec.src).then((img) => {
+    // a sheet the plugin loaded (maybe from image data) may still be decoding: wait for it a little
+    const loaded = (key: string) => new Promise<ImageBitmap>((resolve, reject) => {
+      let tries = 0;
+      const look = () => {
+        const b = session.plugins?.sheetImage(plugin, key);
+        if (b) resolve(b);
+        else if (++tries > 50 || !live) reject(new Error("no such sheet"));
+        else window.setTimeout(look, 100);
+      };
+      look();
+    });
+    (spec.sheet ? loaded(spec.sheet) : sheet(base + spec.src)).then((img) => {
       const c = ref.current;
       if (!live || !c) return;
       const ctx = c.getContext("2d")!;
@@ -200,7 +211,7 @@ function SpriteView({ spec, base, alt }: { spec: SpriteSpec; base: string; alt?:
       }
     }, () => {});
     return () => { live = false; };
-  }, [base, spec.src, spec.tint, x, y, w, h]);
+  }, [base, plugin, spec.src, spec.sheet, spec.tint, x, y, w, h]);
   return <canvas ref={ref} width={w} height={h} className="pixel plugin-sprite" role={alt ? "img" : undefined} aria-label={alt} aria-hidden={alt ? undefined : true}
     style={{ width: w * spec.scale, height: h * spec.scale }} />;
 }

@@ -38,7 +38,24 @@ export class PluginHost {
   private batchTimes: number[] = [];
   private stoppedWith = "";
 
-  constructor(readonly name: string, readonly title: string, private client: string, private deps: HostDeps) {}
+  constructor(readonly name: string, readonly title: string, private client: string, private hosts: string[], private deps: HostDeps) {}
+
+  /**
+   * What the iframe may load: its own folder (the browser code, its assets) and the hosts its manifest
+   * declares (externalHosts, over https), nothing else. Administrators see those hosts before turning
+   * the plugin on; without this policy a plugin could reach any server with every viewer's address.
+   */
+  private policy(): string {
+    const own = new URL(`/plugins/${this.name}/`, location.href).href;
+    const out = this.hosts.filter((h) => /^[a-z0-9.-]+$/.test(h)).map((h) => "https://" + h);
+    return [
+      "default-src 'none'",
+      `script-src 'unsafe-inline' ${own}`,
+      `connect-src ${[own, ...out].join(" ")}`,
+      `img-src blob: data: ${[own, ...out].join(" ")}`,
+      "style-src 'unsafe-inline'",
+    ].join("; ");
+  }
 
   /** URL of the plugin's public/ folder. */
   get base() {
@@ -57,7 +74,7 @@ export class PluginHost {
     f.dataset.plugin = this.name;
     const src = new URL(this.client, location.href).href.replace(/"/g, "%22");
     // "</script" cannot appear inside the inlined SDK; escape it anyway in case it ever does
-    f.srcdoc = `<!doctype html><meta charset="utf-8"><script>${SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
+    f.srcdoc = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${this.policy()}"><script>${SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
     window.addEventListener("message", this.onWindowMessage);
     document.body.appendChild(f);
     this.frame = f;
