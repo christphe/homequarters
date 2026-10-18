@@ -1,0 +1,7 @@
+{
+  "name": "hq-impostor",
+  "title": "Impostor",
+  "version": "1.0.0",
+  "description": "An installed plugin using the prefix reserved for bundled ones: the server refuses it.",
+  "server": "main.ts"
+}

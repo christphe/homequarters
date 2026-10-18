@@ -113,6 +113,9 @@ func (s *Store) RemoveMember(ctx context.Context, officeID, userID int64) (name 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM memberships WHERE office_id=? AND user_id=?`, officeID, userID); err != nil {
 		return "", err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM app_tokens WHERE office_id=? AND user_id=?`, officeID, userID); err != nil {
+		return "", err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM identities WHERE user_id=? AND NOT EXISTS (SELECT 1 FROM memberships WHERE user_id=?)`, userID, userID); err != nil {
 		return "", err
 	}

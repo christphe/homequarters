@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"homequarters/internal/plugin"
 	"homequarters/internal/store"
 	"homequarters/internal/world"
 )
@@ -142,6 +143,10 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 	ctrlRL := newConnBucket(10, 30)
 	chatRL := newConnBucket(3, 8)
 	boardRL := newConnBucket(60, 120)
+	pluginRL := newConnBucket(10, 20)
+	s.mu.Lock()
+	host := s.hosts[office.ID]
+	s.mu.Unlock()
 	strikes := 0
 	diags := 0
 	var m inMsg
@@ -175,6 +180,8 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 			rl = chatRL
 		case "wb":
 			rl = boardRL
+		case "plg":
+			rl = pluginRL
 		}
 		if !rl.allow(now) {
 			strikes++
@@ -242,6 +249,14 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 			var wb world.BoardMsg
 			if json.Unmarshal(data, &wb) == nil {
 				conn.Board(ctx, &wb)
+			}
+		case "plg":
+			var pm struct {
+				PL string          `json:"pl"`
+				D  json.RawMessage `json:"d"`
+			}
+			if host != nil && json.Unmarshal(data, &pm) == nil && len(pm.D) > 0 && len(pm.D) <= maxPluginMsg {
+				host.Message(plugin.Player{ID: uint32(se.UserID), Name: se.Name, Role: role}, pm.PL, pm.D)
 			}
 		case "sync":
 			conn.Sync(ctx)

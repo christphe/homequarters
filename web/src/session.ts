@@ -12,6 +12,7 @@ import { t } from "./i18n";
 import { chime, chimeLog, desktopNotify } from "./notify";
 import { convChange } from "./convChime";
 import { isOutdated, pageVersion } from "./version";
+import { PluginManager } from "./plugins/manager";
 
 const AWAY_AFTER_MS = 5 * 60 * 1000;
 
@@ -19,6 +20,7 @@ const AWAY_AFTER_MS = 5 * 60 * 1000;
 class Session {
   view: WorldView | null = null;
   socket: Socket | null = null;
+  plugins: PluginManager | null = null;
   private stopped = true;
   private chatId = 0;
   private idleTimer = 0;
@@ -54,6 +56,7 @@ class Session {
       return;
     }
     this.view = view;
+    this.plugins = new PluginManager(view.plugins, (pl, d) => this.socket?.send({ t: "plg", pl, d }));
     media.onSpeaking = (ids) => view.setSpeaking(ids);
     media.onSharing = (ids) => view.setSharing(ids);
     media.onNeedToken = () => this.socket?.send({ t: "tok" });
@@ -81,7 +84,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this };
+    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this, plugins: this.plugins };
   }
 
   private applyAutoStatus(inactive: boolean) {
@@ -112,6 +115,8 @@ class Session {
     this.cleanup = [];
     this.socket?.close();
     this.socket = null;
+    this.plugins?.stopAll();
+    this.plugins = null;
     void media.leave();
     void spotlightMedia.leave();
     this.view?.destroy();
@@ -153,6 +158,8 @@ class Session {
         view.setMe(m.you, m.cfg.x, m.cfg.y, m.cfg.speed, m.cfg.run ?? 2);
         if (m.cfg.cell && m.cfg.aoi) view.setInterest(m.cfg.cell, m.cfg.aoi, m.cfg.aoiMax ?? m.cfg.aoi);
         view.setPeople(roster);
+        // a new connection: start every plugin afresh, so its browser code resynchronises with its server code
+        void this.plugins?.refresh(true);
         const s = getState();
         if (s.consent) this.socket?.send({ t: "consent", b: true });
         if (s.status !== "available") this.socket?.send({ t: "st", v: s.status });
@@ -246,6 +253,8 @@ class Session {
         if (m.op === "state") { view.setDirection(0, 0); setState({ boardKey: m.bk }); }
         if (m.op === "closed") setState({ boardKey: "" });
         break;
+      case "plg": this.plugins?.deliver(m.pl, m.d); break;
+      case "plgs": void this.plugins?.refresh(); break;
       case "spot":
         if (m.op === "off") { void spotlightMedia.leave(); setState({ spotlight: null }); }
         else {
