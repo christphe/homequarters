@@ -1,0 +1,8 @@
+{
+  "name": "drawn-pet",
+  "title": "Drawn pet",
+  "version": "1.0.0",
+  "description": "Test plugin: a guest pet of hq-pets whose sheet this plugin draws on each page (setPet metadata, hq.provideSheet).",
+  "server": "main.ts",
+  "client": "client.ts"
+}
