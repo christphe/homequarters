@@ -66,6 +66,14 @@ export const GearIcon = () => (
     <circle cx="8" cy="17" r="2" />
   </I>
 );
+/** An "i" in a circle: more about something. */
+export const InfoIcon = () => (
+  <I>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v6M12 7.5v.5" />
+  </I>
+);
+
 export const PinIcon = () => (
   <I size={16}>
     <circle cx="12" cy="12" r="6" />

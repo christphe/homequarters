@@ -61,7 +61,7 @@ jobs:
         run: pnpm exec tsc -p tsconfig.test.json --noEmit
         working-directory: web
       - name: Type-check the plugins against plugins/sdk (the sample and the e2e test plugin)
-        run: for p in ../plugins/sample-pet ../plugins/sample-pet/public ../e2e/fixtures/plugins/ui-demo ../e2e/fixtures/plugins/ui-demo/public; do pnpm exec tsc -p "$p" || exit 1; done
+        run: for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters; do pnpm exec tsc -p "$p" || exit 1; done
         working-directory: web
       - name: Build and check the docs site (links, SEO metadata, sitemap, llms.txt)
         run: pnpm install --frozen-lockfile && node build.mjs && node check.mjs

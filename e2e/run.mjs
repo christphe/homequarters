@@ -48,9 +48,11 @@ if (!EXTERNAL && !(await portOpen(LK_PORT))) {
 }
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "homequarters-e2e-"));
-// the shipped plugins plus the suite's own test plugins (e2e/fixtures/plugins), all disabled until a scenario enables one
+// the bundled plugins (plugins/bundled) plus the suite's own installed ones (e2e/fixtures/plugins/installed), all disabled
+// until a scenario enables one
 const pluginsDir = path.join(dir, "plugins");
-for (const from of [path.join(root, "plugins"), path.join(root, "e2e/fixtures/plugins")]) fs.cpSync(from, pluginsDir, { recursive: true });
+fs.cpSync(path.join(root, "plugins/bundled"), path.join(pluginsDir, "bundled"), { recursive: true });
+fs.cpSync(path.join(root, "e2e/fixtures/plugins/installed"), path.join(pluginsDir, "installed"), { recursive: true });
 // Checks that only need time to pass (an expiring token) run after the other scenarios instead of sleeping in theirs.
 const deferred = [];
 const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push({ name, due, fn }); }, async startServer() {

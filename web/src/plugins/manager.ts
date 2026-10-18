@@ -91,8 +91,8 @@ export class PluginManager {
   }
 
   /** A click on something a plugin drew: runs its callback in the plugin's iframe. */
-  event(plugin: string, callback: string | undefined) {
-    if (callback) this.hosts.get(plugin)?.callback(callback);
+  event(plugin: string, callback: string | undefined, value?: string | number) {
+    if (callback) this.hosts.get(plugin)?.callback(callback, value);
   }
 
   /** The person closed the plugin modal. */

@@ -8,11 +8,14 @@ export interface Anim {
 }
 
 export type Cmd =
-  | { op: "sprite"; key: string; url: string; frameW: number; frameH: number; anims: Record<string, Anim> }
+  | { op: "sprite"; key: string; url: string; frameW: number; frameH: number; anims: Record<string, Anim>; from?: string }
   | { op: "spawn"; id: string; key: string; x?: number; y?: number; anim?: string }
   | { op: "remove"; id: string }
   | { op: "moveTo"; id: string; x: number; y: number; speed?: number }
-  | { op: "follow"; id: string; player: number; gap?: number }
+  | { op: "follow"; id: string; player?: number; sprite?: string; gap?: number; beside?: number; roam?: number }
+  | { op: "tint"; id: string; colour: string | null }
+  | { op: "label"; id: string; text: string | null; owner?: number }
+  | { op: "walkTo"; id: string; x: number; y: number; speed?: number }
   | { op: "stop"; id: string }
   | { op: "anim"; id: string; name: string }
   | { op: "flip"; id: string; on: boolean }
@@ -30,13 +33,20 @@ export const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] 
 export type Corner = (typeof CORNERS)[number];
 
 /** Plugin UI, drawn by Home Quarters. Callbacks are ids the page sends back to the plugin's iframe. */
+/** One cell of a PNG of the plugin's public/ folder, scaled up with crisp pixels and optionally tinted. */
+export interface SpriteSpec { src: string; frame: [number, number, number, number]; scale: number; tint?: string }
+
 export type UINode =
   | { type: "text"; text: string; muted?: boolean }
-  | { type: "button"; label: string; click?: string; primary?: boolean; pressed?: boolean }
+  | { type: "button"; label: string; click?: string; primary?: boolean; pressed?: boolean; sprite?: SpriteSpec }
+  | { type: "sprite"; sprite: SpriteSpec; alt: string }
   | { type: "copy"; label: string; value: string }
   | { type: "image"; src: string; alt: string }
   | { type: "row"; children: UINode[] }
-  | { type: "appToken" };
+  | { type: "appToken" }
+  | { type: "color"; label: string; value: string; change?: string; hideLabel?: boolean }
+  | { type: "number"; label: string; value: number; min: number; max: number; change?: string }
+  | { type: "field"; label: string; value: string; maxLength: number; placeholder?: string; change?: string; hideLabel?: boolean };
 
 export const LIMITS = {
   batch: 512, // commands per batch
@@ -58,6 +68,8 @@ export const LIMITS = {
   nodes: 64, // per tree
   depth: 4,
   text: 500,
+  hoverLabel: 24, // characters of a sprite's hover label
+  field: 200, // characters of a text field
   copy: 2000,
   callbacks: 256,
   screenOffset: 200, // px from the chosen corner
@@ -93,6 +105,28 @@ const url = (v: unknown): string => {
   return s;
 };
 
+/** A colour as the picker gives it: #rrggbb, lower case. */
+const colour = (v: unknown, what = "colour"): string => {
+  if (typeof v !== "string" || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new Bad(`${what} must be a colour like #3fa7d6`);
+  return v.toLowerCase();
+};
+
+/** A cell of a sheet: src, frame [x, y, w, h] (a cell at most 128 px a side), scale 1-6, tint. */
+const sprite = (v: unknown): SpriteSpec => {
+  const o = (v ?? {}) as Record<string, unknown>;
+  const f = o.frame;
+  if (!Array.isArray(f) || f.length !== 4) throw new Bad("frame must be [x, y, w, h]");
+  const frame: [number, number, number, number] = [num(f[0], "x", 0, LIMITS.image, true), num(f[1], "y", 0, LIMITS.image, true), num(f[2], "w", 1, 128, true), num(f[3], "h", 1, 128, true)];
+  return { src: url(o.src), frame, scale: num(o.scale ?? 2, "scale", 1, 6, true), tint: opt(o.tint, (x) => colour(x, "tint")) };
+};
+
+/** Another plugin whose shared/ images a plugin may draw (only those: the rest of its public/ is its own). */
+const from = (v: unknown, path: unknown): string => {
+  if (typeof v !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(v)) throw new Bad("from must be a plugin name");
+  if (typeof path !== "string" || !path.startsWith("shared/")) throw new Bad("an image of another plugin must be in its shared/ folder");
+  return v;
+};
+
 const label = (v: unknown, what = "label"): string => {
   const s = str(v, what, LIMITS.label).trim();
   if (!s) throw new Bad(`${what} must not be blank`);
@@ -117,11 +151,23 @@ function tree(v: unknown): UINode[] {
       const o = (n ?? {}) as Record<string, unknown>;
       switch (o.type) {
         case "text": return { type: "text", text: str(o.text, "text", LIMITS.text), muted: opt(o.muted, (x) => bool(x, "muted")) };
-        case "button": return { type: "button", label: label(o.label), click: opt(o.click, cb), primary: opt(o.primary, (x) => bool(x, "primary")), pressed: opt(o.pressed, (x) => bool(x, "pressed")) };
+        case "button": return { type: "button", label: label(o.label), click: opt(o.click, cb), primary: opt(o.primary, (x) => bool(x, "primary")), pressed: opt(o.pressed, (x) => bool(x, "pressed")), sprite: opt(o.sprite, sprite) };
+        case "sprite": return { type: "sprite", sprite: sprite(o.sprite), alt: str(o.alt, "alt", LIMITS.label) };
         case "copy": return { type: "copy", label: label(o.label), value: str(o.value, "value", LIMITS.copy) };
         case "image": return { type: "image", src: url(o.src), alt: str(o.alt, "alt", LIMITS.label) };
         case "row": return { type: "row", children: walk(o.children, depth + 1) };
         case "appToken": return { type: "appToken" };
+        case "color": return { type: "color", label: label(o.label), value: colour(o.value, "value"), change: opt(o.change, cb), hideLabel: opt(o.hideLabel, (x) => bool(x, "hideLabel")) };
+        case "field": {
+          const maxLength = num(o.maxLength ?? LIMITS.field, "maxLength", 1, LIMITS.field, true);
+          const value = o.value ?? "";
+          if (typeof value !== "string" || value.length > maxLength) throw new Bad(`value must be text of at most ${maxLength} characters`);
+          return { type: "field", label: label(o.label), value, maxLength, placeholder: opt(o.placeholder, (x) => str(x, "placeholder", LIMITS.label)), change: opt(o.change, cb), hideLabel: opt(o.hideLabel, (x) => bool(x, "hideLabel")) };
+        }
+        case "number": {
+          const min = num(o.min, "min", -1e6, 1e6, true), max = num(o.max, "max", min, 1e6, true);
+          return { type: "number", label: label(o.label), value: num(o.value, "value", min, max, true), min, max, change: opt(o.change, cb) };
+        }
       }
       throw new Bad(`unknown UI element ${String(o.type).slice(0, 20)}`);
     });
@@ -154,7 +200,7 @@ function parseOne(c: unknown): Cmd {
   const o = c as Record<string, unknown>;
   switch (o.op) {
     case "sprite":
-      return { op: "sprite", key: str(o.key, "key"), url: url(o.url), frameW: num(o.frameW, "frameW", 1, 256, true), frameH: num(o.frameH, "frameH", 1, 256, true), anims: anims(o.anims ?? {}) };
+      return { op: "sprite", key: str(o.key, "key"), url: url(o.url), frameW: num(o.frameW, "frameW", 1, 256, true), frameH: num(o.frameH, "frameH", 1, 256, true), anims: anims(o.anims ?? {}), from: opt(o.from, (v) => from(v, o.url)) };
     case "spawn": {
       // without a position an existing sprite keeps its place (only its picture changes)
       if ((o.x === undefined) !== (o.y === undefined)) throw new Bad("spawn needs both x and y, or neither");
@@ -178,8 +224,23 @@ function parseOne(c: unknown): Cmd {
       return { op: "close" };
     case "moveTo":
       return { op: "moveTo", id: str(o.id, "id"), x: num(o.x, "x", -COORD, COORD), y: num(o.y, "y", -COORD, COORD), speed: opt(o.speed, (v) => num(v, "speed", 1, 1000)) };
-    case "follow":
-      return { op: "follow", id: str(o.id, "id"), player: num(o.player, "player", 1, 2 ** 32 - 1, true), gap: opt(o.gap, (v) => num(v, "gap", 0, 200)) };
+    case "follow": {
+      // a member's trail, or another sprite of the same plugin (one of the two)
+      const id = str(o.id, "id");
+      if ((o.player === undefined) === (o.sprite === undefined)) throw new Bad("follow needs a player or a sprite, not both");
+      const sprite = opt(o.sprite, (v) => str(v, "sprite"));
+      if (sprite === id) throw new Bad("a sprite cannot follow itself");
+      return { op: "follow", id, player: opt(o.player, (v) => num(v, "player", 1, 2 ** 32 - 1, true)), sprite, gap: opt(o.gap, (v) => num(v, "gap", 0, 200)), beside: opt(o.beside, (v) => num(v, "beside", 0, 120)), roam: opt(o.roam, (v) => num(v, "roam", 0, 48)) };
+    }
+    case "label": {
+      if (o.text !== null && (typeof o.text !== "string" || /[\u0000-\u001f\u007f]/.test(o.text))) throw new Bad("text must be one line of text or null");
+      const text = o.text === null ? null : str(o.text, "text", LIMITS.hoverLabel);
+      return { op: "label", id: str(o.id, "id"), text, owner: opt(o.owner, (v) => num(v, "owner", 1, 2 ** 32 - 1, true)) };
+    }
+    case "walkTo":
+      return { op: "walkTo", id: str(o.id, "id"), x: num(o.x, "x", -COORD, COORD), y: num(o.y, "y", -COORD, COORD), speed: opt(o.speed, (v) => num(v, "speed", 1, 1000)) };
+    case "tint":
+      return { op: "tint", id: str(o.id, "id"), colour: o.colour === null ? null : colour(o.colour) };
     case "anim":
       return { op: "anim", id: str(o.id, "id"), name: str(o.name, "name") };
     case "flip":

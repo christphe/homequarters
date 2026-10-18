@@ -58,3 +58,32 @@ func (s *Store) DeletePluginKV(ctx context.Context, officeID int64, plugin, key 
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM plugin_kv WHERE office_id=? AND plugin=? AND key=?`, officeID, plugin, key)
 	return err
 }
+
+// PluginSettings returns the settings administrators chose, by plugin and key.
+func (s *Store) PluginSettings(ctx context.Context, officeID int64) (map[string]map[string]float64, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT plugin, key, value FROM plugin_settings WHERE office_id=?`, officeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]map[string]float64{}
+	for rows.Next() {
+		var p, k string
+		var v float64
+		if err := rows.Scan(&p, &k, &v); err != nil {
+			return nil, err
+		}
+		if out[p] == nil {
+			out[p] = map[string]float64{}
+		}
+		out[p][k] = v
+	}
+	return out, rows.Err()
+}
+
+// SetPluginSetting stores one setting (checked against the plugin's manifest by the caller).
+func (s *Store) SetPluginSetting(ctx context.Context, officeID int64, plugin, key string, v float64) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO plugin_settings(office_id,plugin,key,value) VALUES (?,?,?,?)
+ON CONFLICT(office_id,plugin,key) DO UPDATE SET value=excluded.value`, officeID, plugin, key, v)
+	return err
+}

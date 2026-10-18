@@ -20,9 +20,11 @@ export interface PetState {
   ownerMoved: number;
   /** px the owner has stepped back along the trail since they last went forward */
   retraced: number;
+  /** sat at its resting spot (closer than the gap): when the owner sets off it waits there, then follows */
+  rested: boolean;
 }
 
-export const newPet = (): PetState => ({ trail: [], px: NaN, py: NaN, dir: 0, moving: false, restSince: 0, ownerMoved: 0, retraced: 0 });
+export const newPet = (): PetState => ({ trail: [], px: NaN, py: NaN, dir: 0, moving: false, restSince: 0, ownerMoved: 0, retraced: 0, rested: false });
 
 const facing = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0);
 
@@ -37,10 +39,45 @@ export function hiddenShare(px: number, py: number, ox: number, oy: number) {
  * Advances the pet one frame. ox/oy/odir: the owner now; ownerV: the owner's current speed in px/s
  * (walk or run); dt in seconds; now in ms; canStand: whether a pet may stand at a point (walls);
  * gap: px along the trail between the owner and the pet (plugin creatures keep a larger one);
- * rest: once the owner stands still, sit `beside` px to their side, away from x `avoid` (their own pet)
- * when given, so a second follower does not queue up behind the owner or sit on the pet.
+ * rest: once the owner stands still, sit `beside` px to their side, away from x `avoid` when given, so a
+ * follower does not queue up behind the owner. With `roam`, potter about the owner's feet instead: a new
+ * spot every 5-10 s, `beside` to `beside + roam` px away, all around them where it is free. The
+ * spots come from `seed` and the wall `clock` (ms), so every page shows the same pottering without a
+ * message.
  */
-export function followOwner(s: PetState, ox: number, oy: number, odir: number, ownerV: number, dt: number, now: number, canStand: (x: number, y: number) => boolean = () => true, gap = PET_GAP, rest?: { beside: number; avoid?: number }) {
+export interface Rest {
+  beside: number;
+  avoid?: number;
+  roam?: number;
+  seed?: number;
+  clock?: number;
+}
+
+/** Two numbers in [0, 1) from a seed and a step: the same everywhere, for the same inputs. */
+function noise(seed: number, step: number): [number, number] {
+  let h = (seed ^ Math.imul(step, 0x9e3779b1)) >>> 0;
+  const next = () => {
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h / 4294967296;
+  };
+  return [next(), next()];
+}
+
+/** Where a roaming pet potters now, around the owner's feet where it can stand, or null to sit beside them. */
+function roamSpot(rest: Rest, ox: number, oy: number, canStand: (x: number, y: number) => boolean): [number, number] | null {
+  if (!rest.roam) return null;
+  const seed = rest.seed ?? 0, clock = rest.clock ?? Date.now();
+  const period = 5000 + (seed % 5000); // each pet its own pace
+  const [u, v] = noise(seed, Math.floor((clock + seed * 131) / period));
+  const a = u * Math.PI * 2; // all around, behind the owner too when it is free
+  const r = rest.beside + v * rest.roam;
+  const sx = ox + Math.cos(a) * r, sy = oy + Math.sin(a) * r * 0.35;
+  return canStand(sx, sy) ? [sx, sy] : null;
+}
+
+export function followOwner(s: PetState, ox: number, oy: number, odir: number, ownerV: number, dt: number, now: number, canStand: (x: number, y: number) => boolean = () => true, gap = PET_GAP, rest?: Rest) {
   const tr = s.trail;
   const lx = tr[tr.length - 2], ly = tr[tr.length - 1];
   if (!Number.isFinite(s.px) || tr.length === 0 || Math.hypot(ox - lx, oy - ly) > PET_SNAP) {
@@ -97,7 +134,13 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
     ax = bx;
     ay = by;
   }
-  if (!found && tr.length >= 4) {
+  if (found) s.rested = false;
+  else if (s.rested) {
+    // it rested at the owner's feet, closer than the gap: it stays put until the owner has walked far
+    // enough, then takes the trail from where it sits (the trail starts at its resting spot)
+    gx = s.px;
+    gy = s.py;
+  } else if (tr.length >= 4) {
     // the trail is shorter than the gap (it was trimmed, then the owner stepped back): carry its first
     // stretch on in a straight line, so the pet keeps its distance instead of closing in
     const dx = tr[0] - tr[2], dy = tr[1] - tr[3], l = Math.hypot(dx, dy);
@@ -107,7 +150,14 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
     }
   }
   if (cut > 2) tr.splice(0, cut - 2); // keep one point behind the spot
-  if (still && rest) {
+  const roam = still && rest ? roamSpot(rest, ox, oy, canStand) : null;
+  if (roam) {
+    tr.length = 0;
+    tr.push(roam[0], roam[1], ox, oy);
+    gx = roam[0];
+    gy = roam[1];
+    s.rested = true;
+  } else if (still && rest) {
     const side = rest.avoid !== undefined ? (rest.avoid >= ox ? -1 : 1) : s.px >= ox ? 1 : -1;
     for (const sx of [ox + side * rest.beside, ox - side * rest.beside]) {
       if (canStand(sx, oy)) {
@@ -115,6 +165,7 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
         tr.push(sx, oy, ox, oy);
         gx = sx;
         gy = oy;
+        s.rested = true;
         break;
       }
     }

@@ -17,6 +17,7 @@ type evKind int
 const (
 	evMessage evKind = iota + 1
 	evRoute
+	evHook
 )
 
 type event struct {
@@ -26,6 +27,10 @@ type event struct {
 	route int // index of the route's handler in the plugin's __routes
 	req   RouteReq
 	reply chan routeResult
+	// a hook call: the hook, the calling plugin, the member it acts for (0: none), the arguments in data
+	hook, from string
+	actor      uint32
+	hreply     chan hookResult
 }
 
 type routeResult struct {
@@ -62,7 +67,7 @@ const (
 )
 
 // exportNames are the functions a server module may export.
-var exportNames = map[string]bool{"load": true, "update": true, "onJoin": true, "onLeave": true, "onMessage": true, "unload": true}
+var exportNames = map[string]bool{"load": true, "update": true, "onJoin": true, "onLeave": true, "onMessage": true, "onSettings": true, "unload": true}
 
 // instance is one running plugin. A single goroutine (run) owns its QuickJS VM; everything else
 // reaches it through the bounded inbox, or the presence queue, which is never dropped so the
@@ -74,12 +79,17 @@ type instance struct {
 	client  []byte
 	inbox   chan event
 	routes  map[string]route
+	hooks   map[string]bool // exposed with hq.expose, written while loading
 	loading bool
+	// replies: answers to this plugin's hq.plugins.call, room for every call it may have pending
+	replies chan hookReply
 
 	pmu     sync.Mutex
 	pres    []presenceEv
 	presIdx map[uint32]int // member id -> index in pres
 	wake    chan struct{}
+	// settingsChanged: an administrator changed the plugin's settings; onSettings runs on the next wake
+	settingsChanged atomic.Bool
 
 	stop    chan struct{}
 	done    chan struct{}
@@ -91,6 +101,11 @@ type instance struct {
 	errs      []time.Time
 	budgetLog time.Time
 	started   time.Time
+	pending   int // calls waiting for an answer
+	nextCall  int
+	// actor: the member whose request, message, arrival or departure the plugin is handling right now
+	// (0 otherwise); a hook call it makes carries it, so a hook knows for whom it acts
+	actor uint32
 }
 
 func newInstance(h *Host, info Info) (*instance, error) {
@@ -103,6 +118,7 @@ func newInstance(h *Host, info Info) (*instance, error) {
 		return nil, fmt.Errorf("load stored data: %w", err)
 	}
 	in := &instance{h: h, info: info, client: code.client, inbox: make(chan event, inboxSize), routes: map[string]route{},
+		hooks: map[string]bool{}, replies: make(chan hookReply, maxPendingCall),
 		wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}), kv: kv, started: time.Now()}
 	if code.server == "" {
 		return in, nil // a browser-only plugin: nothing runs on the server
@@ -225,6 +241,15 @@ func (in *instance) jsError(where string, err error) error {
 
 // presence queues a member's latest state. Pending changes are coalesced per member (the last one wins),
 // so the queue is bounded by the office size however fast statuses flip.
+// settings tells the plugin its settings changed (it reads them with hq.settings()).
+func (in *instance) settings() {
+	in.settingsChanged.Store(true)
+	select {
+	case in.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (in *instance) presence(p Player, online bool) {
 	in.pmu.Lock()
 	if i, ok := in.presIdx[p.ID]; ok {
@@ -273,6 +298,12 @@ func (in *instance) run() {
 			in.h.crash(in, err.Error())
 			return
 		}
+		if in.settingsChanged.Swap(false) {
+			if err := in.check(in.callExport("onSettings")); err != nil {
+				in.h.crash(in, err.Error())
+				return
+			}
+		}
 		var err error
 		select {
 		case <-in.stop:
@@ -283,6 +314,8 @@ func (in *instance) run() {
 		case <-in.wake:
 		case e := <-in.inbox:
 			err = in.handle(e)
+		case r := <-in.replies:
+			err = in.check(in.resolve(r))
 		case now := <-tick.C:
 			dt := now.Sub(last).Seconds()
 			last = now
@@ -315,12 +348,18 @@ func (in *instance) drainPresence() error {
 				continue
 			}
 			in.players = append(in.players, e.p)
-			if err := in.check(in.callExport("onJoin", jsPlayer(e.p))); err != nil {
+			in.actor = e.p.ID
+			err := in.check(in.callExport("onJoin", jsPlayer(e.p)))
+			in.actor = 0
+			if err != nil {
 				return err
 			}
 		} else if idx >= 0 {
 			in.players = append(in.players[:idx], in.players[idx+1:]...)
-			if err := in.check(in.callExport("onLeave", jsPlayer(e.p))); err != nil {
+			in.actor = e.p.ID
+			err := in.check(in.callExport("onLeave", jsPlayer(e.p)))
+			in.actor = 0
+			if err != nil {
 				return err
 			}
 		}
@@ -329,15 +368,23 @@ func (in *instance) drainPresence() error {
 }
 
 func (in *instance) handle(e event) error {
+	defer func() { in.actor = 0 }()
 	switch e.kind {
 	case evMessage:
 		if !json.Valid(e.data) {
 			return nil // the socket already bounded it; a malformed body is ignored
 		}
+		in.actor = e.p.ID
 		return in.check(in.callExport("onMessage", jsPlayer(e.p), json.RawMessage(e.data)))
 	case evRoute:
+		in.actor = e.req.Player.ID
 		resp, err := in.route(e)
 		e.reply <- routeResult{resp, err}
+		return in.check(err)
+	case evHook:
+		in.actor = e.actor
+		v, err := in.hook(e)
+		e.hreply <- hookResult{v, err}
 		return in.check(err)
 	}
 	return nil
@@ -363,6 +410,9 @@ func (in *instance) route(e event) (RouteResp, error) {
 	_, err = in.vm.Call("__route", e.route, string(req))
 	if err == nil {
 		err = in.drain() // an async handler resolves here
+	}
+	if err == nil {
+		err = in.await(false, routeWait*9/10) // or once the plugins it called answered (before the host stops waiting)
 	}
 	if err == nil {
 		var out any

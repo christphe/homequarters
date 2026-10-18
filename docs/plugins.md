@@ -1,44 +1,54 @@
 # Plugins
 
-A plugin adds a small feature to an office without changing Home Quarters. It is written in **TypeScript** (plain JavaScript works too): server code run by Home Quarters, browser code run in the page, or both. The operator installs it as a folder on the server, and an administrator turns it on from the admin dialog. The sample plugin, [`plugins/sample-pet`](../plugins/sample-pet), gives every member a seedling that follows them. From its modal (side panel > Plugins > Sample pet) a member shows or hides theirs and picks its colour, and a button in the top bar lets it wander or calls it back. This page covers everything it uses, plus the parts it does not need (more anchors, app tokens).
+A plugin adds a small feature to an office without changing Home Quarters. It is written in **TypeScript** (plain JavaScript works too): server code run by Home Quarters, browser code run in the page, or both. The operator installs it as a folder on the server, and an administrator turns it on from the admin dialog. The plugin bundled with Home Quarters, [`hq-pets`](../plugins/bundled/hq-pets), is the sample to read. Members add pets that follow them, on top of the pet of their avatar: any of the built-in kinds or a seedling, several of one kind if they like, each in its own colour. From its modal (side panel > Plugins > Pets) a member adds, names, recolours and removes theirs, each shown as a preview in its colour. An administrator sets how many a member may have (3 by default) behind the plugin's gear button in Administration > Plugins. A button in the top bar lets them wander (Let pets wander) or calls them back (Call pets). While they wander, each pet has a mood that changes about every 5 minutes: it explores the office, potters about where it was left, stays close to its owner, or goes along with another wandering pet (it explores when there is none). The mouse over a wandering pet shows its name and its owner's. This page covers everything it uses, plus the parts it does not need (more anchors, app tokens).
 
 Plugins are **trusted code**. Only install plugins you have read: there is no upload and no marketplace. The limits below keep a buggy plugin from slowing the office down, but a plugin's server code still runs inside the server process. Read [decision 0022](decisions/0022-plugins.md) for the reasoning. Every function, limit and endpoint is listed in the [Plugin API reference](plugin-api.md).
 
 ## Installing
 
-1. Set `HQ_PLUGINS_DIR` to a folder. If it is empty (the default), plugins are off. `scripts/dev.sh` points it at the repository's `plugins/`. The Docker image ships `plugins/` at `/app/plugins`; mount your own folder there to replace them.
-2. Put each plugin in its own subfolder, named after the plugin.
+1. Set `HQ_PLUGINS_DIR` to a folder. If it is empty (the default), plugins are off. The Docker image sets it to `/app/plugins`; `scripts/dev.sh` points it at the repository's `plugins/`.
+2. That folder holds two optional subfolders, each holding plugin folders named after their plugin:
+   - `bundled/` ships with Home Quarters. The image puts the repository's `plugins/bundled/` at `/app/plugins/bundled`.
+   - `installed/` is yours. Put your plugins in `/app/plugins/installed`, typically as a volume mounted there (read-only is fine: nothing is ever written in a plugin folder; compiled code is kept in memory). The image's `bundled/` stays visible next to it.
+
+   Either may be missing or empty. With neither, plugins are off.
 3. Restart the server. It reads and compiles the plugins when it starts.
 4. Go to Administration > Plugins and turn the plugin on. A new plugin is always off until you do. Turning a plugin on or off takes effect at once for everybody online and is recorded in the activity log.
 
-To pick up edits to a plugin's files, turn it off and on again: it is compiled again only if a file's content changed. A plugin that cannot run (an invalid manifest, a missing file, a compile error, an import from outside its folder, an unknown export) is listed with its error; fix the file and turn it on, it is read again then. A plugin that stops after an error is listed as *Stopped after an error*; turning it on again restarts it.
+**Names.** The `hq-` prefix is reserved: a bundled plugin's name must start with `hq-`, and an installed plugin's name must not. So a later version of Home Quarters can add bundled plugins without ever taking the name of one you installed. The rule applies to both the folder and the manifest's `name`, in lower case. A plugin that breaks it is listed in Administration > Plugins as *Cannot run* with the rule it breaks, and never runs or serves anything. Two plugins claiming one name on the same side are both refused the same way. Every row shows where its plugin comes from, *Bundled* or *Installed*.
+
+To pick up edits to a plugin's files, turn it off and on again: it is compiled again only if a file's content changed. A plugin that cannot run (an invalid manifest, a missing file, a compile error, an import from outside its folder, an unknown export) is listed with its error; fix the file and turn it on, it is read again then. A plugin refused for its name needs its folder renamed or moved, and a restart. A plugin that stops after an error is listed as *Stopped after an error*; turning it on again restarts it.
 
 ## Layout
 
 ~~~text
-sample-pet/
-  plugin.json        the manifest
-  main.ts            server code (optional)
-  tsconfig.json      types for main.ts (../sdk/server.d.ts)
-  public/            served to browsers, and nothing else is
-    client.ts        browser code (optional)
-    messages.ts      message types shared by both sides
-    tsconfig.json    types for the browser code (../../sdk/client.d.ts)
-    creatures.png
+<HQ_PLUGINS_DIR>/
+  bundled/                 shipped with Home Quarters: hq-* names only
+    hq-pets/
+  installed/               the operator's: never hq-*
+    my-plugin/
+      plugin.json          the manifest
+      main.ts              server code (optional)
+      tsconfig.json        types for main.ts (the SDK's server.d.ts)
+      public/              served to browsers, and nothing else is
+        client.ts          browser code (optional)
+        messages.ts        message types shared by both sides
+        tsconfig.json      types for the browser code (the SDK's client.d.ts)
+        sprites.png
 ~~~
 
 ~~~json
-{ "name": "sample-pet", "title": "Sample pet", "version": "1.0.0",
-  "description": "What it does, shown to administrators.",
+{ "name": "my-plugin", "title": "My plugin", "version": "1.0.0",
+  "description": "One line for administrators, at most 160 characters.",
   "server": "main.ts", "client": "client.ts",
   "appTokens": false }
 ~~~
 
-`name` must match `^[a-z][a-z0-9-]{0,31}$` and the folder name. `appTokens` (optional) lets members create a token for this plugin; see [App tokens](#app-tokens). `server` is a `.ts` or `.js` file in the plugin folder; `client` is a `.ts` or `.js` file inside `public/`. A plugin needs at least one of the two.
+`name` must match `^[a-z][a-z0-9-]{0,31}$` and the folder name, and follow the prefix rule above. `appTokens` (optional) lets members create a token for this plugin; see [App tokens](#app-tokens). `server` is a `.ts` or `.js` file in the plugin folder; `client` is a `.ts` or `.js` file inside `public/`. A plugin needs at least one of the two.
 
 Both are compiled by the server with [esbuild](https://esbuild.github.io/) (built in, nothing to install), together with the files they import. Imports must be relative paths to `.ts`, `.tsx`, `.js`, `.mjs` or `.json` files inside the plugin's folder (inside `public/` for the browser code), wherever links or `package.json` fields point: no npm packages, nothing outside. The server code must not sit in `public/`. The compiled code of each side is at most 256 KB, and a plugin folder at most 2000 files (`node_modules` and dot folders are ignored).
 
-**Types.** The server only strips the types; it does not check them. Your editor and `tsc` do: copy [`plugins/sdk`](../plugins/sdk) next to your plugin (as in the repository) and keep the two `tsconfig.json` files of the sample. `server.d.ts` and `client.d.ts` describe everything below. The repository's checks run `tsc` on the sample, so the declarations always match what Home Quarters does.
+**Types.** The server only strips the types; it does not check them. Your editor and `tsc` do: copy [`plugins/sdk`](../plugins/sdk) somewhere near your plugin and point the two `tsconfig.json` files of the sample at it. `server.d.ts` and `client.d.ts` describe everything below. The repository's checks run `tsc` on the sample, so the declarations always match what Home Quarters does.
 
 Only `public/` is served, at `/plugins/<name>/assets/<path>`, and only while the plugin runs. Allowed types are `.png`, `.js`, `.json` and `.css`, at most 1 MB each. Hidden files, `..` and symlinks that leave the folder are refused. These files are public, with no session needed, because the plugin's sandboxed iframe sends no cookie. Never put secrets there. The browser code is served compiled, at `/plugins/<name>/client.js`; the server code is never served.
 
@@ -55,6 +65,7 @@ Export any of these functions from the server module, and nothing else: an unkno
 | `onJoin(player)` | A member appears in the office. It is also called for everybody already online right after `load()`, so there is one code path. What you send them here reaches their browser code even if their page has not started your plugin yet (it waits there). |
 | `onLeave(player)` | The member left (after a 10 s reconnect grace) or was removed. |
 | `onMessage(player, msg)` | That member's copy of your browser code called `hq.send(msg)`. `msg` is `unknown`: it comes from a browser, check it. |
+| `onSettings()` | An administrator changed one of your settings (below); read them again with `hq.settings()`. |
 | `unload()` | Before the plugin stops (turned off, server stopping). |
 
 `player` is `{ id, name, role }` (`HQ.Player`), `role` being `"admin"` or `"member"`.
@@ -72,6 +83,7 @@ The global `hq`:
 | `hq.route(method, path, handler, opts)` | While the plugin loads (its top level or `load()`). Serves `GET` or `POST` at `/plugins/<name>/api<path>` (a fixed path such as `/state`). `handler(req)` gets `{ player, body, query }` and returns `{ status, body }` (both optional): a string body is sent as text, anything else as JSON. With `opts = { token: true }` (and `appTokens` in the manifest), a member's app token also opens it. |
 | `hq.log(...)` | One log line tagged with the plugin name (`console.log` too). |
 | `hq.now()` | Seconds since the plugin started. |
+| `hq.settings()` | The office's settings of your plugin, `{ key: value }`, defaults included (see Settings). |
 
 Only signed-in members reach a route, or an app with a member's token on a `{ token: true }` route (401 otherwise); either way `req.player` is that member. POST bodies are at most 16 KB, each member can make 5 requests a second per plugin (burst 10), and a route that does not answer within 1 s gets a 503.
 
@@ -79,10 +91,39 @@ Do not log message contents or personal data (see the privacy rules in [Privacy 
 
 Two habits the sample shows, worth copying:
 
-- **Collect changes and broadcast them in `update`**, once per tick, instead of broadcasting from every `onJoin`. A server restart brings the whole office back within a second, and per-join broadcasts would spend everybody's send budget. If a broadcast returns `false`, keep the changes and try again on the next update.
+- **Collect changes and broadcast them in `update`**, once per tick, instead of broadcasting from every `onJoin`. A server restart brings the whole office back within a second, and per-join broadcasts would spend everybody's send budget. If a broadcast returns `false`, keep the changes and try again on the next update. When the changes may not fit in one 4 KB message (a whole office's pets), send a piece per update, as the sample does.
+- **Decide office settings on the server.** The sample shows its administrator setting only to administrators, but it is the server code that refuses the change from anybody else (`player.role`).
 - **Check what browsers send before using it** (`if (typeof m !== "object" || m === null) return;`), and throttle anything a member can repeat. Messages come from members' pages, and every thrown error counts toward the 10-a-minute limit that stops the plugin.
 
-Type your messages once for both sides, as the sample does in `public/messages.ts`: the server imports it as `./public/messages`, the browser code as `./messages`. It holds types only, so nothing of it runs.
+Type your messages once for both sides, as the sample does in `public/messages.ts`: the server imports it as `./public/messages`, the browser code as `./messages`. Keep it to types and small constants (the sample's list of kinds): both sides bundle it.
+
+### Settings
+
+A plugin can declare settings an administrator makes for the office. Home Quarters draws them behind the plugin's gear button in Administration > Plugins, checks each value against the declaration, stores it, records the change in the activity log and calls your `onSettings()`. Only whole numbers for now:
+
+~~~json
+"settings": [{ "key": "limit", "label": "Pets per member", "type": "number", "min": 0, "max": 8, "default": 3 }]
+~~~
+
+Keys match `^[a-z][a-zA-Z0-9]{0,31}$`, labels are 1-40 characters, at most 16 settings; an optional `help` (up to 200 characters) shows under the field. Explanations that do not fit the one-line `description` go in `longDescription`, behind the plugin's About button. A stored value outside a newer version's range is clamped. Settings that only concern one member belong in your own modal instead.
+
+### Hooks between plugins
+
+A plugin may offer functions to other plugins, and only those: `hq.expose(name, fn)` in `load()`. Another plugin calls them with `await hq.plugins.call(plugin, name, args)`:
+
+~~~ts
+// in hq-pets
+hq.expose("setPet", (caller, args) => { /* caller.plugin, caller.member */ return { ok: true }; });
+
+// in another plugin, in a route an app calls with a member's token
+const r = await hq.plugins.call("hq-pets", "setPet", { id: "current", sheet: "shared/critter.png", cell: [24, 24], name: "Bramble" });
+~~~
+
+`caller.plugin` is the calling plugin, and `caller.member` the member whose request, message, arrival or departure it was handling when it called, set by Home Quarters, never by the caller (`null` for a call made in `update()` or after an awaited answer). So a hook can act for that member only: no plugin can give someone else a pet. Arguments and answers are JSON of at most 4 KB; a call fails if the plugin is off, does not expose that hook, throws or takes more than 2 s. A plugin has at most 16 hooks and 64 calls waiting.
+
+**Images for other plugins.** Files under `public/shared/` can also be drawn by other plugins' pages: `hq.loadSprite(key, "shared/critter.png", { frameW, frameH, from: "critters" })`. The rest of `public/` is the plugin's own.
+
+**The pets plugin's hooks.** `setPet(caller, { id, sheet, cell, name })` puts (or, with the same `id`, replaces) a pet drawn from the caller's `shared/` sheet with `caller.member`: 4 rows (down, left, right, up) of 3 cells (idle, step A, step B), `cell` being `[w, h]`, 8 to 64 px. It then follows, wanders with the moods, comes back on Call pets and shows its name on hover, like the member's own pets, but it does not count in the office's limit and is not in the Pets modal: the plugin that put it manages it. `removePet(caller, { id })` takes it away. At most 4 such pets per member, all plugins together. Everything a plugin author needs (the sheet format, the answers, a complete example) is in the [hq-pets developer guide](../plugins/bundled/hq-pets/docs/README.md). The suite's test plugin [`critters`](../e2e/fixtures/plugins/installed/critters) does it from an app token route.
 
 ### Limits
 
@@ -111,9 +152,12 @@ Your `client` code runs in a hidden iframe with `sandbox="allow-scripts"`. That 
 | `hq.loadSprite(key, path, { frameW, frameH, anims })` | A PNG sheet from `public/` (at most 2048 px a side and 4096 frames), cut into frames. `anims = { name: { row, frames: [..], fps } }`. |
 | `hq.spawn(id, key, { x, y, anim })` and `hq.remove(id)` | Put a sprite in the world, anchored at the bottom centre of its frame, or take it away. Spawning an existing id replaces it. |
 | `hq.moveTo(id, x, y, { speed })` | Walk there in a straight line (px/s, default 72). |
-| `hq.follow(id, playerId, { gap })` | Walk that member's trail, `gap` px behind (default 36), with the built-in pets' following. When the member stops, the sprite sits 22 px to their side, away from their own pet. It hides while the member is off screen. |
+| `hq.walkTo(id, x, y, { speed })` | Walk there along a path around walls; somewhere it cannot reach, it stays where it is. |
+| `hq.follow(id, playerId, { gap, beside })` | Walk that member's trail, `gap` px behind (default 36), on the very path they walked, never cutting a corner. When the member stops, the sprite sits `beside` px to their side (default 22). Give each of several followers its own `gap` and `beside` and they walk and rest in a line. With `roam` (0-48 px), it potters about the member's feet instead of sitting still: a new spot every 5 to 10 s, wherever it can stand, the same on every page. It hides while the member is off screen. `hq.follow(id, { sprite: other })` follows another of your sprites the same way. |
 | `hq.stop(id)` | Stand still. |
 | `hq.setAnim(id, name)`, `hq.setFlip(id, on)`, `hq.setVisible(id, on)` | Play an animation while standing, mirror the sprite, show or hide it. |
+| `hq.setLabel(id, text, { owner })` | One line (at most 24 characters) shown above the sprite only while the mouse is over it; `null` removes it. With `owner`, that member's current name shows under it. Touch screens never show it. |
+| `hq.setTint(id, colour)` | Multiplies the sprite's colours by `colour` (`"#rrggbb"`), `null` to remove it. Draw a sheet in light greys and a tint gives it any colour while dark outlines stay dark; the sample ships `pets-tint.png` for that. It costs nothing: no new texture. |
 
 While a sprite moves (`moveTo`, `follow`), the page plays the animation named `walk-<facing>` (or `walk`). While it stands, it plays the one set with `setAnim`, else `idle-<facing>` (or `idle`). Facings are `down`, `left`, `right` and `up`.
 
@@ -128,9 +172,13 @@ hq.ui.slot("config", "sidebar", { onClick: openSettings });             // an en
 hq.ui.slot("call", "topbar", { label: "Let wander", onClick: toggle });  // a button in the top bar
 
 function openSettings() {
-  hq.ui.modal({ title: "Sample pet", size: "small", onClose: () => {} }, [
-    hq.ui.text("Colour", { muted: true }),
-    hq.ui.row(["Meadow", "Frost"].map((label, v) => hq.ui.button({ label, pressed: v === mine, onClick: () => hq.send({ t: "variant", v }) }))),
+  hq.ui.modal({ title: "Pets", size: "medium", onClose: () => {} }, [
+    hq.ui.row([
+      hq.ui.text("Cat"),
+      hq.ui.color({ label: "Colour of Cat", value: "#3fa7d6", onChange: (c) => hq.send({ t: "colour", i: 0, c }) }),
+      hq.ui.button({ label: "Remove", onClick: () => hq.send({ t: "remove", i: 0 }) }),
+    ]),
+    hq.ui.number({ label: "Pets per member", value: 3, min: 0, max: 8, onChange: (n) => hq.send({ t: "limit", n }) }),
   ]);
 }
 ~~~
@@ -147,6 +195,10 @@ function openSettings() {
 | `hq.ui.copy({ label, value })` | A read-only field with a Copy button. |
 | `hq.ui.image({ src, alt })` | A PNG of your `public/` folder, at most 128 px. |
 | `hq.ui.row(children)` | Puts its children side by side. |
+| `hq.ui.color({ label, value, onChange })` | A colour picker. `value` is `"#rrggbb"`; `onChange(colour)` runs while it is being chosen, at most 4 times a second, and with the final colour. `hideLabel` keeps the label for screen readers only (also on `field`). |
+| `hq.ui.sprite({ src, frame, scale, tint, alt })` | One cell of a PNG of `public/`, `frame` being `[x, y, w, h]` (at most 128 px a side), scaled 1-6 times (default 2) with crisp pixels; `tint` multiplies its colours like `hq.setTint`. A button takes the same `sprite` to show a picture before its label. |
+| `hq.ui.field({ label, value, maxLength, placeholder, onChange })` | One line of text (at most `maxLength`, 1-200); `onChange(text)` runs once it is entered (Enter or leaving the field), if it changed. |
+| `hq.ui.number({ label, value, min, max, onChange })` | A whole number in `min`..`max`; `onChange(value)` runs once it is entered (Enter or leaving the field), clamped to the range. |
 | `hq.ui.appToken()` | Home Quarters' own token widget for this plugin (below). |
 
 Sizes and positions are presets on purpose: the office also runs on phones, and a modal placed in pixels would fall off a small screen. Many labelled buttons in the top bar crowd a phone's screen: prefer an icon there.

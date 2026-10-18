@@ -100,7 +100,7 @@ The [business model](business-model.md) sells hosted instances. The software is 
 
 ## Known small issues
 
-- The pet can briefly overlap its owner on a sharp turn or a reversal, and hides behind the owner for about half a second while walking toward the camera.
+- Pets (the bundled plugin) can briefly overlap each other or their owner on a sharp turn or a reversal, and hide behind the owner for about half a second while walking toward the camera.
 - A raised hand is lowered after a reconnect.
 - Clicking *Lock room* twice quickly sends two lock requests (harmless: the second does nothing).
 - On custom maps, a door framed by a one-tile wall stub gets no doormat.

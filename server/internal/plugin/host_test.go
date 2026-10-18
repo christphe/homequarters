@@ -106,7 +106,7 @@ func newHost(t *testing.T, plugins map[string]string) (*Host, *fakeSink, *memKV)
 		files[name+"/main.ts"] = src
 	}
 	write(t, root, files)
-	cat, err := Scan(root)
+	cat, err := scanDir(root, Installed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,7 +542,7 @@ func TestTokenRoutesNeedTheManifestFlag(t *testing.T) {
 		"flag/plugin.json": `{"name":"flag","title":"T","version":"1","server":"main.ts"}`,
 		"flag/main.ts":     `export function load() { hq.route("POST", "/state", () => ({ body: "ok" }), { token: true }); }`,
 	})
-	cat, err := Scan(root)
+	cat, err := scanDir(root, Installed)
 	if err != nil {
 		t.Fatal(err)
 	}

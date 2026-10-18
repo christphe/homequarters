@@ -37,6 +37,14 @@ declare global {
       token?: boolean;
     }
 
+    /** Who calls a hook: the calling plugin, and the member whose request, message, arrival or departure it
+     * was handling when it called (set by Home Quarters, never by the caller); null when it acted on its own
+     * (in update(), or after an awaited answer). */
+    interface Caller {
+      plugin: string;
+      member: number | null;
+    }
+
     interface Server {
       /** Sends msg (anything JSON.stringify accepts) to that member's browser code. false: not online, or the send budget is spent. Throws over 4 KB. */
       send(id: number, msg: unknown): boolean;
@@ -57,6 +65,17 @@ declare global {
       log(...parts: unknown[]): void;
       /** Seconds since the plugin started. */
       now(): number;
+      /** The office's settings of this plugin, declared in plugin.json ("settings") and set by an
+       * administrator in Administration > Plugins; a setting never changed has its default. */
+      settings(): Record<string, number>;
+      /** In load(): a function other plugins may call (hq.plugins.call). name: ^[a-z][a-zA-Z0-9]{0,31}$, at most
+       * 16 hooks. It gets the caller and the arguments (JSON) and returns JSON of at most 4 KB, maybe async. */
+      expose(name: string, hook: (caller: Caller, args: any) => unknown): void;
+      plugins: {
+        /** Calls another plugin's hook. Rejects if that plugin is off, does not expose the hook, throws, takes over
+         * 2 s, or if the arguments or the answer are over 4 KB. At most 64 calls waiting at once; not in load(). */
+        call<T = unknown>(plugin: string, hook: string, args?: unknown): Promise<T>;
+      };
     }
 
     /** What a server module may export (all optional, may be async). Any other export stops the plugin from starting. */
@@ -71,6 +90,8 @@ declare global {
       onLeave?(player: Player): void;
       /** That member's browser code called hq.send(msg). msg comes from a browser: check it before use. */
       onMessage?(player: Player, msg: unknown): void;
+      /** An administrator changed a setting: read the new values with hq.settings(). */
+      onSettings?(): void;
       /** Before the plugin stops. */
       unload?(): void;
     }

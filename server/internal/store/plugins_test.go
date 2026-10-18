@@ -56,3 +56,23 @@ func TestPluginKV(t *testing.T) {
 		t.Fatalf("plugins are isolated: %v", m)
 	}
 }
+
+func TestPluginSettings(t *testing.T) {
+	s, o := open(t)
+	ctx := context.Background()
+	if v, err := s.PluginSettings(ctx, o.ID); err != nil || len(v) != 0 {
+		t.Fatalf("a fresh office has no settings: %v %v", v, err)
+	}
+	for _, x := range []struct {
+		p, k string
+		v    float64
+	}{{"pets", "limit", 5}, {"pets", "limit", 2}, {"pets", "speed", 40}, {"other", "limit", 1}} {
+		if err := s.SetPluginSetting(ctx, o.ID, x.p, x.k, x.v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v, err := s.PluginSettings(ctx, o.ID)
+	if err != nil || v["pets"]["limit"] != 2 || v["pets"]["speed"] != 40 || v["other"]["limit"] != 1 || len(v) != 2 {
+		t.Fatalf("the last value of each setting, by plugin: %v %v", v, err)
+	}
+}

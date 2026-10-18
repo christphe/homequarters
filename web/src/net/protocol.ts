@@ -11,7 +11,6 @@ export interface AvatarSpec {
   hc: Color; // hair color
   sh: Color; // shirt
   pa: Color; // pants
-  pt?: number; // companion pet (0 = none), see game/art/pets.ts
   bd?: number; // beard (0 = none), see game/art/characters.ts
   ht?: number; // hat (0 = none)
   hk?: Color; // hat colour

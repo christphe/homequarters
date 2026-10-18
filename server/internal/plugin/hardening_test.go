@@ -158,7 +158,7 @@ func TestLargePluginLoadsWithinTheStartBudget(t *testing.T) {
 func TestBrokenPluginCanBeFixedWithoutARestart(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, map[string]string{"p/plugin.json": manifest("p", "main.ts", ""), "p/main.ts": "export function ("})
-	cat, err := Scan(root)
+	cat, err := scanDir(root, Installed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestCacheSeesContentChangesWithTheSameSizeAndTime(t *testing.T) {
 	write(t, root, map[string]string{"p/plugin.json": manifest("p", "main.ts", ""), "p/main.ts": `export function load() { hq.kv.set("v", "AAA"); }`})
 	main := filepath.Join(root, "p", "main.ts")
 	st, _ := os.Stat(main)
-	cat, _ := Scan(root)
+	cat, _ := scanDir(root, Installed)
 	h := NewHost(cat, &fakeSink{}, newMemKV(), quiet)
 	kv := h.kv.(*memKV)
 	t.Cleanup(h.Close)

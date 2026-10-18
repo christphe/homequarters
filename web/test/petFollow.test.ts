@@ -173,3 +173,59 @@ test("with rest beside, a resting creature sits at the owner's side, away from t
     if (want) assert.equal(Math.sign(dx), want, `side away from the pet at ${avoid}`);
   }
 });
+
+test("a pet resting at its owner's feet waits, then walks off behind them: no dash, no jump", () => {
+  for (const [vx, vy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const s = newPet();
+    const o = { x: 200, y: 200, t: 0 };
+    const rest = { beside: 10 };
+    // walk in, then stand still long enough to settle at the feet
+    for (let i = 0; i < 120; i++) { o.x += WALK * DT; o.t += DT * 1000; followOwner(s, o.x, o.y, 2, WALK, DT, o.t, () => true, 36, rest); }
+    for (let i = 0; i < 180; i++) { o.t += DT * 1000; followOwner(s, o.x, o.y, 2, 0, DT, o.t, () => true, 36, rest); }
+    assert.ok(Math.hypot(s.px - o.x, s.py - o.y) <= 12, `rests at the feet: ${Math.hypot(s.px - o.x, s.py - o.y)}`);
+    // set off: every frame the pet moves at most a walking step and a bit, and it never runs away sideways
+    let worst = 0, px = s.px, py = s.py;
+    const dir = vx < 0 ? 1 : vx > 0 ? 2 : vy < 0 ? 3 : 0;
+    for (let i = 0; i < 120; i++) {
+      o.x += vx * WALK * DT; o.y += vy * WALK * DT; o.t += DT * 1000;
+      followOwner(s, o.x, o.y, dir, WALK, DT, o.t, () => true, 36, rest);
+      worst = Math.max(worst, Math.hypot(s.px - px, s.py - py));
+      px = s.px; py = s.py;
+    }
+    assert.ok(worst <= WALK * DT * 1.6, `setting off ${vx},${vy}: a frame moved ${worst.toFixed(2)} px`);
+    const d = Math.hypot(s.px - o.x, s.py - o.y);
+    assert.ok(d >= 28 && d <= 44, `then it walks about 36 px behind: ${d.toFixed(1)}`);
+  }
+});
+
+test("at rest a roaming pet potters about its owner's feet, the same on every page", () => {
+  const rest = (clock: number) => ({ beside: 10, roam: 14, seed: 12345, clock });
+  const settle = (s: PetState, clock0: number, secs: number, record?: [number, number][]) => {
+    for (let i = 0; i < Math.round(secs / DT); i++) {
+      const t = i * DT * 1000;
+      followOwner(s, 300, 300, 0, 0, DT, 1000 + t, () => true, 36, rest(clock0 + t));
+      record?.push([s.px, s.py]);
+    }
+  };
+  const a = newPet(), b = newPet();
+  const seen: [number, number][] = [];
+  settle(a, 1_000_000, 40, seen);
+  settle(b, 1_000_000, 40);
+  assert.ok(Math.abs(a.px - b.px) < 0.01 && Math.abs(a.py - b.py) < 0.01, "two pages agree");
+  const spots = new Set(seen.map(([x, y]) => `${Math.round(x / 4)},${Math.round(y / 4)}`));
+  assert.ok(spots.size > 6, `it moves about: ${spots.size} places`);
+  const far = Math.max(...seen.slice(120).map(([x, y]) => Math.hypot(x - 300, y - 300)));
+  assert.ok(far <= 10 + 14 + 1, `it stays at the feet: ${far.toFixed(1)} px`);
+  let fastest = 0;
+  for (let i = 121; i < seen.length; i++) fastest = Math.max(fastest, Math.hypot(seen[i][0] - seen[i - 1][0], seen[i][1] - seen[i - 1][1]));
+  assert.ok(fastest <= 1.2, `it strolls, never jumps: ${fastest.toFixed(2)} px a frame`);
+});
+
+test("a roaming pet never picks a spot where it cannot stand", () => {
+  const s = newPet();
+  const wallAbove = (_x: number, y: number) => y >= 300; // nothing behind (above) the owner is free
+  for (let i = 0; i < 60 * 40; i++) {
+    followOwner(s, 300, 300, 0, 0, DT, 1000 + i * DT * 1000, wallAbove, 36, { beside: 10, roam: 14, seed: 7, clock: 2_000_000 + i * DT * 1000 });
+    assert.ok(s.py >= 300 - 0.01 || i < 60, `frame ${i}: ${s.py}`);
+  }
+});

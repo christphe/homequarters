@@ -19,12 +19,14 @@ const prelude = `
   "use strict";
   var h = {
     send: __tw_send, broadcast: __tw_broadcast, players: __tw_players, get: __tw_kv_get, set: __tw_kv_set,
-    del: __tw_kv_delete, route: __tw_route, log: __tw_log, now: __tw_now,
+    del: __tw_kv_delete, route: __tw_route, log: __tw_log, now: __tw_now, settings: __tw_settings,
+    expose: __tw_expose, call: __tw_call,
   };
-  ["__tw_send", "__tw_broadcast", "__tw_players", "__tw_kv_get", "__tw_kv_set", "__tw_kv_delete", "__tw_route", "__tw_log", "__tw_now"]
+  ["__tw_send", "__tw_broadcast", "__tw_players", "__tw_kv_get", "__tw_kv_set", "__tw_kv_delete", "__tw_route", "__tw_log", "__tw_now", "__tw_settings",
+   "__tw_expose", "__tw_call"]
     .forEach(function (k) { delete globalThis[k]; });
   var json = function (v) { var s = JSON.stringify(v === undefined ? null : v); return s === undefined ? "null" : s; };
-  var routes = [];
+  var routes = [], hooks = {}, pending = {}, hookReply = "";
   var log = function () { h.log(Array.prototype.map.call(arguments, String).join(" ")); };
   globalThis.hq = Object.freeze({
     send: function (id, msg) { return h.send(id, json(msg)); },
@@ -42,6 +44,18 @@ const prelude = `
     },
     log: log,
     now: function () { return h.now(); },
+    settings: function () { return JSON.parse(h.settings()); },
+    expose: function (name, fn) {
+      if (typeof fn !== "function") throw new TypeError("hq.expose: the hook must be a function");
+      h.expose(String(name));
+      hooks[String(name)] = fn;
+    },
+    plugins: Object.freeze({
+      call: function (plugin, hook, args) {
+        var id = h.call(String(plugin), String(hook), json(args));
+        return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
+      },
+    }),
   });
   globalThis.console = Object.freeze({ log: log, info: log, warn: log, error: log });
   // the host's view of the module and its async work, kept in this closure
@@ -71,6 +85,22 @@ const prelude = `
     if (thenable(r)) r.then(function (v) { reply = format(v); }, function (e) { asyncError = describe(e); });
     else reply = format(r);
   };
+  globalThis.__hook = function (name, from, member, args) {
+    hookReply = "";
+    // caller: the calling plugin, and the member whose action it is handling (set by the host, not the caller)
+    var r = hooks[name](Object.freeze({ plugin: from, member: member > 0 ? member : null }), parse(args));
+    var done = function (v) { hookReply = json(v); };
+    if (thenable(r)) r.then(done, function (e) { asyncError = "in hook " + name + ": " + describe(e); });
+    else done(r);
+  };
+  globalThis.__answered = function (hook) { return (hook ? hookReply : reply) !== "" || asyncError !== ""; };
+  globalThis.__hookReply = function () { var r = hookReply; hookReply = ""; if (!r) throw new Error("the hook did not answer"); return r; };
+  globalThis.__resolve = function (id, ok, payload) {
+    var p = pending[id];
+    delete pending[id];
+    if (!p) return;
+    if (ok) p.resolve(parse(payload)); else p.reject(new Error(payload));
+  };
   globalThis.__reply = function () { var r = reply; reply = ""; if (!r) throw new Error("the route handler did not answer"); return r; };
 })();
 `
@@ -87,6 +117,12 @@ func (in *instance) install() error {
 		"__tw_route":     in.jsRoute,
 		"__tw_log":       in.jsLog,
 		"__tw_now":       func([]any) (any, error) { return time.Since(in.started).Seconds(), nil },
+		"__tw_expose":    in.jsExpose,
+		"__tw_call":      in.jsCall,
+		"__tw_settings": func([]any) (any, error) {
+			b, err := json.Marshal(in.h.Settings(in.info.Name))
+			return string(b), err
+		},
 	}
 	for name, f := range fns {
 		if err := in.vm.RegisterHostFunc(name, f); err != nil {

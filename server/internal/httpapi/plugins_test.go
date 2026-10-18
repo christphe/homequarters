@@ -346,3 +346,85 @@ func TestAppTokens(t *testing.T) {
 		t.Fatalf("disabled plugin: %d", code)
 	}
 }
+
+// An installed plugin using the reserved hq- prefix is listed, refused and never served, even under
+// the name of the bundled plugin it imitates; enabling that name runs the bundled one.
+func TestPluginNameRefusalNoRoutes(t *testing.T) {
+	r := newRig(t, func(c *config.Config) { c.PluginsDir = filepath.Join("testdata", "plugins-twin") })
+	ana, _ := r.join("Ana", "")
+	_, _, list := ana.raw("GET", "/api/admin/plugins", nil)
+	for _, want := range []string{
+		`"title":"Twin (bundled)","version":"1.0.0","description":"The bundled one.","state":"disabled","error":"","source":"bundled","refused":false`,
+		`"state":"broken"`, `"source":"installed","refused":true`, `reserved for plugins bundled`,
+	} {
+		if !strings.Contains(list, want) {
+			t.Fatalf("admin list lacks %s: %s", want, list)
+		}
+	}
+	if code, out := ana.do("PUT", "/api/admin/plugins/hq-twin", map[string]any{"enabled": true}); code != 200 || out["state"] != "running" {
+		t.Fatalf("enable: %d %v", code, out)
+	}
+	if code, _, body := ana.raw("GET", "/plugins/hq-twin/api/who", nil); code != 200 || !strings.Contains(body, "bundled") {
+		t.Fatalf("route: %d %s", code, body)
+	}
+	if code, _, _ := ana.raw("GET", "/plugins/hq-twin/assets/only.json", nil); code != 404 {
+		t.Fatalf("the refused folder's asset was served: %d", code)
+	}
+	if _, _, body := ana.raw("GET", "/api/plugins", nil); strings.Count(body, `"name":"hq-twin"`) != 1 {
+		t.Fatalf("/api/plugins: %s", body)
+	}
+}
+
+// A plugins folder with neither bundled/ nor installed/ means plugins are off, as with no folder.
+func TestPluginsOffWithoutSides(t *testing.T) {
+	r := newRig(t, func(c *config.Config) { c.PluginsDir = t.TempDir() })
+	ana, _ := r.join("Ana", "")
+	if code, _, body := ana.raw("GET", "/api/admin/plugins", nil); code != 200 || strings.TrimSpace(body) != "[]" {
+		t.Fatalf("/api/admin/plugins: %d %s", code, body)
+	}
+}
+
+// An administrator sets a plugin's declared settings in the admin dialog: checked against the manifest,
+// stored, in the activity log, and seen at once by the running plugin.
+func TestPluginSettingsFromTheAdminDialog(t *testing.T) {
+	r := newRig(t, withPlugins)
+	ana, _ := r.join("Ana", "") // admin
+	bia, _ := r.join("Bia", "")
+	_, _, list := ana.raw("GET", "/api/admin/plugins", nil)
+	if !strings.Contains(list, `"settings":[{"key":"limit","label":"Limit","min":0,"max":8,"value":3}]`) {
+		t.Fatalf("the admin list shows the declared setting with its default: %s", list)
+	}
+	if code, out := ana.do("PUT", "/api/admin/plugins/echo", map[string]any{"enabled": true}); code != 200 {
+		t.Fatalf("enable: %d %v", code, out)
+	}
+	set := func(u *user, body map[string]any) int {
+		code, _ := u.do("PUT", "/api/admin/plugins/echo/settings", body)
+		return code
+	}
+	if code := set(bia, map[string]any{"key": "limit", "value": 5}); code != 403 {
+		t.Fatalf("a member: %d", code)
+	}
+	for _, bad := range []map[string]any{{"key": "limit", "value": 9}, {"key": "limit", "value": 2.5}, {"key": "nope", "value": 1}, {"key": "limit"}} {
+		if code := set(ana, bad); code != 400 {
+			t.Fatalf("%v: %d", bad, code)
+		}
+	}
+	if code := set(ana, map[string]any{"key": "limit", "value": 5}); code != 200 {
+		t.Fatalf("set: %d", code)
+	}
+	if _, _, body := ana.raw("GET", "/plugins/echo/api/settings", nil); !strings.Contains(body, `"limit":5`) {
+		t.Fatalf("the running plugin sees the new value: %s", body)
+	}
+	if _, _, list := ana.raw("GET", "/api/admin/plugins", nil); !strings.Contains(list, `"value":5`) {
+		t.Fatalf("the admin list shows it: %s", list)
+	}
+	if _, _, audit := ana.raw("GET", "/api/admin/audit", nil); !strings.Contains(audit, "plugin.settings") || !strings.Contains(audit, "limit=5") {
+		t.Fatalf("it is in the activity log: %s", audit)
+	}
+	if code := set(ana, map[string]any{"key": "limit", "value": 1}); code != 200 {
+		t.Fatal(code)
+	}
+	if code, _ := ana.do("PUT", "/api/admin/plugins/nope/settings", map[string]any{"key": "limit", "value": 1}); code != 404 {
+		t.Fatalf("an unknown plugin: %d", code)
+	}
+}

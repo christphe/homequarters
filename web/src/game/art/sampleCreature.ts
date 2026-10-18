@@ -1,11 +1,11 @@
 import { dark, light, px, type Ctx } from "./pixel";
-import { outline, PET_H, PET_W } from "./pets";
+import { outline, PET_H, PET_TOP, PET_W } from "./pets";
 
-// The creature of the sample plugin (plugins/sample-pet): a round seedling with a two-leaf sprout,
+// The seedling of the bundled pets plugin (plugins/bundled/hq-pets): a round seedling with a two-leaf sprout,
 // drawn by code in the house style like the built-in pets. Original design; nothing is traced or
-// extracted from any game. Exported to plugins/sample-pet/public/creatures.png by e2e/export-art.mjs.
-// Sheet: 16 x 16 cells, 3 columns (idle, step A, step B) by 4 rows (down, left, right, up) per variant,
-// variants stacked: 48 x 256 px.
+// extracted from any game. Its first variant goes into the plugin's sheets (pluginPets.ts).
+// Sheet: 16 x 20 cells (the pet cells, see pets.ts), 3 columns (idle, step A, step B) by 4 rows (down, left, right, up) per variant,
+// variants stacked: 48 x 320 px.
 
 export const SPROUT_VARIANTS = [
   { name: "meadow", body: "#a7d97a", leaf: "#3f9b4a", cheek: "#f0a0a0" },
@@ -19,6 +19,7 @@ const SHADOW = "rgba(40,24,90,0.30)";
 
 /** One cell: dir 0 down, 1 left, 3 up (right is the mirrored left); frame 0 idle, 1 and 2 steps. */
 function drawSprout(ctx: Ctx, ox: number, oy: number, dir: number, frame: number, v: (typeof SPROUT_VARIANTS)[number]) {
+  oy += PET_TOP; // the pet cells' headroom
   const r = (x: number, y: number, w: number, h: number, c: string) => px(ctx, ox + x, oy + y, w, h, c);
   const bob = frame === 0 ? 0 : -1;
   const shade = dark(v.body, 0.22);
@@ -58,7 +59,7 @@ function drawSprout(ctx: Ctx, ox: number, oy: number, dir: number, frame: number
   }
 }
 
-/** Draws every variant's sheet, stacked (48 x 256). */
+/** Draws every variant's sheet, stacked (48 x 320). */
 export function drawSproutSheet(ctx: Ctx) {
   const tmp = document.createElement("canvas");
   tmp.width = PET_W;

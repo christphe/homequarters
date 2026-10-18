@@ -40,9 +40,18 @@ declare global {
     /** Played while moving: walk-<facing> or walk; standing: the one set with setAnim, else idle-<facing> or idle. */
     type Anims = Record<string, Animation>;
 
-    /** An element of a modal or a box on the map, made by hq.ui.text, button, copy, image, row or appToken. */
+    /** One cell of a PNG of public/: frame [x, y, w, h] (w, h at most 128), scale 1-6 (default 2), and a tint
+     * "#rrggbb" that multiplies its colours, as hq.setTint does on the map. */
+    interface SpriteCell {
+      src: string;
+      frame: [x: number, y: number, w: number, h: number];
+      scale?: number;
+      tint?: string;
+    }
+
+    /** An element of a modal or a box on the map, made by hq.ui.text, button, copy, image, row, appToken, color, number, field or sprite. */
     interface UINode {
-      readonly type: "text" | "button" | "copy" | "image" | "row" | "appToken";
+      readonly type: "text" | "button" | "copy" | "image" | "row" | "appToken" | "color" | "number" | "field" | "sprite";
     }
 
     type ButtonAnchor = "topbar" | "topright" | "bottombar" | "sidebar" | "minimap";
@@ -50,13 +59,23 @@ declare global {
 
     interface UI {
       text(text: string, opts?: { muted?: boolean }): UINode;
-      button(opts: { label: string; onClick?: () => void; primary?: boolean; pressed?: boolean }): UINode;
+      /** A button; sprite shows a picture before its label. */
+      button(opts: { label: string; onClick?: () => void; primary?: boolean; pressed?: boolean; sprite?: SpriteCell }): UINode;
+      /** One cell of a sheet, for a preview; alt names it for screen readers. */
+      sprite(opts: SpriteCell & { alt: string }): UINode;
       copy(opts: { label: string; value: string }): UINode;
       /** A PNG of the plugin's public/ folder, shown at most 128 px. */
       image(opts: { src: string; alt: string }): UINode;
       row(children: UINode[]): UINode;
       /** Home Quarters' own app token widget (needs "appTokens": true in plugin.json). */
       appToken(): UINode;
+      /** A colour picker. value and the colour onChange gets are "#rrggbb" (lower case); onChange runs while the colour is
+       * being chosen, at most 4 times a second, and with the final one. hideLabel keeps the label for screen readers only. */
+      color(opts: { label: string; value: string; hideLabel?: boolean; onChange?: (colour: string) => void }): UINode;
+      /** One line of text (maxLength 1-200, default 200); onChange runs once it is entered (Enter or leaving the field), if it changed. */
+      field(opts: { label: string; value?: string; maxLength?: number; placeholder?: string; hideLabel?: boolean; onChange?: (text: string) => void }): UINode;
+      /** A whole number in min..max; onChange runs once it is entered (Enter or leaving the field), clamped to the range. */
+      number(opts: { label: string; value: number; min: number; max: number; onChange?: (value: number) => void }): UINode;
       /** A button at an anchor. The label (1-40 characters) defaults to the plugin's title. */
       slot(id: string, anchor: ButtonAnchor, opts?: { label?: string; icon?: string; pressed?: boolean; onClick?: () => void }): void;
       /** A box on the map, at most 240 x 160 px, dx/dy 0-200 px from the corner. */
@@ -77,18 +96,30 @@ declare global {
       /** To the plugin's server onMessage (anything JSON.stringify accepts). Throws if over 1500 bytes. */
       send(msg: unknown): void;
       /** A PNG sheet of public/ (at most 2048 px a side), cut into frameW x frameH cells. */
-      loadSprite(key: string, path: string, opts: { frameW: number; frameH: number; anims?: Anims }): void;
+      /** With from, a PNG of that other plugin's public/shared/ folder (path starting with "shared/"). */
+      loadSprite(key: string, path: string, opts: { frameW: number; frameH: number; anims?: Anims; from?: string }): void;
       /** Without x/y a new sprite waits for follow/moveTo, an existing one keeps its place (only its sheet changes). */
       spawn(id: string, key: string, opts?: { x?: number; y?: number; anim?: string }): void;
       remove(id: string): void;
       /** Walks there in a straight line (px/s, default 72), stopping at the first wall. */
       moveTo(id: string, x: number, y: number, opts?: { speed?: number }): void;
-      /** Walks that member's trail gap px behind (default 36); walks back around walls when called from elsewhere. */
-      follow(id: string, memberId: number, opts?: { gap?: number }): void;
+      /** Walks that member's trail gap px behind (0-200, default 36); walks back around walls when called from elsewhere.
+       * When the member stops it rests beside px to their side (0-120, default 22): give each follower its own.
+       * With roam (0-48 px), it potters about their feet instead, a new spot every 5-10 s, the same on every page. */
+      follow(id: string, memberId: number, opts?: { gap?: number; beside?: number; roam?: number }): void;
+      /** Follows another sprite of this plugin the same way, gap px behind; it waits while that sprite is gone or hidden. */
+      follow(id: string, who: { sprite: string }, opts?: { gap?: number; beside?: number; roam?: number }): void;
+      /** Walks there along a path around walls (px/s, default 72); somewhere it cannot reach, it stays where it is. */
+      walkTo(id: string, x: number, y: number, opts?: { speed?: number }): void;
       stop(id: string): void;
       setAnim(id: string, name: string): void;
       setFlip(id: string, on: boolean): void;
       setVisible(id: string, on: boolean): void;
+      /** One line (1-24 characters) shown above the sprite only while the mouse is over it; null removes it.
+       * opts.owner adds that member's current name under it, in brackets. */
+      setLabel(id: string, text: string | null, opts?: { owner?: number }): void;
+      /** Multiplies the sprite's colours by "#rrggbb": draw a sheet in light greys to give it any colour. null removes the tint. */
+      setTint(id: string, colour: string | null): void;
       ui: UI;
     }
   }

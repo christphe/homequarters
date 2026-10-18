@@ -18,8 +18,8 @@ import (
 	"homequarters/internal/world"
 )
 
-// Plugins: folders under HQ_PLUGINS_DIR, run per office by an internal/plugin Host that lives
-// as long as the office's world. See docs/plugins.md and ADR 0022.
+// Plugins: folders under HQ_PLUGINS_DIR/bundled and HQ_PLUGINS_DIR/installed, run per office by an
+// internal/plugin Host that lives as long as the office's world. See docs/plugins.md and ADR 0022.
 
 const (
 	maxPluginBody = 16 << 10 // POST body of a plugin route
@@ -44,16 +44,19 @@ func (s *Server) setupPlugins() {
 	}
 	cat, err := plugin.Scan(s.cfg.PluginsDir)
 	if err != nil {
-		s.log.Error("plugins folder unreadable: plugins are off", "dir", s.cfg.PluginsDir, "err", err)
+		s.log.Error("plugins folder unreadable", "dir", s.cfg.PluginsDir, "err", err)
+	}
+	if plugin.FlatLayout(s.cfg.PluginsDir) {
+		s.log.Warn("plugin folders directly in the plugins folder are not read: move them into installed/", "dir", s.cfg.PluginsDir)
+	}
+	if cat == nil {
+		s.log.Info("no bundled/ or installed/ plugins folder: plugins are off", "dir", s.cfg.PluginsDir)
 		return
 	}
 	s.plugins = cat
-	if s.plugins == nil {
-		s.plugins = []plugin.Info{}
-	}
 	for _, i := range cat {
 		if i.Err != "" {
-			s.log.Warn("plugin is broken", "plugin", i.Name, "err", i.Err)
+			s.log.Warn("plugin is broken", "plugin", i.Name, "source", i.Source, "err", i.Err)
 		}
 	}
 	s.log.Info("plugins installed", "count", len(cat))
@@ -125,8 +128,17 @@ func (s *Server) pluginHost(office int64, w *world.World) *plugin.Host {
 	return h
 }
 
-// startPlugins starts the plugins an administrator enabled.
+// startPlugins gives every plugin its stored settings, then starts the ones an administrator enabled.
 func (s *Server) startPlugins(office int64, h *plugin.Host) {
+	settings, err := s.st.PluginSettings(s.ctx, office)
+	if err != nil {
+		s.log.Error("load plugin settings", "err", err)
+	}
+	for _, st := range h.Status() {
+		if !st.NameRefused && len(st.Settings) > 0 {
+			h.SetSettings(st.Name, settings[st.Name])
+		}
+	}
 	flags, err := s.st.PluginFlags(s.ctx, office)
 	if err != nil {
 		s.log.Error("load plugin flags", "err", err)
@@ -175,6 +187,7 @@ func (s *Server) pluginRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/admin/plugins", s.adminPlugins)
 	mux.HandleFunc("PUT /api/admin/plugins/{name}", s.setPlugin)
+	mux.HandleFunc("PUT /api/admin/plugins/{name}/settings", s.setPluginSetting)
 	mux.HandleFunc("GET /plugins/{name}/api/{path...}", s.pluginRoute)
 	mux.HandleFunc("POST /plugins/{name}/api/{path...}", s.pluginRoute)
 	mux.HandleFunc("GET /plugins/{name}/assets/{path...}", s.pluginAsset)
@@ -265,8 +278,23 @@ type pluginStatus struct {
 	Title       string `json:"title"`
 	Version     string `json:"version"`
 	Description string `json:"description"`
-	State       string `json:"state"`
-	Error       string `json:"error"`
+	// LongDescription is shown in the admin dialog's About modal
+	LongDescription string `json:"longDescription,omitempty"`
+	State           string `json:"state"`
+	Error           string `json:"error"`
+	Source          string `json:"source"`  // bundled or installed
+	Refused         bool   `json:"refused"` // refused for its name: no switch, it can never run
+	// Settings are the administrator's choices the plugin declares, with their current values
+	Settings []settingView `json:"settings,omitempty"`
+}
+
+type settingView struct {
+	Key   string  `json:"key"`
+	Label string  `json:"label"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
+	Value float64 `json:"value"`
+	Help  string  `json:"help,omitempty"`
 }
 
 func (s *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
@@ -276,10 +304,59 @@ func (s *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
 	out := []pluginStatus{}
 	if h := s.hostFor(r.Context()); h != nil {
 		for _, st := range h.Status() {
-			out = append(out, pluginStatus{st.Name, st.Title, st.Version, st.Description, st.State, st.Error})
+			row := pluginStatus{Name: st.Name, Title: st.Title, Version: st.Version, Description: st.Description, LongDescription: st.LongDescription, State: st.State, Error: st.Error, Source: st.Source, Refused: st.NameRefused}
+			if !st.NameRefused {
+				vals := h.Settings(st.Name)
+				for _, d := range st.Settings {
+					row.Settings = append(row.Settings, settingView{d.Key, d.Label, d.Min, d.Max, vals[d.Key], d.Help})
+				}
+			}
+			out = append(out, row)
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// setPluginSetting changes one of a plugin's declared settings for the office: checked against its
+// manifest, stored, audited, and handed to the plugin at once (onSettings).
+func (s *Server) setPluginSetting(w http.ResponseWriter, r *http.Request) {
+	se := s.adminSession(w, r)
+	if se == nil {
+		return
+	}
+	var body struct {
+		Key   string   `json:"key"`
+		Value *float64 `json:"value"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256)).Decode(&body); err != nil || body.Value == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key and value are required"})
+		return
+	}
+	name := r.PathValue("name")
+	h := s.hostFor(r.Context())
+	info, ok := plugin.Info{}, false
+	if h != nil {
+		info, ok = h.Info(name)
+	}
+	if !ok || info.NameRefused {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such plugin"})
+		return
+	}
+	if err := info.CheckSetting(body.Key, *body.Value); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := s.st.SetPluginSetting(r.Context(), se.OfficeID, name, body.Key, *body.Value); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save"})
+		return
+	}
+	stored, err := s.st.PluginSettings(r.Context(), se.OfficeID)
+	if err != nil {
+		s.log.Error("load plugin settings", "plugin", name, "err", err)
+	}
+	h.SetSettings(name, stored[name])
+	s.audit(r, se, "plugin.settings", 0, info.Name, fmt.Sprintf("%s=%v", body.Key, *body.Value))
+	writeJSON(w, http.StatusOK, map[string]any{"settings": h.Settings(name)})
 }
 
 // setPlugin enables or disables an installed plugin, live, and remembers the choice.

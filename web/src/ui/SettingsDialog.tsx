@@ -3,7 +3,7 @@ import { activeMedia, media, spotlightMedia } from "../media/MediaManager";
 import { session } from "../session";
 import { saveAvatar, saveSettings, toast, useStore } from "../store";
 import type { AvatarSpec } from "../net/protocol";
-import { AvatarCanvas, PetCanvas } from "./AvatarEditor";
+import { AvatarCanvas } from "./AvatarEditor";
 import { AppearanceDialog } from "./AppearanceDialog";
 import { NoiseDialog } from "./NoiseDialog";
 import { MediaDialog } from "./MediaDialog";
@@ -55,7 +55,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <div className="profile-row">
             <div className="ae-preview profile-look">
               <AvatarCanvas av={avatar} dir={0} size={3} />
-              {!!avatar.pt && <PetCanvas kind={avatar.pt} dir={0} size={2} />}
             </div>
             <div className="profile-fields">
               <input maxLength={24} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("join.name")} />

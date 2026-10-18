@@ -5,8 +5,6 @@ import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { isBusyKey, isHomeKey } from "./home";
 import { propSize } from "./mapModel";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
-import { petFrames, PET_FEET_Y, PET_H, type PetFrames } from "./pets";
-import { followOwner, newPet, type PetState } from "./petFollow";
 import { bakeMap } from "./mapArt";
 import { PluginLayer } from "./pluginLayer";
 
@@ -78,11 +76,6 @@ interface Ent {
   dir: number;
   moving: boolean;
   run: boolean;
-  pet: Sprite | null;
-  petKind: number;
-  petFrames: PetFrames | null;
-  /** Where the pet is and the trail it walks (see petFollow.ts). */
-  ps: PetState;
   speaking: boolean;
   sharing: boolean;
   inConv: boolean;
@@ -135,14 +128,13 @@ export class WorldView {
   private areaLabels: { text: BitmapText; ai: number }[] = [];
   private deskLabels: { text: BitmapText; x: number; y: number; label: string; ai: number }[] = [];
   private ents = new Map<number, Ent>();
-  /** Sprites drawn for plugins (src/plugins): they sort with avatars and pets. */
+  /** Sprites drawn for plugins (src/plugins): they sort with avatars. */
   readonly plugins = new PluginLayer(this.entLayer, {
     owner: (id) => {
       const e = this.ents.get(id);
       if (!e) return null;
       const fast = e.id === this.meId ? this.running || this.guided : e.run;
-      const petX = e.pet?.visible && Number.isFinite(e.ps.px) ? e.ps.px : undefined;
-      return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible, petX };
+      return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible };
     },
     canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
@@ -169,6 +161,10 @@ export class WorldView {
   private panX = 0;
   private panY = 0;
   private drag: { id: number; x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
+  /** The mouse over the map (canvas pixels), for the name of a plugin sprite under it; null elsewhere or for touch. */
+  private mouse: { x: number; y: number } | null = null;
+  /** A plugin sprite's label and its owner's name, shown while the mouse is over the sprite. */
+  private hoverTag = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 18, fill: 0xffe9a8, align: "center", stroke: { color: 0x1a1526, width: 3 } } });
   private dragEndAt = 0;
   // the server's area of interest (hello): its cell size, default and largest radius in cells
   private cellPx = 0;
@@ -242,6 +238,9 @@ export class WorldView {
     this.world.addChild(this.entLayer, this.fxG);
     this.entLayer.sortableChildren = true;
     this.hud.addChild(this.hudG);
+    this.hoverTag.anchor.set(0.5, 1);
+    this.hoverTag.visible = false;
+    this.hud.addChild(this.hoverTag);
     // no outline: on the light plate it only smeared the pixel letters
     this.bannerText = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 30, fill: 0x383858 } });
     this.banner.addChild(this.bannerG, this.bannerText);
@@ -325,6 +324,17 @@ export class WorldView {
     const pup = (e: PointerEvent) => {
       if (this.drag && e.pointerId === this.drag.id) this.stopDrag();
     };
+    const hoverMove = (e: PointerEvent) => {
+      const r = app.canvas.getBoundingClientRect();
+      this.mouse = e.pointerType === "mouse" ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
+    };
+    const hoverOut = () => { this.mouse = null; };
+    app.canvas.addEventListener("pointermove", hoverMove);
+    app.canvas.addEventListener("pointerleave", hoverOut);
+    this.cleanup.push(() => {
+      app.canvas.removeEventListener("pointermove", hoverMove);
+      app.canvas.removeEventListener("pointerleave", hoverOut);
+    });
     app.canvas.addEventListener("pointerdown", pdown);
     app.canvas.addEventListener("pointermove", pmove);
     app.canvas.addEventListener("pointerup", pup);
@@ -602,6 +612,34 @@ export class WorldView {
   previewMap(map: MapData) {
     this.setMap(map, [...this.deny]);
   }
+  /** Shows the label of the plugin sprite under the mouse (and its owner's name), or hides it; true when it changed. */
+  private placeHoverTag(): boolean {
+    const tag = this.hoverTag;
+    const m = !this.mouse || this.drag?.moved || document.querySelector(".scrim") ? null : this.mouse;
+    const hit = m ? this.plugins.labelAt((m.x - this.camX) / this.S, (m.y - this.camY) / this.S) : null;
+    if (!hit) {
+      if (!tag.visible) return false;
+      tag.visible = false;
+      return true;
+    }
+    const owner = hit.owner ? this.people.get(hit.owner)?.n : undefined;
+    const text = owner ? hit.text + "\n(" + owner + ")" : hit.text;
+    const x = Math.round(this.camX + hit.x * this.S), y = Math.round(this.camY + hit.top * this.S - 2);
+    if (tag.visible && tag.text === text && tag.x === x && tag.y === y) return false;
+    tag.text = text;
+    tag.position.set(x, y);
+    if (!tag.visible) this.hud.addChild(tag); // above the name tags added since
+    tag.visible = true;
+    return true;
+  }
+  /** Tests: where world point (x, y) is in the page, and the hover tag's text ("" while hidden). */
+  pageOf(x: number, y: number): { x: number; y: number } {
+    const r = this.app.canvas.getBoundingClientRect();
+    return { x: r.left + this.camX + x * this.S, y: r.top + this.camY + y * this.S };
+  }
+  hoverText(): string {
+    return this.hoverTag.visible ? this.hoverTag.text : "";
+  }
   screenToTile(clientX: number, clientY: number): [number, number] {
     const r = this.app.canvas.getBoundingClientRect();
     const wx = (clientX - r.left - this.camX) / this.S;
@@ -816,7 +854,6 @@ export class WorldView {
     this.hud.addChild(label);
     const e: Ent = {
       id, key: "", frames, spr, label, text, dot, ring: null, hand: null, danceUntil: 0, tx: 0, ty: 0, ox: 0, oy: 0, dx: 0, dy: 0, x: 0, y: 0, dir: 0, moving: false, run: false,
-      pet: null, petKind: 0, petFrames: null, ps: newPet(),
       speaking: false, sharing: false, inConv: false, status: p?.s ?? "available", name: p?.n ?? "", drawnStatus: "", drawnConv: false, drawnShare: false,
     };
     this.refreshEnt(e);
@@ -851,45 +888,6 @@ export class WorldView {
       }
       e.drawnStatus = ""; // re-lay out the badges
     }
-    this.setPet(e, p.av.pt ?? 0);
-    if (e.pet) e.pet.alpha = e.spr.alpha;
-  }
-
-  private setPet(e: Ent, kind: number) {
-    if (kind === e.petKind) return;
-    e.petKind = kind;
-    e.petFrames = petFrames(kind);
-    if (!e.petFrames) {
-      e.pet?.destroy();
-      e.pet = null;
-      return;
-    }
-    if (!e.pet) {
-      e.pet = new Sprite(e.petFrames[0][0]);
-      e.pet.anchor.set(0.5, PET_FEET_Y / PET_H);
-      this.entLayer.addChild(e.pet);
-      e.ps = newPet(); // placed behind the owner on the next frame
-    }
-  }
-
-  /** One frame of the pet's walk (logic in petFollow.ts, tested with node --test). */
-  private petCanStand = (x: number, y: number) => !!this.map && this.canStandStatic(x, y);
-
-  /** Returns whether the pet's picture or position changed. */
-  private stepPet(e: Ent, dt: number, now: number): boolean {
-    const pet = e.pet!;
-    const s = e.ps;
-    const ownerV = (e.run || (e.id === this.meId && (this.running || this.guided)) ? this.runMul : 1) * this.speed;
-    followOwner(s, e.x, e.y, e.dir, ownerV, dt, now, this.petCanStand);
-    const idleHop = !s.moving && now - s.restSince > 1500 && now % 2600 < 140; // a little hop now and then
-    const ph = s.moving ? [1, 0, 2, 0][Math.floor((now / 1000) * 10) & 3] : idleHop ? 1 : 0;
-    const tex = e.petFrames![s.dir]?.[ph] ?? e.petFrames![0][0];
-    const px = Math.round(s.px), py = Math.round(s.py) - (idleHop ? 1 : 0);
-    const changed = tex !== pet.texture || px !== pet.x || py !== pet.y;
-    pet.texture = tex;
-    pet.position.set(px, py);
-    pet.zIndex = s.py;
-    return changed;
   }
 
   private removeEnt(id: number) {
@@ -897,7 +895,6 @@ export class WorldView {
     const e = this.ents.get(id);
     if (!e) return;
     e.spr.destroy();
-    e.pet?.destroy();
     e.label.destroy({ children: true });
     e.ring?.destroy();
     this.ents.delete(id);
@@ -1211,11 +1208,6 @@ export class WorldView {
       if (e.spr.visible !== on) changed = true;
       e.spr.visible = on;
       e.label.visible = on;
-      if (e.pet) {
-        e.pet.visible = on;
-        if (!on) e.ps.px = NaN; // re-enters the view behind its owner
-        else if (this.stepPet(e, dt, now)) changed = true;
-      }
       if (e.ring) e.ring.visible = on && e.speaking;
       if (!on) continue;
       visible++;
@@ -1310,6 +1302,7 @@ export class WorldView {
     }
 
     if (this.plugins.step(deltaMS, now)) changed = true;
+    if (this.placeHoverTag()) changed = true;
 
     // animations that redraw on their own every frame
     if (this.emotes.size || this.dest || this.locate || this.banner.visible) changed = true;

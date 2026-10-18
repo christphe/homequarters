@@ -1,12 +1,14 @@
 import { blob, dark, light, mix, px, rgb, type Ctx } from "./pixel";
 
-// Companion pets: small 3/4-view critters that trot after their owner. Drawn by code, like
-// everything else; nothing is traced or extracted from any game.
-// Content is 14 x 14 px inside a 16 x 16 cell (1 px outline margin). Rows: down, left, right, up;
+// Pets: small 3/4-view critters, drawn for the bundled pets plugin (art/pluginPets.ts). Drawn by code,
+// like everything else; nothing is traced or extracted from any game.
+// Body 14 x 14 px inside a 16 x 20 cell: a 1 px outline margin, plus PET_TOP rows on top for what
+// sticks up (a bunny's ears), as the avatar cells have for hats. Rows: down, left, right, up;
 // columns: idle, step A, step B.
 export const PET_W = 16;
-export const PET_H = 16;
-export const PET_FEET_Y = 14;
+export const PET_TOP = 4;
+export const PET_H = 16 + PET_TOP;
+export const PET_FEET_Y = 14 + PET_TOP;
 
 export const PET_KINDS = ["none", "cat", "dog", "bunny", "fox", "chick", "slime", "owl", "axolotl"] as const;
 export type PetKind = (typeof PET_KINDS)[number];
@@ -68,8 +70,8 @@ function quadFront(r: R, q: Quad, frame: number, back: boolean) {
       if (!back) { r(3, 2, 1, 1, q.inner); r(10, 2, 1, 1, q.inner); }
       break;
     case "long":
-      r(3, -1, 2, 5, q.body); r(9, -1, 2, 5, q.body);
-      if (!back) { r(4, 0, 1, 3, q.inner); r(9, 0, 1, 3, q.inner); }
+      r(3, -3, 2, 7, q.body); r(9, -3, 2, 7, q.body);
+      if (!back) { r(4, -2, 1, 5, q.inner); r(9, -2, 1, 5, q.inner); }
       break;
     case "flop":
       break;
@@ -109,7 +111,7 @@ function quadSide(r: R, q: Quad, frame: number) {
   r(5, 7, 5, 1, light(q.body, 0.2));
   // ears
   if (q.ear === "point") { r(3, 0, 3, 3, q.body); r(4, 1, 1, 1, q.inner); }
-  if (q.ear === "long") { r(4, -1, 2, 4, q.body); r(4, 0, 1, 2, q.inner); }
+  if (q.ear === "long") { r(4, -3, 2, 6, q.body); r(4, -2, 1, 4, q.inner); }
   // head (facing left)
   r(1, 2, 6, 1, q.body);
   r(0, 3, 7, 4, q.body);
@@ -207,6 +209,7 @@ function axolotl(r: R, ctx: Ctx, ox: number, oy: number, dir: number, frame: num
 }
 
 export function drawPet(ctx: Ctx, ox: number, oy: number, dir: number, frame: number, kind: number) {
+  oy += PET_TOP;
   const name = PET_KINDS[kind];
   const r: R = (x, y, w, h, c) => px(ctx, ox + 1 + x, oy + 1 + y, w, h, c);
   const q = QUADS[name];

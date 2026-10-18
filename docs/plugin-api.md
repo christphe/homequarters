@@ -11,10 +11,12 @@ Everything here was built and tested on 2026-10-17. Limits are enforced: breakin
 | `name` | string | yes | `^[a-z][a-z0-9-]{0,31}$`, equal to the folder name. |
 | `title` | string | no | Shown to administrators and as the default label of the plugin's `sidebar` entry. Defaults to `name`. |
 | `version` | string | no | Shown to administrators. |
-| `description` | string | no | Shown to administrators. |
+| `description` | string | no | One line under the title in Administration > Plugins, at most 160 characters (more goes in `longDescription`). |
 | `server` | string | one of `server`/`client` | A `.ts` or `.js` file in the plugin folder, compiled with its imports when the server starts. |
 | `client` | string | one of `server`/`client` | A `.ts` or `.js` file inside `public/`, compiled with its imports and served at `/plugins/<name>/client.js`. |
 | `appTokens` | boolean | no | Members may create an app token for this plugin; needed for routes declared with `{ token: true }`. |
+| `longDescription` | string | no | At most 2000 characters, shown by the About button of the plugin's row in Administration > Plugins; blank lines separate paragraphs. |
+| `settings` | array | no | At most 16 `{ key, label, type: "number", min, max, default, help }`: whole numbers within ±1,000,000, `min <= default <= max`, key `^[a-z][a-zA-Z0-9]{0,31}$`, label 1-40 characters, `help` (optional) up to 200, shown under the field. Drawn behind the plugin's gear button in Administration > Plugins. |
 
 A plugin whose manifest or files are invalid is listed as `broken` with the reason. Turning it on reads it again, so fixing the files is enough.
 
@@ -33,6 +35,7 @@ All optional; any other export stops the plugin from starting. Each call has a 5
 | `onJoin(player)` | A member becomes visible-online: they joined, or came back from invisible. Replayed for every member online right after `load()`. |
 | `onLeave(player)` | The member left (after the 10 s reconnect grace), was removed, or went invisible. |
 | `onMessage(player, msg)` | That member's page sent `hq.send(msg)`. `msg` is the parsed JSON (`unknown`: check it). |
+| `onSettings()` | An administrator changed a setting; `hq.settings()` has the new values. |
 | `unload()` | Before the plugin stops (turned off, server stopping). |
 
 `player` is `{ id: number, name: string, role: "admin" | "member" }`. A member who reconnects or renames does not trigger `onJoin` again; the new name appears in `hq.players()` and in later calls.
@@ -50,6 +53,11 @@ All optional; any other export stops the plugin from starting. Each call has a 5
 | `hq.route(method, path, handler, opts)` | nothing | after the plugin loaded, method not `GET`/`POST`, path not a fixed `/...` of at most 64 characters, `{ token: true }` without `appTokens`, a handler that is not a function |
 | `hq.log(...parts)` | nothing | |
 | `hq.now()` | seconds since the plugin started | |
+| `hq.settings()` | `{ key: value }` for every declared setting: the stored value clamped to the declared range, else the default | |
+| `hq.expose(name, fn)` | nothing | not in `load()`, name not `^[a-z][a-zA-Z0-9]{0,31}$`, more than 16 hooks, `fn` not a function |
+| `hq.plugins.call(plugin, hook, args)` | a Promise of the hook's answer | thrown at once: in `load()`, calling itself, arguments over 4 KB or not JSON, 64 calls already waiting. The Promise rejects if the plugin is off, busy, does not expose the hook, the hook throws or answers over 4 KB, or after 2 s |
+
+A hook is `fn(caller, args)`, maybe async, returning JSON of at most 4 KB. `caller` is `{ plugin, member }`: the calling plugin, and the member whose request, message, arrival or departure it was handling when it called (set by Home Quarters; `null` in `update()` or after an awaited answer). The hook runs on the callee's goroutine under the same time budget as any call, and its errors count against the callee.
 
 `msg` values are sent with `JSON.stringify`: `undefined` becomes `null`, and what JSON cannot carry (functions, `NaN`) is dropped or becomes `null` as `JSON.stringify` does.
 
@@ -106,13 +114,18 @@ The browser code runs in a hidden iframe with `sandbox="allow-scripts"`, after t
 | Function | Meaning |
 | --- | --- |
 | `hq.loadSprite(key, path, { frameW, frameH, anims })` | A PNG of `public/` (at most 2048 px a side, 4096 frames), cut into `frameW` x `frameH` cells (1-256 px). `anims = { name: { row, frames: [col, ...], fps } }` (up to 32 animations, 64 frames each, fps 0-60). |
+| `hq.loadSprite(key, path, { frameW, frameH, from })` | With `from`, a PNG of that plugin's `public/shared/` (the path must start with `shared/`); that folder is the only part of a plugin's `public/` other plugins can draw. |
 | `hq.spawn(id, key, { x, y, anim })` | Puts sprite `id` with sheet `key` at `x, y` (world px, bottom centre of the frame), standing still. Without `x, y`, a new sprite waits for `follow` or `moveTo` to place it, and an existing one keeps its place and what it does (only its sheet changes). |
 | `hq.remove(id)` | Takes it away. |
 | `hq.moveTo(id, x, y, { speed })` | Walks there in a straight line at `speed` px/s (1-1000, default 72); stops at the first wall. |
-| `hq.follow(id, memberId, { gap })` | Walks that member's trail `gap` px behind (0-200, default 36); rests 22 px to their side, away from their own pet. If the sprite is already on the map elsewhere, it first walks back along a path around walls. Hidden while the member is off screen. |
+| `hq.follow(id, memberId, { gap, beside })` | Walks that member's trail `gap` px behind (0-200, default 36); rests `beside` px to their side (0-120, default 22); with `roam` (0-48) it potters about their feet instead, a new free spot every 5-10 s, chosen from the sprite's id and the clock so every page shows the same. If the sprite is already on the map elsewhere, it first walks back along a path around walls. Hidden while the member is off screen. |
 | `hq.stop(id)` | Stands still. |
 | `hq.setAnim(id, name)` | Plays that animation while standing (until it moves). |
 | `hq.setFlip(id, on)`, `hq.setVisible(id, on)` | Mirrors it, shows or hides it. |
+| `hq.walkTo(id, x, y, { speed })` | Walks there along a path around walls (the page's path search, bounded); somewhere it cannot reach, it stays where it is. |
+| `hq.follow(id, { sprite }, { gap, beside })` | Follows another sprite of the same plugin the way it would follow a member; it waits while that sprite is gone or hidden. A sprite cannot follow itself. |
+| `hq.setLabel(id, text, { owner })` | One line, 1-24 characters with no control characters, drawn above the sprite only while a mouse is over it (never on touch); `null` removes it. `owner` (a member id) adds that member's current name under it, in brackets. |
+| `hq.setTint(id, colour)` | Multiplies its colours by `"#rrggbb"`; `null` removes the tint. A sheet drawn in light greys takes any colour this way. |
 
 Automatic animations: `walk-<facing>` or `walk` while moving, `idle-<facing>` or `idle` while standing; facings `down`, `left`, `right`, `up`.
 
@@ -136,6 +149,10 @@ Content elements (a `content` array, at most 64 elements, nested at most 4 deep)
 | `hq.ui.image({ src, alt })` | A PNG of `public/`, shown at most 128 px. |
 | `hq.ui.row(children)` | Its children side by side. |
 | `hq.ui.appToken()` | Home Quarters' token widget for this plugin (needs `appTokens`). |
+| `hq.ui.sprite({ src, frame, scale, tint, alt })` | One cell `[x, y, w, h]` (w and h 1-128) of a PNG of `public/`, scaled 1-6 (default 2), tinted by `"#rrggbb"` if given; `alt` up to 40 characters. `hq.ui.button` accepts the same `sprite` (without `alt`), drawn before its label. |
+| `hq.ui.color({ label, value, onChange })` | A colour picker; `value` is `"#rrggbb"`. `onChange(colour)` gets the colour (lower case) while it is being chosen, at most every 250 ms, and the final one at once. `hideLabel: true` keeps the label for screen readers only (also on `field`). |
+| `hq.ui.field({ label, value, maxLength, placeholder, onChange })` | One line of text; `maxLength` 1-200 (default 200), `placeholder` up to 40 characters. `onChange(text)` runs on Enter or when the field loses focus, only if it changed. |
+| `hq.ui.number({ label, value, min, max, onChange })` | A whole number, `min` <= `value` <= `max` (integers within ±1,000,000). `onChange(value)` runs on Enter or when the field loses focus, clamped to the range, and only if it changed. |
 
 At most 8 slots per plugin and 256 live callbacks; texts are plain text.
 
@@ -161,6 +178,7 @@ An invalid command (an unknown operation, a wrong type, a value out of range, a 
 | `GET /api/plugins` | member | `[{ name, title, client }]`, the running plugins (`client`: URL of the browser code or `null`). |
 | `GET /api/admin/plugins` | admin | `[{ name, title, version, description, state, error }]`, `state` = `disabled`, `running`, `crashed`, `broken`. |
 | `PUT /api/admin/plugins/{name}` | admin | `{ enabled }` → `{ state }`; 404 unknown, 409 broken or failing to start. Audited. |
+| `PUT /api/admin/plugins/{name}/settings` | admin | `{ key, value }`: one declared setting for the office, checked against the manifest (400 otherwise), stored, audited (`plugin.settings`, `key=value`), passed to the running plugin (`onSettings`). |
 | `GET, POST, DELETE /api/plugins/{name}/token` | member | App token of a running plugin with `appTokens`: `{ exists, createdAt }`, `{ token }` (once; replaces the old one), revoke. Audited (without the token). |
 | `GET, POST /plugins/{name}/api/{path}` | member, or app token on `{ token: true }` routes | The plugin's routes (see Routes). |
 | `GET /plugins/{name}/assets/{path}` | anybody | A file of the running plugin's `public/` (png, js, json, css, at most 1 MB). Never the server code. |

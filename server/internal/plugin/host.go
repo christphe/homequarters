@@ -95,8 +95,10 @@ type Host struct {
 	cat     []Info
 	inst    map[string]*instance
 	crashed map[string]string
-	online  map[uint32]Player
-	closed  bool
+	// settings: each plugin's settings for this office, as the administrator chose them (defaults filled in)
+	settings map[string]map[string]float64
+	online   map[uint32]Player
+	closed   bool
 
 	bmu    sync.Mutex
 	budget map[uint32]*bucket
@@ -106,20 +108,60 @@ type Host struct {
 }
 
 func NewHost(cat []Info, sink Sink, kv KV, log *slog.Logger) *Host {
-	return &Host{log: log, sink: sink, kv: kv, cat: cat, inst: map[string]*instance{}, crashed: map[string]string{},
+	return &Host{log: log, sink: sink, kv: kv, cat: cat, inst: map[string]*instance{}, crashed: map[string]string{}, settings: map[string]map[string]float64{},
 		online: map[uint32]Player{}, budget: map[uint32]*bucket{}}
 }
 
+// info finds the plugin served under name. A plugin refused for its name is only found when no
+// valid plugin has that name: it can never take the place of the bundled or installed plugin it
+// shares a name with.
 func (h *Host) info(name string) *Info {
+	var refused *Info
 	for i := range h.cat {
-		if h.cat[i].Name == name {
+		if h.cat[i].Name != name {
+			continue
+		}
+		if !h.cat[i].NameRefused {
 			return &h.cat[i]
 		}
+		if refused == nil {
+			refused = &h.cat[i]
+		}
 	}
-	return nil
+	return refused
 }
 
-// Status lists every installed plugin, in name order.
+// SetSettings gives a plugin its office's settings (the stored values; defaults fill the gaps) and,
+// if it runs, tells it with onSettings.
+func (h *Host) SetSettings(name string, stored map[string]float64) {
+	h.mu.Lock()
+	i := h.info(name)
+	if i == nil {
+		h.mu.Unlock()
+		return
+	}
+	h.settings[name] = i.SettingValues(stored)
+	in := h.inst[name]
+	h.mu.Unlock()
+	if in != nil {
+		in.settings()
+	}
+}
+
+// Settings returns a plugin's current settings, defaults included.
+func (h *Host) Settings(name string) map[string]float64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if v, ok := h.settings[name]; ok {
+		return v
+	}
+	if i := h.info(name); i != nil {
+		return i.SettingValues(nil)
+	}
+	return map[string]float64{}
+}
+
+// Status lists every plugin, bundled ones first, each side in name order.
 func (h *Host) Status() []Status {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -151,7 +193,7 @@ func (h *Host) RunningInfo() []Info {
 	defer h.mu.Unlock()
 	var out []Info
 	for _, i := range h.cat {
-		if h.inst[i.Name] != nil {
+		if !i.NameRefused && h.inst[i.Name] != nil {
 			out = append(out, i)
 		}
 	}
@@ -183,9 +225,13 @@ func (h *Host) Start(name string) error {
 		h.mu.Unlock()
 		return ErrUnknown
 	}
+	if i.NameRefused {
+		h.mu.Unlock()
+		return fmt.Errorf("%w: %s", ErrBroken, i.Err) // moving or renaming its folder needs a restart
+	}
 	if i.Err != "" {
 		// it was broken when the server read it: read it again, it may have been fixed since
-		fresh := load(i.Dir)
+		fresh := load(i.Dir, i.Source)
 		*i = fresh
 		if fresh.Err != "" {
 			h.mu.Unlock()

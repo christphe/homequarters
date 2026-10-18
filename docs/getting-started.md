@@ -70,7 +70,7 @@ Everything is configured through environment variables.
 | `HQ_ADDR` | `:8080` | HTTP listen address |
 | `HQ_DB` | `data/homequarters.db` | SQLite file (WAL mode) |
 | `HQ_STATIC_DIR` | empty | Directory with the built web app to serve |
-| `HQ_PLUGINS_DIR` | empty (plugins off) | Folder of installed plugins; administrators turn each one on in the admin dialog ([Plugins](plugins.md)). `scripts/dev.sh` uses the repository's `plugins/` |
+| `HQ_PLUGINS_DIR` | empty (plugins off) | Folder holding `bundled/` (shipped, `hq-*`) and `installed/` (yours), both optional; administrators turn each plugin on in the admin dialog ([Plugins](plugins.md)). The image sets `/app/plugins`; `scripts/dev.sh` uses the repository's `plugins/` |
 | `HQ_ALLOWED_ORIGINS` | empty | WebSocket origin patterns; **required in production** |
 | `HQ_OFFICE_SLUG` / `HQ_OFFICE_NAME` | `default` / `Office` | Single-office deployment identity. The name only applies when the office is created; afterwards an administrator renames it under Administration > Office |
 | `HQ_SESSION_DAYS` | `30` | Session cookie lifetime |

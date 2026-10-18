@@ -3,6 +3,7 @@ import type { Anim, Cmd } from "../plugins/commands";
 import { LIMITS, framesFit } from "../plugins/commands";
 import { followOwner, newPet, type PetState } from "./petFollow";
 import { clearLine, findPath, type Point } from "./tilePath";
+import { SearchQueue } from "./searchQueue";
 
 // Sprites that plugins ask for (see src/plugins/). The page draws and animates them: a plugin only
 // says "load this sheet", "spawn it here", "walk there", "follow that member". Sprites sort with
@@ -16,8 +17,6 @@ export interface Owner {
   v: number;
   /** drawn on screen right now */
   visible: boolean;
-  /** x of the owner's own (built-in) pet when it is drawn: a resting creature sits on the other side */
-  petX?: number;
 }
 
 export interface Avatar {
@@ -46,15 +45,29 @@ interface Sheet {
 interface PEnt {
   spr: Sprite;
   key: string;
-  mode: "still" | "move" | "follow";
+  mode: "still" | "move" | "walk" | "follow";
   x: number;
   y: number;
   tx: number;
   ty: number;
   speed: number;
   player: number;
+  /** the sprite of the same plugin it follows instead of a member (follow with { sprite }) */
+  target: string | null;
+  /** measured speed in px/s, for sprites that follow this one, and where it was on the last step */
+  vel: number;
+  lastX: number;
+  lastY: number;
   gap: number;
+  /** px to the owner's side where it rests (plugins line several followers up) */
+  beside: number;
+  /** px it potters about the owner's feet while they stand still (0: it sits), and its pottering seed */
+  roam: number;
+  seed: number;
   ps: PetState;
+  /** shown above the sprite while the mouse is over it (WorldView), with its owner's name under it */
+  label: string | null;
+  labelOwner: number;
   dir: number;
   moving: boolean;
   manual: string | null;
@@ -80,12 +93,21 @@ const DEFAULT_SPEED = 72;
 const DEFAULT_GAP = 36;
 const REST_BESIDE = 22; // px to the owner's side where a follower rests
 
+/** A number for a sprite, the same on every page: it seeds its pottering (petFollow.ts). */
+function seedOf(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
 const facing = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0);
 
 export class PluginLayer {
   private plugins = new Map<string, Gfx>();
   /** Set when an image finished loading, so the next frame draws it. */
   private loaded = false;
+  /** walkTo path searches, a few per frame (a batch may ask for hundreds) */
+  private searches = new SearchQueue<{ e: PEnt; x: number; y: number }>(4);
 
   constructor(private parent: Container, private host: LayerHost) {}
 
@@ -115,7 +137,9 @@ export class PluginLayer {
           if (g.sheets.size >= LIMITS.sprites) return `more than ${LIMITS.sprites} sprite sheets`;
           const sheet: Sheet = { frames: null, anims: c.anims, failed: false };
           g.sheets.set(c.key, sheet);
-          this.load(g, sheet, g.base + c.url, c.frameW, c.frameH);
+          // another plugin's shared/ image: the same assets URL, under that plugin's name
+          const base = c.from ? g.base.replace(/\/plugins\/[^/]+\/assets\/$/, "/plugins/" + c.from + "/assets/") : g.base;
+          this.load(g, sheet, base + c.url, c.frameW, c.frameH);
           break;
         }
         case "spawn": {
@@ -128,7 +152,7 @@ export class PluginLayer {
             spr.visible = false;
             this.parent.addChild(spr);
             const x0 = c.x ?? 0, y0 = c.y ?? 0;
-            e = { spr, key: c.key, mode: "still", x: x0, y: y0, tx: x0, ty: y0, speed: DEFAULT_SPEED, player: 0, gap: DEFAULT_GAP, ps: newPet(), dir: 0, moving: false, manual: null, animStart: now, shown: true, placed: false, path: null, pathTo: null, pathAt: 0, rejoin: false };
+            e = { spr, key: c.key, mode: "still", x: x0, y: y0, tx: x0, ty: y0, speed: DEFAULT_SPEED, player: 0, target: null, vel: 0, lastX: x0, lastY: y0, gap: DEFAULT_GAP, beside: REST_BESIDE, roam: 0, seed: seedOf(plugin + "/" + c.id), ps: newPet(), label: null, labelOwner: 0, dir: 0, moving: false, manual: null, animStart: now, shown: true, placed: false, path: null, pathTo: null, pathAt: 0, rejoin: false };
             g.ents.set(c.id, e);
           }
           e.key = c.key;
@@ -163,14 +187,19 @@ export class PluginLayer {
         case "follow": {
           const e = g.ents.get(c.id);
           if (!e) break;
-          if (e.mode !== "follow" || e.player !== c.player) {
+          // a sprite following another sprite keeps the member it belongs to (debug, hover)
+          const target = c.sprite ?? null, player = c.player ?? e.player;
+          if (e.mode !== "follow" || e.player !== player || e.target !== target) {
             e.ps = newPet();
             e.rejoin = e.placed; // already on the map: walk back to the owner around walls, no jump
             e.path = null;
           }
           e.mode = "follow";
-          e.player = c.player;
+          e.player = player;
+          e.target = target;
           e.gap = c.gap ?? DEFAULT_GAP;
+          e.beside = c.beside ?? REST_BESIDE;
+          e.roam = c.roam ?? 0;
           break;
         }
         case "stop": {
@@ -195,6 +224,38 @@ export class PluginLayer {
         case "visible": {
           const e = g.ents.get(c.id);
           if (e) e.shown = c.on;
+          break;
+        }
+        case "walkTo": {
+          // along a path around walls (tilePath.ts); somewhere it cannot reach, it stays where it is
+          const e = g.ents.get(c.id);
+          if (!e) break;
+          // searched on a later frame, within the per-frame budget; until then it keeps what it does
+          e.speed = c.speed ?? DEFAULT_SPEED;
+          this.searches.request(plugin + "/" + c.id, { e, x: c.x, y: c.y }, ({ e, x, y }) => {
+            if (!g.ents.has(c.id) || g.ents.get(c.id) !== e) return; // removed or replaced since
+            const walkable = (tx: number, ty: number) => this.host.canStand(tx * 16 + 8, ty * 16 + 8);
+            const path = findPath(e.x, e.y, x, y, walkable);
+            e.path = path;
+            e.mode = path ? "walk" : "still";
+            if (!path) this.setMoving(e, false, performance.now());
+          });
+          break;
+        }
+        case "label": {
+          const e = g.ents.get(c.id);
+          if (e) {
+            e.label = c.text;
+            e.labelOwner = c.owner ?? 0;
+          }
+          this.loaded = true; // a label under the mouse changes now
+          break;
+        }
+        case "tint": {
+          // multiplies the sheet's colours: a light grey sheet takes the colour, dark outlines stay dark
+          const e = g.ents.get(c.id);
+          if (e) e.spr.tint = c.colour === null ? 0xffffff : parseInt(c.colour.slice(1), 16);
+          this.loaded = true;
           break;
         }
         default:
@@ -238,24 +299,44 @@ export class PluginLayer {
   step(dtMs: number, now: number): boolean {
     let changed = this.loaded;
     this.loaded = false;
+    this.searches.run();
     const dt = Math.min(dtMs / 1000, 0.1);
     for (const g of this.plugins.values()) {
       for (const e of g.ents.values()) {
         let on = e.shown;
-        if (e.mode === "follow") {
+        if (e.mode === "follow" && e.target !== null) {
+          // following another sprite of the plugin, as a pet follows its owner; it waits while that
+          // sprite is gone or hidden
+          const t = g.ents.get(e.target);
+          if (!t || !t.spr.visible) this.setMoving(e, false, now);
+          else this.followFrom(e, { x: t.x, y: t.y, dir: t.dir, v: t.vel, visible: true }, dt, now);
+        } else if (e.mode === "follow") {
           const o = this.host.owner(e.player);
           if (!o || !o.visible) {
             on = false;
             e.ps.px = NaN; // reappears behind its owner
-          } else if (e.rejoin || e.path) {
-            this.walkBack(e, o, dt, now);
-          } else {
-            followOwner(e.ps, o.x, o.y, o.dir, o.v, dt, now, (x, y) => this.host.canStand(x, y), e.gap, { beside: REST_BESIDE, avoid: o.petX });
-            e.x = e.ps.px;
-            e.y = e.ps.py;
-            e.dir = e.ps.dir;
-            this.setMoving(e, e.ps.moving, now);
+          } else this.followFrom(e, o, dt, now);
+        } else if (e.mode === "walk") {
+          let stepPx = e.speed * dt;
+          while (stepPx > 0 && e.path?.length) {
+            const p = e.path[0], dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy);
+            if (d > 0.01) e.dir = facing(dx, dy);
+            if (d <= stepPx) {
+              e.x = p.x;
+              e.y = p.y;
+              e.path.shift();
+              stepPx -= d;
+            } else {
+              e.x += (dx / d) * stepPx;
+              e.y += (dy / d) * stepPx;
+              stepPx = 0;
+            }
           }
+          if (!e.path?.length) {
+            e.mode = "still";
+            e.path = null;
+          }
+          this.setMoving(e, e.mode === "walk", now);
         } else if (e.mode === "move") {
           const dx = e.tx - e.x, dy = e.ty - e.y, d = Math.hypot(dx, dy);
           const stepPx = e.speed * dt;
@@ -277,6 +358,11 @@ export class PluginLayer {
             }
           }
         }
+        // measured only once it is on the map: a first placement is not a run
+        const moved = e.placed ? Math.hypot(e.x - e.lastX, e.y - e.lastY) : 0;
+        e.lastX = e.x;
+        e.lastY = e.y;
+        if (dt > 0) e.vel = e.vel * 0.7 + (moved / dt) * 0.3; // smoothed: frames are uneven
         const sheet = g.sheets.get(e.key);
         const tex = sheet?.frames ? this.frameOf(sheet, e, now) : null;
         if (!tex) on = false;
@@ -294,6 +380,16 @@ export class PluginLayer {
       }
     }
     return changed;
+  }
+
+  /** Follows o (a member, or a sprite standing in for one): back along a path first if it was told to. */
+  private followFrom(e: PEnt, o: Owner, dt: number, now: number) {
+    if (e.rejoin || e.path) return this.walkBack(e, o, dt, now);
+    followOwner(e.ps, o.x, o.y, o.dir, o.v, dt, now, (x, y) => this.host.canStand(x, y), e.gap, { beside: e.beside, roam: e.roam, seed: e.seed, clock: Date.now() });
+    e.x = e.ps.px;
+    e.y = e.ps.py;
+    e.dir = e.ps.dir;
+    this.setMoving(e, e.ps.moving, now);
   }
 
   /** A follower told to follow from elsewhere walks back along a path (tilePath.ts), then follows. */
@@ -374,10 +470,24 @@ export class PluginLayer {
     return { me: this.host.me(), avatars: this.host.avatars() };
   }
 
+  /** The labelled sprite drawn at world point (x, y), the front-most one, for the hover tag. */
+  labelAt(x: number, y: number): { text: string; owner: number; x: number; top: number } | null {
+    let best: PEnt | null = null;
+    for (const g of this.plugins.values()) {
+      for (const e of g.ents.values()) {
+        if (!e.label || !e.spr.visible) continue;
+        const w = Math.abs(e.spr.width), h = e.spr.height;
+        if (x < e.spr.x - w / 2 || x > e.spr.x + w / 2 || y < e.spr.y - h || y > e.spr.y) continue;
+        if (!best || e.spr.y > best.spr.y) best = e;
+      }
+    }
+    return best ? { text: best.label!, owner: best.labelOwner, x: best.spr.x, top: best.spr.y - best.spr.height } : null;
+  }
+
   /** For tests: the sprites of a plugin, by id. */
   debug(plugin: string) {
     const g = this.plugins.get(plugin);
     if (!g) return null;
-    return [...g.ents.entries()].map(([id, e]) => ({ id, x: e.x, y: e.y, visible: e.spr.visible, mode: e.mode, player: e.player, key: e.key, moving: e.moving }));
+    return [...g.ents.entries()].map(([id, e]) => ({ id, x: e.x, y: e.y, visible: e.spr.visible, mode: e.mode, player: e.player, key: e.key, moving: e.moving, tint: e.spr.tint, label: e.label, target: e.target }));
   }
 }

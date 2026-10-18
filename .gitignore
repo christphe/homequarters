@@ -11,3 +11,5 @@ bench/results/**/*.log
 bench/mediagen/assets
 bench/mediagen/mediagen
 .claude/worktrees/
+# a developer's own plugins next to the bundled ones (scripts/dev.sh)
+plugins/installed/

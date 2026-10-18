@@ -115,5 +115,8 @@ h1, h2, h3 { font-weight: 700; }
 /* plugin UI: pressed choices read as chosen, the copy field reads as text */
 .plugin-body .btn[aria-pressed="true"], .plugin-screen .btn[aria-pressed="true"], .plugin-slot[aria-pressed="true"] { background: var(--orange); color: #3a2400; }
 .copy-row input { background: #fff; color: var(--ink); border: 3px solid var(--dark); border-radius: 6px; box-shadow: inset 2px 2px 0 rgba(20, 16, 40, .12); padding: 4px 8px; }
+/* plugin fields (PluginUI.tsx): the same white boxes as the other dialog inputs */
+.plugin-field input, .plugin-field input[type="number"], .plugin-field input[type="text"], .plugin-setting input { background: #fff; color: var(--ink); border: 3px solid var(--dark); border-radius: 6px; box-shadow: inset 2px 2px 0 rgba(20, 16, 40, .12); padding: 4px 8px; }
+.plugin-field input[type="color"] { padding: 2px; width: 44px; height: 34px; }
 .plugin-anchor .btn { white-space: nowrap; }
 @media (max-width: 700px) { .plugin-anchor .btn { padding-inline: 8px; font-size: .9em; } }

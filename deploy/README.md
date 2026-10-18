@@ -55,7 +55,7 @@ If your Workspace administrators block unconfigured third-party apps, colleagues
 
 ## Plugins
 
-The image ships the sample plugin in `/app/plugins` and sets `HQ_PLUGINS_DIR=/app/plugins`; it stays off until an administrator turns it on (Administration > Plugins). To install your own, mount a folder over it, for example `- ./plugins:/app/plugins:ro` under the `tilework` service, and restart. Plugins are trusted code that runs in the server: install only what you have read. See [Plugins](../docs/plugins.md).
+The image sets `HQ_PLUGINS_DIR=/app/plugins` and ships its bundled plugins (named `hq-*`) in `/app/plugins/bundled`; each stays off until an administrator turns it on (Administration > Plugins). To install your own, mount a folder at `/app/plugins/installed`, for example `- ./my-plugins:/app/plugins/installed:ro` under the `homequarters` service, and restart; the bundled ones stay available. Installed plugins must not use the `hq-` prefix. Plugins are trusted code that runs in the server: install only what you have read. See [Plugins](../docs/plugins.md).
 
 ## Public demo mode
 

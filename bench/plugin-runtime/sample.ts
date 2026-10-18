@@ -1,4 +1,4 @@
-// The sample plugin's server side (plugins/sample-pet/main.lua) in TypeScript, for the runtime spike.
+// The sample plugin's server side as it was when this spike ran (a seedling per member, then in Lua), in TypeScript.
 // Same logic, same messages: only the language changes.
 
 declare const tw: {

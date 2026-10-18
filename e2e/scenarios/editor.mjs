@@ -83,6 +83,9 @@ export async function run(ctx) {
     check("the new room is a real meeting room: alone inside, no call is started", (await st(admin)).conv === null);
 
     // ---- persistence across restart
+    // Ed comes back on the member's session: close the member's old page first, or both pages reconnect
+    // on one session after the restart and keep replacing each other (a timing flake under load)
+    await mem.ctx.close();
     await sleep(500);
     await ctx.stopServer();
     await ctx.startServer();

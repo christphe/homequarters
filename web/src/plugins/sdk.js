@@ -64,17 +64,29 @@
   };
   const ser = (owner, nodes) =>
     (nodes || []).map((n) => {
-      if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed };
+      if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed, sprite: n.sprite };
       if (n && n.type === "row") return { type: "row", children: ser(owner, n.children) };
+      if (n && (n.type === "color" || n.type === "number" || n.type === "field")) {
+        const { onChange, ...rest } = n;
+        return { ...rest, change: reg(owner, onChange) };
+      }
       return n;
     });
 
   const ui = Object.freeze({
     text: (text, opts = {}) => ({ type: "text", text: String(text), muted: opts.muted ? true : undefined }),
-    button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed }),
+    button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, sprite: opts.sprite }),
+    /** One cell of a PNG of public/: { src, frame: [x, y, w, h], scale, tint, alt }. */
+    sprite: (opts) => ({ type: "sprite", sprite: { src: opts.src, frame: opts.frame, scale: opts.scale, tint: opts.tint }, alt: opts.alt }),
     copy: (opts) => ({ type: "copy", label: opts.label, value: String(opts.value) }),
     image: (opts) => ({ type: "image", src: opts.src, alt: opts.alt }),
     row: (children) => ({ type: "row", children }),
+    /** A colour picker; onChange(colour) gets "#rrggbb" while it is being chosen (at most 4 a second) and once chosen. */
+    color: (opts) => ({ type: "color", label: opts.label, value: opts.value, onChange: opts.onChange, hideLabel: opts.hideLabel }),
+    /** One line of text; onChange(text) once it is entered (Enter or leaving the field). */
+    field: (opts) => ({ type: "field", label: opts.label, value: opts.value ?? "", maxLength: opts.maxLength, placeholder: opts.placeholder, onChange: opts.onChange, hideLabel: opts.hideLabel }),
+    /** A whole number in min..max; onChange(value) once it is entered. */
+    number: (opts) => ({ type: "number", label: opts.label, value: opts.value, min: opts.min, max: opts.max, onChange: opts.onChange }),
     /** Home Quarters' own widget to create, copy (once) and revoke this member's token for this plugin. */
     appToken: () => ({ type: "appToken" }),
     /** A button at an anchor (topbar, topright, bottombar, sidebar, minimap), or a box on the map (screen). */
@@ -117,7 +129,7 @@
     },
     /** Loads a sprite sheet from the plugin's public/ folder. anims: { name: { row, frames: [..], fps } } */
     loadSprite(key, path, opts = {}) {
-      push({ op: "sprite", key, url: path, frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {} });
+      push({ op: "sprite", key, url: path, frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {}, from: opts.from });
     },
     spawn(id, key, opts = {}) {
       push({ op: "spawn", id, key, x: opts.x, y: opts.y, anim: opts.anim });
@@ -128,8 +140,14 @@
     moveTo(id, x, y, opts = {}) {
       push({ op: "moveTo", id, x, y, speed: opts.speed });
     },
-    follow(id, player, opts = {}) {
-      push({ op: "follow", id, player, gap: opts.gap });
+    /** Walks there along a path around walls; somewhere it cannot reach, it stays where it is. */
+    walkTo(id, x, y, opts = {}) {
+      push({ op: "walkTo", id, x, y, speed: opts.speed });
+    },
+    /** Follows a member (their id), or another sprite of this plugin ({ sprite: id }), as a pet does. */
+    follow(id, who, opts = {}) {
+      const target = typeof who === "object" && who !== null ? { sprite: who.sprite } : { player: who };
+      push({ op: "follow", id, ...target, gap: opts.gap, beside: opts.beside, roam: opts.roam });
     },
     stop(id) {
       push({ op: "stop", id });
@@ -142,6 +160,14 @@
     },
     setVisible(id, on) {
       push({ op: "visible", id, on: !!on });
+    },
+    /** Text shown above the sprite while the mouse is over it (null: none); opts.owner adds that member's name under it. */
+    setLabel(id, text, opts = {}) {
+      push({ op: "label", id, text: text === null || text === undefined ? null : String(text), owner: opts.owner });
+    },
+    /** Multiplies the sprite's colours by "#rrggbb" (draw it light grey to give it any colour); null removes it. */
+    setTint(id, colour) {
+      push({ op: "tint", id, colour: colour === null || colour === undefined ? null : colour });
     },
   };
   Object.defineProperty(window, "hq", { value: Object.freeze(hq) });
@@ -159,7 +185,7 @@
       else if (d.t === "cb") {
         const f = callbacks.get(d.id);
         if (d.closed) own("modal"); // the person closed the modal: its callbacks are gone after this one
-        if (f) call([f]);
+        if (f) call([f], d.v); // a colour or number field's new value; nothing for a click
       }
       flush();
       if (d.t === "update") port.postMessage({ t: "ack" });

@@ -1,6 +1,7 @@
 export function load(): void {
   hq.route("GET", "/hello", (req) => ({ body: { id: req.player.id, kv: hq.kv.get("k") ?? "" } }));
   hq.route("POST", "/echo", (req) => ({ status: 201, body: req.body }));
+  hq.route("GET", "/settings", () => ({ body: hq.settings() }));
   hq.route("POST", "/state", (req) => ({ body: { id: req.player.id, body: req.body } }), { token: true });
 }
 

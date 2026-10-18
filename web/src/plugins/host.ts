@@ -138,9 +138,9 @@ export class PluginHost {
     else console.warn(`[plugin ${this.name}] message dropped: the plugin has not started yet`);
   }
 
-  /** Runs one of the plugin's UI callbacks (a click). */
-  callback(id: string) {
-    this.port?.postMessage({ t: "cb", id });
+  /** Runs one of the plugin's UI callbacks: a click, or a field's new value. */
+  callback(id: string, value?: string | number) {
+    this.port?.postMessage({ t: "cb", id, v: value });
   }
 
   /** The person closed the plugin's modal (Escape, Close, a click outside, or another modal replaced it). */

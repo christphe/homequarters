@@ -1,12 +1,15 @@
 // Package plugin runs operator-installed plugins: TypeScript (or JavaScript) on the server, run by
 // QuickJS, and in a sandboxed iframe in the browser. A plugin is a folder holding a plugin.json
 // manifest, optional server code and an optional public/ folder whose files (and only those) are
-// served to browsers.
+// served to browsers. Plugin folders live in bundled/ (shipped with the image, named hq-*) or
+// installed/ (the operator's, never hq-*) under the plugins directory, and are only ever read.
 package plugin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,6 +21,14 @@ import (
 const MaxAssetBytes = 1 << 20
 
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// The two sides of the plugins directory, and the name prefix reserved for the bundled side: an
+// image update adding a bundled plugin can never take the name of a plugin an office installed.
+const (
+	Bundled   = "bundled"
+	Installed = "installed"
+	reserved  = "hq-"
+)
 
 // assetTypes lists the file types a plugin may serve, with their content types.
 var assetTypes = map[string]string{
@@ -31,23 +42,152 @@ type Manifest struct {
 	Name        string `json:"name"`
 	Title       string `json:"title"`
 	Version     string `json:"version"`
-	Description string `json:"description"`
-	Server      string `json:"server"` // .ts or .js file in the plugin folder, optional
-	Client      string `json:"client"` // .ts or .js file in public/, optional
+	Description string `json:"description"` // one line in the admin list, at most maxDescription characters
+	// LongDescription explains the plugin in the admin dialog's About modal (paragraphs: blank lines)
+	LongDescription string `json:"longDescription"`
+	Server          string `json:"server"` // .ts or .js file in the plugin folder, optional
+	Client          string `json:"client"` // .ts or .js file in public/, optional
 	// AppTokens lets members create a token for this plugin, for routes declared with { token: true }
 	AppTokens bool `json:"appTokens"`
+	// Settings are the office's choices an administrator makes for this plugin in the admin dialog
+	Settings []Setting `json:"settings"`
 }
 
-// Info is one installed plugin. Err is set when it cannot run (broken).
+// Setting is one administrator's choice a plugin declares: Home Quarters draws it in the admin dialog,
+// checks and stores it, and the plugin reads it (hq.settings()). Only whole numbers for now.
+type Setting struct {
+	Key     string  `json:"key"`
+	Label   string  `json:"label"`
+	Type    string  `json:"type"`
+	Min     float64 `json:"min"`
+	Max     float64 `json:"max"`
+	Default float64 `json:"default"`
+	Help    string  `json:"help"` // shown under the field, at most 200 characters
+}
+
+const (
+	maxSettings        = 16
+	maxDescription     = 160
+	maxLongDescription = 2000
+)
+
+var settingKeyRE = regexp.MustCompile(`^[a-z][a-zA-Z0-9]{0,31}$`)
+
+func whole(v float64) bool { return v == float64(int64(v)) && v >= -1e6 && v <= 1e6 }
+
+// checkSettings validates the manifest's settings.
+func checkSettings(list []Setting) error {
+	if len(list) > maxSettings {
+		return fmt.Errorf("at most %d settings", maxSettings)
+	}
+	seen := map[string]bool{}
+	for _, s := range list {
+		switch {
+		case !settingKeyRE.MatchString(s.Key):
+			return fmt.Errorf("setting key %q must match %s", s.Key, settingKeyRE)
+		case seen[s.Key]:
+			return fmt.Errorf("setting %q is declared twice", s.Key)
+		case strings.TrimSpace(s.Label) == "" || len([]rune(s.Label)) > 40:
+			return fmt.Errorf("setting %q needs a label of 1 to 40 characters", s.Key)
+		case len([]rune(s.Help)) > 200:
+			return fmt.Errorf("setting %q: help is at most 200 characters", s.Key)
+		case s.Type != "number":
+			return fmt.Errorf("setting %q: type must be \"number\"", s.Key)
+		case !whole(s.Min) || !whole(s.Max) || !whole(s.Default) || s.Min > s.Max || s.Default < s.Min || s.Default > s.Max:
+			return fmt.Errorf("setting %q needs whole numbers min <= default <= max (within 1,000,000)", s.Key)
+		}
+		seen[s.Key] = true
+	}
+	return nil
+}
+
+// SettingValues gives every declared setting its value: the stored one, clamped to the manifest's
+// range (a newer version may have narrowed it), else the default. Unknown stored keys are dropped.
+func (i *Info) SettingValues(stored map[string]float64) map[string]float64 {
+	out := make(map[string]float64, len(i.Settings))
+	for _, s := range i.Settings {
+		v, ok := stored[s.Key]
+		if !ok {
+			v = s.Default
+		}
+		out[s.Key] = min(s.Max, max(s.Min, v))
+	}
+	return out
+}
+
+// CheckSetting validates an administrator's new value for a declared setting.
+func (i *Info) CheckSetting(key string, v float64) error {
+	for _, s := range i.Settings {
+		if s.Key == key {
+			if !whole(v) || v < s.Min || v > s.Max {
+				return fmt.Errorf("%s must be a whole number from %v to %v", s.Label, s.Min, s.Max)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no setting %q", key)
+}
+
+// Info is one plugin folder. Err is set when it cannot run (broken). NameRefused marks a plugin
+// refused for its name (the reserved prefix or a duplicate): it is listed but never resolved by
+// name, so it can never stand in for the valid plugin it may share a name with.
 type Info struct {
 	Manifest
-	Dir   string
-	Err   string
-	cache *compiled // shared by copies of this Info
+	Source      string // Bundled or Installed
+	Dir         string
+	Err         string
+	NameRefused bool
+	cache       *compiled // shared by copies of this Info
 }
 
-// Scan reads every subfolder of dir holding a plugin.json. Broken plugins are listed with Err set.
-func Scan(dir string) ([]Info, error) {
+// Scan reads root/bundled and root/installed. Either may be missing or empty; with both missing
+// (or root itself), plugins are off and Scan returns a nil catalog. A side that exists but cannot be
+// read is skipped and reported in the error, the other side still loads. Broken plugins are listed
+// with Err set, bundled before installed, each in name order.
+func Scan(root string) ([]Info, error) {
+	var out []Info
+	var errs []error
+	found := false
+	for _, side := range []string{Bundled, Installed} {
+		list, err := scanDir(filepath.Join(root, side), side)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		case err != nil:
+			errs = append(errs, err)
+			continue
+		}
+		found = true
+		out = append(out, list...)
+	}
+	if !found {
+		return nil, errors.Join(errs...)
+	}
+	if out == nil {
+		out = []Info{}
+	}
+	return dedupe(out), errors.Join(errs...)
+}
+
+// FlatLayout reports whether root holds plugin folders directly, the layout before bundled/ and
+// installed/: those are not read, and the operator should move them into installed/.
+func FlatLayout(root string) bool {
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, e := range ents {
+		if e.IsDir() && e.Name() != Bundled && e.Name() != Installed {
+			if _, err := os.Stat(filepath.Join(root, e.Name(), "plugin.json")); err == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// scanDir reads every subfolder of one side holding a plugin.json, in name order.
+func scanDir(dir, source string) ([]Info, error) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -61,21 +201,61 @@ func Scan(dir string) ([]Info, error) {
 		if _, err := os.Stat(filepath.Join(pd, "plugin.json")); err != nil {
 			continue
 		}
-		out = append(out, load(pd))
+		out = append(out, load(pd, source))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-func load(dir string) Info {
+// dedupe refuses every plugin of a name claimed twice on one side, so neither wins silently. The
+// prefix rule keeps the two sides apart; a plugin already refused for its name does not count.
+func dedupe(list []Info) []Info {
+	seen := map[string]int{}
+	for _, i := range list {
+		if !i.NameRefused {
+			seen[i.Source+"/"+i.Name]++
+		}
+	}
+	for k := range list {
+		i := &list[k]
+		if !i.NameRefused && seen[i.Source+"/"+i.Name] > 1 {
+			i.NameRefused = true
+			i.Err = fmt.Sprintf("two %s plugins claim the same name %q: rename one of them", i.Source, i.Name)
+		}
+	}
+	return list
+}
+
+// nameRule is the reserved-prefix rule for a name on one side, or "" when the name may be used.
+func nameRule(name, source string) string {
+	name = strings.ToLower(name)
+	switch {
+	case source == Bundled && (!strings.HasPrefix(name, reserved) || len(name) == len(reserved)):
+		return fmt.Sprintf("a bundled plugin's name must start with %s: %q does not", reserved, name)
+	case source == Installed && strings.HasPrefix(name, reserved):
+		return fmt.Sprintf("the %s prefix is reserved for plugins bundled with Home Quarters: rename the installed plugin %q", reserved, name)
+	}
+	return ""
+}
+
+func load(dir, source string) Info {
 	folder := filepath.Base(dir)
-	i := Info{Dir: dir, Manifest: Manifest{Name: folder}}
+	i := Info{Dir: dir, Source: source, Manifest: Manifest{Name: folder}}
 	fail := func(f string, a ...any) Info {
 		i.Err = fmt.Sprintf(f, a...)
 		if i.Title == "" {
 			i.Title = i.Name // the admin dialog always has a name to show
 		}
 		return i
+	}
+	refuse := func(rule string) Info {
+		i.NameRefused = true
+		return fail("%s", rule)
+	}
+	// the folder and the manifest name are both checked: routes and assets are served under the
+	// manifest's name, so a renamed folder must not get a reserved name past the rule
+	if rule := nameRule(folder, source); rule != "" {
+		return refuse(rule)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
 	if err != nil {
@@ -85,11 +265,23 @@ func load(dir string) Info {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return fail("plugin.json: %v", err)
 	}
+	if rule := nameRule(m.Name, source); rule != "" {
+		return refuse(rule)
+	}
 	if !nameRE.MatchString(m.Name) {
 		return fail("name %q must match %s", m.Name, nameRE)
 	}
 	if m.Name != folder {
 		return fail("name %q differs from its folder %q", m.Name, folder)
+	}
+	if n := len([]rune(m.Description)); n > maxDescription {
+		return fail("description: %d characters, at most %d (put more in longDescription)", n, maxDescription)
+	}
+	if n := len([]rune(m.LongDescription)); n > maxLongDescription {
+		return fail("longDescription: %d characters, at most %d", n, maxLongDescription)
+	}
+	if err := checkSettings(m.Settings); err != nil {
+		return fail("settings: %v", err)
 	}
 	i.Manifest = m
 	if m.Title == "" {

@@ -27,7 +27,7 @@ func manifest(name, server, client string) string {
 
 func scanOne(t *testing.T, root, name string) Info {
 	t.Helper()
-	list, err := Scan(root)
+	list, err := scanDir(root, Installed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestScanValidPlugin(t *testing.T) {
 		"good/public/client.js": "hq.onLoad(function(){})",
 		"notaplugin/readme.txt": "ignored: no plugin.json",
 	})
-	list, err := Scan(root)
+	list, err := scanDir(root, Installed)
 	if err != nil {
 		t.Fatal(err)
 	}

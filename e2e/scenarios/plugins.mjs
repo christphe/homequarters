@@ -1,9 +1,9 @@
-// Plugins: the sample plugin (plugins/sample-pet) enabled from the admin dialog, its creatures following
-// their owners on other pages, its button, its route and assets, the iframe sandbox, a flooding plugin
+// Plugins: the bundled pets plugin (plugins/bundled/hq-pets) enabled from the admin dialog, pets added,
+// recoloured and removed in its modal and following their owners on other pages, the office's limit, its button, its route and assets, the iframe sandbox, a flooding plugin
 // stopped on one page, and disabling it live. Needs HQ_PLUGINS_DIR (run.mjs sets it).
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.mjs";
 
-const PLUGIN = "sample-pet";
+const PLUGIN = "hq-pets";
 const click = (u, selector, text) => u.page.evaluate((selector, text) => {
   const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text);
   b?.click();
@@ -15,8 +15,39 @@ const creatures = (u) => read(u, (p) => window.__hq.session.plugins?.debug(p) ??
 const creatureOf = async (u, owner) => ((await creatures(u)) ?? []).find((c) => c.player === owner);
 const frames = (u) => read(u, () => document.querySelectorAll("iframe.plugin-frame").length);
 const pluginFrame = (u) => u.page.frames().find((f) => f.url() === "about:srcdoc");
+const petsOf = async (u, owner) => ((await creatures(u)) ?? []).filter((c) => c.player === owner);
+/** One of owner's pets by its sheet key: n<kind> in its own colours, t<kind> tinted. */
+const pet = async (u, owner, key) => (await petsOf(u, owner)).find((c) => c.key === key);
+const modalHas = (u, text) => u.page.evaluate((text) => [...document.querySelectorAll(".modal.plugin-modal button, .modal.plugin-modal p")].some((x) => x.textContent === text), text);
+/** Puts text in a field of the plugin's modal with the keyboard, then Enter. */
+async function setField(u, selector, text) {
+  const sel = ".modal.plugin-modal " + selector;
+  await waitFor(() => u.page.$(sel), { what: selector });
+  await u.page.focus(sel);
+  await u.page.evaluate((sel) => document.querySelector(sel).select(), sel);
+  await u.page.keyboard.type(text);
+  await u.page.keyboard.press("Enter");
+}
+/** Moves the real mouse over one of owner's pets on u's page, and reads the hover tag. */
+async function hoverOver(u, owner, sprite) {
+  const c = (await petsOf(u, owner)).find((x) => x.id === sprite);
+  if (!c) return "missing";
+  const at = await read(u, ({ x, y }) => window.__hq.view.pageOf(x, y - 8), { x: c.x, y: c.y });
+  await u.page.mouse.move(at.x, at.y);
+  // a wandering pet keeps walking: read the tag on the next frames, before it walks out from under the mouse
+  return read(u, () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__hq.view.hoverText())))));
+}
+async function openPets(u) {
+  await waitFor(() => u.page.evaluate(() => {
+    const b = document.querySelector('.side .tabs button[aria-label="Plugins"]');
+    if (b && b.getAttribute("aria-selected") !== "true") b.click();
+    return !!b;
+  }), { what: "Plugins tab in the side panel" });
+  await waitFor(() => click(u, ".plugins-panel button", "Pets"), { what: "Pets entry" });
+  await waitFor(() => u.page.$('.modal.plugin-modal[aria-label="Pets"]'), { what: "the Pets modal" });
+}
 
-async function setEnabled(admin, on, title = "Sample pet", plugin = PLUGIN) {
+async function setEnabled(admin, on, title = "Pets", plugin = PLUGIN) {
   await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
   await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
   const label = (on ? "Turn on " : "Turn off ") + title;
@@ -41,32 +72,59 @@ export async function run(ctx) {
     // ---- enable through the admin dialog
     await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
     await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
-    await waitFor(() => admin.page.$('.modal tr[data-plugin="sample-pet"]'), { what: "sample-pet row" });
-    check("the admin dialog lists the installed sample plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="sample-pet"]').textContent.includes("Off")));
+    await waitFor(() => admin.page.$('.modal tr[data-plugin="hq-pets"]'), { what: "hq-pets row" });
+    check("the admin dialog lists the bundled pets plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]').textContent.includes("Off")));
+    const rows = await admin.page.evaluate(() => [...document.querySelectorAll(".modal .plugins-table tbody tr")].map((r) => ({
+      name: r.dataset.plugin, source: r.querySelector(".plugin-source")?.textContent, text: r.textContent, button: !!r.querySelector("button"),
+    })));
+    const row = (n) => rows.find((r) => r.name === n) ?? {};
+    check("every plugin row says where it comes from", rows.length >= 3 && row("hq-pets").source === "Bundled" && row("ui-demo").source === "Installed" && rows.every((r) => r.source), JSON.stringify(rows.map((r) => [r.name, r.source])));
+    check("an installed plugin using hq- is listed as refused, with the rule, and has no switch",
+      row("hq-impostor").source === "Installed" && row("hq-impostor").text.includes("Cannot run") && row("hq-impostor").text.includes("reserved for plugins bundled") && !row("hq-impostor").button,
+      row("hq-impostor").text);
     await admin.page.keyboard.press("Escape");
-    const t0 = Date.now();
     await setEnabled(admin, true);
     const audit = await (await fetch(API + "/api/admin/audit", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).text();
     check("enabling is in the activity log", audit.includes("plugin.enable") && audit.includes(PLUGIN));
-    await waitFor(async () => (await creatureOf(mia, rem.id))?.visible, { timeout: 10000, what: "Rem's creature on Mia's page" });
-    const shownAfter = Date.now() - t0;
-    check("other people's creatures appear on my page soon after the plugin is enabled", shownAfter < 5000, shownAfter + " ms after the click");
-    await waitFor(async () => (await creatureOf(rem, mia.id))?.visible && (await creatureOf(rem, rem.id))?.visible, { what: "creatures on Rem's page" });
-    check("each page shows a creature for every member in view, mine included", true);
-    check("exactly one plugin iframe per page", (await frames(mia)) === 1 && (await frames(rem)) === 1);
+    await waitFor(async () => (await frames(mia)) === 1 && (await frames(rem)) === 1, { what: "plugin iframes" });
+    check("exactly one plugin iframe per page", true);
+    check("nobody has a pet until they add one", ((await creatures(mia)) ?? []).length === 0);
 
-    // ---- the creature walks behind its owner, recorded on the observer's page
-    const rec = read(mia, ({ id, plugin }) => new Promise((resolve) => {
+    // ---- the plugin's modal, opened from its entry in the side panel's Plugins tab: add pets
+    await openPets(rem);
+    check("the plugin's entry in the Plugins tab opens the modal the plugin drew", true);
+    const t0 = Date.now();
+    await waitFor(() => click(rem, ".modal.plugin-modal button", "Cat"), { what: "Cat button" });
+    await waitFor(async () => (await petsOf(mia, rem.id)).length === 1, { timeout: 10000, what: "Rem's cat on Mia's page" });
+    check("a pet added in the modal appears on the other page", Date.now() - t0 < 3000, (Date.now() - t0) + " ms");
+    await waitFor(() => modalHas(rem, "Add a pet (1 of 3)"), { what: "modal redrawn" });
+    await click(rem, ".modal.plugin-modal button", "Seedling");
+    await waitFor(async () => (await petsOf(mia, rem.id)).length === 2, { what: "Rem's seedling on Mia's page" });
+    const [cat, seedling] = await Promise.all([pet(mia, rem.id, "n0"), pet(mia, rem.id, "n8")]);
+    check("a member can have several pets, of any kind including the seedling", !!cat && !!seedling, JSON.stringify((await petsOf(mia, rem.id)).map((c) => c.key)));
+    await rem.page.keyboard.press("Escape");
+    await waitFor(async () => !(await rem.page.$(".modal.plugin-modal")), { what: "modal closed by Escape" });
+    check("Escape closes the plugin's modal", true);
+    await openPets(mia);
+    await waitFor(() => click(mia, ".modal.plugin-modal button", "Dog"), { what: "Mia's Dog button" });
+    await waitFor(async () => (await petsOf(rem, mia.id)).length === 1 && (await petsOf(rem, rem.id)).length === 2, { what: "pets on Rem's page" });
+    check("each page shows every member's pets, mine included", true);
+    check("the pets modal has no office setting (it is in the admin dialog)", await read(mia, () => !document.querySelector('.modal.plugin-modal input[type="number"]')));
+    await mia.page.keyboard.press("Escape");
+
+    // ---- the pets walk behind their owner in a line, recorded on the observer's page
+    const rec = read(mia, ({ id, plugin, a, b }) => new Promise((resolve) => {
       const out = [];
       const t0 = performance.now();
       const tick = (now) => {
         const e = window.__hq.view.ents.get(id);
-        const c = window.__hq.session.plugins.debug(plugin).find((x) => x.player === id);
-        if (e && c) out.push([now - t0, e.x, e.y, c.x, c.y]);
+        const list = window.__hq.session.plugins.debug(plugin);
+        const ca = list.find((x) => x.id === a), cb = list.find((x) => x.id === b);
+        if (e && ca && cb) out.push([now - t0, e.x, e.y, ca.x, ca.y, cb.x, cb.y]);
         if (now - t0 < 2600) requestAnimationFrame(tick); else resolve(out);
       };
       requestAnimationFrame(tick);
-    }), { id: rem.id, plugin: PLUGIN });
+    }), { id: rem.id, plugin: PLUGIN, a: cat.id, b: seedling.id });
     await read(rem, async () => {
       const v = window.__hq.view, wait = (ms) => new Promise((r) => setTimeout(r, ms));
       await wait(200);
@@ -74,55 +132,130 @@ export async function run(ctx) {
       v.setDirection(0, 0);
     });
     const S = await rec;
-    const gaps = [];
+    const ga = [], gb = [];
     let closest = Infinity;
     for (let i = 1; i < S.length; i++) {
-      const [tt, ox, oy, cx, cy] = S[i];
+      const [tt, ox, oy, ax, ay, bx, by] = S[i];
       const moving = Math.hypot(ox - S[i - 1][1], oy - S[i - 1][2]) > 0.2;
-      const d = Math.hypot(cx - ox, cy - oy);
-      closest = Math.min(closest, d);
-      if (moving && tt > 900) gaps.push(d);
+      if (moving && tt > 900) {
+        // walking (resting pets sit at the feet on purpose): never on top of the owner
+        closest = Math.min(closest, Math.hypot(ax - ox, ay - oy), Math.hypot(bx - ox, by - oy));
+        ga.push(Math.hypot(ax - ox, ay - oy));
+        gb.push(Math.hypot(bx - ox, by - oy));
+      }
     }
-    gaps.sort((a, b) => a - b);
-    const med = gaps[Math.floor(gaps.length / 2)];
-    check("while the owner walks, the creature keeps about 36 px behind on the observer's page", gaps.length > 10 && med > 28 && med < 44, `median ${med?.toFixed(1)} px over ${gaps.length} frames`);
-    check("the creature is never drawn on top of its owner", closest > 12, `closest ${closest.toFixed(1)} px`);
+    const med = (l) => l.sort((x, y) => x - y)[Math.floor(l.length / 2)];
+    const [ma, mb] = [med(ga), med(gb)];
+    check("while the owner walks, the first pet keeps about 20 px behind and the next one about 36 px", ga.length > 10 && ma > 14 && ma < 28 && mb > 28 && mb < 44, `medians ${ma?.toFixed(1)} and ${mb?.toFixed(1)} px over ${ga.length} frames`);
+    check("no pet walks on top of its owner", closest > 12, `closest ${closest.toFixed(1)} px`);
 
-    // ---- render on demand still holds with creatures standing
+    // ---- render on demand still holds with pets standing
     await sleep(1500);
     const draws = await read(mia, () => new Promise((resolve) => {
       const v = window.__hq.view, r0 = v.rendersTotal;
       setTimeout(() => resolve(v.rendersTotal - r0), 3000);
     }));
-    check("an idle page with plugin creatures still draws only a few frames a second", draws <= 24, `${draws} draws in 3 s`);
-    const restAt = await read(mia, ({ id, plugin }) => {
-      const e = window.__hq.view.ents.get(id), c = window.__hq.session.plugins.debug(plugin).find((x) => x.player === id);
-      return { dx: c.x - e.x, dy: c.y - e.y };
-    }, { id: rem.id, plugin: PLUGIN });
-    check("at rest the creature sits at its owner's side, not queued behind them", Math.abs(restAt.dx) >= 15 && Math.abs(restAt.dx) <= 30 && Math.abs(restAt.dy) <= 6, JSON.stringify(restAt));
+    // resting pets potter about (a short stroll every 5-10 s each): the page redraws while one walks, not all the time
+    check("an idle page with pottering pets does not redraw continuously", draws <= 120, `${draws} draws in 3 s`);
+    const restAt = await read(mia, ({ id, plugin, a, b }) => {
+      const e = window.__hq.view.ents.get(id), list = window.__hq.session.plugins.debug(plugin);
+      const ca = list.find((x) => x.id === a), cb = list.find((x) => x.id === b);
+      return { a: [ca.x - e.x, ca.y - e.y], b: [cb.x - e.x, cb.y - e.y] };
+    }, { id: rem.id, plugin: PLUGIN, a: cat.id, b: seedling.id });
+    check("at rest the pets potter about their owner's feet, close enough to fit at a desk",
+      [restAt.a, restAt.b].every(([dx, dy]) => Math.hypot(dx, dy) <= 28 && Math.abs(dy) <= 12),
+      JSON.stringify(restAt));
 
-    // ---- the plugin's modal, opened from its entry in the side panel's Plugins tab
-    await waitFor(() => rem.page.evaluate(() => { const b = document.querySelector('.side .tabs button[aria-label="Plugins"]'); b?.click(); return !!b; }), { what: "Plugins tab in the side panel" });
-    await waitFor(() => click(rem, ".plugins-panel button", "Sample pet"), { what: "Sample pet entry" });
-    await waitFor(() => rem.page.$('.modal.plugin-modal[aria-label="Sample pet"]'), { what: "the plugin's modal" });
-    check("the plugin's entry in the Plugins tab opens the modal the plugin drew", true);
-    await waitFor(() => click(rem, ".modal.plugin-modal button", "Frost"), { what: "Frost button" });
-    await waitFor(async () => (await creatureOf(mia, rem.id))?.key === "sprout-3", { what: "frost seedling on Mia's page" });
-    check("picking a colour in the modal changes the seedling on the other page", true);
-    await waitFor(() => rem.page.evaluate(() => [...document.querySelectorAll(".modal.plugin-modal button")].find((b) => b.textContent === "Frost")?.getAttribute("aria-pressed") === "true"), { what: "modal redrawn with Frost pressed" });
-    check("the modal is redrawn with the new choice pressed", true);
-    await click(rem, ".modal.plugin-modal button", "Hidden");
-    await waitFor(async () => !(await creatureOf(mia, rem.id)), { what: "seedling hidden on Mia's page" });
-    await click(rem, ".modal.plugin-modal button", "Shown");
-    await waitFor(async () => (await creatureOf(mia, rem.id))?.visible, { what: "seedling shown again" });
-    check("hiding and showing my seedling reaches the other page", true);
+    // ---- a name and a colour per pet, through the modal's fields
+    await openPets(rem);
+    await setField(rem, 'input[type="text"]', "Biscuit");
+    await waitFor(async () => (await pet(mia, rem.id, "n0"))?.label === null && (await read(rem, () => document.querySelector('.modal.plugin-modal input[type="text"]')?.value === "Biscuit")), { what: "the name kept in the redrawn modal" });
+    check("naming a pet in the modal is kept (redrawn with it)", true);
+    const picked = await read(rem, () => {
+      const input = document.querySelector('.modal.plugin-modal input[type="color"]');
+      if (!input) return false;
+      input.value = "#3fa7d6"; // what choosing a colour in the picker does; then the browser fires change
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    });
+    await waitFor(async () => { const c = await pet(mia, rem.id, "t0"); return c && c.tint === 0x3fa7d6; }, { what: "a blue cat on Mia's page" });
+    check("a colour picked for one pet reaches the other page, on that pet only", picked && (await pet(mia, rem.id, "n8"))?.tint === 0xffffff);
+    await waitFor(() => click(rem, ".modal.plugin-modal button", "Reset colour"), { what: "Reset colour button" });
+    await waitFor(async () => (await pet(mia, rem.id, "n0"))?.tint === 0xffffff, { what: "the cat in its own colours again" });
+    check("Reset colour gives the pet back its drawn colours", true);
+    // remove the seedling (second row): the cat stays the same sprite, it does not turn into another pet
+    await waitFor(() => rem.page.evaluate(() => {
+      const b = [...document.querySelectorAll(".modal.plugin-modal button")].filter((x) => x.textContent === "Remove")[1];
+      b?.click();
+      return !!b;
+    }), { what: "Remove button" });
+    await waitFor(async () => (await petsOf(mia, rem.id)).length === 1, { what: "seedling removed on Mia's page" });
+    check("removing a pet takes that one away and leaves the other as it was", (await petsOf(mia, rem.id))[0]?.id === cat.id);
     await rem.page.keyboard.press("Escape");
-    await waitFor(async () => !(await rem.page.$(".modal.plugin-modal")), { what: "modal closed by Escape" });
-    check("Escape closes the plugin's modal", true);
 
+    // ---- the office's limit: the plugin's setting, in Administration > Plugins
+    const setLimit = async (n) => {
+      await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
+      await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
+      await waitFor(() => admin.page.evaluate(() => { const b = document.querySelector('.modal button[aria-label="Settings of Pets"]'); b?.click(); return !!b; }), { what: "the gear button" });
+      const sel = `.modal .plugin-setting input`;
+      await waitFor(() => admin.page.$(sel), { what: "the limit field" });
+      const before = await read(admin, (sel) => document.querySelector(sel).value, sel);
+      await admin.page.focus(sel);
+      await admin.page.evaluate((sel) => document.querySelector(sel).select(), sel);
+      await admin.page.keyboard.type(String(n));
+      await admin.page.keyboard.press("Enter"); // submits the settings form: Save, which closes the modal
+      await waitFor(async () => !(await admin.page.$(".modal .plugin-setting")), { what: "settings saved and closed" });
+      await admin.page.keyboard.press("Escape"); // the admin dialog
+      return before;
+    };
+    check("the pets per member setting is behind the plugin's gear in Administration > Plugins, 3 by default", (await setLimit(1)) === "3");
+    await openPets(rem);
+    await waitFor(() => modalHas(rem, "You have 1 pet, the most this office allows."), { what: "Rem told the new limit" });
+    check("a lower limit reaches members at once: no more Add buttons", !(await modalHas(rem, "Seedling")));
+    await rem.page.keyboard.press("Escape");
+    await setLimit(3);
+    const audit2 = await (await fetch(API + "/api/admin/audit", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).text();
+    check("changing it is in the activity log", audit2.includes("plugin.settings") && audit2.includes("limit=1"));
+
+    // ---- another plugin's pet through the pets plugin's hooks: critters (e2e/fixtures), called by an app
+    // outside the browser with Rem's app token, draws a critter that the pets plugin walks for Rem
+    await fetch(API + "/api/admin/plugins/critters", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
+    const critterToken = await waitFor(() => read(rem, () => fetch("/api/plugins/critters/token", { method: "POST" }).then((r) => r.ok ? r.json() : null).then((j) => j?.token)), { what: "a critters token" });
+    const petCall = (path, body) => fetch(`${API}/plugins/critters/api/${path}`, { method: "POST", headers: { Authorization: "Bearer " + critterToken }, body });
+    const put = await (await petCall("pet", "Bramble")).json();
+    await waitFor(async () => (await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g") && c.visible), { what: "the critter on Mia's page" });
+    check("another plugin puts a pet of its own drawing with the member whose token it served, and it follows them", put.ok === true, JSON.stringify(put));
+    await openPets(rem);
+    check("that pet is not in the Pets modal, and does not count in the limit", !(await modalHas(rem, "Bramble")) && (await modalHas(rem, "Add a pet (1 of 3)")));
+    await rem.page.keyboard.press("Escape");
+    const gone = await (await petCall("unpet", "")).json();
+    await waitFor(async () => !(await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g")), { what: "the critter gone" });
+    check("the plugin that put it takes it away", gone.removed === true);
+    await fetch(API + "/api/admin/plugins/critters", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
+
+    // ---- the name shows on hover, only while the pet wanders
+    check("a following pet shows nothing when the mouse is over it", (await hoverOver(mia, rem.id, cat.id)) === "");
     // ---- Let wander / Call, from the plugin's button in the top bar
-    await waitFor(() => click(rem, ".topbar .plugin-slot", "Let wander"), { what: "Let wander button" });
-    await waitFor(() => rem.page.evaluate(() => document.querySelector(".topbar .plugin-slot")?.textContent === "Call"), { what: "the button now says Call" });
+    await waitFor(() => click(rem, ".topbar .plugin-slot", "Let pets wander"), { what: "Let wander button" });
+    // a socializing pet goes along with another wandering pet: Mia's dog joins Rem's cat on Rem's page
+    await waitFor(() => click(mia, ".topbar .plugin-slot", "Let pets wander"), { what: "Mia's Let wander" });
+    const dog = (await petsOf(rem, mia.id))[0];
+    await waitFor(async () => (await petsOf(rem, mia.id))[0]?.mode !== "follow", { what: "Mia's dog wandering on Rem's page" });
+    // what the socialize mood sends; Mia's page also picks goals by its own moods, so say it until it shows
+    let joined = false;
+    await waitFor(async () => {
+      await pluginFrame(mia).evaluate((goal) => window.hq.send({ t: "wander", g: [goal] }), cat.id);
+      await sleep(250);
+      return (joined = (await petsOf(rem, mia.id))[0]?.target === cat.id);
+    }, { timeout: 8000, every: 50, what: "dog with the cat" }).catch(() => {});
+    check("a pet can go along with another member's wandering pet, on the other pages too", joined && !!dog);
+    await click(mia, ".topbar .plugin-slot", "Call pets");
+    let tag = "";
+    await waitFor(async () => ((tag = await hoverOver(mia, rem.id, cat.id)) !== "" && tag !== "missing"), { timeout: 8000, what: "hover tag" }).catch(() => {});
+    check("while it wanders, the mouse over the pet shows its name and its owner", tag === "Biscuit\n(Rem" + t + ")", JSON.stringify(tag));
+    await mia.page.mouse.move(5, 5);
+    await waitFor(() => rem.page.evaluate(() => document.querySelector(".topbar .plugin-slot")?.textContent === "Call pets"), { what: "the button now says Call" });
     const remAt = await read(mia, (id) => { const e = window.__hq.view.ents.get(id); return { x: e.x, y: e.y }; }, rem.id);
     const strolls = await read(mia, ({ id, plugin }) => new Promise((resolve) => {
       const seen = [];
@@ -136,8 +269,9 @@ export async function run(ctx) {
     }), { id: rem.id, plugin: PLUGIN });
     const moved = strolls.some(([x, y], i) => i > 0 && Math.hypot(x - strolls[i - 1][0], y - strolls[i - 1][1]) > 0.5);
     const far = Math.max(...strolls.map(([x, y]) => Math.hypot(x - remAt.x, y - remAt.y)));
-    check("a wandering seedling strolls on its own while its owner stands still, near where it was left", moved && far < 70 && strolls.every((x) => x[2] !== "follow"), `moved ${moved}, farthest ${far.toFixed(1)} px`);
-    // Call: the seedling walks back (around walls), it never jumps; recorded frame by frame on Mia's page
+    // its mood decides how far: near home or its owner, or exploring up to 240 px from home
+    check("a wandering pet walks on its own while its owner stands still, within its moods' reach", moved && far < 300 && strolls.every((x) => x[2] !== "follow"), `moved ${moved}, farthest ${far.toFixed(1)} px`);
+    // Call: the pet walks back (around walls), it never jumps; recorded frame by frame on Mia's page
     const back = read(mia, ({ id, plugin }) => new Promise((resolve) => {
       let prev = null, maxJump = 0, frames = 0;
       const t0 = performance.now();
@@ -152,14 +286,14 @@ export async function run(ctx) {
       };
       requestAnimationFrame(tick);
     }), { id: rem.id, plugin: PLUGIN });
-    await click(rem, ".topbar .plugin-slot", "Call");
+    await click(rem, ".topbar .plugin-slot", "Call pets");
     const callBack = await back;
-    await waitFor(async () => (await creatureOf(mia, rem.id))?.mode === "follow", { what: "seedling following again" });
+    await waitFor(async () => (await creatureOf(mia, rem.id))?.mode === "follow", { what: "pet following again" });
     check("Call brings it back to following its owner, walking, never jumping", callBack.frames > 20 && callBack.maxJump < 12, JSON.stringify(callBack));
 
     // ---- assets from outside
     check("the plugin's server code is never served", (await fetch(`${API}/plugins/${PLUGIN}/assets/main.ts`)).status === 404 && (await fetch(`${API}/plugins/${PLUGIN}/assets/..%2Fmain.ts`)).status === 404 && (await fetch(`${API}/plugins/${PLUGIN}/main.ts`)).status === 404);
-    check("its public/ files are", (await fetch(`${API}/plugins/${PLUGIN}/assets/creatures.png`)).status === 200);
+    check("its public/ files are", (await fetch(`${API}/plugins/${PLUGIN}/assets/pets.png`)).status === 200 && (await fetch(`${API}/plugins/${PLUGIN}/assets/pets-tint.png`)).status === 200);
 
     // ---- the iframe is a sandbox
     const f = pluginFrame(mia);
@@ -187,7 +321,7 @@ export async function run(ctx) {
     await waitFor(async () => (await creatures(mia)) === null && (await creatures(rem)) === null, { what: "creatures removed" });
     check("disabling removes the plugin's code and creatures from every page without a reload", true);
     check("and its button tab", await read(rem, () => !document.querySelector('.side .tabs button[aria-label="Plugins"]')));
-    check("its assets answer 404", (await fetch(`${API}/plugins/${PLUGIN}/assets/creatures.png`)).status === 404);
+    check("its assets answer 404", (await fetch(`${API}/plugins/${PLUGIN}/assets/pets.png`)).status === 404);
 
     // ---- a plugin breaking a limit is stopped on that page only
     await setEnabled(admin, true);
@@ -211,7 +345,7 @@ export async function run(ctx) {
 
     await setEnabled(admin, false); // leave the shared office as it was
 
-    // ---- every anchor, the modal widgets and app tokens, with the suite's test plugin (e2e/fixtures/plugins/ui-demo)
+    // ---- every anchor, the modal widgets and app tokens, with the suite's test plugin (e2e/fixtures/plugins/installed/ui-demo)
     await setEnabled(admin, true, "UI demo", "ui-demo");
     const boxText = () => read(mia, () => document.querySelector('.plugin-screen[data-plugin="ui-demo"]')?.textContent ?? "");
     await waitFor(async () => (await boxText()).includes("Last click: nothing yet"), { what: "the plugin's box on the map" });
