@@ -6,6 +6,7 @@ export const PET_SNAP = 140; // px: an owner jump farther than this reseeds the 
 const SETTLE_MS = 500; // owner still this long: a pet hidden behind them strolls to their side
 const STROLL = 45; // px/s for that little walk
 const RETRACE = 10; // px: an owner stepping back along their own trail by this little is a network correction
+const OWNER_STIR = 3; // px/s: slower than this the owner is standing (interpolation noise), whatever the frame rate
 
 export interface PetState {
   /** Owner positions, oldest first, flat [x0, y0, x1, y1, ...]; the pet walks this trail. */
@@ -18,13 +19,16 @@ export interface PetState {
   restSince: number;
   /** ms timestamp of the last frame the owner moved */
   ownerMoved: number;
+  /** where the owner was on the last frame, to tell from dt whether they move */
+  lastOx: number;
+  lastOy: number;
   /** px the owner has stepped back along the trail since they last went forward */
   retraced: number;
   /** sat at its resting spot (closer than the gap): when the owner sets off it waits there, then follows */
   rested: boolean;
 }
 
-export const newPet = (): PetState => ({ trail: [], px: NaN, py: NaN, dir: 0, moving: false, restSince: 0, ownerMoved: 0, retraced: 0, rested: false });
+export const newPet = (): PetState => ({ trail: [], px: NaN, py: NaN, dir: 0, moving: false, restSince: 0, ownerMoved: 0, lastOx: NaN, lastOy: NaN, retraced: 0, rested: false });
 
 const facing = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0);
 
@@ -115,6 +119,12 @@ export function followOwner(s: PetState, ox: number, oy: number, odir: number, o
     }
     s.ownerMoved = now;
   }
+  // Whether the owner moves is a speed, measured over this frame's dt. The trail only takes points 1 px apart,
+  // and a pet at rest rewrites it to end at the owner every frame: at 120 Hz and more a walker covers under
+  // 1 px a frame, so the trail alone would never see them leave and the pet would stay "at rest".
+  if (Number.isFinite(s.lastOx) && dt > 0 && Math.hypot(ox - s.lastOx, oy - s.lastOy) > OWNER_STIR * dt) s.ownerMoved = now;
+  s.lastOx = ox;
+  s.lastOy = oy;
   const still = now - s.ownerMoved > SETTLE_MS;
   // walk back from the owner along the trail to find the pet's spot; drop what lies beyond it
   let need = gap, gx = tr[0], gy = tr[1], cut = 0, found = false;
