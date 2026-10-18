@@ -15,7 +15,7 @@
 - **Screen sharing** up to 1080p, over the map, full screen or picture-in-picture, and a spotlight pad that broadcasts to the whole office.
 - **Chat** for the office, the conversation and direct messages; only the last 500 office messages are kept.
 - **Getting around.** Shortcuts by key position (ZQSD works on AZERTY), zoom, drag to look around, double-click to run, "Walk to" anyone, follow, portals, a minimap and a touch pad on phones.
-- **Avatars and pets.** Pixel-art characters with skin tones, hair styles, beards, hats, a hijab and any colour, and a pet that walks your trail.
+- **Avatars and pets.** Pixel-art characters with skin tones, hair styles, beards, headwear and any colour, and a pet that walks your trail.
 - **Office life.** Reactions, shared whiteboards, notes, embedded sites and images, announcements.
 - **Administration.** A live office editor (walls, objects, rooms, desk assignments), invites, roles, an activity log and the office's name. Optional Google sign-in with admission by domain or invite.
 - **Efficiency.** One goroutine per office, a spatial grid and areas of interest, state changes at 10-15 Hz instead of a position stream, bounded queues, a map baked into one texture and rendering on demand. See [Efficiency and benchmarks](docs/efficiency-and-benchmarks.md).
