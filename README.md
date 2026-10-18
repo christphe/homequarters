@@ -1,6 +1,6 @@
 # Home Quarters
 
-> A fork of [Tilework](https://github.com/guhcostan/tilework) by [Gustavo Costa](https://github.com/guhcostan).
+> An opinionated fork of [Tilework](https://github.com/guhcostan/tilework) by [Gustavo Costa](https://github.com/guhcostan).
 
 ![Home Quarters: an office seen from above, with assigned desks, two people talking at a desk, others at their desks and two walking down the aisles with their pets](site/assets/banner.png)
 
