@@ -33,7 +33,7 @@ docker compose -f deploy/docker-compose.local.yml up --build
 # open http://localhost:8080
 ~~~
 
-For a real server, follow the [self-hosting guide](deploy/README.md) (Caddy for HTTPS, LiveKit, invite-only joins). This fork's CI publishes its image to `ghcr.io/christphe/homequarters`, which the production Compose file uses by default.
+For a real server, follow the [self-hosting guide](deploy/README.md) (Caddy for HTTPS, LiveKit, invite-only joins). CI publishes the image to `ghcr.io/christphe/homequarters`, which the production Compose file uses by default.
 
 **Develop.** You need Go, Node.js with pnpm and a LiveKit server binary. On Windows, run the scripts from Git Bash.
 
@@ -53,10 +53,7 @@ Every environment variable is in [Getting started](docs/getting-started.md). Mor
 
 ## Status
 
-What was run, on which machine, and what was not, is in [docs/status.md](docs/status.md). In short:
-
-- The Go tests (with the race detector) and the real-browser suite (Chrome with a real LiveKit) pass on Windows 11 for this fork's changes. On Windows, the video RTP checks of `proximity` and `spotlight` cannot run (Docker Desktop's network); CI runs them.
-- Sign-in with the real Google service was checked by hand; the suite uses a development provider that walks the same path.
+What was run, on which machine, and what was not, is in [docs/status.md](docs/status.md).
 
 ## Architecture
 
@@ -92,7 +89,7 @@ Read [CONTRIBUTING](docs/contributing.md) and [AGENTS.md](AGENTS.md) first. Ever
 Home Quarters is free software: you can redistribute it and modify it under the terms of the **GNU Affero General Public License, version 3** ([LICENSE](LICENSE)). It comes with no warranty.
 
 - **A modified version of Tilework.** Home Quarters is a modified version of [Tilework](https://github.com/guhcostan/tilework) by [Gustavo Costa](https://github.com/guhcostan), also AGPL-3.0. This fork's changes start on 2026-10-14 and are in the [commit history](https://github.com/christphe/homequarters/commits/main), which keeps the original's history too.
-- **Source for network users.** The AGPL asks anyone who runs the software for others over a network to offer them its source. Every office does so on its about page (`/about`, linked from the join screen): the licence, a link to the source and the version running. If you run a modified version, publish your changes and set `HQ_SOURCE_URL` to your repository ([Getting started](docs/getting-started.md)).
+- **Source for network users.** Each office links to its source and running version on its about page (`/about`); a modified version sets `HQ_SOURCE_URL` to its own repository.
 - Sprites, map and UI are drawn by the project's own code (`web/src/game/art`), see [Art style](docs/art-style.md).
 - Fonts: [Jersey 10](https://github.com/scfried/soft-type-jersey) for the interface and [Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) for the name and the HQ icon, both SIL Open Font License 1.1.
 - Third-party licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
