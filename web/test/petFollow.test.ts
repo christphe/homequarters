@@ -229,3 +229,26 @@ test("a roaming pet never picks a spot where it cannot stand", () => {
     assert.ok(s.py >= 300 - 0.01 || i < 60, `frame ${i}: ${s.py}`);
   }
 });
+
+test("on a fast display (120-240 Hz) a pet that rested walks off behind its owner, at walking pace too", () => {
+  // a walker moves under 1 px a frame there: the pet must still see them leave
+  for (const hz of [60, 120, 144, 240]) {
+    for (const rest of [{ beside: 10 }, { beside: 10, roam: 14, seed: 7 }]) {
+      const dt = 1 / hz, gap = 36, s = newPet();
+      let x = 100, t = 0, clock = 1_700_000_000_000;
+      const step = (v: number) => {
+        x += v * dt;
+        t += dt * 1000;
+        clock += dt * 1000;
+        followOwner(s, x, 100, 2, v, dt, t, () => true, gap, { ...rest, clock });
+        return Math.hypot(s.px - x, s.py - 100);
+      };
+      for (let i = 0; i < hz; i++) step(WALK); // in line
+      for (let i = 0; i < hz * 12; i++) step(0); // rests (and potters about) for 12 s
+      const gaps: number[] = [];
+      for (let i = 0; i < hz * 4; i++) gaps.push(step(WALK));
+      const late = gaps.slice(hz * 2); // 2 s after setting off
+      assert.ok(Math.max(...late) <= gap + 2, `${hz} Hz ${rest.roam ? "roaming" : "resting"}: ${Math.min(...late).toFixed(1)}..${Math.max(...late).toFixed(1)} px behind, want ${gap}`);
+    }
+  }
+});
