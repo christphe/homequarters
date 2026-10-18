@@ -1,4 +1,4 @@
-module tilework/bench/mediagen
+module homequarters/bench/mediagen
 
 go 1.26.5
 

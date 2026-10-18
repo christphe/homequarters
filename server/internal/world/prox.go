@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
 )
 
 // Conversation model

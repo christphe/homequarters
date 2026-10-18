@@ -4,7 +4,7 @@
 
 ~~~text
 server/   Go: HTTP + WebSocket, authoritative world, SQLite, LiveKit integration
-  cmd/tilework/        entry point
+  cmd/homequarters/        entry point
   internal/world/        simulation, spatial grid, proximity groups, backpressure
   internal/gamemap/      map format, validation, collision grids, default office
   internal/media/        LiveKit access tokens and participant removal

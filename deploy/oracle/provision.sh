@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Provision an Tilework host on Oracle Cloud "Always Free" (Ampere A1, arm64).
+# Provision a Home Quarters host on Oracle Cloud "Always Free" (Ampere A1, arm64).
 # Creates (or reuses, by display name) a VCN, internet gateway, route table, security list, public subnet
 # and one VM.Standard.A1.Flex instance with Ubuntu 24.04. Prints the public IP.
 # Requires the OCI CLI configured (~/.oci/config). Stays inside the Always Free limits by default.
 # usage: deploy/oracle/provision.sh [ssh-public-key-file] [ocpus] [memory-gb]
-# TILEWORK_OCI_NAME names the VM; TILEWORK_OCI_NET names the network it joins (default: the VM name), so extra VMs
+# HQ_OCI_NAME names the VM; HQ_OCI_NET names the network it joins (default: the VM name), so extra VMs
 # (for example benchmark hosts) can share the demo's network.
-# TILEWORK_OCI_SHAPE=VM.Standard.E2.1.Micro uses the always-free AMD micro VM (1 GB RAM) when Ampere A1 capacity
+# HQ_OCI_SHAPE=VM.Standard.E2.1.Micro uses the always-free AMD micro VM (1 GB RAM) when Ampere A1 capacity
 # is exhausted ("Out of host capacity" is common for A1 in busy regions; retrying later usually works).
 set -euo pipefail
-PUBKEY=${1:-$HOME/.ssh/tilework_demo.pub}
+PUBKEY=${1:-$HOME/.ssh/hq_demo.pub}
 OCPUS=${2:-2}
 MEM=${3:-12}
-NAME=${TILEWORK_OCI_NAME:-tilework}
-NET=${TILEWORK_OCI_NET:-$NAME}
-SHAPE=${TILEWORK_OCI_SHAPE:-VM.Standard.A1.Flex}
-C=${TILEWORK_OCI_COMPARTMENT:-$(awk -F= '/^tenancy/{print $2}' ~/.oci/config)}
+NAME=${HQ_OCI_NAME:-homequarters}
+NET=${HQ_OCI_NET:-$NAME}
+SHAPE=${HQ_OCI_SHAPE:-VM.Standard.A1.Flex}
+C=${HQ_OCI_COMPARTMENT:-$(awk -F= '/^tenancy/{print $2}' ~/.oci/config)}
 q() { oci "$@" --output json; }
 first() { python3 -c "import json,sys;d=sys.stdin.read();d=json.loads(d)['data'] if d.strip() else [];print(d[0]['id'] if d else '')"; }
 id() { python3 -c "import json,sys;print(json.load(sys.stdin)['data']['id'])"; }
@@ -23,7 +23,7 @@ id() { python3 -c "import json,sys;print(json.load(sys.stdin)['data']['id'])"; }
 AD=$(q iam availability-domain list --compartment-id "$C" | python3 -c "import json,sys;print(json.load(sys.stdin)['data'][0]['name'])")
 
 VCN=$(q network vcn list --compartment-id "$C" --display-name "$NET-vcn" --lifecycle-state AVAILABLE | first)
-[ -n "$VCN" ] || VCN=$(q network vcn create --compartment-id "$C" --display-name "$NET-vcn" --cidr-blocks '["10.42.0.0/16"]' --dns-label tilework --wait-for-state AVAILABLE | id)
+[ -n "$VCN" ] || VCN=$(q network vcn create --compartment-id "$C" --display-name "$NET-vcn" --cidr-blocks '["10.42.0.0/16"]' --dns-label homequarters --wait-for-state AVAILABLE | id)
 
 IGW=$(q network internet-gateway list --compartment-id "$C" --vcn-id "$VCN" --display-name "$NET-igw" | first)
 [ -n "$IGW" ] || IGW=$(q network internet-gateway create --compartment-id "$C" --vcn-id "$VCN" --display-name "$NET-igw" --is-enabled true --wait-for-state AVAILABLE | id)

@@ -203,7 +203,7 @@ export function NoiseDialog({ onClose }: { onClose: () => void }) {
           <p className={"muted noise-take" + (take.peakDb < -50 ? " silent" : "")}>
             {t("noise.take", { s: take.seconds.toFixed(1), db: take.peakDb.toFixed(0), device: take.device || "?" })} <span className="noise-processing">({take.processing})</span>
             {take.peakDb < -50 && <> {t("noise.takeSilent")}</>}{" "}
-            <a href={take.url} download="tilework-mic-test.webm">{t("noise.download")}</a>
+            <a href={take.url} download="homequarters-mic-test.webm">{t("noise.download")}</a>
           </p>
         )}
         {error && <p className="setting-note" role="alert">{error}</p>}

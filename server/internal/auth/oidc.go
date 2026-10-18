@@ -61,7 +61,7 @@ type Claims struct {
 }
 
 // AuthCodeURL is the provider page the browser is sent to. Only openid and
-// email are asked for: the name and picture stay chosen in Tilework.
+// email are asked for: the name and picture stay chosen in Home Quarters.
 func (p *Provider) AuthCodeURL(redirectURI, state, nonce, verifier, loginHint string) string {
 	q := url.Values{
 		"response_type":         {"code"},

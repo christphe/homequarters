@@ -1,8 +1,8 @@
 // Chat scopes and privacy, chat history persistence, profile changes and desk labels.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, sleep, API } from "../lib.mjs";
 
-const chatOf = (u) => u.page.evaluate(() => window.__tilework.state.chat.map((m) => ({ sc: m.sc, from: m.from, text: m.text, n: m.n })));
-const send = (u, sc, text, id) => u.page.evaluate((sc, text, id) => window.__tilework.session.chat(sc, text, id), sc, text, id);
+const chatOf = (u) => u.page.evaluate(() => window.__hq.state.chat.map((m) => ({ sc: m.sc, from: m.from, text: m.text, n: m.n })));
+const send = (u, sc, text, id) => u.page.evaluate((sc, text, id) => window.__hq.session.chat(sc, text, id), sc, text, id);
 
 export async function run(ctx) {
   resetChecks();
@@ -46,7 +46,7 @@ export async function run(ctx) {
     // ---- rate limit: a burst of 30 cannot flood the office
     await sleep(3000);
     const before = (await chatOf(b)).length;
-    await a.page.evaluate(() => { for (let i = 0; i < 30; i++) window.__tilework.session.chat("o", "flood " + i); });
+    await a.page.evaluate(() => { for (let i = 0; i < 30; i++) window.__hq.session.chat("o", "flood " + i); });
     await sleep(1500);
     const got = (await chatOf(b)).filter((m) => m.text.startsWith("flood")).length;
     check("chat flooding is rate limited (30 sent, burst of ~8 accepted)", got > 0 && got <= 10, got + " delivered, " + (before) + " earlier");
@@ -64,9 +64,9 @@ export async function run(ctx) {
     await walkTo(a, 12 * 16 + 8, 30 * 16 + 8);
     await walkTo(b, 12 * 16 + 40, 30 * 16 + 8);
     await walkTo(c, 30 * 16 + 8, 30 * 16 + 8);
-    await Promise.all([a, b, c].map((u) => u.page.evaluate(() => window.__tilework.session.setConsent(true))));
+    await Promise.all([a, b, c].map((u) => u.page.evaluate(() => window.__hq.session.setConsent(true))));
     await waitFor(async () => (await st(a)).conv?.state === "live" && (await st(b)).conv?.state === "live", { timeout: 20000, what: "A and B converse" }).catch(async (e) => {
-      console.log("DIAG", JSON.stringify(await Promise.all([a, b, c].map(async (u) => ({ st: await st(u), pos: await u.page.evaluate(() => window.__tilework.view.position()), conn: await u.page.evaluate(() => window.__tilework.state.conn) })))), JSON.stringify([a, b, c].map((u) => u.logs)));
+      console.log("DIAG", JSON.stringify(await Promise.all([a, b, c].map(async (u) => ({ st: await st(u), pos: await u.page.evaluate(() => window.__hq.view.position()), conn: await u.page.evaluate(() => window.__hq.state.conn) })))), JSON.stringify([a, b, c].map((u) => u.logs)));
       throw e;
     });
     await send(a, "g", "only for people in the conversation");
@@ -103,36 +103,36 @@ export async function run(ctx) {
     });
     await b.page.evaluate(() => [...document.querySelectorAll(".modal.huge button")].find((x) => x.textContent === "Save")?.click());
     await waitFor(async () => !(await b.page.$(".modal.huge")), { what: "appearance dialog closes on Save" });
-    await waitFor(() => a.page.evaluate((n, id) => window.__tilework.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
+    await waitFor(() => a.page.evaluate((n, id) => window.__hq.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
     check("a profile change reaches other people's roster live", true);
-    const seen = await a.page.evaluate((id) => window.__tilework.state.roster.get(id)?.av, b.id);
+    const seen = await a.page.evaluate((id) => window.__hq.state.roster.get(id)?.av, b.id);
     check("another person sees the new hair, beard and hat", seen?.hs === 7 && seen?.bd === 4 && seen?.ht === 7 && seen?.hk === 2);
     check("another person sees the custom shirt colour", seen?.sh === "#12ab9f", JSON.stringify(seen));
     // someone changing look over and over leaves at most one look per person in other people's memory
-    const looks0 = await a.page.evaluate(() => window.__tilework.cachedLooks());
-    const bCookie = (await b.ctx.cookies()).find((k) => k.name === "tilework_session").value;
+    const looks0 = await a.page.evaluate(() => window.__hq.cachedLooks());
+    const bCookie = (await b.ctx.cookies()).find((k) => k.name === "hq_session").value;
     for (let i = 0; i < 4; i++) { // the profile rate limit allows a burst of 5; one save is already spent
-      await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + bCookie }, body: JSON.stringify({ name: "Novo" + t, avatar: { sk: 1, hs: i, hc: 3, sh: "#0000" + (10 + i), pa: 1 } }) });
-      await waitFor(() => a.page.evaluate((id, sh) => window.__tilework.state.roster.get(id)?.av.sh === sh, b.id, "#0000" + (10 + i)), { what: "look " + i });
+      await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + bCookie }, body: JSON.stringify({ name: "Novo" + t, avatar: { sk: 1, hs: i, hc: 3, sh: "#0000" + (10 + i), pa: 1 } }) });
+      await waitFor(() => a.page.evaluate((id, sh) => window.__hq.state.roster.get(id)?.av.sh === sh, b.id, "#0000" + (10 + i)), { what: "look " + i });
     }
     await sleep(300);
-    const looks1 = await a.page.evaluate(() => window.__tilework.cachedLooks());
-    const bSeen = await a.page.evaluate((id) => window.__tilework.view.debugEntities().some((e) => e.id === id), b.id);
+    const looks1 = await a.page.evaluate(() => window.__hq.cachedLooks());
+    const bSeen = await a.page.evaluate((id) => window.__hq.view.debugEntities().some((e) => e.id === id), b.id);
     check("four look changes leave other people's avatar cache the same size", bSeen && looks1 === looks0, `B in view: ${bSeen}, looks ${looks0} -> ${looks1}`);
-    const bad = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + (await c.ctx.cookies()).find((k) => k.name === "tilework_session").value }, body: JSON.stringify({ name: "   ", avatar: {} }) });
+    const bad = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + (await c.ctx.cookies()).find((k) => k.name === "hq_session").value }, body: JSON.stringify({ name: "   ", avatar: {} }) });
     check("an empty name is refused", bad.status === 400);
     const anon = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) });
     check("anonymous profile changes are refused", anon.status === 401);
 
     // ---- desk assignment shows the owner's label
     // The world map redacts interactive-object content; editors round-trip through the full map.
-    const map = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "tilework_session=" + ctx.adminCookie } })).json();
+    const map = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
     const desk = map.props.find((p) => p.t === "desk");
     desk.assign = b.id;
     desk.label = "New desk " + t;
-    const put = await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "tilework_session=" + ctx.adminCookie }, body: JSON.stringify(map) });
+    const put = await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(map) });
     check("an admin can assign a desk to a person", put.status === 200);
-    await waitFor(() => c.page.evaluate(() => window.__tilework.view.deskLabels.length > 0), { what: "desk label" });
+    await waitFor(() => c.page.evaluate(() => window.__hq.view.deskLabels.length > 0), { what: "desk label" });
     check("clients render the desk owner label", true);
 
     // ---- history: a newcomer sees the office chat; it survives a restart; DMs and group chat do not

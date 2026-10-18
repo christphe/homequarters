@@ -1355,14 +1355,14 @@ function autoScale(width: number, height: number) {
 }
 function readZoom() {
   try {
-    return Math.round(Number(localStorage.getItem("tilework.zoom"))) || 0;
+    return Math.round(Number(localStorage.getItem("hq.zoom"))) || 0;
   } catch {
     return 0;
   }
 }
 function writeZoom(z: number) {
   try {
-    localStorage.setItem("tilework.zoom", String(z));
+    localStorage.setItem("hq.zoom", String(z));
   } catch {
     // storage blocked: the zoom is just not remembered
   }

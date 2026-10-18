@@ -4,5 +4,5 @@
     "types": ["vite/client", "node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src/game/petFollow.ts", "src/keys.ts", "src/game/home.ts", "test"]
+  "include": ["src/game/petFollow.ts", "src/keys.ts", "src/game/home.ts", "src/storageMigration.ts", "test"]
 }

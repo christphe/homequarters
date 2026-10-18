@@ -16,7 +16,7 @@
 
 ## Researched techniques
 
-What the literature and the tools' own documentation recommend for running many people on a small machine, and where Tilework stands. *Measured* means a number in this repository; *expected* is reasoning that still needs a run.
+What the literature and the tools' own documentation recommend for running many people on a small machine, and where Home Quarters stands. *Measured* means a number in this repository; *expected* is reasoning that still needs a run.
 
 | Technique | Source | State |
 | --- | --- | --- |

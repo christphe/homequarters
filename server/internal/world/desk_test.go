@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"tilework/internal/gamemap"
+	"homequarters/internal/gamemap"
 )
 
 func deskAt(w *World, x, y int) *gamemap.Prop {

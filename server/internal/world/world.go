@@ -14,8 +14,8 @@ import (
 	"time"
 	"unicode"
 
-	"tilework/internal/gamemap"
-	"tilework/internal/media"
+	"homequarters/internal/gamemap"
+	"homequarters/internal/media"
 )
 
 // Media is the subset of the SFU integration the world needs.

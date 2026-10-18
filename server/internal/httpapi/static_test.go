@@ -38,7 +38,7 @@ func TestThePageCarriesTheServerVersion(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		body := rec.Body.String()
-		if !strings.Contains(body, `<meta name="tilework-version" content="abc1234"></head>`) {
+		if !strings.Contains(body, `<meta name="hq-version" content="abc1234"></head>`) {
 			t.Errorf("%s: the page must carry the version in its head: %q", path, body)
 		}
 		if rec.Header().Get("Cache-Control") != "no-cache" || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
@@ -49,7 +49,7 @@ func TestThePageCarriesTheServerVersion(t *testing.T) {
 
 func TestTheVersionIsTheDeployCommitOrAHashOfThePage(t *testing.T) {
 	if got := resolveVersion(" 9fc44ab ", ""); got != "9fc44ab" {
-		t.Fatalf("TILEWORK_VERSION wins: %q", got)
+		t.Fatalf("HQ_VERSION wins: %q", got)
 	}
 	if got := resolveVersion("", ""); got != "dev" {
 		t.Fatalf("no version and no page: %q", got)

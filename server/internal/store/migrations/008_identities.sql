@@ -1,6 +1,6 @@
 -- An identity is how a sign-in provider (Google, ...) names a person: the
 -- provider's stable subject, never the email, which can change hands. With
--- TILEWORK_AUTH_PROVIDERS set, a member reaches the office only through one.
+-- HQ_AUTH_PROVIDERS set, a member reaches the office only through one.
 --
 -- One identity per provider and user: a member is one Google account. The
 -- email is kept for administrators to recognise who is who; it is never logged.
