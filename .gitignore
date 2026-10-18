@@ -10,3 +10,4 @@ site/dist
 bench/results/**/*.log
 bench/mediagen/assets
 bench/mediagen/mediagen
+.claude/worktrees/
