@@ -10,6 +10,7 @@ interface Entry {
   name: string;
   title: string;
   client: string | null;
+  hosts?: string[]; // externalHosts of its manifest: what its iframe may fetch
 }
 
 /** Starts and stops plugin hosts to match GET /api/plugins, and routes messages to them. */
@@ -38,6 +39,11 @@ export class PluginManager {
     }
   };
 
+  /** A plugin's decoded sheet (hq.ui.sprite with sheet), or null. */
+  sheetImage(plugin: string, key: string) {
+    return this.layer.sheetImage(plugin, key);
+  }
+
   /** Fetches the running plugins and starts or stops hosts to match; restart: start every one afresh. */
   async refresh(restart = false) {
     const gen = ++this.gen;
@@ -60,7 +66,7 @@ export class PluginManager {
     for (const name of this.early.keys()) if (!want.has(name)) this.early.delete(name);
     for (const e of want.values()) {
       if (this.hosts.has(e.name)) continue;
-      const h = new PluginHost(e.name, e.title, e.client!, {
+      const h = new PluginHost(e.name, e.title, e.client!, e.hosts ?? [], {
         layer: this.layer,
         send: this.send,
         uiChanged: (name) => this.uiChanged(name),

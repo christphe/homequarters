@@ -251,6 +251,8 @@ type pluginEntry struct {
 	Name   string  `json:"name"`
 	Title  string  `json:"title"`
 	Client *string `json:"client"`
+	// Hosts the page lets the plugin's iframe fetch from (its Content Security Policy)
+	Hosts []string `json:"hosts,omitempty"`
 }
 
 // listPlugins tells a member's page which plugins run and where their browser code is.
@@ -262,7 +264,7 @@ func (s *Server) listPlugins(w http.ResponseWriter, r *http.Request) {
 	out := []pluginEntry{}
 	if h := s.hostFor(r.Context()); h != nil {
 		for _, i := range h.RunningInfo() {
-			e := pluginEntry{Name: i.Name, Title: i.Title}
+			e := pluginEntry{Name: i.Name, Title: i.Title, Hosts: i.ExternalHosts}
 			if i.Client != "" {
 				c := "/plugins/" + i.Name + "/client.js" // compiled by the server from client.ts or client.js
 				e.Client = &c
@@ -280,10 +282,12 @@ type pluginStatus struct {
 	Description string `json:"description"`
 	// LongDescription is shown in the admin dialog's About modal
 	LongDescription string `json:"longDescription,omitempty"`
-	State           string `json:"state"`
-	Error           string `json:"error"`
-	Source          string `json:"source"`  // bundled or installed
-	Refused         bool   `json:"refused"` // refused for its name: no switch, it can never run
+	// ExternalHosts: where the plugin's browser code may fetch from (each viewer's address reaches them)
+	ExternalHosts []string `json:"externalHosts,omitempty"`
+	State         string   `json:"state"`
+	Error         string   `json:"error"`
+	Source        string   `json:"source"`  // bundled or installed
+	Refused       bool     `json:"refused"` // refused for its name: no switch, it can never run
 	// Settings are the administrator's choices the plugin declares, with their current values
 	Settings []settingView `json:"settings,omitempty"`
 }
@@ -304,7 +308,7 @@ func (s *Server) adminPlugins(w http.ResponseWriter, r *http.Request) {
 	out := []pluginStatus{}
 	if h := s.hostFor(r.Context()); h != nil {
 		for _, st := range h.Status() {
-			row := pluginStatus{Name: st.Name, Title: st.Title, Version: st.Version, Description: st.Description, LongDescription: st.LongDescription, State: st.State, Error: st.Error, Source: st.Source, Refused: st.NameRefused}
+			row := pluginStatus{Name: st.Name, Title: st.Title, Version: st.Version, Description: st.Description, LongDescription: st.LongDescription, ExternalHosts: st.ExternalHosts, State: st.State, Error: st.Error, Source: st.Source, Refused: st.NameRefused}
 			if !st.NameRefused {
 				vals := h.Settings(st.Name)
 				for _, d := range st.Settings {

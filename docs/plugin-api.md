@@ -17,6 +17,7 @@ Everything here was built and tested on 2026-10-17. Limits are enforced: breakin
 | `appTokens` | boolean | no | Members may create an app token for this plugin; needed for routes declared with `{ token: true }`. |
 | `longDescription` | string | no | At most 2000 characters, shown by the About button of the plugin's row in Administration > Plugins; blank lines separate paragraphs. |
 | `settings` | array | no | At most 16 `{ key, label, type: "number", min, max, default, help }`: whole numbers within ±1,000,000, `min <= default <= max`, key `^[a-z][a-zA-Z0-9]{0,31}$`, label 1-40 characters, `help` (optional) up to 200, shown under the field. Drawn behind the plugin's gear button in Administration > Plugins. |
+| `externalHosts` | string array | no | At most 8 host names (lower case, no scheme or port, like `raw.githubusercontent.com`) the plugin's browser code may fetch from, over https. Shown to administrators in Administration > Plugins and enforced: the iframe's Content Security Policy allows its own folder and these hosts, nothing else. |
 
 A plugin whose manifest or files are invalid is listed as `broken` with the reason. Turning it on reads it again, so fixing the files is enough.
 
@@ -114,6 +115,7 @@ The browser code runs in a hidden iframe with `sandbox="allow-scripts"`, after t
 | Function | Meaning |
 | --- | --- |
 | `hq.loadSprite(key, path, { frameW, frameH, anims })` | A PNG of `public/` (at most 2048 px a side, 4096 frames), cut into `frameW` x `frameH` cells (1-256 px). `anims = { name: { row, frames: [col, ...], fps } }` (up to 32 animations, 64 frames each, fps 0-60). |
+| `hq.loadSprite(key, image, { frameW, frameH, anims })` | `image` is image data the plugin made or downloaded: a `Blob` (an image type, at most 1 MB) or an `ImageBitmap`. It reaches the page over the plugin's port; the page decodes it with the same limits as a PNG (2048 px a side, 4096 frames). An invalid one is not drawn and logs a console warning, like a missing PNG; the plugin goes on. |
 | `hq.loadSprite(key, path, { frameW, frameH, from })` | With `from`, a PNG of that plugin's `public/shared/` (the path must start with `shared/`); that folder is the only part of a plugin's `public/` other plugins can draw. |
 | `hq.spawn(id, key, { x, y, anim })` | Puts sprite `id` with sheet `key` at `x, y` (world px, bottom centre of the frame), standing still. Without `x, y`, a new sprite waits for `follow` or `moveTo` to place it, and an existing one keeps its place and what it does (only its sheet changes). |
 | `hq.remove(id)` | Takes it away. |
@@ -149,7 +151,7 @@ Content elements (a `content` array, at most 64 elements, nested at most 4 deep)
 | `hq.ui.image({ src, alt })` | A PNG of `public/`, shown at most 128 px. |
 | `hq.ui.row(children)` | Its children side by side. |
 | `hq.ui.appToken()` | Home Quarters' token widget for this plugin (needs `appTokens`). |
-| `hq.ui.sprite({ src, frame, scale, tint, alt })` | One cell `[x, y, w, h]` (w and h 1-128) of a PNG of `public/`, scaled 1-6 (default 2), tinted by `"#rrggbb"` if given; `alt` up to 40 characters. `hq.ui.button` accepts the same `sprite` (without `alt`), drawn before its label. |
+| `hq.ui.sprite({ src, frame, scale, tint, alt })` | One cell `[x, y, w, h]` (w and h 1-128) of a PNG of `public/` (`src`), or of a sheet the plugin loaded (`sheet`: its key, image data included; one of the two), scaled 1-6 (default 2), tinted by `"#rrggbb"` if given; `alt` up to 40 characters. `hq.ui.button` accepts the same `sprite` (without `alt`), drawn before its label. |
 | `hq.ui.color({ label, value, onChange })` | A colour picker; `value` is `"#rrggbb"`. `onChange(colour)` gets the colour (lower case) while it is being chosen, at most every 250 ms, and the final one at once. `hideLabel: true` keeps the label for screen readers only (also on `field`). |
 | `hq.ui.field({ label, value, maxLength, placeholder, onChange })` | One line of text; `maxLength` 1-200 (default 200), `placeholder` up to 40 characters. `onChange(text)` runs on Enter or when the field loses focus, only if it changed. |
 | `hq.ui.number({ label, value, min, max, onChange })` | A whole number, `min` <= `value` <= `max` (integers within ±1,000,000). `onChange(value)` runs on Enter or when the field loses focus, clamped to the range, and only if it changed. |

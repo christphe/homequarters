@@ -68,6 +68,35 @@ func TestDescriptionsAreShort(t *testing.T) {
 	}
 }
 
+func TestExternalHosts(t *testing.T) {
+	root := t.TempDir()
+	for name, hosts := range map[string]string{
+		"good":   `["raw.githubusercontent.com","cdn.example.org"]`,
+		"scheme": `["https://example.com"]`,
+		"port":   `["example.com:8080"]`,
+		"upper":  `["Example.com"]`,
+		"bare":   `["localhost"]`,
+		"many":   `["a.io","b.io","c.io","d.io","e.io","f.io","g.io","h.io","i.io"]`,
+	} {
+		write(t, root, map[string]string{
+			name + "/plugin.json": `{"name":"` + name + `","title":"T","client":"c.js","externalHosts":` + hosts + `}`,
+			name + "/public/c.js": "",
+		})
+	}
+	list, err := scanDir(root, Installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, i := range list {
+		if (i.Name == "good") != (i.Err == "") {
+			t.Errorf("%s: %q", i.Name, i.Err)
+		}
+		if i.Name == "good" && len(i.ExternalHosts) != 2 {
+			t.Errorf("good: %v", i.ExternalHosts)
+		}
+	}
+}
+
 func TestSettingValues(t *testing.T) {
 	i := Info{Manifest: Manifest{Settings: []Setting{
 		{Key: "limit", Label: "L", Type: "number", Min: 0, Max: 8, Default: 3},
