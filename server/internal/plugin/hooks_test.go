@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Two plugins: "pets" exposes hooks, "poke" calls them when a member sends it a message and
+// Two plugins: "pets" exposes hooks, "caller" calls them when a member sends it a message and
 // broadcasts what came back, so the test reads every outcome from the sink.
 const hookCallee = `
 export function load() {
@@ -44,18 +44,18 @@ func hookOutcome(t *testing.T, sink *fakeSink, hook string) map[string]any {
 }
 
 func TestHooksBetweenPlugins(t *testing.T) {
-	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "poke": hookCaller, "off": hookCallee})
+	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "caller": hookCaller, "off": hookCallee})
 	h.Presence(alice, true)
-	for _, p := range []string{"pets", "poke"} {
+	for _, p := range []string{"pets", "caller"} {
 		if err := h.Start(p); err != nil {
 			t.Fatal(p, err)
 		}
 	}
 	call := func(plugin, hook, args string) map[string]any {
-		h.Message(alice, "poke", []byte(`{"plugin":"`+plugin+`","hook":"`+hook+`","args":`+args+`}`))
+		h.Message(alice, "caller", []byte(`{"plugin":"`+plugin+`","hook":"`+hook+`","args":`+args+`}`))
 		return hookOutcome(t, sink, hook)
 	}
-	if got := call("pets", "add", `{"x":41}`); got["ok"] != true || got["v"].(map[string]any)["y"] != 42.0 || got["v"].(map[string]any)["from"] != "poke" ||
+	if got := call("pets", "add", `{"x":41}`); got["ok"] != true || got["v"].(map[string]any)["y"] != 42.0 || got["v"].(map[string]any)["from"] != "caller" ||
 		got["v"].(map[string]any)["member"] != float64(alice.ID) {
 		t.Fatalf("a hook answers, and knows which plugin called for which member (the one whose message it handled): %v", got)
 	}
@@ -67,11 +67,11 @@ func TestHooksBetweenPlugins(t *testing.T) {
 			t.Fatalf("%s: want an error with %q, got %v", hook, want, got)
 		}
 	}
-	h.Message(alice, "poke", []byte(`{"plugin":"off","hook":"nothere2","args":{}}`))
+	h.Message(alice, "caller", []byte(`{"plugin":"off","hook":"nothere2","args":{}}`))
 	if got := hookOutcome(t, sink, "nothere2"); got["ok"] != false || !strings.Contains(got["err"].(string), "not running") {
 		t.Fatalf("a plugin that is off: %v", got)
 	}
-	for _, p := range []string{"pets", "poke"} {
+	for _, p := range []string{"pets", "caller"} {
 		if st, msg := state(h, p); st != "running" {
 			t.Fatalf("%s is %s: %s", p, st, msg)
 		}
@@ -82,14 +82,14 @@ func TestHookTimesOut(t *testing.T) {
 	old := hookWait
 	hookWait = 5 * time.Millisecond
 	t.Cleanup(func() { hookWait = old })
-	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "poke": hookCaller})
+	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "caller": hookCaller})
 	h.Presence(alice, true)
-	for _, p := range []string{"pets", "poke"} {
+	for _, p := range []string{"pets", "caller"} {
 		if err := h.Start(p); err != nil {
 			t.Fatal(err)
 		}
 	}
-	h.Message(alice, "poke", []byte(`{"plugin":"pets","hook":"slow","args":{}}`))
+	h.Message(alice, "caller", []byte(`{"plugin":"pets","hook":"slow","args":{}}`))
 	if got := hookOutcome(t, sink, "slow"); got["ok"] != false || !strings.Contains(got["err"].(string), "in time") {
 		t.Fatalf("a hook slower than the wait is a timeout for the caller: %v", got)
 	}
@@ -143,18 +143,18 @@ export function onJoin() {
 // A route (or a hook) that awaits another plugin's hook answers with it: it keeps settling the answers
 // to its calls until it has its own.
 func TestRouteAwaitsAHook(t *testing.T) {
-	h, _, _ := newHost(t, map[string]string{"pets": hookCallee, "poke": `
+	h, _, _ := newHost(t, map[string]string{"pets": hookCallee, "caller": `
 export function load() {
   hq.route("GET", "/via", async () => ({ body: await hq.plugins.call("pets", "add", { x: 1 }) }));
   hq.expose("relay", async (c: HQ.Caller, a: { x: number }) => hq.plugins.call("pets", "later", a));
 }`, "third": hookCaller})
 	h.Presence(alice, true)
-	for _, p := range []string{"pets", "poke", "third"} {
+	for _, p := range []string{"pets", "caller", "third"} {
 		if err := h.Start(p); err != nil {
 			t.Fatal(p, err)
 		}
 	}
-	resp, err := h.Route(context.Background(), "poke", "GET", "/via", RouteReq{Player: alice})
+	resp, err := h.Route(context.Background(), "caller", "GET", "/via", RouteReq{Player: alice})
 	if err != nil || resp.Status != 200 || !strings.Contains(string(resp.Body), `"y":2`) {
 		t.Fatalf("route: %v %d %s", err, resp.Status, resp.Body)
 	}

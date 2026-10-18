@@ -445,6 +445,7 @@ const en = {
   "admin.audit.plugin.settings": "{actor} changed a setting of the plugin {target} ({detail})",
   "admin.plugins.settingsOf": "Settings of {name}",
   "admin.plugins.aboutOf": "About {name}",
+  "admin.plugins.hosts": "Loads from {hosts}: those sites see the address of everyone in the office",
   "admin.plugins.settingsTitle": "{name}: settings",
   "admin.plugins.settings.save": "Save",
   "admin.plugins.settings.saved": "{name}: saved",

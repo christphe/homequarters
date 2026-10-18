@@ -345,6 +345,35 @@ export async function run(ctx) {
 
     await setEnabled(admin, false); // leave the shared office as it was
 
+    // ---- a sprite sheet from image data: drawn-sheet (e2e/fixtures) paints its sheet on an OffscreenCanvas
+    await fetch(API + "/api/admin/plugins/drawn-sheet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
+    const drawnOf = (u, owner) => read(u, (id) => (window.__hq.session.plugins?.debug("drawn-sheet") ?? []).find((c) => c.player === id && c.visible) ?? null, owner);
+    await waitFor(async () => (await drawnOf(mia, rem.id)) && (await drawnOf(rem, mia.id)), { timeout: 15000, what: "the drawn sprites" });
+    check("a sheet the plugin drew and handed over as image data is drawn, following its member, on every page", true);
+    check("image data that is not a picture is refused as an invalid sheet, and the plugin goes on", await read(mia, () => !window.__hq.session.plugins.stopReasons.get("drawn-sheet") && !!document.querySelector('iframe.plugin-frame[data-plugin="drawn-sheet"]')));
+    await waitFor(() => mia.page.evaluate(() => { const b = document.querySelector('.side .tabs button[aria-label="Plugins"]'); if (b && b.getAttribute("aria-selected") !== "true") b.click(); return !!b; }), { what: "Plugins tab" });
+    await waitFor(() => click(mia, ".plugins-panel button", "Drawn sheet"), { what: "Drawn sheet entry" });
+    const previewDrawn = await waitFor(() => read(mia, () => {
+      const c = document.querySelector('.modal.plugin-modal canvas.plugin-sprite');
+      if (!c) return false;
+      const px = c.getContext("2d").getImageData(8, 8, 1, 1).data;
+      return px[3] > 0;
+    }), { what: "the preview" }).catch(() => false);
+    check("the modal previews a cell of that sheet (hq.ui.sprite with sheet)", previewDrawn);
+    await mia.page.keyboard.press("Escape");
+    // what its iframe may fetch: its own folder and the hosts its manifest declares, nothing else
+    const drawnFrame = await (await mia.page.$('iframe.plugin-frame[data-plugin="drawn-sheet"]')).contentFrame();
+    const blocked = await drawnFrame.evaluate(() => new Promise((resolve) => {
+      const seen = [];
+      document.addEventListener("securitypolicyviolation", (e) => seen.push(e.blockedURI));
+      fetch("https://undeclared.example.net/sheet.png").catch(() => {});
+      fetch("https://images.invalid/sheet.png").catch(() => {}); // declared; .invalid never resolves: no network
+      setTimeout(() => resolve(seen), 800);
+    }));
+    check("its iframe may fetch from the hosts its manifest declares, and only those", blocked.some((u) => u.includes("undeclared.example.net")) && !blocked.some((u) => u.includes("images.invalid")), JSON.stringify(blocked));
+    await fetch(API + "/api/admin/plugins/drawn-sheet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
+    await waitFor(async () => !(await read(mia, () => !!document.querySelector('iframe.plugin-frame[data-plugin="drawn-sheet"]'))), { what: "drawn-sheet off" });
+
     // ---- every anchor, the modal widgets and app tokens, with the suite's test plugin (e2e/fixtures/plugins/installed/ui-demo)
     await setEnabled(admin, true, "UI demo", "ui-demo");
     const boxText = () => read(mia, () => document.querySelector('.plugin-screen[data-plugin="ui-demo"]')?.textContent ?? "");
@@ -387,7 +416,8 @@ export async function run(ctx) {
     await waitFor(() => read(mia, () => !document.querySelector(".plugin-screen, .plugin-slot")), { what: "plugin UI removed" });
     check("disabling a plugin removes its buttons and boxes everywhere", true);
     // the forged PUT above is refused (401) on purpose; Chrome logs that response as a console error
-    const real = (u) => u.logs.filter((l) => !(u === mia && /status of 401/.test(l)));
+    // expected on Mia's page: a 401 the test provokes, the fetch blocked by the CSP, and the declared .invalid host not resolving
+    const real = (u) => u.logs.filter((l) => !(u === mia && (/status of 401/.test(l) || /undeclared\.example\.net|images\.invalid|ERR_NAME_NOT_RESOLVED/.test(l))));
     for (const u of [admin, mia, rem]) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
     await Promise.all([admin, mia, rem].map((u) => u.ctx.close()));
   } catch (e) {
