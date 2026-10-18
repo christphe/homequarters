@@ -1,0 +1,8 @@
+{
+  "name": "critters",
+  "title": "Critters",
+  "version": "1.0.0",
+  "description": "Test plugin: puts a critter of its own drawing with a member through the pets plugin's hooks.",
+  "server": "main.ts",
+  "appTokens": true
+}

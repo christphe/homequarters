@@ -23,6 +23,7 @@ import (
 	"homequarters/internal/config"
 	"homequarters/internal/gamemap"
 	"homequarters/internal/media"
+	"homequarters/internal/plugin"
 	"homequarters/internal/store"
 	"homequarters/internal/world"
 )
@@ -44,6 +45,11 @@ type Server struct {
 
 	mu     sync.Mutex
 	worlds map[int64]*world.World
+	// plugins (HQ_PLUGINS_DIR): the installed catalog, nil when off, and one host per running world
+	plugins []plugin.Info
+	hosts   map[int64]*plugin.Host
+	kvQ     chan kvWrite
+	plugLim *limiter
 	// mapMu orders map changes (admin edits, desk claims) so the saved map is the one last applied.
 	mapMu sync.Mutex
 
@@ -104,6 +110,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.St
 		log.Error("instance id", "err", err)
 	}
 	s.auditQ = make(chan actionSave, 128)
+	s.setupPlugins()
 	s.demoLim = newLimiter(0.2, 5) // demo: about one new account per 5 s per IP, burst 5
 	s.workers.Add(1)
 	go func() { defer s.workers.Done(); s.savePositions(ctx) }()
@@ -130,6 +137,8 @@ func (s *Server) savePositions(ctx context.Context) {
 					if err := s.st.SaveLastPos(fctx, p.office, p.user, p.x, p.y); err != nil {
 						s.log.Error("save last position", "err", err)
 					}
+				case k := <-s.kvQ:
+					s.writeKV(fctx, k)
 				default:
 					return
 				}
@@ -142,6 +151,8 @@ func (s *Server) savePositions(ctx context.Context) {
 			if err := s.st.Audit(ctx, a.office, a.actor, a.action, 0, a.target, ""); err != nil {
 				s.log.Error("audit action", "err", err)
 			}
+		case k := <-s.kvQ:
+			s.writeKV(ctx, k)
 		case c := <-s.chatQ:
 			if err := s.st.AppendChat(ctx, c.office, c.user, c.text, c.ts); err != nil {
 				s.log.Error("save chat", "err", err) // never log the message text
@@ -247,9 +258,19 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 		default:
 		}
 	}
+	host := s.pluginHost(o.ID, w)
 	s.workers.Add(1)
-	go func() { defer s.workers.Done(); w.Run(s.ctx) }()
+	go func() {
+		defer s.workers.Done()
+		w.Run(s.ctx)
+		if host != nil {
+			host.Close() // unload runs before the database closes
+		}
+	}()
 	s.worlds[o.ID] = w
+	if host != nil {
+		s.startPlugins(o.ID, host)
+	}
 	return w, nil
 }
 
@@ -293,6 +314,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /about", s.about)
 	mux.HandleFunc("GET /privacy", s.privacy)
 	mux.HandleFunc("GET /ws", s.ws)
+	s.pluginRoutes(mux)
 	if s.cfg.StaticDir != "" {
 		mux.Handle("/", spa(s.cfg.StaticDir, s.version))
 	}

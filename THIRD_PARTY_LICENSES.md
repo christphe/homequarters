@@ -24,6 +24,8 @@ Development-only addition (2026-10-01): `@types/node` 24.19.0 and its `undici-ty
 | Module | Version | License |
 |---|---|---|
 | github.com/coder/websocket | v1.8.15 | ISC |
+| modernc.org/quickjs, modernc.org/libquickjs (plugins' server code, added 2026-10-18; QuickJS itself is MIT) | v0.25.0 / v0.13.1 | BSD-3-Clause, MIT |
+| github.com/evanw/esbuild (compiles plugins' TypeScript, added 2026-10-18) | v0.28.2 | MIT |
 | modernc.org/sqlite (+ libc, mathutil, memory) | v1.60.1 | BSD-3-Clause |
 | github.com/dustin/go-humanize | v1.0.1 | MIT |
 | github.com/google/uuid | v1.6.0 | BSD-3-Clause |

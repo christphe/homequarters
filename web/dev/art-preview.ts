@@ -1,6 +1,8 @@
 // Dev-only page: renders the procedural art without a server.
 // Open /dev/art-preview.html under Vite (pnpm exec vite). e2e/export-art.mjs reads window.artExport
 // to write the sprite sheets and the baked map used by the README and the website.
+import { drawPluginPetSheets } from "../src/game/art/pluginPets";
+import { drawSproutSheet, SPROUT_VARIANTS } from "../src/game/art/sampleCreature";
 import { bakeMapCanvas } from "../src/game/art/tiles";
 import { BEARD_IDS, CELL_H, CELL_W, drawSheet, HAIR_STYLE_IDS, HAT_IDS, LEGACY_CAP_STYLE, type Look } from "../src/game/art/characters";
 import { drawPetSheet, PET_H, PET_KINDS, PET_W } from "../src/game/art/pets";
@@ -96,9 +98,25 @@ for (let k = 1; k < PET_KINDS.length; k++) {
   c.style.width = c.width * scale + "px";
   host.appendChild(c);
 }
+const sc = document.createElement("canvas");
+sc.width = PET_W * 3;
+sc.height = PET_H * 4 * SPROUT_VARIANTS.length;
+sc.className = "pet";
+drawSproutSheet(sc.getContext("2d", { willReadFrequently: true })!);
+sc.style.width = sc.width * scale + "px";
+sc.title = "sample plugin creature (plugins/bundled/hq-pets)";
+host.appendChild(sc);
+// the bundled pets plugin's sheets: their own colours, and the light greys a tint colours
+const plug = drawPluginPetSheets();
+for (const c of [plug.natural, plug.tint]) {
+  c.className = "pet";
+  c.style.width = c.width * scale + "px";
+  c.title = "plugins/bundled/hq-pets";
+  host.appendChild(c);
+}
 const mc = bakeMapCanvas({ ...(map as object), tile: 16, solid: [] } as never);
 mc.style.width = mc.width * (scale / 2) + "px";
 mc.id = "map";
 document.getElementById("map")!.replaceWith(mc);
-(window as unknown as { artExport: unknown }).artExport = { sheets, pets, map: mc.toDataURL("image/png") };
+(window as unknown as { artExport: unknown }).artExport = { sheets, pets, sprout: sc.toDataURL("image/png"), pluginPets: plug.natural.toDataURL("image/png"), pluginPetsTint: plug.tint.toDataURL("image/png"), map: mc.toDataURL("image/png") };
 (window as unknown as { ready: boolean }).ready = true;

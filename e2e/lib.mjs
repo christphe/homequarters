@@ -60,7 +60,8 @@ export async function joinAs(browser, name, { path = "/", avatar = null, viewpor
   const page = await ctx.newPage();
   if (cookie) await ctx.setCookie({ name: "hq_session", value: cookie, url: APP, httpOnly: true, sameSite: "Lax" });
   await page.setViewport(viewport);
-  if (avatar) await page.evaluateOnNewDocument((a) => localStorage.setItem("hq.avatar", JSON.stringify(a)), avatar);
+  // the top page only: it would also run in a plugin's sandboxed iframe, where storage throws
+  if (avatar) await page.evaluateOnNewDocument((a) => { if (window === window.top) localStorage.setItem("hq.avatar", JSON.stringify(a)); }, avatar);
   const logs = [];
   // livekit-client logs these two as errors when WE close a call on purpose (user-initiated abort of its data channels)
   const benign = /DataChannel error on (lossy|reliable): User-Initiated Abort|publisher data channel '(DATA_TRACK_)?(LOSSY|RELIABLE)' closed unexpectedly|error reading from signal stream/i; // the last one: LiveKit's signal socket dropped on a loaded runner; the client reconnects on its own

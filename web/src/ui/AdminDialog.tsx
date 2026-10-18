@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { toast, useStore } from "../store";
 import { hasKey, t, type Key } from "../i18n";
 import { Modal } from "./Modal";
+import { GearIcon, InfoIcon } from "./Icons";
 
-type Tab = "members" | "invites" | "activity" | "announce" | "office";
+type Tab = "members" | "invites" | "activity" | "announce" | "office" | "plugins";
+interface PluginRow { name: string; title: string; version: string; description: string; state: "disabled" | "running" | "crashed" | "broken"; error: string; source: "bundled" | "installed"; refused: boolean; settings?: PluginSetting[]; longDescription?: string }
+interface PluginSetting { key: string; label: string; min: number; max: number; value: number; help?: string }
 interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number; email?: string }
 interface InviteRow { id: number; role: string; maxUses: number; uses: number; expiresAt: number; createdAt: number; createdBy: string; status: string }
 interface AuditRow { id: number; actor: string; action: string; target: string; detail: string; at: number }
@@ -20,7 +23,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title={t("admin.title")} onClose={onClose} wide>
       <div className="chips" role="tablist" aria-label={t("admin.title")}>
-        {(["members", "invites", "activity", "announce", "office"] as Tab[]).map((k) => (
+        {(["members", "invites", "activity", "announce", "office", "plugins"] as Tab[]).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{t(("admin.tab." + k) as Key)}</button>
         ))}
       </div>
@@ -29,6 +32,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
       {tab === "activity" && <Activity />}
       {tab === "announce" && <Announce />}
       {tab === "office" && <OfficeName />}
+      {tab === "plugins" && <Plugins />}
       <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
     </Modal>
   );
@@ -214,4 +218,126 @@ export function AdminButton({ onOpen }: { onOpen: () => void }) {
   const role = useStore((s) => s.role);
   if (role !== "admin") return null;
   return <button className="btn" onClick={onOpen}>{t("admin.open")}</button>;
+}
+
+/** One setting a plugin declares (plugin.json), for the whole office: checked and stored by the server. */
+function PluginSettings({ plugin, onClose, onSaved }: { plugin: PluginRow; onClose: () => void; onSaved: () => void }) {
+  const settings = plugin.settings ?? [];
+  const [text, setText] = useState<Record<string, string>>(() => Object.fromEntries(settings.map((s) => [s.key, String(s.value)])));
+  const [busy, setBusy] = useState(false);
+  const changed = settings.filter((s) => text[s.key] !== String(s.value));
+  // Save sends each changed setting (the server checks it against the plugin's manifest), then closes
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    for (const s of changed) {
+      const r = await api<{ settings: Record<string, number> }>("PUT", "/api/admin/plugins/" + encodeURIComponent(plugin.name) + "/settings", { key: s.key, value: Number(text[s.key]) });
+      if (!r.ok) {
+        setBusy(false);
+        onSaved();
+        return toast(t("admin.plugins.settings.failed", { name: s.label, error: r.json.error ?? String(r.status) }));
+      }
+    }
+    setBusy(false);
+    toast(t("admin.plugins.settings.saved", { name: plugin.title }));
+    onSaved();
+    onClose();
+  };
+  return (
+    <Modal title={t("admin.plugins.settingsTitle", { name: plugin.title })} onClose={onClose}>
+      <form onSubmit={(e) => void save(e)}>
+        {settings.map((s) => {
+          const help = "help-" + plugin.name + "-" + s.key;
+          return (
+            <div className="plugin-setting" key={s.key}>
+              <label>
+                <span>{s.label}</span>
+                <input type="number" inputMode="numeric" min={s.min} max={s.max} step={1} value={text[s.key]} required
+                  aria-describedby={s.help ? help : undefined} onChange={(e) => { const v = e.currentTarget.value; setText((x) => ({ ...x, [s.key]: v })); }} />
+              </label>
+              {s.help && <small className="muted plugin-setting-help" id={help}>{s.help}</small>}
+            </div>
+          );
+        })}
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onClose}>{t("settings.close")}</button>
+          <button className="btn primary" disabled={busy || changed.length === 0}>{t("admin.plugins.settings.save")}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** The server's plugins (bundled with Home Quarters or installed by its operator) and a switch for each. */
+function Plugins() {
+  const [rows, setRows] = useState<PluginRow[] | null>(null);
+  const [busy, setBusy] = useState("");
+  const [settingsOf, setSettingsOf] = useState(""); // the plugin whose settings modal is open
+  const [aboutOf, setAboutOf] = useState(""); // the plugin whose About modal is open
+  const load = useCallback(async () => {
+    const r = await api<PluginRow[]>("GET", "/api/admin/plugins");
+    if (r.ok) setRows(r.json); else toast(t("admin.error"));
+  }, []);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 3000); // a plugin can stop by itself while the tab is open
+    return () => window.clearInterval(timer);
+  }, [load]);
+  const set = async (p: PluginRow, enabled: boolean) => {
+    setBusy(p.name);
+    const r = await api<{ state: string }>("PUT", "/api/admin/plugins/" + encodeURIComponent(p.name), { enabled });
+    setBusy("");
+    if (r.ok) toast(t(enabled ? "admin.plugins.enabled" : "admin.plugins.disabled", { name: p.title }));
+    else toast(t("admin.plugins.failed", { name: p.title, error: r.json.error ?? String(r.status) }));
+    void load();
+  };
+  if (!rows) return <p className="muted" role="status">{t("admin.loading")}</p>;
+  if (rows.length === 0) return <p className="muted">{t("admin.plugins.none")}</p>;
+  const open = rows.find((p) => p.name === settingsOf && !p.refused && p.settings?.length);
+  const about = rows.find((p) => p.source + "/" + p.name === aboutOf && p.longDescription);
+  return (
+    <>
+    <table className="admin-table plugins-table">
+      <caption className="sr-only">{t("admin.tab.plugins")}</caption>
+      <thead><tr><th scope="col">{t("admin.plugins.plugin")}</th><th scope="col">{t("admin.plugins.state")}</th><th scope="col"><span className="sr-only">{t("admin.actions")}</span></th></tr></thead>
+      <tbody>
+        {rows.map((p) => {
+          const on = p.state === "running";
+          return (
+            <tr key={p.source + "/" + p.name} data-plugin={p.name} data-source={p.source}>
+              <td>{p.title} <small className="muted">{p.version}</small> <span className={"plugin-source " + p.source}>{t(("admin.plugins.source." + p.source) as Key)}</span>{p.description && <small className="muted plugin-desc">{p.description}</small>}</td>
+              <td>{t(("admin.plugins.state." + p.state) as Key)}{p.error && <small className="muted plugin-error">{p.error}</small>}</td>
+              <td className="nowrap"><span className="plugin-actions">
+                {!!p.longDescription && (
+                  <button className="btn plugin-gear" aria-label={t("admin.plugins.aboutOf", { name: p.title })} title={t("admin.plugins.aboutOf", { name: p.title })} onClick={() => setAboutOf(p.source + "/" + p.name)}>
+                    <InfoIcon />
+                  </button>
+                )}
+                {!p.refused && !!p.settings?.length && (
+                  <button className="btn plugin-gear" aria-label={t("admin.plugins.settingsOf", { name: p.title })} title={t("admin.plugins.settingsOf", { name: p.title })} onClick={() => setSettingsOf(p.name)}>
+                    <GearIcon />
+                  </button>
+                )}
+                {p.state !== "broken" && (
+                  <button className={"btn" + (on ? "" : " primary")} disabled={busy === p.name} aria-label={t(on ? "admin.plugins.disableOf" : "admin.plugins.enableOf", { name: p.title })} onClick={() => void set(p, !on)}>
+                    {t(on ? "admin.plugins.disable" : "admin.plugins.enable")}
+                  </button>
+                )}
+              </span></td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    {about && (
+      <Modal title={about.title} onClose={() => setAboutOf("")}>
+        {about.longDescription!.split(/\n\s*\n/).map((para, i) => <p key={i}>{para}</p>)}
+        <div className="modal-actions">
+          <button className="btn" onClick={() => setAboutOf("")}>{t("settings.close")}</button>
+        </div>
+      </Modal>
+    )}
+    {open && <PluginSettings plugin={open} onClose={() => setSettingsOf("")} onSaved={() => void load()} />}
+    </>
+  );
 }

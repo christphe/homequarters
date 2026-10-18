@@ -1,0 +1,1 @@
+{"name": "echo", "title": "Echo", "version": "1.0.0", "description": "Test plugin.", "server": "main.ts", "client": "client.js", "appTokens": true, "settings": [{"key": "limit", "label": "Limit", "type": "number", "min": 0, "max": 8, "default": 3}]}

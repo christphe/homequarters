@@ -65,6 +65,7 @@ const (
 	evForce
 	evClaim
 	evRename
+	evPlugin
 )
 
 type ev struct {
@@ -85,6 +86,7 @@ type ev struct {
 	x, y   int
 	wb     *BoardMsg
 	claim  chan claimResult
+	data   []byte
 }
 
 type joinResult struct {
@@ -112,6 +114,9 @@ type World struct {
 	hist       []ChatEntry
 	OnAction   func(officeID int64, actor uint32, action, target string) // metadata only, must not block
 	OnStop     func(officeID int64, last []LastPos)                      // called once by Run when it stops, before it returns
+	// OnPresence reports a member becoming visible-online (joined, or left invisible) or not (left,
+	// evicted, went invisible). Plugins see only this presence. Must not block.
+	OnPresence func(officeID int64, userID uint32, name, role string, online bool)
 
 	// social features (world goroutine only)
 	followers map[*Player]struct{}
@@ -430,6 +435,9 @@ func (w *World) handle(e ev, now time.Time) {
 	case evRename:
 		w.doRename(e.s)
 		return
+	case evPlugin:
+		w.deliverPlugin(e.id, e.data)
+		return
 	case evClaim:
 		claim := w.doClaimDesk
 		if e.b {
@@ -462,6 +470,9 @@ func (w *World) handle(e ev, now time.Time) {
 		if p := w.players[e.id]; p != nil {
 			p.Name, p.Avatar = e.info.Name, e.info.Avatar
 			w.rUpd[p.ID] = struct{}{}
+			if p.Status != StatusInvisible {
+				w.presence(p, true) // plugins see the new name
+			}
 		}
 		return
 	}
@@ -552,6 +563,7 @@ func (w *World) doJoin(e ev, now time.Time) {
 		w.insertVisible(p)
 		w.resub(p)
 		w.rAdd[p.ID] = struct{}{}
+		w.presence(p, true)
 	} else {
 		// reattach (reconnect or second tab): the new connection wins
 		if p.out != nil {
@@ -563,6 +575,9 @@ func (w *World) doJoin(e ev, now time.Time) {
 			close(old)
 		}
 		p.Name, p.Avatar, p.Role = info.Name, info.Avatar, info.Role
+		if p.Status != StatusInvisible {
+			w.presence(p, true) // a reconnect may carry a new name or role: plugins update, no onJoin
+		}
 		clearPending(p)
 		w.unsubAll(p) // re-subscribed below so the client gets a fresh full snapshot
 		w.rUpd[p.ID] = struct{}{}
@@ -678,6 +693,9 @@ func (w *World) removePlayer(p *Player) {
 	delete(w.rAdd, p.ID)
 	delete(w.rUpd, p.ID)
 	w.rDel = append(w.rDel, p.ID)
+	if p.Status != StatusInvisible {
+		w.presence(p, false)
+	}
 	if w.OnLeave != nil {
 		w.OnLeave(w.OfficeID, p.ID, p.X, p.Y)
 	}
@@ -772,9 +790,11 @@ func (w *World) doStatus(p *Player, s string) {
 	}
 	if s == StatusInvisible {
 		w.hide(p)
+		w.presence(p, false)
 	} else if prev == StatusInvisible {
 		w.insertVisible(p)
 		w.sendState(p, time.Now())
+		w.presence(p, true)
 	}
 	w.rUpd[p.ID] = struct{}{}
 }

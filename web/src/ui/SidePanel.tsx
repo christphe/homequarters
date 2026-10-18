@@ -3,16 +3,21 @@ import { session } from "../session";
 import { getState, setState, useStore } from "../store";
 import { t, type Key } from "../i18n";
 import { AvatarCanvas } from "./AvatarEditor";
-import { ChatIcon, PinIcon, SendIcon, UsersIcon } from "./Icons";
+import { ChatIcon, PinIcon, PuzzleIcon, SendIcon, UsersIcon } from "./Icons";
 import { statusColor } from "./StatusMenu";
+import { PluginSlots } from "./PluginUI";
 
 type Scope = { sc: "o" | "g" } | { sc: "d"; peer: number };
 
 export function SidePanel() {
   // phones start with the map visible; the panel opens from its tab
-  const [tab, setTab] = useState<"people" | "chat" | "">(() => (window.matchMedia?.("(max-width: 700px)").matches ? "" : "people"));
+  const [tab, setTab] = useState<"people" | "chat" | "plugins" | "">(() => (window.matchMedia?.("(max-width: 700px)").matches ? "" : "people"));
   const [scope, setScope] = useState<Scope>({ sc: "o" });
   const unread = useStore((s) => s.unread);
+  const hasPlugins = useStore((s) => s.pluginUI.slots.some((x) => x.anchor === "sidebar"));
+  useEffect(() => {
+    if (tab === "plugins" && !hasPlugins) setTab("people");
+  }, [tab, hasPlugins]);
   useEffect(() => {
     if (tab === "chat") setState({ unread: 0 });
   }, [tab, unread]);
@@ -26,9 +31,15 @@ export function SidePanel() {
           <ChatIcon />
           {unread > 0 && tab !== "chat" && <b className="badge">{unread > 9 ? "9+" : unread}</b>}
         </button>
+        {hasPlugins && (
+          <button role="tab" aria-selected={tab === "plugins"} className={tab === "plugins" ? "on" : ""} onClick={() => setTab(tab === "plugins" ? "" : "plugins")} title={t("plugins.title")} aria-label={t("plugins.title")}>
+            <PuzzleIcon />
+          </button>
+        )}
       </nav>
       {tab === "people" && <People onDm={(peer) => { setScope({ sc: "d", peer }); setTab("chat"); }} />}
       {tab === "chat" && <Chat scope={scope} setScope={setScope} />}
+      {tab === "plugins" && hasPlugins && <Plugins />}
     </aside>
   );
 }
@@ -176,6 +187,16 @@ function Chat({ scope, setScope }: { scope: Scope; setScope: (s: Scope) => void 
         <input value={text} maxLength={500} disabled={scope.sc === "g" && !conv} onChange={(e) => setText(e.target.value)} placeholder={scope.sc === "g" && !conv ? t("chat.noConv") : scope.sc === "d" ? t("chat.dmWith", { name: name(scope.peer) }) : t("chat.placeholder")} aria-label={t("chat.placeholder")} />
         <button aria-label={t("chat.send")} disabled={scope.sc === "g" && !conv}><SendIcon /></button>
       </form>
+    </section>
+  );
+}
+
+/** Each running plugin's entry (the sidebar anchor): a button, usually opening the plugin's modal. */
+function Plugins() {
+  return (
+    <section className="panel plugins-panel" aria-label={t("plugins.title")}>
+      <h2>{t("plugins.title")}</h2>
+      <div className="plugin-buttons"><PluginSlots anchor="sidebar" /></div>
     </section>
   );
 }

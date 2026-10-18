@@ -13,7 +13,6 @@ const (
 	nHair      = 12 // styles; 5 is the retired cap, see legacyCapStyle
 	nHairColor = 16
 	nCloth     = 24 // shirt, trousers and hat colours
-	nPet       = 9  // 0 = no pet, then cat, dog, bunny, fox, chick, slime, owl, axolotl
 	nBeard     = 6  // 0 = none, stubble, moustache, goatee, full, long
 	nHat       = 10 // 0 = none, cap, beanie, headphones, bowler, top hat, beret, tricorne, party hat, hijab
 
@@ -77,7 +76,6 @@ type avatar struct {
 	HairColor color  `json:"hc"`
 	Shirt     color  `json:"sh"`
 	Pants     color  `json:"pa"`
-	Pet       int    `json:"pt"`
 	Beard     int    `json:"bd,omitempty"`
 	Hat       int    `json:"ht,omitempty"`
 	HatColor  *color `json:"hk,omitempty"`
@@ -95,7 +93,7 @@ func NormalizeAvatar(raw json.RawMessage) json.RawMessage {
 	var in avatar
 	_ = json.Unmarshal(raw, &in) // a field of the wrong type stays zero; the others are kept
 	a := avatar{Skin: in.Skin.clamp(nSkin), Hair: clamp(in.Hair, nHair), HairColor: in.HairColor.clamp(nHairColor),
-		Shirt: in.Shirt.clamp(nCloth), Pants: in.Pants.clamp(nCloth), Pet: clamp(in.Pet, nPet),
+		Shirt: in.Shirt.clamp(nCloth), Pants: in.Pants.clamp(nCloth),
 		Beard: clamp(in.Beard, nBeard), Hat: clamp(in.Hat, nHat)}
 	if in.HatColor != nil {
 		hk := in.HatColor.clamp(nCloth)

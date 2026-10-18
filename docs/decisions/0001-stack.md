@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | UI | TypeScript, React, Vite | React 19.3.0 · Vite 8.3.1 · TypeScript 7.0.2 |
 | 2D world | PixiJS (WebGL), kept outside the React render cycle | 8.21.0 |
-| API and world | Go, WebSocket (`coder/websocket`) | Go 1.26.5 · websocket 1.8.15 |
+| API and world | Go, WebSocket (`coder/websocket`) | Go 1.27 (1.26.5 until plugins, [0022](0022-plugins.md)) · websocket 1.8.15 |
 | Data | SQLite in WAL mode through `modernc.org/sqlite` (pure Go, no CGO) | 1.60.1 |
 | Media | Self-hosted LiveKit as the SFU | server 1.13.7 · `livekit-client` 2.22.3 |
 | Runtime | Docker Compose (single node) | — |

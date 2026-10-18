@@ -1,14 +1,14 @@
 import { useState } from "react";
 import type { AvatarSpec } from "../net/protocol";
 import { t } from "../i18n";
-import { AvatarCanvas, AvatarControls, PetCanvas } from "./AvatarEditor";
+import { AvatarCanvas, AvatarControls } from "./AvatarEditor";
 import { Modal } from "./Modal";
 
 // the front large, then the side and the back at half size underneath
 const VIEWS = [
-  { dir: 0, size: 6, pet: 3, cls: "front" },
-  { dir: 2, size: 3, pet: 2, cls: "" },
-  { dir: 3, size: 3, pet: 2, cls: "" },
+  { dir: 0, size: 6, cls: "front" },
+  { dir: 2, size: 3, cls: "" },
+  { dir: 3, size: 3, cls: "" },
 ] as const;
 
 // Almost full screen: the avatar from the front, the side and the back, next to every option. Changes
@@ -22,7 +22,6 @@ export function AppearanceDialog({ value, onSave, onClose }: { value: AvatarSpec
           {VIEWS.map((v) => (
             <div key={v.dir} className={"ae-preview appearance-view " + v.cls}>
               <AvatarCanvas av={draft} dir={v.dir} size={v.size} />
-              {!!draft.pt && <PetCanvas kind={draft.pt} dir={v.dir} size={v.pet} />}
             </div>
           ))}
         </div>
