@@ -10,6 +10,8 @@
   let queue = [];
   let scheduled = false;
   const on = { load: [], update: [], message: [] };
+  /** hq.provideSheet: draws a sheet another plugin asked for by metadata (a guest pet of hq-pets) */
+  let provider = null;
 
   const flush = () => {
     scheduled = false;
@@ -129,9 +131,22 @@
     },
     /** Loads a sprite sheet from the plugin's public/ folder. anims: { name: { row, frames: [..], fps } } */
     loadSprite(key, path, opts = {}) {
-      // a path of public/ (or of another plugin's shared/ with from), or image data the plugin made (Blob, ImageBitmap)
-      const data = typeof path !== "string";
-      push({ op: "sprite", key, url: data ? undefined : path, image: data ? path : undefined, frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {}, from: opts.from });
+      // a path of public/ (or of another plugin's shared/ with from), image data the plugin made (Blob,
+      // ImageBitmap), or { from, metadata }: a sheet that plugin's browser code draws (hq.provideSheet)
+      const provided = typeof path === "object" && path !== null && !(path instanceof Blob) && !(typeof ImageBitmap !== "undefined" && path instanceof ImageBitmap);
+      const data = !provided && typeof path !== "string";
+      push({
+        op: "sprite", key, url: data || provided ? undefined : path, image: data ? path : undefined,
+        provided: provided ? { from: path.from, metadata: path.metadata } : undefined,
+        frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {}, from: opts.from,
+      });
+    },
+    /** fn(metadata) draws the sheet of a pet this plugin put with hq-pets' setPet({ metadata }): returns
+     *  { image: Blob | ImageBitmap, frameW, frameH }, or a promise of it. */
+    provideSheet(fn) {
+      if (typeof fn !== "function") throw new TypeError("expected a function");
+      provider = fn;
+      push({ op: "provide" });
     },
     spawn(id, key, opts = {}) {
       push({ op: "spawn", id, key, x: opts.x, y: opts.y, anim: opts.anim });
@@ -184,6 +199,20 @@
       if (d.t === "load") call(on.load);
       else if (d.t === "update") call(on.update, d.dt, d.world);
       else if (d.t === "msg") call(on.message, d.d);
+      else if (d.t === "sheet") {
+        // the page asks for a sheet by metadata: answer it (or say why not), whenever it is drawn
+        const reply = (r) => port && port.postMessage({ t: "sheet", id: d.id, ...r });
+        Promise.resolve()
+          .then(() => {
+            if (!provider) throw new Error("no hq.provideSheet");
+            return provider(d.metadata);
+          })
+          .then((r) => reply({ image: r && r.image, frameW: r && r.frameW, frameH: r && r.frameH }))
+          .catch((e) => {
+            report(e);
+            reply({ error: String((e && e.message) || e).slice(0, 200) });
+          });
+      }
       else if (d.t === "cb") {
         const f = callbacks.get(d.id);
         if (d.closed) own("modal"); // the person closed the modal: its callbacks are gone after this one

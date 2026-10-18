@@ -8,7 +8,8 @@ export interface Anim {
 }
 
 export type Cmd =
-  | { op: "sprite"; key: string; url?: string; image?: Blob | ImageBitmap; frameW: number; frameH: number; anims: Record<string, Anim>; from?: string }
+  | { op: "sprite"; key: string; url?: string; image?: Blob | ImageBitmap; provided?: { from: string; metadata: unknown }; frameW: number; frameH: number; anims: Record<string, Anim>; from?: string }
+  | { op: "provide" }
   | { op: "spawn"; id: string; key: string; x?: number; y?: number; anim?: string }
   | { op: "remove"; id: string }
   | { op: "moveTo"; id: string; x: number; y: number; speed?: number }
@@ -70,6 +71,7 @@ export const LIMITS = {
   text: 500,
   hoverLabel: 24, // characters of a sprite's hover label
   imageBytes: 1 << 20, // a sprite sheet the plugin hands over as image data
+  metadataBytes: 256, // a sheet asked for by metadata (hq-pets guest pets drawn by their plugin)
   field: 200, // characters of a text field
   copy: 2000,
   callbacks: 256,
@@ -124,6 +126,11 @@ const sprite = (v: unknown): SpriteSpec => {
 };
 
 const isImage = (v: unknown) => (typeof Blob !== "undefined" && v instanceof Blob) || (typeof ImageBitmap !== "undefined" && v instanceof ImageBitmap);
+
+const pluginName = (v: unknown): string => {
+  if (typeof v !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(v)) throw new Bad("from must be a plugin name");
+  return v;
+};
 
 /** Another plugin whose shared/ images a plugin may draw (only those: the rest of its public/ is its own). */
 const from = (v: unknown, path: unknown): string => {
@@ -204,7 +211,17 @@ function parseOne(c: unknown): Cmd {
   if (typeof c !== "object" || c === null) throw new Bad("a command must be an object");
   const o = c as Record<string, unknown>;
   switch (o.op) {
+    case "provide":
+      return { op: "provide" };
     case "sprite":
+      if (o.provided !== undefined) {
+        // a sheet another plugin's browser code draws from metadata (hq.provideSheet); its size comes with it
+        if (o.url !== undefined || o.image !== undefined || o.from !== undefined) throw new Bad("{ from, metadata } goes alone, without a path, image data or from");
+        const p = o.provided as Record<string, unknown>;
+        const json = typeof p === "object" && p !== null ? JSON.stringify(p.metadata) : undefined;
+        if (json === undefined || new TextEncoder().encode(json).length > LIMITS.metadataBytes) throw new Bad(`metadata must be JSON of at most ${LIMITS.metadataBytes} bytes`);
+        return { op: "sprite", key: str(o.key, "key"), provided: { from: pluginName(p.from), metadata: JSON.parse(json) }, frameW: 0, frameH: 0, anims: anims(o.anims ?? {}) };
+      }
       if ((o.url === undefined) === (o.image === undefined)) throw new Bad("loadSprite needs a path or image data, not both");
       // image data (a Blob or an ImageBitmap the plugin made): its size and type are checked when it is decoded
       if (o.image !== undefined && !isImage(o.image)) throw new Bad("image must be a Blob or an ImageBitmap");

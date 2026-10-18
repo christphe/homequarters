@@ -71,17 +71,19 @@ interface Entry {
   mode: Mode;
 }
 
-// guests' sheets, loaded on first use: "<plugin>:<sheet>" -> sheet key
+// guests' sheets, loaded on first use: "<plugin>:<sheet or metadata>" -> sheet key
 const guestSheets = new Map<string, string>();
 const SHEETS_LEFT = 32 - 2 * KINDS.length; // the page allows 32 sheets per plugin; the kinds use 18
 
 function guestKey(g: GuestPet): string | null {
-  const k = g.from + ":" + g.sheet;
+  const drawn = g.metadata !== undefined; // the plugin that put it draws its sheet on this page
+  const k = g.from + ":" + (drawn ? "m:" + JSON.stringify(g.metadata) : g.sheet);
   let key = guestSheets.get(k);
   if (!key) {
     if (guestSheets.size >= SHEETS_LEFT) return null;
     key = "g" + guestSheets.size;
-    hq.loadSprite(key, g.sheet, { frameW: g.cell[0], frameH: g.cell[1], anims: animsFor(0), from: g.from });
+    if (drawn) hq.loadSprite(key, { from: g.from, metadata: g.metadata! }, { anims: animsFor(0) });
+    else hq.loadSprite(key, g.sheet!, { frameW: g.cell![0], frameH: g.cell![1], anims: animsFor(0), from: g.from });
     guestSheets.set(k, key);
   }
   return key;

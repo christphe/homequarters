@@ -358,6 +358,15 @@ export async function update() {
 	if r := say("setPet", `{"id":"x","sheet":"../main.ts","cell":[24,24]}`); r["ok"] != false {
 		t.Fatalf("only a PNG of the caller's shared/ folder: %v", r)
 	}
+	for _, args := range []string{
+		`{"id":"x","metadata":{"kind":25},"sheet":"shared/critter.png","cell":[24,24]}`, // a sheet or metadata, not both
+		`{"id":"x","metadata":{"kind":25},"cell":[24,24]}`,                              // a drawn sheet carries its own size
+		`{"id":"x","metadata":"` + strings.Repeat("m", 300) + `"}`,                      // at most 256 bytes
+	} {
+		if r := say("setPet", args); r["ok"] != false {
+			t.Fatalf("refused: %s -> %v", args, r)
+		}
+	}
 	for i := 0; i < 4; i++ {
 		if r := say("setPet", fmt.Sprintf(`{"id":"p%d","sheet":"shared/critter.png","cell":[24,24],"name":"C%d"}`, i, i)); r["ok"] != true {
 			t.Fatalf("guest %d: %v", i, r)
@@ -366,8 +375,8 @@ export async function update() {
 	if r := say("setPet", `{"id":"p9","sheet":"shared/critter.png","cell":[24,24]}`); r["ok"] != false || r["error"] != "full" {
 		t.Fatalf("at most 4 guests: %v", r)
 	}
-	if r := say("setPet", `{"id":"p0","sheet":"shared/critter.png","cell":[32,32],"name":"Again"}`); r["ok"] != true {
-		t.Fatalf("the same id replaces its pet: %v", r)
+	if r := say("setPet", `{"id":"p0","metadata":{"kind":25,"alt":true},"name":"Again"}`); r["ok"] != true {
+		t.Fatalf("the same id replaces its pet, here with one the caller draws itself (metadata): %v", r)
 	}
 	if r := say("removePet", `{"id":"p1"}`); r["removed"] != true {
 		t.Fatalf("remove: %v", r)
@@ -388,6 +397,10 @@ export async function update() {
 	}
 	if len(guests) != 3 || guests[0].(map[string]any)["from"] != "caller" {
 		t.Fatalf("three guests left, from caller: %v", guests)
+	}
+	drawn := guests[2].(map[string]any)
+	if md, _ := drawn["metadata"].(map[string]any); md["kind"] != float64(25) || md["alt"] != true || drawn["sheet"] != nil || drawn["cell"] != nil {
+		t.Fatalf("a guest drawn by its plugin goes to the pages with its metadata, without a sheet: %v", drawn)
 	}
 	running(t, h)
 }
