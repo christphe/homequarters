@@ -20,6 +20,7 @@ import { TouchPad } from "./TouchPad";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { StatusVeil } from "./StatusVeil";
 import { moveLabels, useKeyLayout } from "../keys";
+import { PluginModalView, PluginScreens, PluginSlots } from "./PluginUI";
 
 export function OfficeScreen() {
   const host = useRef<HTMLDivElement>(null);
@@ -78,10 +79,12 @@ export function OfficeScreen() {
         {demo && <span className="pill" title={t("demo.reset", { time: new Date(demo.nextReset * 1000).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" }) })}>{t("demo.pill")}</span>}
         {conn !== "open" && conn !== "connecting" && <span className="pill warn" role="status">{conn === "replaced" ? t("conn.replaced") : t("conn.reconnecting")}</span>}
         <div className="spacer topbar-slot" id="topbar-reactions" />
+        <span className="plugin-anchor" data-anchor="topbar"><PluginSlots anchor="topbar" /></span>
         <button className="btn" onClick={() => setDialog("keys")} aria-label={t("keys.open")} title={t("keys.open")}>?</button>
         <AdminButton onOpen={() => setDialog("admin")} />
         {role === "admin" && !editing && <button className="btn" onClick={() => setEditing(true)}>{t("editor.open")}</button>}
         <StatusMenu />
+        <span className="plugin-anchor" data-anchor="topright"><PluginSlots anchor="topright" /></span>
       </header>
       {announcement && (
         <div className="announce" role="alert">
@@ -93,6 +96,7 @@ export function OfficeScreen() {
       <SidePanel />
       {!editing && <SocialControls />}
       {!editing && <Minimap />}
+      {!editing && <PluginScreens />}
       {!editing && <TouchPad />}
       {editing && <MapEditor onClose={() => setEditing(false)} />}
       <VideoDock />
@@ -105,6 +109,7 @@ export function OfficeScreen() {
       {dialog === "admin" && <AdminDialog onClose={() => setDialog("")} />}
       {dialog === "keys" && <ShortcutsDialog onClose={() => setDialog("")} />}
       {object && <ObjectDialog object={object} onClose={() => setState({ object: null })} />}
+      <PluginModalView />
       {boardKey && <WhiteboardDialog onClose={() => { session.board({ bk: boardKey, op: "close" }); setState({ boardKey: "" }); }} />}
     </div>
   );

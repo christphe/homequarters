@@ -1,0 +1,9 @@
+{
+  "name": "ui-demo",
+  "title": "UI demo",
+  "version": "1.0.0",
+  "description": "Test plugin of the browser suite: a button at every anchor, a box on the map, a modal and an app token.",
+  "server": "main.ts",
+  "client": "client.ts",
+  "appTokens": true
+}

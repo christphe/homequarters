@@ -9,7 +9,7 @@ RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /s
@@ -25,8 +25,11 @@ FROM gcr.io/distroless/static-debian12:nonroot
 ARG HQ_VERSION=
 COPY --from=server /out/homequarters /app/homequarters
 COPY --from=web /w/dist /app/web
+# the bundled plugins (hq-*), off until an administrator enables them; an operator's own plugins go in
+# /app/plugins/installed, usually a volume mounted there (docs/plugins.md)
+COPY plugins/bundled/ /app/plugins/bundled/
 COPY --from=server --chown=65532:65532 /data /data
-ENV HQ_STATIC_DIR=/app/web HQ_DB=/data/homequarters.db HQ_ADDR=:8080 HQ_VERSION=$HQ_VERSION
+ENV HQ_STATIC_DIR=/app/web HQ_PLUGINS_DIR=/app/plugins HQ_DB=/data/homequarters.db HQ_ADDR=:8080 HQ_VERSION=$HQ_VERSION
 VOLUME /data
 EXPOSE 8080
 USER nonroot

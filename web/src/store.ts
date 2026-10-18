@@ -1,3 +1,4 @@
+import type { Cmd } from "./plugins/commands";
 import { useSyncExternalStore } from "react";
 import type { AvatarSpec, ObjectReply, Person, Prop, Role, Status } from "./net/protocol";
 import { migrateStorage } from "./storageMigration";
@@ -44,6 +45,12 @@ export interface MediaPrefs {
   camId: string;
   spkId: string;
 }
+
+type SlotCmd = Extract<Cmd, { op: "slot" }>;
+type ModalCmd = Extract<Cmd, { op: "modal" }>;
+/** A plugin's slot, with what the UI needs to draw it: whose it is and where its files are. */
+export type PluginSlot = Omit<SlotCmd, "op"> & { plugin: string; title: string; base: string };
+export type PluginModal = Omit<ModalCmd, "op"> & { plugin: string; base: string };
 
 export interface State {
   phase: "boot" | "join" | "play";
@@ -96,6 +103,8 @@ export interface State {
   /** The latest administrator announcement, until dismissed. */
   announcement: { name: string; text: string } | null;
   spotlight: { id: number; name: string; me: boolean; state: ConvState } | null;
+  /** What running plugins show: their anchored buttons and screen boxes, and the one open plugin modal. */
+  pluginUI: { slots: PluginSlot[]; modal: PluginModal | null };
 }
 
 // Before the first read below: an upgraded browser keeps what it saved under the old name.
@@ -150,6 +159,7 @@ const initial: State = {
   areaCounts: [],
   announcement: null,
   spotlight: null,
+  pluginUI: { slots: [], modal: null },
 };
 
 let state = initial;

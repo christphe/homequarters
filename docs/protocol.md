@@ -30,6 +30,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `kans` | `id`, `b` | admit or decline a knock (only from inside the room; in an assigned office only an owner or an admin) |
 | `wb` | drawing ops | whiteboard edits: `draw` (batched pen points or one text), `del`, `undo`, `clear` (admin), `close`; all bounded, see decision 0010 |
 | `diag` | `v` kind, `n` code, `c` ms | report a problem for the server log, never a normal leave: `media-drop` (LiveKit disconnect reason), `media-join` (0), `ws-drop` (close code, time offline); allow-listed and bounded, at most 20 per session |
+| `plg` | `pl` plugin, `d` JSON (at most 1500 bytes) | a message from a plugin's browser code to its server `onMessage`; ignored when that plugin is not running; 10/s, burst 20 ([decision 0022](decisions/0022-plugins.md)) |
 | `ping` | `c` | round-trip probe |
 
 ## Server to client
@@ -61,6 +62,8 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `frc` | `n` name, `a` area | an administrator forced the door of the room you are in |
 | `wb` | `op` state/draw/del/clear/closed | whiteboard state and live strokes; deletes carry owner+id |
 | `spot` | `op` on/off | office broadcast: speaker, room and token (subscribe-only unless you are the speaker) |
+| `plg` | `pl` plugin, `d` JSON (at most 4 KB) | a message from a plugin's server code (`hq.send`, `hq.broadcast`) to its browser code. Never sent to invisible members; dropped (and counted) rather than queued when your outbound queue is half full |
+| `plgs` | none | the set of running plugins changed: fetch `GET /api/plugins` again |
 | `pong` | `c` | reply to `ping` |
 
 ### State records (`w`)
@@ -74,7 +77,7 @@ idle = dx = dy = 0
 
 Clients keep moving the entity with the same rules as the server (speed from `cfg.speed`, times `cfg.run` when the run bit is set, diagonals scaled by 1/sqrt(2), axis-separated collision against the static walls of the map, sub-steps of at most 4 px, and a blocked axis moves to the point of contact with the wall; see [decision 0017](decisions/0017-movement-reconciliation-and-render-on-demand.md)). The server sends a new record when the direction or the run state changes, when reality diverges from that extrapolation, as a 1 s resync, and when you start seeing the entity. The run bit is only set while moving.
 
-Avatars are `{sk, hs, hc, sh, pa, pt, bd, ht, hk}`. The colours `sk` (skin, 12 swatches), `hc` (hair, 16), `sh`, `pa` and `hk` (shirt, trousers and hat, 24 each) are a palette index or any custom colour as `"#rrggbb"` (stored lower case; anything else becomes index 0); palettes only grow, so an index never changes colour. The other fields are small integers: `pt` is the companion pet (0 none, 1-8), `bd` the beard (0 none, 1-5), `ht` the hat or head covering (0 none, 1-9; 9 is the hijab) and `hk` the hat colour. `bd`, `ht` and `hk` are left out when 0. `hs` is the hair style (0-11); 5 is the retired "cap" style, which the server rewrites to bald (`hs` 2) with a cap (`ht` 1) in the hair colour (`hk` = `hc`), the same pixels as before. The server clamps unknown values to 0 and drops unknown fields. Avatars stored before this rule keep `hs` 5 until their owner saves again and are sent as stored, so clients must keep drawing `hs` 5 as bald + cap (`normaliseLook` in `web/src/game/art/look.ts`).
+Avatars are `{sk, hs, hc, sh, pa, bd, ht, hk}`. The colours `sk` (skin, 12 swatches), `hc` (hair, 16), `sh`, `pa` and `hk` (shirt, trousers and hat, 24 each) are a palette index or any custom colour as `"#rrggbb"` (stored lower case; anything else becomes index 0); palettes only grow, so an index never changes colour. The other fields are small integers (`pt`, the retired built-in pet, is dropped: pets are the bundled plugin now): `bd` the beard (0 none, 1-5), `ht` the hat or head covering (0 none, 1-9; 9 is the hijab) and `hk` the hat colour. `bd`, `ht` and `hk` are left out when 0. `hs` is the hair style (0-11); 5 is the retired "cap" style, which the server rewrites to bald (`hs` 2) with a cap (`ht` 1) in the hair colour (`hk` = `hc`), the same pixels as before. The server clamps unknown values to 0 and drops unknown fields. Avatars stored before this rule keep `hs` 5 until their owner saves again and are sent as stored, so clients must keep drawing `hs` 5 as bald + cap (`normaliseLook` in `web/src/game/art/look.ts`).
 
 ## HTTP endpoints
 
@@ -107,6 +110,13 @@ Avatars are `{sk, hs, hc, sh, pa, pt, bd, ht, hk}`. The colours `sk` (skin, 12 s
 | `PUT /api/map` | admin | validate, apply and save a new map |
 | `GET /api/admin/map` | admin | the saved map including hidden interactive-object content (the world map redacts it; editors must round-trip through this endpoint or they will erase object content) |
 | `GET /ws` | cookie | the world WebSocket |
+| `GET /api/plugins` | cookie | running plugins `[{name, title, client}]`; `client` is the URL of the plugin's browser code or null. `[]` when plugins are off |
+| `GET /api/admin/plugins` | admin | installed plugins `[{name, title, version, description, state, error}]`, `state` = `disabled`, `running`, `crashed` or `broken` |
+| `PUT /api/admin/plugins/{name}` | admin | `{enabled}`: start or stop the plugin now and remember it; answers `{state}`; 404 unknown, 409 broken or failing to load (with `error`); audited as `plugin.enable` / `plugin.disable`; everybody online gets `plgs` |
+| `GET, POST /plugins/{name}/api/{path}` | cookie, or `Authorization: Bearer <app token>` on routes declared with `{ token: true }` | a route the plugin declared with `hq.route`; 404 when it is not running or has no such route, 503 when it does not answer within 1 s; POST bodies at most 16 KB; 5 requests/s per member and plugin, burst 10 |
+| `GET, POST, DELETE /api/plugins/{name}/token` | cookie | a member's app token for a running plugin whose manifest has `appTokens`: `GET` → `{exists, createdAt}`, `POST` → `{token}` (shown this once; replaces the previous one), `DELETE` revokes it. Audited as `plugin.token.create` / `plugin.token.revoke`; 404 for other plugins |
+| `GET /plugins/{name}/client.js` | none | the running plugin's browser code, compiled by the server from its `client` (`.ts` or `.js`) |
+| `GET /plugins/{name}/assets/{path}` | none | a file of the running plugin's `public/` folder (png, js, json, css, at most 1 MB); never its server code. Public on purpose: the plugin's sandboxed iframe has an opaque origin and sends no cookie |
 
 ## WebSocket close codes
 
@@ -131,5 +141,6 @@ The reason is recorded on the world goroutine right before the outbound channel 
 | Reconnect grace before removal | 10 s |
 | Join / map / profile requests | rate limited per IP or user; bodies capped (4 KB, 512 KB, 4 KB) |
 | Admin API | 5 requests/s per admin, burst 20; bodies capped at 256 B (role change) |
+| Plugin messages | client to server 10/s, burst 20, 1500 bytes; server to client 10/s per member for all plugins together (burst 20), 4 KB |
 
 Sustained violations disconnect the client. Text is trimmed of control characters on the server.

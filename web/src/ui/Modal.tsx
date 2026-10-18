@@ -6,7 +6,7 @@ const open: object[] = [];
 
 const FOCUSABLE = "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])";
 
-export function Modal({ title, onClose, children, wide, huge }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; huge?: boolean }) {
+export function Modal({ title, onClose, children, wide, huge, className }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; huge?: boolean; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -35,7 +35,7 @@ export function Modal({ title, onClose, children, wide, huge }: { title: string;
   }, []); // typing or changing tools must not reset focus in an already-open dialog
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={"modal" + (wide ? " wide" : "") + (huge ? " huge" : "")} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
+      <div className={"modal" + (wide ? " wide" : "") + (huge ? " huge" : "") + (className ? " " + className : "")} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
         <h2>{title}</h2>
         {children}
       </div>

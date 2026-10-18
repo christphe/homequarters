@@ -22,7 +22,7 @@ const SUMMARY = "Open source (AGPL-3.0), self-hosted 2D virtual office with pixe
 
 const NAV = [
   { group: "Get started", items: [["overview", "Overview", "overview.md"], ["getting-started", "Getting started", "getting-started.md"], ["self-hosting", "Self-hosting", "../deploy/README.md"], ["faq", "FAQ", "faq.md"]] },
-  { group: "Concepts", items: [["architecture", "Architecture", "architecture.md"], ["proximity-and-media", "Proximity and media", "proximity-and-media.md"], ["art-style", "Art style", "art-style.md"], ["protocol", "WebSocket protocol", "protocol.md"]] },
+  { group: "Concepts", items: [["architecture", "Architecture", "architecture.md"], ["proximity-and-media", "Proximity and media", "proximity-and-media.md"], ["art-style", "Art style", "art-style.md"], ["protocol", "WebSocket protocol", "protocol.md"], ["plugins", "Plugins", "plugins.md"], ["plugin-api", "Plugin API reference", "plugin-api.md"]] },
   { group: "Operate", items: [["privacy-and-security", "Privacy and security", "privacy-and-security.md"], ["efficiency-and-benchmarks", "Efficiency and benchmarks", "efficiency-and-benchmarks.md"], ["benchmark-results", "Benchmark results", "benchmark-results.md"], ["status", "Status", "status.md"], ["roadmap", "Roadmap", "roadmap.md"], ["business-model", "Business model", "business-model.md"]] },
   {
     group: "Decisions",
@@ -43,6 +43,8 @@ const DESCRIPTIONS = {
   architecture: "How Home Quarters is built: an authoritative Go world server with a spatial grid, SQLite in WAL mode, a PixiJS client and a LiveKit SFU for media.",
   "proximity-and-media": "How proximity conversations form in Home Quarters: hysteresis, small groups, no chains, isolated rooms, scoped LiveKit tokens and revocation.",
   "privacy-and-security": "What Home Quarters stores and never stores, how media access is enforced by the server and the SFU, and the security limits still open.",
+  "plugin-api": "Reference of the Home Quarters plugin API: manifest, the TypeScript server API, the browser SDK and hq.ui, routes, app tokens and limits.",
+  plugins: "Write Home Quarters plugins in TypeScript: server code for events, routes and storage, browser code in a sandboxed iframe that draws sprites that follow people.",
   status: "Home Quarters status and roadmap: what has been tested in real browsers and on a public host, what was measured locally and what has not been run.",
   roadmap: "What Home Quarters plans next: breakout rooms, a stage, audio-only areas set by administrators, a lounge, hosted-plan prerequisites and missing evidence.",
   "business-model": "How Home Quarters plans to sustain itself: AGPL open source for everyone, plus hosted instances in Team, Business and Enterprise plans with seats.",

@@ -14,10 +14,12 @@ import (
 )
 
 type Config struct {
-	Env            string // dev | production
-	Addr           string
-	DBPath         string
-	StaticDir      string
+	Env       string // dev | production
+	Addr      string
+	DBPath    string
+	StaticDir string
+	// PluginsDir holds operator-installed plugins (HQ_PLUGINS_DIR); empty turns plugins off.
+	PluginsDir     string
 	Version        string // the deploy's commit (HQ_VERSION); empty: derived from the built page
 	AllowedOrigins []string
 	OfficeSlug     string
@@ -176,6 +178,7 @@ func Load() (*Config, error) {
 		Addr:           env("HQ_ADDR", ":8080"),
 		DBPath:         env("HQ_DB", "data/homequarters.db"),
 		StaticDir:      env("HQ_STATIC_DIR", ""),
+		PluginsDir:     env("HQ_PLUGINS_DIR", ""),
 		Version:        env("HQ_VERSION", ""),
 		OfficeSlug:     env("HQ_OFFICE_SLUG", "default"),
 		OfficeName:     env("HQ_OFFICE_NAME", "Office"),

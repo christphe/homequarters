@@ -27,11 +27,14 @@ Build against written acceptance criteria, reproduce behaviour failures with **r
 | `server/internal/store` | SQLite (WAL), embedded migrations, sessions, members, invites, chat history, admin audit log |
 | `server/internal/httpapi` | routes, admin API (`admin.go`), WebSocket session, rate limits, Prometheus metrics |
 | `server/internal/config` | environment configuration and production guard rails |
+| `server/internal/plugin` | operator-installed plugins: catalog, TypeScript compiled by esbuild and run by QuickJS, limits ([`docs/plugins.md`](docs/plugins.md)) |
 | `web/src/game` | PixiJS world (`WorldView.ts`), avatar textures, map texture |
 | `web/src/game/art` | pure-canvas painters: `pixel.ts` helpers, `tiles.ts` floors/walls/props/map baker, `characters.ts` sprites |
 | `web/src/theme-gba.css` | dialog-window UI skin layered over `styles.css` |
 | `web/dev` | server-free art preview page and its map fixture |
 | `web/src/media` | LiveKit room management |
+| `web/src/plugins`, `web/src/game/pluginLayer.ts` | plugin iframes (SDK, command validation, host) and the sprites they draw |
+| `plugins/` | `bundled/`: the plugins shipped in the image (`hq-*`, like `hq-pets`); `sdk/`: the plugin API's type declarations |
 | `web/src/ui` | React UI (panels, dialogs) |
 | `web/src/session.ts` | glue between socket, world view, media and store |
 | `e2e/` | real-browser test suite (`run.mjs` + `scenarios/`) and art generation |
@@ -113,7 +116,7 @@ Other agents or people may be working in the same tree at the same time.
 
 - The browser exposes `window.__hq` (view, media, state, session, `cachedLooks()` for the avatar texture cache size, `chimes` for the last chimes played) for tests. Drive movement with `view.setDirection`, not synthetic key events.
 - `window.__hq` shortcuts are for setup; every feature also needs one check through its real controls with its panel open (the chat crash hid behind API-only sends).
-- `node run.mjs capture-pet` writes frames and a contact sheet to a fresh folder under `/tmp/homequarters-capture`; copy it for new `capture-*` scenarios. They are not in the default suite.
+- `node run.mjs capture-plugin-pet` writes frames (pets of the bundled plugin walking, the hover tag, its modal) and a contact sheet (with ffmpeg) to a fresh folder under `/tmp/hq-capture`; copy it for new `capture-*` scenarios. They are not in the default suite.
 - LiveKit's client may use a single peer connection; read RTP stats from `room.engine.pcManager.subscriber?.pc ?? publisher.pc` (see `rtpBytes` in `e2e/lib.mjs`).
 - Editing client files while the Vite dev server runs can trigger a full reload and break a running E2E script; rerun it.
 - Avatar sheet cells are 18x30 px (16x24 body plus a 1 px outline margin and 4 rows on top for hats and tall hair). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops rows 4-28 when it reuses cells. Name tags follow the drawing's real top (`AvatarFrames.tall`), not the cell height.

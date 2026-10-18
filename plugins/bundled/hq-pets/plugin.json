@@ -1,0 +1,20 @@
+{
+  "name": "hq-pets",
+  "title": "Pets",
+  "version": "2.0.0",
+  "description": "Pets that follow members around the office.",
+  "longDescription": "Each member adds pets from the side panel (Plugins > Pets): a cat, dog, bunny, fox, chick, slime, owl, axolotl or seedling, several of one kind if they like, each with its own name and colour.\n\nPets follow their owner. With Let pets wander they go their own way, and every few minutes change mood: they explore the office, potter about where they were left, stay close to their owner, or tag along with another wandering pet. Pointing at a wandering pet shows its name and its owner's. Call pets brings them back.",
+  "server": "main.ts",
+  "client": "client.ts",
+  "settings": [
+    {
+      "key": "limit",
+      "label": "Pets per member",
+      "type": "number",
+      "min": 0,
+      "max": 8,
+      "default": 3,
+      "help": "How many pets each member may have at once. 0 turns pets off for everyone; pets above a lowered limit are hidden, not deleted."
+    }
+  ]
+}

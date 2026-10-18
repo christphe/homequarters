@@ -43,6 +43,8 @@ gate tsc bash -c 'cd web && pnpm exec tsc --noEmit'
 gate tsc-tests bash -c 'cd web && pnpm exec tsc -p tsconfig.test.json --noEmit'
 gate vite-build bash -c 'cd web && pnpm exec vite build'
 gate web-lint node scripts/lint-web.mjs
+# plugin code is TypeScript type-checked against plugins/sdk/*.d.ts: the sample and the suite's test plugin
+gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters; do pnpm exec tsc -p "$p" || exit 1; done'
 gate web-unit bash -c "node --test 'web/test/*.test.ts'"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then
