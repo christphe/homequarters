@@ -77,6 +77,7 @@ Everything is configured through environment variables.
 | `HQ_AUTH_DOMAINS` | empty | Domains whose accounts enter without an invite (Google: Workspace accounts of that domain), comma separated; others need an invite |
 | `HQ_PUBLIC_URL` | empty | The address people open, like `https://office.example.com`; required by Google sign-in (the callback is built from it), https in production |
 | `HQ_GOOGLE_CLIENT_ID` / `HQ_GOOGLE_CLIENT_SECRET` | empty | The Google OAuth client, required with `google` |
+| `HQ_SOURCE_URL` | `https://github.com/christphe/homequarters` | Where people using the office get its source code, shown with the running version on the about page (`/about`, linked from the join screen). The AGPL-3.0 (section 13) requires this offer: if you run modified code, point it at your own repository |
 | `HQ_OPERATOR` / `HQ_CONTACT` | empty | Who runs the office and an address for questions about personal data, shown on the privacy policy (`/privacy`) |
 | `HQ_TICK_HZ` | `15` | World tick rate, 5 to 30 |
 | `HQ_AOI_CELLS` | `2` | Area-of-interest radius in 128 px cells |

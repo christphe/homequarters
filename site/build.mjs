@@ -17,7 +17,7 @@ const OUT = path.join(HERE, "dist");
 export const REPO = "https://github.com/christphe/homequarters";
 export const SITE = "https://christphe.github.io/homequarters/";
 const BASE_PATH = new URL(SITE).pathname;
-const IMAGE = { url: SITE + "assets/banner.png", width: 1280, height: 640, alt: "Home Quarters: pixel-art avatars in a lightweight, open source virtual office" };
+const IMAGE = { url: SITE + "assets/banner.png", width: 1280, height: 640, alt: "Home Quarters, the open source virtual office you host yourself: pixel-art people at their assigned desks, two chatting and two walking their pets" };
 const SUMMARY = "Open source (AGPL-3.0), self-hosted 2D virtual office with pixel-art avatars, proximity audio and video, meeting rooms, screen sharing and chat. Built with Go, PixiJS and LiveKit to be cheap to host.";
 
 const NAV = [

@@ -84,3 +84,24 @@ func TestAboutPageIsPublicAndExplainsTheOffice(t *testing.T) {
 		}
 	}
 }
+
+// AGPL-3.0 section 13: people using the office over the network are offered the
+// source of the version that runs it.
+func TestAboutPageOffersTheSourceUnderTheAGPL(t *testing.T) {
+	r := newRig(t, func(c *config.Config) {
+		c.SourceURL = "https://git.example.com/acme/hq-fork"
+		c.Version = "abc1234"
+	})
+	resp, err := http.Get(r.ts.URL + "/about")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	page := string(b)
+	for _, want := range []string{"GNU Affero General Public License", `href="https://git.example.com/acme/hq-fork"`, "abc1234", "modified version of Tilework"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the about page lacks %q", want)
+		}
+	}
+}

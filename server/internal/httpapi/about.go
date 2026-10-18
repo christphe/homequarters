@@ -27,6 +27,8 @@ func (s *Server) about(w http.ResponseWriter, r *http.Request) {
 		"Domains":  s.cfg.AuthDomains,
 		"Google":   google,
 		"Demo":     s.cfg.Demo,
+		"Source":   s.cfg.SourceURL,
+		"Version":  s.version,
 	})
 }
 
@@ -65,6 +67,6 @@ var aboutPage = template.Must(template.New("about").Parse(`<!doctype html>
 <h2>More</h2>
 <ul>
 <li><a href="/privacy">Privacy policy</a>: what is stored, why, who can see it and how to delete it.</li>
-<li><a href="https://github.com/christphe/homequarters">Home Quarters</a> is open source software. It is not affiliated with Google.</li>
+<li>Home Quarters is free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License v3</a>, a modified version of Tilework by guhcostan. <a href="{{.Source}}">Source code</a>{{if .Version}} (this office runs version {{.Version}}){{end}}. It is not affiliated with Google.</li>
 </ul>
 </main></body></html>`))

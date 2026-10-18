@@ -1,8 +1,12 @@
 # Home Quarters
 
-**Home Quarters (HQ) is an open source, self-hosted 2D virtual office, forked from [guhcostan/tilework](https://github.com/guhcostan/tilework).** Everyone has a pixel-art avatar on a shared map; a call starts with proximity audio and video when you walk up to someone and ends when you walk away. It runs in the browser and you host it yourself: one Go binary, SQLite and a LiveKit media server, no paid service.
+> A fork of [Tilework](https://github.com/guhcostan/tilework) by [Gustavo Costa](https://github.com/guhcostan).
 
-It was called Tilework until 2026-10-18 and took its own name once it had diverged enough ([decision 0024](docs/decisions/0024-home-quarters.md); existing installations follow [Upgrading to Home Quarters](deploy/README.md#upgrading-to-home-quarters)). This fork keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) and makes its own product choices. It is alpha software; the documentation lives in [docs/](docs/).
+![Home Quarters: an office seen from above, with assigned desks, two people talking at a desk, others at their desks and two walking down the aisles with their pets](site/assets/banner.png)
+
+**Home Quarters (HQ) is an open source, self-hosted 2D virtual office.** Everyone has a pixel-art avatar on a shared map; a call starts with proximity audio and video when you walk up to someone and ends when you walk away. It runs in the browser and you host it yourself: one Go binary, SQLite and a LiveKit media server, no paid service.
+
+Why it has its own name: [decision 0024](docs/decisions/0024-home-quarters.md); existing installations follow [Upgrading to Home Quarters](deploy/README.md#upgrading-to-home-quarters)). This fork keeps the original's rules (efficiency first, the server decides, only measured claims, every change through the [gauntlet](docs/gauntlet.md)) and makes its own product choices. It is alpha software; the documentation lives in [docs/](docs/).
 
 ## What this fork changes
 
@@ -97,7 +101,10 @@ Read [CONTRIBUTING](docs/contributing.md) and [AGENTS.md](AGENTS.md) first. Ever
 
 ## Licence and credits
 
-- Code: **AGPL-3.0** ([LICENSE](LICENSE)), a fork of [Tilework](https://github.com/guhcostan/tilework) by guhcostan.
+Home Quarters is free software: you can redistribute it and modify it under the terms of the **GNU Affero General Public License, version 3** ([LICENSE](LICENSE)). It comes with no warranty.
+
+- **A modified version of Tilework.** Home Quarters is a modified version of [Tilework](https://github.com/guhcostan/tilework) by [Gustavo Costa](https://github.com/guhcostan), also AGPL-3.0. This fork's changes start on 2026-10-14 and are listed in [What this fork changes](#what-this-fork-changes) and in the [commit history](https://github.com/christphe/homequarters/commits/main); the original's history is kept in the same repository.
+- **Source for network users.** The AGPL asks anyone who runs the software for others over a network to offer them its source. Every office does so on its about page (`/about`, linked from the join screen): the licence, a link to the source and the version running. If you run a modified version, publish your changes and set `HQ_SOURCE_URL` to your repository ([Getting started](docs/getting-started.md)).
 - Sprites, map and UI are drawn by the project's own code (`web/src/game/art`), see [Art style](docs/art-style.md).
 - Fonts: [Jersey 10](https://github.com/scfried/soft-type-jersey) for the interface and [Schibsted Grotesk](https://github.com/schibsted/schibsted-grotesk) for the name and the HQ icon, both SIL Open Font License 1.1.
 - Third-party licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

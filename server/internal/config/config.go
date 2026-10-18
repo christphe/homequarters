@@ -65,6 +65,10 @@ type Config struct {
 	Operator string
 	Contact  string
 
+	// SourceURL is where the people using this office get its source code (AGPL-3.0 section 13), shown on
+	// the about page. An operator who runs modified code points it at their own repository.
+	SourceURL string
+
 	// StopOnStdinClose shuts the server down gracefully when its stdin closes. Dev only: the test runner
 	// uses it on Windows, where a signal from Node is a hard kill that skips saving.
 	StopOnStdinClose bool
@@ -193,6 +197,7 @@ func Load() (*Config, error) {
 		DemoReset:      time.Duration(envInt("HQ_DEMO_RESET_HOURS", 6)) * time.Hour,
 		Operator:       env("HQ_OPERATOR", ""),
 		Contact:        env("HQ_CONTACT", ""),
+		SourceURL:      env("HQ_SOURCE_URL", "https://github.com/christphe/homequarters"),
 	}
 	c.StopOnStdinClose = env("HQ_STOP_ON_STDIN_CLOSE", "") == "1"
 	if o := env("HQ_ALLOWED_ORIGINS", ""); o != "" {
