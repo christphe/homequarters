@@ -105,6 +105,12 @@ declare global {
        * a Blob of an image of at most 1 MB, or an ImageBitmap; at most 2048 px a side. An invalid one is not drawn
        * (a console warning), like a missing PNG. */
       loadSprite(key: string, image: Blob | ImageBitmap, opts: { frameW: number; frameH: number; anims?: Anims }): void;
+      /** A sheet another plugin's browser code draws for metadata (its hq.provideSheet), as hq-pets does for
+       * guest pets put with setPet({ metadata }). Its size comes from that plugin; the sprite waits until it is drawn. */
+      loadSprite(key: string, source: { from: string; metadata: Json }, opts: { anims?: Anims }): void;
+      /** Draws, on this page, the sheet of a pet this plugin put with hq-pets' setPet({ metadata }): fn gets the
+       * metadata and returns a sheet in hq-pets' format (4 rows of 3 cells: still, step A, step B). */
+      provideSheet(fn: (metadata: any) => { image: Blob | ImageBitmap; frameW: number; frameH: number } | Promise<{ image: Blob | ImageBitmap; frameW: number; frameH: number }>): void;
       /** Without x/y a new sprite waits for follow/moveTo, an existing one keeps its place (only its sheet changes). */
       spawn(id: string, key: string, opts?: { x?: number; y?: number; anim?: string }): void;
       remove(id: string): void;

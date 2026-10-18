@@ -13,7 +13,7 @@
 //     every error counts toward the 10 a minute that stop the plugin;
 //   * the office's setting is an administrator's, made in the admin dialog: the plugin only reads it.
 
-import { KINDS, MAX_GUESTS, NAME_MAX, type Goal, type Goals, type GuestPet, type MemberPets, type Mode, type PageMessage, type Pet, type PetsMessage, type YouMessage } from "./public/messages";
+import { KINDS, MAX_GUESTS, METADATA_MAX, NAME_MAX, type Goal, type Goals, type GuestPet, type MemberPets, type Mode, type PageMessage, type Pet, type PetsMessage, type YouMessage } from "./public/messages";
 
 const BUDGET = 3500; // bytes of UTF-8 JSON per message, under the 4096 a plugin message may carry
 const MAX_PETS = 8; // the setting's maximum (plugin.json)
@@ -80,9 +80,24 @@ function storedGuests(id: number): GuestPet[] {
 
 function isGuest(g: unknown): g is GuestPet {
   const o = g as GuestPet;
-  return typeof o === "object" && o !== null && typeof o.from === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(o.from) &&
-    typeof o.id === "string" && /^[a-z0-9-]{1,16}$/.test(o.id) && typeof o.sheet === "string" && /^shared\/[A-Za-z0-9_\-/]+\.png$/.test(o.sheet) &&
-    !o.sheet.includes("..") && Array.isArray(o.cell) && o.cell.length === 2 && o.cell.every((n) => Number.isInteger(n) && n >= 8 && n <= 64) && typeof o.name === "string";
+  if (typeof o !== "object" || o === null || typeof o.from !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(o.from) ||
+    typeof o.id !== "string" || !/^[a-z0-9-]{1,16}$/.test(o.id) || typeof o.name !== "string") return false;
+  if (o.metadata !== undefined) {
+    // drawn by the plugin that put it (hq.provideSheet in its browser code): no sheet, no cell
+    const json = JSON.stringify(o.metadata);
+    return o.sheet === undefined && o.cell === undefined && json !== undefined && utf8Length(json) <= METADATA_MAX;
+  }
+  return typeof o.sheet === "string" && /^shared\/[A-Za-z0-9_\-/]+\.png$/.test(o.sheet) &&
+    !o.sheet.includes("..") && Array.isArray(o.cell) && o.cell.length === 2 && o.cell.every((n) => Number.isInteger(n) && n >= 8 && n <= 64);
+}
+
+function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    n += c < 0x80 ? 1 : c < 0x800 ? 2 : c >= 0xd800 && c < 0xdc00 ? (i++, 4) : 3;
+  }
+  return n;
 }
 
 function saveGuests(id: number, guests: GuestPet[]): void {
@@ -147,10 +162,15 @@ function allowed(id: number): boolean {
 // The member is the caller's (Home Quarters says for whom the calling plugin acts: the member whose
 // request or message it is handling), never an argument: no plugin can give someone else a pet.
 export function load(): void {
-  /** { id, sheet: "shared/....png", cell: [w, h], name } puts (or replaces) that plugin's pet with the member. */
-  hq.expose("setPet", (caller: HQ.Caller, a: { id: string; sheet: string; cell: [number, number]; name?: string }) => {
+  /** { id, sheet: "shared/....png", cell: [w, h], name }, or { id, metadata, name } for a pet the calling
+   * plugin draws on each page (hq.provideSheet), puts (or replaces) that plugin's pet with the member. */
+  hq.expose("setPet", (caller: HQ.Caller, a: { id: string; sheet?: string; cell?: [number, number]; metadata?: HQ.Json; name?: string }) => {
     if (!caller.member) return { ok: false, error: "no member: call while handling a member's request or message" };
-    const guest = { from: caller.plugin, id: a?.id, sheet: a?.sheet, cell: a?.cell, name: cleanName(a?.name) };
+    // what was given, as given: isGuest refuses a sheet with metadata, or a cell without a sheet
+    const guest: GuestPet = { from: caller.plugin, id: a?.id, name: cleanName(a?.name) };
+    if (a?.sheet !== undefined) guest.sheet = a.sheet;
+    if (a?.cell !== undefined) guest.cell = a.cell;
+    if (a?.metadata !== undefined) guest.metadata = a.metadata;
     if (!isGuest(guest)) return { ok: false, error: "bad arguments" };
     const others = storedGuests(caller.member).filter((g) => !(g.from === guest.from && g.id === guest.id));
     if (others.length >= MAX_GUESTS) return { ok: false, error: "full" };

@@ -1,4 +1,4 @@
-import { PluginHost } from "./host";
+import { PluginHost, type ProvidedSheet } from "./host";
 import { LIMITS, SendBudget } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 import { setState, type PluginSlot } from "../store";
@@ -27,7 +27,22 @@ export class PluginManager {
   private budget = new SendBudget();
   private warnedAt = 0;
 
-  constructor(private layer: PluginLayer, private socketSend: (plugin: string, d: unknown) => void) {}
+  /** Sheets drawn by a plugin for metadata, by "<plugin>|<metadata JSON>": asked once per page. */
+  private provided = new Map<string, Promise<ProvidedSheet>>();
+
+  constructor(private layer: PluginLayer, private socketSend: (plugin: string, d: unknown) => void) {
+    layer.provider = (from, metadata) => {
+      const k = from + "|" + JSON.stringify(metadata);
+      let p = this.provided.get(k);
+      if (!p) {
+        const h = this.hosts.get(from);
+        p = h ? h.requestSheet(metadata) : Promise.reject(new Error(`${from} is not running on this page`));
+        this.provided.set(k, p);
+        p.catch(() => { if (this.provided.get(k) === p) this.provided.delete(k); }); // asked again next time
+      }
+      return p;
+    };
+  }
 
   /** Plugin messages to the server, held under the socket's rate limit (excess dropped, with a warning). */
   private send = (plugin: string, d: unknown) => {
@@ -72,6 +87,7 @@ export class PluginManager {
         uiChanged: (name) => this.uiChanged(name),
         stopped: (name, reason) => {
           this.stopReasons.set(name, reason);
+          for (const k of [...this.provided.keys()]) if (k.startsWith(name + "|")) this.provided.delete(k);
           if (this.hosts.get(name) === h) this.hosts.delete(name);
         },
       });
