@@ -234,6 +234,15 @@ export async function run(ctx) {
     check("the plugin that put it takes it away", gone.removed === true);
     await fetch(API + "/api/admin/plugins/critters", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
 
+    // ---- a guest pet whose sheet its plugin draws on each page: drawn-pet (e2e/fixtures) gives one by
+    // metadata (setPet without a sheet) and provides its sheet from an OffscreenCanvas (hq.provideSheet)
+    await fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
+    const drawnPet = (u, owner) => read(u, (id) => (window.__hq.session.plugins?.debug("hq-pets") ?? []).find((c) => c.id.startsWith(id + ":x:drawn-pet:") && c.visible) ?? null, String(owner));
+    const dp = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "Rem's drawn pet on Mia's page" }).catch(() => null);
+    check("a guest pet put by metadata is drawn by its plugin on every page and follows its owner like a pet", dp?.mode === "follow" && dp?.player === rem.id, JSON.stringify(dp));
+    await fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
+    await waitFor(async () => !(await drawnPet(mia, rem.id)), { what: "drawn pet gone with its plugin" });
+
     // ---- the name shows on hover, only while the pet wanders
     check("a following pet shows nothing when the mouse is over it", (await hoverOver(mia, rem.id, cat.id)) === "");
     // ---- Let wander / Call, from the plugin's button in the top bar

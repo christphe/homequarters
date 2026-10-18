@@ -52,6 +52,25 @@ const r = await hq.plugins.call("hq-pets", "setPet", {
 
 Puts the pet with the member, or replaces your pet with the same `id` (to change the creature, keep the `id`). `"full"`: the member already has 4 guest pets.
 
+### A pet your plugin draws on each page (`metadata`)
+
+When your creatures cannot be a PNG of `shared/` (art you may not ship, or too many to ship), give `metadata` instead of `sheet` and `cell`. Your browser code then draws the sheet on every page:
+
+~~~ts
+// server code: no sheet, no cell
+await hq.plugins.call("hq-pets", "setPet", { id: "current", metadata: { kind: 25, alt: false }, name: "Sparky" });
+
+// browser code (public/client.ts), on every page
+hq.provideSheet(async (metadata) => {
+  const image = await draw(metadata); // a Blob or an ImageBitmap: fetched from an externalHost and cropped, or drawn
+  return { image, frameW: 24, frameH: 24 }; // the same format as a shared/ sheet: 4 rows of 3 cells
+});
+~~~
+
+- `metadata` is JSON of at most 256 bytes. hq-pets stores it and hands it back to your `provideSheet` on each page. Give `sheet` and `cell`, or `metadata`, never both (`"bad arguments"`).
+- A page asks once per plugin and metadata. Two members whose pets have the same metadata share one sheet there, and changing the metadata draws a new one.
+- The pet waits until your sheet is drawn, even if your page code starts after hq-pets'. If `provideSheet` throws, or returns something that is not an image, the pet stays empty and the console says why.
+
 ### `removePet`
 
 ~~~ts
@@ -63,7 +82,7 @@ You only ever remove your own pets (same plugin, same `id`, the member you act f
 
 ### When the call fails
 
-`hq.plugins.call` rejects (throws in an `await`) when `hq-pets` is off, busy, or slower than 2 s; check `ok` in the answer for the rest. Your pets stay stored while `hq-pets` is off and come back with it. If your plugin is off, its `shared/` images are not served and its guest pets are not drawn.
+`hq.plugins.call` rejects (throws in an `await`) when `hq-pets` is off, busy, or slower than 2 s; check `ok` in the answer for the rest. Your pets stay stored while `hq-pets` is off and come back with it. If your plugin is off, its `shared/` images are not served and nothing answers for its `metadata` pets: its guest pets are not drawn.
 
 ### A complete example
 

@@ -11,6 +11,11 @@ import type { PluginLayer } from "../game/pluginLayer";
 type SlotCmd = Extract<Cmd, { op: "slot" }>;
 type ModalCmd = Extract<Cmd, { op: "modal" }>;
 
+/** A sheet a plugin's browser code drew for metadata (hq.provideSheet). */
+export interface ProvidedSheet { image: Blob | ImageBitmap; frameW: number; frameH: number }
+
+const isImage = (v: unknown) => v instanceof Blob || (typeof ImageBitmap !== "undefined" && v instanceof ImageBitmap);
+
 export interface HostDeps {
   layer: PluginLayer;
   /** Sends {t:"plg", pl, d} on the game socket. */
@@ -37,6 +42,10 @@ export class PluginHost {
   private lastUpdate = 0;
   private batchTimes: number[] = [];
   private stoppedWith = "";
+  /** hq.provideSheet was called: sheet requests go to the iframe; before that, they wait */
+  private provides = false;
+  private sheetAsks = new Map<number, { metadata: unknown; resolve: (s: ProvidedSheet) => void; reject: (e: Error) => void; sent: boolean }>();
+  private nextAsk = 0;
 
   constructor(readonly name: string, readonly title: string, private client: string, private hosts: string[], private deps: HostDeps) {}
 
@@ -105,9 +114,16 @@ export class PluginHost {
     this.port.postMessage({ t: "update", dt, world: this.deps.layer.worldSnapshot() });
   }
 
-  private onPort(m: { t?: string; c?: unknown; m?: unknown }) {
+  private onPort(m: { t?: string; c?: unknown; m?: unknown; id?: unknown; image?: unknown; frameW?: unknown; frameH?: unknown; error?: unknown }) {
     if (this.stoppedWith) return;
-    if (m?.t === "ack") {
+    if (m?.t === "sheet") {
+      const ask = this.sheetAsks.get(m.id as number);
+      if (!ask) return;
+      this.sheetAsks.delete(m.id as number);
+      const ok = isImage(m.image) && [m.frameW, m.frameH].every((n) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 256);
+      if (ok) ask.resolve({ image: m.image as Blob | ImageBitmap, frameW: m.frameW as number, frameH: m.frameH as number });
+      else ask.reject(new Error(typeof m.error === "string" ? m.error : "hq.provideSheet must return { image, frameW, frameH }"));
+    } else if (m?.t === "ack") {
       this.waitingAck = false;
     } else if (m?.t === "error") {
       console.warn(`[plugin ${this.name}]`, String(m.m).slice(0, 500));
@@ -140,11 +156,34 @@ export class PluginHost {
       } else if (c.op === "close") {
         ui = this.modal !== null || ui;
         this.modal = null;
+      } else if (c.op === "provide") {
+        this.provides = true;
+        this.sendAsks();
       }
     }
     const reason = this.deps.layer.apply(this.name, cmds, now);
     if (reason) return this.stop(reason);
     if (ui) this.deps.uiChanged(this.name);
+  }
+
+  /** Asks the plugin's browser code for the sheet of that metadata (hq.provideSheet). It waits while the
+   *  plugin has not started or not registered its provider yet; it fails when the plugin stops. */
+  requestSheet(metadata: unknown): Promise<ProvidedSheet> {
+    if (this.stoppedWith) return Promise.reject(new Error("the plugin is not running on this page"));
+    if (this.sheetAsks.size >= LIMITS.sprites * 2) return Promise.reject(new Error("too many sheets asked for"));
+    return new Promise((resolve, reject) => {
+      this.sheetAsks.set(++this.nextAsk, { metadata, resolve, reject, sent: false });
+      this.sendAsks();
+    });
+  }
+
+  private sendAsks() {
+    if (!this.port || !this.provides) return;
+    for (const [id, ask] of this.sheetAsks) {
+      if (ask.sent) continue;
+      ask.sent = true;
+      this.port.postMessage({ t: "sheet", id, metadata: ask.metadata });
+    }
   }
 
   /** A message from the plugin's server code. */
@@ -181,6 +220,8 @@ export class PluginHost {
       clearInterval(t);
     }
     window.removeEventListener("message", this.onWindowMessage);
+    for (const ask of this.sheetAsks.values()) ask.reject(new Error("the plugin stopped on this page"));
+    this.sheetAsks.clear();
     this.port?.close();
     this.port = null;
     this.frame?.remove();

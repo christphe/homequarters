@@ -20,10 +20,16 @@ export const NAME_MAX = 24;
 export interface GuestPet {
   from: string; // the plugin
   id: string;
-  sheet: string; // shared/... in that plugin's public/
-  cell: [w: number, h: number];
+  /** shared/... in that plugin's public/, drawn in cells of cell px; or, without a sheet, metadata: that
+   * plugin's browser code draws the sheet on each page (hq.provideSheet), from this JSON */
+  sheet?: string;
+  cell?: [w: number, h: number];
+  metadata?: HQ.Json;
   name: string;
 }
+
+/** The most bytes of a guest pet's metadata, as JSON. */
+export const METADATA_MAX = 256;
 
 /** The most guest pets a member can have, all plugins together. */
 export const MAX_GUESTS = 4;

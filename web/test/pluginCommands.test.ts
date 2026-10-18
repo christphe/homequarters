@@ -153,3 +153,17 @@ test("spawn without a position keeps an existing sprite where it is", () => {
   assert.ok(Array.isArray(ok) && ok[0].op === "spawn" && ok[0].x === undefined && ok[0].y === undefined);
   assert.equal(typeof parseBatch([{ op: "spawn", id: "a", key: "k", x: 3 }]), "string", "x without y");
 });
+
+test("a sheet asked for by metadata: another plugin draws it (hq.provideSheet)", () => {
+  const ok = parseBatch([{ op: "provide" }, { op: "sprite", key: "g0", provided: { from: "drawer", metadata: { kind: 25, alt: false } }, anims: {} }]);
+  assert.ok(Array.isArray(ok), String(ok));
+  const s = (ok as { op: string; provided?: { from: string; metadata: unknown } }[])[1];
+  assert.deepEqual(s.provided, { from: "drawer", metadata: { kind: 25, alt: false } });
+  const bad = [
+    { op: "sprite", key: "g0", provided: { from: "Drawer!", metadata: 1 } },
+    { op: "sprite", key: "g0", provided: { from: "drawer" } },
+    { op: "sprite", key: "g0", provided: { from: "drawer", metadata: "x".repeat(LIMITS.metadataBytes) } },
+    { op: "sprite", key: "g0", url: "a.png", provided: { from: "drawer", metadata: 1 } },
+  ];
+  for (const c of bad) assert.equal(typeof parseBatch([c]), "string", JSON.stringify(c).slice(0, 80));
+});

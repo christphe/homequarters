@@ -106,6 +106,8 @@ const facing = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx < 
 
 export class PluginLayer {
   private plugins = new Map<string, Gfx>();
+  /** Gets the sheet another plugin's browser code draws for metadata (set by the PluginManager). */
+  provider: ((from: string, metadata: unknown) => Promise<{ image: Blob | ImageBitmap; frameW: number; frameH: number }>) | null = null;
   /** Set when an image finished loading, so the next frame draws it. */
   private loaded = false;
   /** walkTo path searches, a few per frame (a batch may ask for hundreds) */
@@ -142,7 +144,17 @@ export class PluginLayer {
           // image data the plugin made, or a PNG: its own, or another plugin's shared/ one (same assets URL,
           // under that plugin's name)
           const base = c.from ? g.base.replace(/\/plugins\/[^/]+\/assets\/$/, "/plugins/" + c.from + "/assets/") : g.base;
-          this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH);
+          if (c.provided) {
+            const { from, metadata } = c.provided;
+            const ask = this.provider ? this.provider(from, metadata) : Promise.reject(new Error("no provider"));
+            // a copy for this sheet: the provider's image may be drawn by other sheets too, and dropping a
+            // plugin destroys its textures
+            ask.then((s) => createImageBitmap(s.image).then((bmp) => this.load(g, sheet, bmp, s.frameW, s.frameH)))
+              .catch((err) => {
+                sheet.failed = true;
+                console.warn(`plugin sprite failed to load: the sheet ${from} draws`, err);
+              });
+          } else this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH);
           break;
         }
         case "spawn": {
