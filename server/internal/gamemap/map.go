@@ -56,12 +56,14 @@ const (
 )
 
 type Prop struct {
-	T      string `json:"t"`
-	X      int    `json:"x"`
-	Y      int    `json:"y"`
-	W      int    `json:"w,omitempty"`
-	H      int    `json:"h,omitempty"`
-	Assign int64  `json:"assign,omitempty"` // desk owner (user id)
+	T string `json:"t"`
+	X int    `json:"x"`
+	Y int    `json:"y"`
+	W int    `json:"w,omitempty"`
+	H int    `json:"h,omitempty"`
+	// Assign is the desk's owner (user id). An assigned desk is shown under its owner's current name;
+	// Label is its own name ("Desk 3"), shown again once it is free.
+	Assign int64  `json:"assign,omitempty"`
 	Label  string `json:"label,omitempty"`
 	// Data is the content of an interactive object: note text, or the https URL of an embedded
 	// site or image. It is NOT part of the wire map; the server sends it only to a player who is
@@ -400,11 +402,7 @@ func withDeskRooms(m *Map) []Area {
 		ids[id] = true
 		x0, y0 := p.X, p.Y
 		x1, y1 := p.X+w, min(p.Y+h+2, m.H)
-		name := p.Label
-		if name == "" {
-			name = "Desk"
-		}
-		areas = append(areas, Area{ID: id, Name: name, Kind: KindRoom, X: x0, Y: y0, W: x1 - x0, H: y1 - y0,
+		areas = append(areas, Area{ID: id, Name: "Desk", Kind: KindRoom, X: x0, Y: y0, W: x1 - x0, H: y1 - y0,
 			Floor: DeskRoomFloor, Access: Access{Mode: AccessOpen, Users: []int64{p.Assign}}, Capacity: DeskRoomCapacity, Auto: true})
 	}
 	return areas
@@ -439,4 +437,98 @@ func OnePlacePerPerson(m *Map) error {
 		}
 	}
 	return nil
+}
+
+// OwnerSep joins an office's own name and its owners' names when it is shown ("Office 2 · Ana").
+const OwnerSep = " · "
+
+// Unname drops the owner names that older versions wrote into a stored map: an assigned desk's label
+// that names its owner ("Ana's desk") and the suffix of an owned office's name ("Office 2 · Ana"). A place stores only
+// its owners' ids; their names are joined when it is shown, so a rename shows at once and a stored map
+// never keeps a stale name. It runs once, when an office's map is loaded, so a name an administrator
+// gives a room later is kept as typed. It reports whether anything changed.
+func Unname(m *Map) bool {
+	changed := false
+	for i := range m.Props {
+		if p := &m.Props[i]; p.T == "desk" && p.Assign != 0 && strings.HasSuffix(p.Label, "'s desk") {
+			p.Label = ""
+			changed = true
+		}
+	}
+	for i := range m.Areas {
+		if a := &m.Areas[i]; a.Access.Mode == AccessOffice && len(a.Access.Users) > 0 {
+			if base, _, cut := strings.Cut(a.Name, OwnerSep); cut {
+				a.Name = base
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// Owners lists, once each, the members that places of m belong to: desk owners and the owners of
+// private offices.
+func Owners(m *Map) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	add := func(u int64) {
+		if u != 0 && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
+	}
+	for _, a := range m.Areas {
+		if a.Access.Mode == AccessOffice && !a.Auto {
+			for _, u := range a.Access.Users {
+				add(u)
+			}
+		}
+	}
+	for _, p := range m.Props {
+		if p.T == "desk" {
+			add(p.Assign)
+		}
+	}
+	return out
+}
+
+// KeepOwners frees every desk and office seat whose owner keep refuses (a member who was removed),
+// and reports whether anything changed. Props and Areas are copied before they change, so a map
+// that shares them with a running world is left alone.
+func KeepOwners(m *Map, keep func(uid int64) bool) bool {
+	changed := false
+	for i, p := range m.Props {
+		if p.T == "desk" && p.Assign != 0 && !keep(p.Assign) {
+			if !changed {
+				m.Props = append([]Prop(nil), m.Props...)
+				m.Areas = append([]Area(nil), m.Areas...)
+				changed = true
+			}
+			m.Props[i].Assign = 0
+		}
+	}
+	for i, a := range m.Areas {
+		if a.Access.Mode != AccessOffice || a.Auto {
+			continue
+		}
+		users := make([]int64, 0, len(a.Access.Users))
+		for _, u := range a.Access.Users {
+			if keep(u) {
+				users = append(users, u)
+			}
+		}
+		if len(users) == len(a.Access.Users) {
+			continue
+		}
+		if !changed {
+			m.Props = append([]Prop(nil), m.Props...)
+			m.Areas = append([]Area(nil), m.Areas...)
+			changed = true
+		}
+		if len(users) == 0 {
+			users = nil
+		}
+		m.Areas[i].Access = Access{Mode: AccessOffice, Users: users}
+	}
+	return changed
 }

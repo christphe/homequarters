@@ -51,6 +51,7 @@ export interface Prop {
   y: number;
   w?: number;
   h?: number;
+  /** The desk's owner (user id); their name comes from the owner names, never from the map. */
   assign?: number;
   label?: string;
   data?: string; // available only in the admin editor or an authorized interaction reply
@@ -76,6 +77,8 @@ export interface Hello {
   office: string;
   cfg: { speed: number; run?: number; tick: number; cell?: number; aoi?: number; aoiMax?: number; media: boolean; x: number; y: number; deny: number[]; lk?: number[]; ver?: string };
   map: MapData;
+  /** Names of the members the map's places belong to, by user id (the map stores only ids). */
+  owners?: Record<string, string>;
   roster: Person[];
   chat?: { f: number; n: string; x: string; ts: number }[];
 }
@@ -112,7 +115,9 @@ export interface ConvLeave { t: "conv"; op: "leave" }
 export interface Loc { t: "loc"; id: number; ok: boolean; x?: number; y?: number; a?: string }
 export interface Pong { t: "pong"; c: number }
 
-export interface MapUpdate { t: "map"; deny: number[]; x?: number; y?: number; map: MapData }
+export interface MapUpdate { t: "map"; deny: number[]; x?: number; y?: number; owners?: Record<string, string>; map: MapData }
+/** A member who owns a desk or an office changed their name. */
+export interface OwnerName { t: "own"; id: number; n: string }
 
 export interface Emote { t: "e"; id: number; v: number }
 export interface ObjectReply { t: "obj"; k: "note" | "embed" | "image"; l: string; d: string }
@@ -145,4 +150,4 @@ export type PluginMsg = { t: "plg"; pl: string; d: unknown };
 /** The set of running plugins changed: fetch GET /api/plugins again. */
 export type PluginsChanged = { t: "plgs" };
 
-export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;
+export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

@@ -89,7 +89,7 @@ func (w *World) sendConvJoin(p *Player, g *group) {
 	name := ""
 	kind := "p"
 	if g.isRoom {
-		name = w.m.Map.Areas[g.area].Name
+		name = w.areaTitle(g.area)
 		kind = "r"
 	}
 	url := ""

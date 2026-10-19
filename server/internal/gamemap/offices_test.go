@@ -71,7 +71,7 @@ func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
 	if len(auto) != 2 {
 		t.Fatalf("one room per assigned desk outside a room, got %+v", auto)
 	}
-	if a := auto[0]; a.Name != "Desk of Ana" || a.X != 20 || a.Y != 3 || a.W != 2 || a.H != 3 || a.Kind != KindRoom || a.Access.Mode != AccessOpen || a.Floor != DeskRoomFloor {
+	if a := auto[0]; a.Name != "Desk" || a.X != 20 || a.Y != 3 || a.W != 2 || a.H != 3 || a.Kind != KindRoom || a.Access.Mode != AccessOpen || a.Floor != DeskRoomFloor {
 		t.Fatalf("desk room: %+v", a)
 	}
 	room := func(x, y int) string {
@@ -136,5 +136,26 @@ func TestOnePlacePerPerson(t *testing.T) {
 		if a.Auto {
 			t.Fatalf("an office owner's extra desk gets no room: %+v", a)
 		}
+	}
+}
+
+func TestUnnameDropsOnlyOwnerNames(t *testing.T) {
+	m := &Map{
+		Props: []Prop{{T: "desk", X: 1, Y: 1, Assign: 4, Label: "Ana's desk"}, {T: "desk", X: 4, Y: 1, Label: "Desk 2"}, {T: "desk", X: 8, Y: 1, Assign: 5, Label: "Desk 3"}, {T: "note", X: 6, Y: 1, Label: "Read me"}},
+		Areas: []Area{{ID: "o1", Name: "Office 1 · Ana", Kind: KindRoom, Access: Access{Mode: AccessOffice, Users: []int64{4}}},
+			{ID: "r", Name: "Lounge · east", Kind: KindRoom, Access: Access{Mode: AccessOpen}},
+			{ID: "o2", Name: "Suite · North", Kind: KindRoom, Access: Access{Mode: AccessOffice}}},
+	}
+	if !Unname(m) {
+		t.Fatal("owner names are found")
+	}
+	if m.Props[0].Label != "" || m.Props[1].Label != "Desk 2" || m.Props[2].Label != "Desk 3" || m.Props[3].Label != "Read me" {
+		t.Fatalf("only a label naming an owner is dropped: %+v", m.Props)
+	}
+	if m.Areas[0].Name != "Office 1" || m.Areas[1].Name != "Lounge · east" || m.Areas[2].Name != "Suite · North" {
+		t.Fatalf("only an owned office loses the owner suffix: %+v", m.Areas)
+	}
+	if Unname(m) {
+		t.Fatal("a clean map is left alone")
 	}
 }

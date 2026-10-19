@@ -273,7 +273,7 @@ export async function run(ctx) {
     // a free desk of the open-plan area whose right-hand neighbour is free too (other scenarios may have assigned some)
     const free = (x, y) => withDesk.props.find((p) => p.t === "desk" && p.x === x && p.y === y && !p.assign);
     const desk = withDesk.props.find((p) => p.t === "desk" && !p.assign && p.y < 14 && free(p.x + 4, p.y));
-    Object.assign(desk, { assign: a.id, label: "Desk of " + a.name.slice(0, 30) });
+    desk.assign = a.id; // the owner's id only: the desk is named after them wherever it shows
     check("an administrator assigns a desk (API)", (await putMap(withDesk)).ok, `desk at ${desk.x},${desk.y}`);
     await waitFor(() => read(a, (id) => window.__hq.view.map.props.some((p) => p.t === "desk" && p.assign === id), a.id), { what: "desk assignment reaches the client" });
     await a.page.keyboard.down("Control");
@@ -295,7 +295,7 @@ export async function run(ctx) {
     await a.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-desk-room.png") });
     await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8); // just behind my chair, inside my desk's room
     await waitFor(async () => (await conv(a))?.kind === "r" && (await conv(b))?.kind === "r", { timeout: 20000, what: "desk call" });
-    check("coming over to my desk starts its call for both of us", (await conv(a)).name.startsWith("Desk of"), (await conv(a)).name);
+    check("coming over to my desk starts its call, named after me, for both of us", (await conv(a)).name === a.name + "'s desk", (await conv(a)).name);
     await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8); // back out into the aisle
     await waitFor(async () => !(await conv(a)) && !(await conv(b)), { timeout: 20000, what: "desk call ends" });
     check("when the visitor leaves, the call ends and I stay at my desk alone", true);
@@ -311,7 +311,7 @@ export async function run(ctx) {
     await b.page.evaluate(() => window.__hq.view.setDirection(0, 0));
     const bTile = await pos(b);
     check("a locked desk keeps the visitor out", Math.floor(bTile.y / 16) > desk.y + 2, `y tile ${Math.floor(bTile.y / 16)}`);
-    await waitFor(() => btn(b, "Knock · Desk of"), { what: "knock on the desk" });
+    await waitFor(() => btn(b, "Knock · " + a.name + "'s desk"), { what: "knock on the desk" });
     await waitFor(() => btn(a, "Let in"), { what: "owner asked" });
     await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8);
     check("the owner lets the visitor in", Math.floor((await pos(b)).y / 16) === desk.y + 2);

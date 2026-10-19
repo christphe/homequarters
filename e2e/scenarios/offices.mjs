@@ -13,6 +13,13 @@ const hasButton = (u, re) => u.page.evaluate((src) => [...document.querySelector
 const areaOf = (u, id) => u.page.evaluate((id) => window.__hq.view.map.areas.find((a) => a.id === id), id);
 const areaIndex = (u, id) => u.page.evaluate((id) => window.__hq.view.map.areas.findIndex((a) => a.id === id), id);
 const here = (u) => u.page.evaluate(() => window.__hq.view.mArea);
+// the desk and area labels as drawn on the map: owner names are joined there, never stored in the map
+const labels = (u) => u.page.evaluate(() => window.__hq.view.labels().map((l) => l.replace(/ 🔒$/, "")));
+const clickText = (u, selector, text) => u.page.evaluate((selector, text) => {
+  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text);
+  b?.click();
+  return !!b;
+}, selector, text);
 
 export async function run(ctx) {
   resetChecks();
@@ -38,10 +45,28 @@ export async function run(ctx) {
     await boss.page.mouse.click(p.x, p.y);
     await waitFor(() => boss.page.evaluate(() => !document.querySelector(".editor .primary")?.disabled), { what: "editor dirty" });
     await boss.page.evaluate(() => document.querySelector(".editor .primary").click());
-    await waitFor(async () => (await areaOf(guest, "office-2"))?.name === "Office 2 · " + owner.name, { what: "office label reaches others" });
+    const shown = await waitFor(async () => (await labels(guest)).includes("Office 2 · " + owner.name), { what: "office label reaches others" }).then(() => true, () => false);
+    check("everybody sees the office labelled with its owner's name", shown, (await labels(guest)).filter((l) => l.startsWith("Office")).join(" | "));
     const office = await areaOf(guest, "office-2");
     check("the editor assigns the office and everybody sees its owner's name", office.access.users?.[0] === owner.id, office.name);
+    check("the map stores the owner's id, not their name", office.name === "Office 2", office.name);
     await boss.page.evaluate(() => [...document.querySelectorAll(".editor button")].find((b) => b.textContent === "Close")?.click());
+
+    // ---- the owner renames themselves in the settings: their office shows the new name for everybody
+    const renamed = "Ren" + t;
+    await owner.page.evaluate(() => document.querySelector('button[title="Settings"]').click());
+    await waitFor(() => owner.page.$('.modal input[aria-label="Your name"]'), { what: "settings dialog" });
+    await owner.page.focus('.modal input[aria-label="Your name"]');
+    await owner.page.keyboard.down("Control");
+    await owner.page.keyboard.press("KeyA");
+    await owner.page.keyboard.up("Control");
+    await owner.page.keyboard.press("Backspace");
+    await owner.page.type('.modal input[aria-label="Your name"]', renamed);
+    await clickText(owner, ".modal button", "Save profile");
+    const followed = await waitFor(async () => (await labels(guest)).includes("Office 2 · " + renamed), { timeout: 5000, what: "renamed label" }).then(() => true, () => false);
+    check("a rename shows on the owner's office for everybody, without a reload", followed, (await labels(guest)).filter((l) => l.startsWith("Office 2")).join());
+    await owner.page.keyboard.press("Escape");
+    owner.name = renamed;
     const oi = await areaIndex(guest, "office-2");
 
     // ---- the owner walks in; strangers are kept out by the server
@@ -186,6 +211,18 @@ export async function run(ctx) {
     check("a free office can be locked from inside", true);
     const errs = [boss, owner, guest, other].flatMap((u) => u.logs);
     check("no console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+
+    // ---- the administrator removes the owner: their office is free again, for everybody and once saved
+    await waitFor(() => clickText(boss, ".topbar button", "Admin"), { what: "Admin button" });
+    await waitFor(() => boss.page.$(`.modal button[aria-label="Remove ${owner.name}"]`), { what: "remove button" });
+    await boss.page.evaluate((n) => document.querySelector(`.modal button[aria-label="Remove ${n}"]`).click(), owner.name);
+    await waitFor(() => clickText(boss, ".modal button", "Confirm removal"), { what: "confirm button" });
+    const freed = await waitFor(async () => !(await areaOf(guest, "office-2")).access.users?.length, { timeout: 8000, what: "office freed" }).then(() => true, () => false);
+    check("removing a member frees their office for everybody online", freed);
+    check("the freed office shows no owner any more", (await labels(guest)).includes("Office 2") && !(await labels(guest)).some((l) => l.includes(owner.name)), (await labels(guest)).filter((l) => l.startsWith("Office 2")).join());
+    const kept = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json();
+    check("the freed office is saved", !kept.areas.find((a) => a.id === "office-2")?.access.users?.length);
+    await boss.page.keyboard.press("Escape");
   } catch (e) {
     check("scenario completed", false, e.message);
   } finally {

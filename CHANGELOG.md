@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] - minor
+
+### Changed
+- A desk or office still held by a member removed earlier becomes free on the next start, and a map saved from the editor no longer gives a place to somebody who is not a member
+
+### Fixed
+- Removing a member frees their desk and their place in a private office, and a member's new name shows on their desk and office for everybody at once; maps saved by earlier versions are cleaned on the next start
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
