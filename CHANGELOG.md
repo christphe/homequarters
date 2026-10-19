@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - minor
+## [0.2.0] - 2026-10-19
 
 ### Changed
 - A desk or office still held by a member removed earlier becomes free on the next start, and a map saved from the editor no longer gives a place to somebody who is not a member (#18)
