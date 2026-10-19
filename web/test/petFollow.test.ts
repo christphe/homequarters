@@ -209,11 +209,11 @@ test("at rest a roaming pet potters about its owner's feet, the same on every pa
   };
   const a = newPet(), b = newPet();
   const seen: [number, number][] = [];
-  settle(a, 1_000_000, 40, seen);
-  settle(b, 1_000_000, 40);
+  settle(a, 1_000_000, 180, seen);
+  settle(b, 1_000_000, 180);
   assert.ok(Math.abs(a.px - b.px) < 0.01 && Math.abs(a.py - b.py) < 0.01, "two pages agree");
   const spots = new Set(seen.map(([x, y]) => `${Math.round(x / 4)},${Math.round(y / 4)}`));
-  assert.ok(spots.size > 6, `it moves about: ${spots.size} places`);
+  assert.ok(spots.size > 6, `it moves about (a step about every 20 s): ${spots.size} places`);
   const far = Math.max(...seen.slice(120).map(([x, y]) => Math.hypot(x - 300, y - 300)));
   assert.ok(far <= 10 + 14 + 1, `it stays at the feet: ${far.toFixed(1)} px`);
   let fastest = 0;

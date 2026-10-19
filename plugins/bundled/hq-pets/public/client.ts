@@ -19,11 +19,11 @@ const beside = (i: number) => [10, 8, 13, 11, 14, 9, 12, 10][i % 8];
 // paths around walls. "Home" is where the owner was when they let their pets wander.
 type Mood = "explore" | "home" | "owner" | "socialize";
 const MOODS: Record<Mood, { near: [number, number]; pause: [number, number]; speed: number }> = {
-  explore: { near: [96, 240], pause: [4, 8], speed: 40 }, // long walks around the office, from home
-  home: { near: [12, 44], pause: [2.5, 5], speed: 28 }, // pottering about near home
-  owner: { near: [16, 40], pause: [1.5, 3.5], speed: 34 }, // staying close to the owner wherever they are
+  explore: { near: [96, 240], pause: [55, 65], speed: 40 }, // a long walk around the office about once a minute
+  home: { near: [12, 44], pause: [18, 22], speed: 28 }, // pottering about near home, a step every 20 s or so
+  owner: { near: [16, 40], pause: [18, 22], speed: 34 }, // staying close to the owner wherever they are
   // tagging along with another wandering pet (anybody's); with none around, it explores
-  socialize: { near: [96, 240], pause: [3, 6], speed: 40 },
+  socialize: { near: [96, 240], pause: [18, 22], speed: 40 },
 };
 const MOOD_SECONDS = 300;
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
@@ -211,6 +211,11 @@ hq.onMessage<PetsMessage | YouMessage>((msg) => {
     items(g.g).forEach((goal: Goal, i) => {
       const id = line[i]?.sid;
       if (!goal || !id || !drawn.has(id)) return;
+      if (msg.place && typeof goal !== "string") {
+        // this page just started: the pet is where the owner's page last sent it, not behind its owner
+        hq.spawn(id, drawn.get(id)!.key, { x: goal[0], y: goal[1] });
+        return;
+      }
       if (typeof goal === "string") {
         // go along with that pet; on a page that does not draw it, this one waits where it is
         along.set(id, goal);
