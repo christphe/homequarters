@@ -45,7 +45,7 @@ export function hiddenShare(px: number, py: number, ox: number, oy: number) {
  * gap: px along the trail between the owner and the pet (plugin creatures keep a larger one);
  * rest: once the owner stands still, sit `beside` px to their side, away from x `avoid` when given, so a
  * follower does not queue up behind the owner. With `roam`, potter about the owner's feet instead: a new
- * spot every 5-10 s, `beside` to `beside + roam` px away, all around them where it is free. The
+ * spot about every 20 s, `beside` to `beside + roam` px away, all around them where it is free. The
  * spots come from `seed` and the wall `clock` (ms), so every page shows the same pottering without a
  * message.
  */
@@ -73,7 +73,7 @@ function noise(seed: number, step: number): [number, number] {
 function roamSpot(rest: Rest, ox: number, oy: number, canStand: (x: number, y: number) => boolean): [number, number] | null {
   if (!rest.roam) return null;
   const seed = rest.seed ?? 0, clock = rest.clock ?? Date.now();
-  const period = 5000 + (seed % 5000); // each pet its own pace
+  const period = 18000 + (seed % 4000); // a step about every 20 s, each pet its own pace
   const [u, v] = noise(seed, Math.floor((clock + seed * 131) / period));
   const a = u * Math.PI * 2; // all around, behind the owner too when it is free
   const r = rest.beside + v * rest.roam;

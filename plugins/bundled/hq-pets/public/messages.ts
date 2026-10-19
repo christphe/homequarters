@@ -48,12 +48,15 @@ export interface MemberPets {
 export type Goal = [x: number, y: number, speed: number] | string | null;
 export type Goals = Goal[];
 
-/** Server to pages: members whose pets changed, members who left, wander goals to walk to. */
+/** Server to pages: members whose pets changed, members who left, wander goals to walk to. With
+ * place, the goals are where wandering pets went last, for a page that just started: it puts them
+ * there instead of walking them. */
 export interface PetsMessage {
   t: "pets";
   set: MemberPets[];
   del: number[];
   go: { id: number; g: Goals }[];
+  place?: boolean;
 }
 
 /** Server to one page: how many pets a member may have (the office's setting). Sent when they arrive

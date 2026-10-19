@@ -118,7 +118,7 @@ declare global {
       moveTo(id: string, x: number, y: number, opts?: { speed?: number }): void;
       /** Walks that member's trail gap px behind (0-200, default 36); walks back around walls when called from elsewhere.
        * When the member stops it rests beside px to their side (0-120, default 22): give each follower its own.
-       * With roam (0-48 px), it potters about their feet instead, a new spot every 5-10 s, the same on every page. */
+       * With roam (0-48 px), it potters about their feet instead, a new spot about every 20 s, the same on every page. */
       follow(id: string, memberId: number, opts?: { gap?: number; beside?: number; roam?: number }): void;
       /** Follows another sprite of this plugin the same way, gap px behind; it waits while that sprite is gone or hidden. */
       follow(id: string, who: { sprite: string }, opts?: { gap?: number; beside?: number; roam?: number }): void;
