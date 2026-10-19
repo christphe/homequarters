@@ -225,7 +225,7 @@ class Session {
       case "e": view.showEmote(m.id, m.v); break;
       case "obj": setState({ object: m }); break;
       case "fol":
-        view.setGuided(m.id !== 0);
+        view.setGuided(m.id !== 0, false);
         setState({ following: m.id ? { id: m.id, name: m.n } : null });
         break;
       case "self": view.applySelf(m); break;
