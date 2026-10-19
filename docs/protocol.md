@@ -37,13 +37,14 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 
 | Message | Fields | Meaning |
 | --- | --- | --- |
-| `hello` | `you`, `role`, `status`, `office`, `cfg`, `map`, `roster`, `chat` | initial state; `cfg` has speed, the run multiplier (`run`), tick, the interest grid (`cell` px, default radius `aoi` and largest radius `aoiMax` in cells), media availability, your position, the areas denied to you and the server's version (`ver`); `chat` is the persisted office chat. The page served by the same server carries that version in `<meta name="hq-version">`: when they differ (a deploy happened since the page loaded), the client shows a dialog that cannot be dismissed and asks to reload |
+| `hello` | `you`, `role`, `status`, `office`, `cfg`, `map`, `owners`, `roster`, `chat` | initial state; `owners` maps user id to name for every member a desk or private office belongs to (the map itself stores only their ids, [decision 0025](decisions/0025-place-owners-by-id.md)); `cfg` has speed, the run multiplier (`run`), tick, the interest grid (`cell` px, default radius `aoi` and largest radius `aoiMax` in cells), media availability, your position, the areas denied to you and the server's version (`ver`); `chat` is the persisted office chat. The page served by the same server carries that version in `<meta name="hq-version">`: when they differ (a deploy happened since the page loaded), the client shows a dialog that cannot be dismissed and asks to reload |
 | `w` | `k` tick, `m` [[id, x, y, d]...], `l` [id...] | **state records** in your area of interest and entities that left it |
 | `a` | `s`, `x`, `y` | acknowledgement with the authoritative position at the time of input `s` |
 | `p` | `a` people added/updated, `d` ids removed | presence roster changes; a person is `{id, n, av, s, r}` plus `h: 1` (hand raised) and `m` (status note) when set |
 | `c` | `sc`, `f` from, `to`, `x` text, `ts` | chat message |
 | `conv` | `op` = `join` / `m` / `leave` | conversation lifecycle, including room name and token on `join`; a room's call starts when a second person enters and ends (`leave`) for the last one left ([decision 0019](decisions/0019-room-calls-from-two-and-desk-rooms.md)) |
-| `map` | `map`, `deny`, optional `x`/`y` | the office map changed (admin edit); `x`/`y` present if you were moved |
+| `map` | `map`, `deny`, `owners`, optional `x`/`y` | the office map changed (admin edit, a desk taken or released, a removed member's places freed); `owners` as in `hello`; `x`/`y` present if you were moved |
+| `own` | `id`, `n` name | a member who owns a desk or an office renamed themselves; clients show their places under the new name |
 | `loc` | `id`, `ok`, `x`, `y`, `a` | answer to a locate request |
 | `e` | `id`, `v` 1-7 | somebody's reaction; rendered above their avatar |
 | `obj` | `k` note/embed/image, `l` label, `d` content | object content, only after a nearby authorised `use` (never in the map) |

@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -213,7 +215,41 @@ func (s *Server) deleteMember(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, se, "member.remove", id, name, "")
 	s.evict(r, se.OfficeID, id)
+	s.freePlaces(r, se, id, name)
 	writeJSON(w, http.StatusOK, map[string]any{"removed": id})
+}
+
+// freePlaces gives back the desk and the office seat of a removed member, in the running world and
+// in the saved map. With no world running nobody sees the map; the next start drops them (worldFor).
+func (s *Server) freePlaces(r *http.Request, se *store.Session, id int64, name string) {
+	s.mu.Lock()
+	wd := s.worlds[se.OfficeID]
+	s.mu.Unlock()
+	if wd == nil {
+		return
+	}
+	s.mapMu.Lock()
+	defer s.mapMu.Unlock()
+	// once the world frees them, the map must be saved even if the admin's request goes away
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
+	defer cancel()
+	m, err := wd.FreePlaces(ctx, id)
+	if err != nil {
+		s.log.Error("free places", "err", err)
+		return
+	}
+	if m == nil {
+		return // they had none
+	}
+	raw, _ := json.Marshal(m)
+	rev, err := s.st.SaveMap(ctx, se.OfficeID, string(raw))
+	if err != nil {
+		s.log.Error("save map", "err", err)
+		return
+	}
+	if err := s.st.Audit(ctx, se.OfficeID, se.UserID, "map.free", id, name, "rev="+strconv.FormatInt(rev, 10)); err != nil {
+		s.log.Error("audit", "action", "map.free", "err", err)
+	}
 }
 
 func (s *Server) listInvites(w http.ResponseWriter, r *http.Request) {

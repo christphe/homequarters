@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,37 @@ ORDER BY (m.role = 'admin') DESC, m.joined_at, u.id`, officeID)
 			return nil, err
 		}
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// MemberNames returns the names of the users among ids who are members of the office; the others
+// (removed members, unknown ids) are left out.
+func (s *Store) MemberNames(ctx context.Context, officeID int64, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, officeID)
+	marks := make([]string, len(ids))
+	for i, id := range ids {
+		marks[i] = "?"
+		args = append(args, id)
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT u.id, u.name FROM memberships m JOIN users u ON u.id = m.user_id
+WHERE m.office_id = ? AND m.user_id IN (`+strings.Join(marks, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
 	}
 	return out, rows.Err()
 }

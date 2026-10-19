@@ -3,6 +3,7 @@ import { cachedLooks } from "./game/avatars";
 import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
+import { ownerMap } from "./game/places";
 import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, Person, Prop, ServerMsg, Status } from "./net/protocol";
 import { boardModel } from "./game/boardModel";
@@ -153,6 +154,9 @@ class Session {
         const history: ChatMsg[] = (m.chat ?? []).map((c) => ({ id: ++this.chatId, sc: "o", from: c.f, text: c.x, ts: c.ts, n: c.n }));
         setState({ chat: [...history, ...getState().chat.filter((c) => c.sc !== "o")] });
         setState({ meId: m.you, role: m.role, status: m.status, office: m.office, mediaAvailable: m.cfg.media, roster, phase: "play", locked: m.cfg.lk ?? [], denied: m.cfg.deny ?? [], outdated: isOutdated(pageVersion(), m.cfg.ver) });
+        const owners = ownerMap(m.owners);
+        setState({ owners });
+        view.setOwners(owners);
         view.setMap(m.map, m.cfg.deny);
         view.clearRemote();
         view.setMe(m.you, m.cfg.x, m.cfg.y, m.cfg.speed, m.cfg.run ?? 2);
@@ -197,11 +201,21 @@ class Session {
       case "conv":
         this.onConv(m);
         break;
-      case "map":
+      case "map": {
+        const owners = ownerMap(m.owners);
+        setState({ owners });
+        view.setOwners(owners);
         view.setMap(m.map, m.deny);
         setState({ denied: m.deny ?? [] });
         if (m.x !== undefined && m.y !== undefined) view.teleport(m.x, m.y);
         break;
+      }
+      case "own": {
+        const owners = new Map(getState().owners).set(m.id, m.n);
+        setState({ owners });
+        view.setOwners(owners);
+        break;
+      }
       case "loc":
         if (m.ok && m.x !== undefined && m.y !== undefined) {
           view.showLocation(m.x, m.y);
