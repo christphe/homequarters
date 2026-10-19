@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"homequarters/internal/gamemap"
 )
 
 func TestRunningDoublesSpeedAndIsCarriedInTheStateRecord(t *testing.T) {
@@ -255,5 +257,116 @@ func TestUnsentAckIsRetriedAfterCongestion(t *testing.T) {
 		if strings.Contains(f, `"t":"a"`) {
 			t.Fatal("the ack must not repeat once queued")
 		}
+	}
+}
+
+// roomShortcutHarness opens a door between the Horizon and Focus rooms, so from the social area the
+// way into Focus through Horizon is shorter than Focus's own door. closeFocus walls Focus's door to the
+// social area, leaving Horizon as the only way in. doors are more wall tiles to open.
+func roomShortcutHarness(t testing.TB, closeFocus bool, doors ...tile) *harness {
+	t.Helper()
+	h := newHarness(t)
+	m := gamemap.Default()
+	carve := func(x, y int, c byte) {
+		row := []byte(m.Walls[y])
+		row[x] = c
+		m.Walls[y] = string(row)
+	}
+	carve(50, 25, '.')
+	carve(51, 25, '.')
+	if closeFocus {
+		carve(41, 29, '#')
+		carve(41, 30, '#')
+	}
+	for _, d := range doors {
+		carve(int(d.x), int(d.y), '.')
+	}
+	cm, err := gamemap.Compile(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.doReloadMap(cm, h.now); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// walkAreas runs a guided walk to tile (x, y) and returns the areas the walker stood in.
+func walkAreas(h *harness, p *Player, x, y int) map[string]bool {
+	seen := map[string]bool{}
+	h.send(p, ev{kind: evGoto, x: x, y: y})
+	for i := 0; i < 15*h.w.cfg.TickHz; i++ {
+		h.run(time.Second / time.Duration(h.w.cfg.TickHz))
+		if p.area >= 0 {
+			seen[h.w.m.Map.Areas[p.area].ID] = true
+		}
+	}
+	return seen
+}
+
+// A guided walk goes around a room that is neither where it starts nor where it ends, even when the
+// way through the room is shorter.
+func TestGotoAvoidsForeignRooms(t *testing.T) {
+	h := roomShortcutHarness(t, false)
+	p := h.add(1, "member", 40*16+8, 20*16+8) // social area, next to Horizon's door
+	if path := h.w.findPath(p, tileOf(p.X, p.Y), tile{50, 27}); path == nil {
+		t.Fatal("setup: Focus is reachable")
+	}
+	seen := walkAreas(h, p, 50, 27)
+	if seen["horizon"] {
+		t.Fatalf("the walk crossed the Horizon room, areas %v", seen)
+	}
+	if got := tileOf(p.X, p.Y); got != (tile{50, 27}) {
+		t.Fatalf("must arrive at (50,27) in Focus, is at %v", got)
+	}
+	// starting inside a room, the walk leaves it as usual
+	seen = walkAreas(h, p, 30, 20)
+	if got := tileOf(p.X, p.Y); got != (tile{30, 20}) || seen["horizon"] {
+		t.Fatalf("from Focus to the social area: at %v, areas %v", got, seen)
+	}
+}
+
+// When a room is the only way, the walk goes through it rather than giving up.
+func TestGotoCrossesARoomWhenItIsTheOnlyWay(t *testing.T) {
+	h := roomShortcutHarness(t, true)
+	p := h.add(1, "member", 40*16+8, 20*16+8)
+	seen := walkAreas(h, p, 50, 27)
+	if got := tileOf(p.X, p.Y); got != (tile{50, 27}) {
+		t.Fatalf("must arrive at (50,27) through Horizon, is at %v, areas %v", got, seen)
+	}
+	if !seen["horizon"] {
+		t.Fatalf("the only way is through Horizon, areas %v", seen)
+	}
+}
+
+// When a room must be crossed, the walk does not cross another one it could go around: with Focus
+// reachable only through Horizon and a door opened from the Boardroom into Horizon, an admin in the
+// desks area goes round by the social area rather than through the Boardroom, which is shorter.
+func TestGotoCrossesAsFewRoomsAsItMust(t *testing.T) {
+	h := roomShortcutHarness(t, true, tile{50, 14}, tile{51, 14})
+	p := h.add(1, "admin", 40*16+8, 10*16+8)
+	seen := walkAreas(h, p, 50, 27)
+	if got := tileOf(p.X, p.Y); got != (tile{50, 27}) {
+		t.Fatalf("must arrive at (50,27), is at %v, areas %v", got, seen)
+	}
+	if seen["boardroom"] || !seen["horizon"] {
+		t.Fatalf("must cross Horizon only, areas %v", seen)
+	}
+}
+
+// Following someone into a room takes the same way round as a walk-to.
+func TestFollowAvoidsForeignRooms(t *testing.T) {
+	h := roomShortcutHarness(t, false)
+	h.add(1, "member", 50*16+8, 27*16+8) // in Focus
+	f := h.add(2, "member", 40*16+8, 20*16+8)
+	h.send(f, ev{kind: evFollow, id: 1})
+	for i := 0; i < 15*h.w.cfg.TickHz; i++ {
+		h.run(time.Second / time.Duration(h.w.cfg.TickHz))
+		if f.area >= 0 && h.w.m.Map.Areas[f.area].ID == "horizon" {
+			t.Fatalf("the follower crossed Horizon at (%.0f,%.0f)", f.X, f.Y)
+		}
+	}
+	if f.area < 0 || h.w.m.Map.Areas[f.area].ID != "focus" {
+		t.Fatalf("the follower must reach the leader in Focus, is at (%.0f,%.0f)", f.X, f.Y)
 	}
 }

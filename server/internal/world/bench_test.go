@@ -141,3 +141,24 @@ func zoomedOutTraffic(t *testing.T, moving float64, radius int) (bytesPerSec, re
 	}
 	return float64(total) / secs, float64(recs) / secs
 }
+
+// BenchmarkFindPath measures one route from the social area into Focus: around Horizon, and through
+// it when Focus's own door is walled up (the route must cross a room).
+func BenchmarkFindPath(b *testing.B) {
+	for _, c := range []struct {
+		name       string
+		closeFocus bool
+	}{{"around-a-room", false}, {"through-a-room", true}} {
+		b.Run(c.name, func(b *testing.B) {
+			h := roomShortcutHarness(b, c.closeFocus)
+			p := h.add(1, "member", 40*16+8, 20*16+8)
+			from := tileOf(p.X, p.Y)
+			b.ReportAllocs()
+			for b.Loop() {
+				if h.w.findPath(p, from, tile{50, 27}) == nil {
+					b.Fatal("no route")
+				}
+			}
+		})
+	}
+}
