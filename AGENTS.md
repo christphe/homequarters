@@ -16,6 +16,8 @@ Build against written acceptance criteria, reproduce behaviour failures with **r
 
 To make a release, follow [`.claude/skills/release/SKILL.md`](.claude/skills/release/SKILL.md) (also the `/release` command in Claude Code): the changelog is written in the [Keep a Changelog](https://keepachangelog.com) format with `fchange` and `frelease` ([fantastic-change](https://github.com/fantastic-jam/fantastic-change)), the version is tagged, and the GitHub release and the Docker image follow.
 
+**Every pull request that changes behaviour carries its own changelog entry.** A feature, a fix, a change in configuration, the protocol or the plugin API: add it under `## [Unreleased]` with `fchange <added|changed|fixed|...> "<one sentence> (#N)"` and commit it in the pull request before it is merged (wording rules in section 2 of the release skill). A pull request that only touches CI, tests, refactors or docs gets no entry, unless it changes something for operators (a new migration, image tag or requirement).
+
 ## Language rule
 
 **Everything is in English**: code, comments, identifiers, commit messages, PR text, issues, README, docs, site copy, error messages and generated art text. (The player-facing UI is English, the only shipped locale, and goes through the i18n dictionary in `web/src/i18n.ts`; new user-visible strings must go there, never inline.)
