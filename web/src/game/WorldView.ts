@@ -7,6 +7,7 @@ import { propSize } from "./mapModel";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { bakeMap } from "./mapArt";
 import { PluginLayer } from "./pluginLayer";
+import { areaTitle, deskTitle, type NameOf } from "./places";
 
 const T = 16;
 // Reference view in world pixels. A 240x160 handheld screen would be 15x10 tiles; an office wants a little more room.
@@ -126,7 +127,7 @@ export class WorldView {
   private bannerT0 = -1e9;
   private bannerW = 0;
   private areaLabels: { text: BitmapText; ai: number }[] = [];
-  private deskLabels: { text: BitmapText; x: number; y: number; label: string; ai: number }[] = [];
+  private deskLabels: { text: BitmapText; x: number; y: number; p: Prop; ai: number }[] = [];
   private ents = new Map<number, Ent>();
   /** Sprites drawn for plugins (src/plugins): they sort with avatars. */
   readonly plugins = new PluginLayer(this.entLayer, {
@@ -141,6 +142,9 @@ export class WorldView {
     me: () => this.meId,
   });
   private people = new Map<number, Person>();
+  /** Names of the members places belong to (the server's owner names); online people fill the gaps. */
+  private owners = new Map<number, string>();
+  private nameOf: NameOf = (id) => this.owners.get(id) ?? this.people.get(id)?.n;
   private map: MapData | null = null;
   private solid = new Uint8Array(0);
   private areaAt = new Int16Array(0);
@@ -526,7 +530,7 @@ export class WorldView {
     this.areaLabels = map.areas.flatMap((a, ai) => {
       if (a.auto) return []; // the desk's own label already names it
       const text = new BitmapText({
-        text: a.name + (this.deny.has(ai) ? " 🔒" : ""),
+        text: this.areaLabel(ai),
         style: { fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
       });
       text.anchor.set(0.5, 0);
@@ -537,14 +541,14 @@ export class WorldView {
     // assigned desks show their owner
     this.deskLabels.forEach((l) => l.text.destroy());
     this.deskLabels = map.props
-      .filter((p) => p.t === "desk" && p.assign && p.label)
+      .filter((p) => p.t === "desk" && p.assign)
       .map((p) => {
         const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
-        const text = new BitmapText({ text: p.label! + (this.deny.has(ai) ? " 🔒" : ""), style: { fontFamily: FONT, fontSize: 20, fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
+        const text = new BitmapText({ text: this.deskLabel(p, ai), style: { fontFamily: FONT, fontSize: 20, fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
         this.hud.addChild(text);
-        return { text, x: (p.x + 1) * T, y: p.y * T, label: p.label!, ai };
+        return { text, x: (p.x + 1) * T, y: p.y * T, p, ai };
       });
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
@@ -587,6 +591,7 @@ export class WorldView {
     for (const id of this.people.keys()) if (!people.has(id) && !this.ents.has(id)) releaseAvatar(id);
     this.people = people;
     for (const e of this.ents.values()) this.refreshEnt(e);
+    this.relabel(); // an online person names a place the server has not named yet (an editor preview)
   }
 
   setSpeaking(ids: Set<number>) {
@@ -709,8 +714,40 @@ export class WorldView {
   setDeny(deny: number[]) {
     this.dirty = true;
     this.deny = new Set(deny);
-    for (const l of this.areaLabels) l.text.text = this.map!.areas[l.ai].name + (this.deny.has(l.ai) ? " 🔒" : "");
-    for (const l of this.deskLabels) l.text.text = l.label + (this.deny.has(l.ai) ? " 🔒" : ""); // a desk locked against me
+    this.relabel();
+  }
+
+  /** Owner names changed (a new map, a rename): desks and offices show the current names. */
+  setOwners(owners: Map<number, string>) {
+    this.owners = owners;
+    this.relabel();
+  }
+
+  /** Public: the text of every desk and area label on the map, as drawn (tests read it). */
+  labels() {
+    return [...this.areaLabels, ...this.deskLabels].map((l) => l.text.text);
+  }
+
+  private areaLabel(ai: number) {
+    return areaTitle(this.map!.areas[ai], this.nameOf) + (this.deny.has(ai) ? " 🔒" : "");
+  }
+
+  private deskLabel(p: Prop, ai: number) {
+    return deskTitle(p, this.nameOf) + (this.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
+  }
+
+  private relabel() {
+    if (!this.map) return;
+    this.dirty = true;
+    for (const l of this.areaLabels) {
+      const s = this.areaLabel(l.ai);
+      if (l.text.text !== s) l.text.text = s;
+    }
+    for (const l of this.deskLabels) {
+      const s = this.deskLabel(l.p, l.ai);
+      if (l.text.text !== s) l.text.text = s;
+    }
+    if (this.meEnt) this.hooks.onArea(this.areaName(this.mArea), this.mArea);
   }
 
   showEmote(id: number, kind: number) {
@@ -1019,7 +1056,7 @@ export class WorldView {
 
   private areaName(ai: number) {
     const i = this.shownArea(ai);
-    return this.map && i >= 0 ? this.map.areas[i].name : "";
+    return this.map && i >= 0 ? areaTitle(this.map.areas[i], this.nameOf) : "";
   }
 
   private syncArea() {

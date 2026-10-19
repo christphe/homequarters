@@ -186,7 +186,7 @@ func (w *World) doKnock(p *Player, areaIdx int, now time.Time) {
 	}
 	p.knockAt = now
 	if !office && !AllowedIn(a, p.ID, p.Role) { // the room is not for them even when unlocked
-		w.sendJSON(p, map[string]any{"t": "knr", "st": "no", "a": a.Name})
+		w.sendJSON(p, map[string]any{"t": "knr", "st": "no", "a": w.areaTitle(areaIdx)})
 		return
 	}
 	occ := w.occupants(areaIdx)
@@ -200,14 +200,14 @@ func (w *World) doKnock(p *Player, areaIdx int, now time.Time) {
 		occ = hosts
 	}
 	if len(occ) == 0 {
-		w.sendJSON(p, map[string]any{"t": "knr", "st": "empty", "a": a.Name})
+		w.sendJSON(p, map[string]any{"t": "knr", "st": "empty", "a": w.areaTitle(areaIdx)})
 		return
 	}
 	w.knocks[p.ID] = knockReq{area: a.ID, until: now.Add(knockTTL)}
 	for _, o := range occ {
-		w.sendJSON(o, map[string]any{"t": "knk", "id": p.ID, "n": p.Name, "a": a.Name})
+		w.sendJSON(o, map[string]any{"t": "knk", "id": p.ID, "n": p.Name, "a": w.areaTitle(areaIdx)})
 	}
-	w.sendJSON(p, map[string]any{"t": "knr", "st": "wait", "a": a.Name})
+	w.sendJSON(p, map[string]any{"t": "knr", "st": "wait", "a": w.areaTitle(areaIdx)})
 }
 
 // doKnockAns lets somebody inside the room answer a pending knock.
@@ -236,7 +236,7 @@ func (w *World) doKnockAns(p *Player, id uint32, allow bool, now time.Time) {
 	if q == nil {
 		return
 	}
-	name := w.m.Map.Areas[p.area].Name
+	name := w.areaTitle(p.area)
 	if !allow {
 		w.sendJSON(q, map[string]any{"t": "knr", "st": "no", "a": name})
 		return
@@ -276,7 +276,7 @@ func (w *World) doForce(p *Player, areaIdx int) {
 	ls.admitted[p.ID] = struct{}{}
 	delete(w.knocks, p.ID)
 	for _, o := range w.occupants(areaIdx) {
-		w.sendJSON(o, map[string]any{"t": "frc", "n": p.Name, "a": a.Name})
+		w.sendJSON(o, map[string]any{"t": "frc", "n": p.Name, "a": w.areaTitle(areaIdx)})
 	}
 	w.sendDeny(p)
 	if w.OnAction != nil {

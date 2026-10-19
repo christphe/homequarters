@@ -62,6 +62,8 @@ export interface State {
   mediaAvailable: boolean;
   consent: boolean;
   roster: Map<number, Person>;
+  /** Names of the members desks and offices belong to (game/places.ts). */
+  owners: Map<number, string>;
   conv: Conv | null;
   chat: ChatMsg[];
   unread: number;
@@ -129,6 +131,7 @@ const initial: State = {
   mediaAvailable: false,
   consent: localStorage.getItem("hq.consent") === "1",
   roster: new Map(),
+  owners: new Map(),
   conv: null,
   chat: [],
   unread: 0,

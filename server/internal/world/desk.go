@@ -21,15 +21,8 @@ var (
 	ErrReleaseNotMine = errors.New("this is not your desk")
 )
 
-// deskLabel names a desk after its owner, cut on a character boundary to the 40 bytes the map
-// accepts for a label.
-func deskLabel(name string) string {
-	l := []rune(name + "'s desk")
-	for len(string(l)) > 40 {
-		l = l[:len(l)-1]
-	}
-	return string(l)
-}
+// deskLabel names a desk after its owner in messages ("Ana's desk"); the map stores only the id.
+func deskLabel(name string) string { return name + "'s desk" }
 
 type claimResult struct {
 	m   *gamemap.Map
@@ -82,16 +75,15 @@ func (w *World) deskNear(uid uint32, x, y int) (int, error) {
 	return -1, ErrClaimNoDesk
 }
 
-// assignDesk applies a map where the desk at prop index at belongs to owner (0 frees it) and is
-// labelled label: "<name>'s desk" for an owner and no label once freed, as the map editor does.
-func (w *World) assignDesk(at int, owner int64, label string, now time.Time) (*gamemap.Map, error) {
+// assignDesk applies a map where the desk at prop index at belongs to owner (0 frees it). Its label
+// ("Desk 3") stays: clients show an assigned desk under its owner's current name instead.
+func (w *World) assignDesk(at int, owner int64, now time.Time) (*gamemap.Map, error) {
 	cur := w.m.Map
 	// Compile rewrites Areas, and the current compiled map must stay intact if this fails.
 	next := *cur
 	next.Props = append([]gamemap.Prop(nil), cur.Props...)
 	next.Areas = append([]gamemap.Area(nil), cur.Areas...)
 	next.Props[at].Assign = owner
-	next.Props[at].Label = label
 	cm, err := gamemap.Compile(&next)
 	if err != nil {
 		return nil, err
@@ -124,7 +116,7 @@ func (w *World) doReleaseDesk(uid uint32, x, y int, now time.Time) (*gamemap.Map
 	if p.area < 0 || w.m.Map.Areas[p.area].ID != "desk-"+strconv.Itoa(x)+"-"+strconv.Itoa(y) {
 		return nil, ErrClaimFar
 	}
-	return w.assignDesk(at, 0, "", now)
+	return w.assignDesk(at, 0, now)
 }
 
 func (w *World) doClaimDesk(uid uint32, x, y int, now time.Time) (*gamemap.Map, error) {
@@ -162,5 +154,10 @@ func (w *World) doClaimDesk(uid uint32, x, y int, now time.Time) (*gamemap.Map, 
 			}
 		}
 	}
-	return w.assignDesk(at, me, deskLabel(w.players[uid].Name), now)
+	w.owners[me] = w.players[uid].Name // in the map frame that follows
+	m, err := w.assignDesk(at, me, now)
+	if err != nil {
+		w.pruneOwners()
+	}
+	return m, err
 }

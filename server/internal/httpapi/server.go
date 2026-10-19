@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -183,9 +185,30 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 	if err := json.Unmarshal([]byte(o.MapJSON), &m); err != nil {
 		return nil, fmt.Errorf("office %d map: %w", o.ID, err)
 	}
+	owners, err := s.st.MemberNames(s.ctx, o.ID, gamemap.Owners(&m))
+	if err != nil {
+		return nil, fmt.Errorf("office %d owners: %w", o.ID, err)
+	}
+	// A place kept by somebody who is no longer a member, and an owner name an older version wrote
+	// into the map, are dropped here once and for all.
+	unnamed := gamemap.Unname(&m) // first: a freed desk no longer shows that its label named its owner
+	freed := gamemap.KeepOwners(&m, func(u int64) bool { _, ok := owners[u]; return ok })
 	cm, err := gamemap.Compile(&m)
 	if err != nil {
 		return nil, fmt.Errorf("office %d map: %w", o.ID, err)
+	}
+	// No world runs for this office yet and s.mu is held, so no other map change can interleave.
+	if freed || unnamed {
+		raw, _ := json.Marshal(&m)
+		if rev, err := s.st.SaveMap(s.ctx, o.ID, string(raw)); err != nil {
+			s.log.Error("save cleaned map", "office", o.ID, "err", err)
+		} else {
+			s.log.Info("map cleaned", "office", o.ID, "freed", freed, "unnamed", unnamed)
+			detail := "rev=" + strconv.FormatInt(rev, 10) + " freed=" + strconv.FormatBool(freed) + " unnamed=" + strconv.FormatBool(unnamed)
+			if err := s.st.Audit(s.ctx, o.ID, 0, "map.clean", 0, "", detail); err != nil {
+				s.log.Error("audit", "action", "map.clean", "err", err)
+			}
+		}
 	}
 	wc := world.DefaultConfig()
 	wc.TickHz, wc.AOICells, wc.MaxPlayers = s.cfg.TickHz, s.cfg.AOICells, s.cfg.MaxPlayers
@@ -198,6 +221,7 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 		wc.AOIMaxCells = wc.AOICells
 	}
 	w := world.New(wc, o.ID, o.Name, cm, s.media, s.log.With("office", o.ID))
+	w.SeedOwners(owners)
 	if s.inst != "" {
 		w.RoomPrefix = s.inst + ".o" + strconv.FormatInt(o.ID, 10)
 	}
@@ -669,12 +693,12 @@ func (s *Server) putMap(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid map json"})
 		return
 	}
-	if err := gamemap.OnePlacePerPerson(&m); err != nil {
+	// validated first: the owner list below is then bounded by the map's limits
+	if err := gamemap.Validate(&m); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
-	cm, err := gamemap.Compile(&m)
-	if err != nil {
+	if err := gamemap.OnePlacePerPerson(&m); err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
@@ -690,7 +714,20 @@ func (s *Server) putMap(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mapMu.Lock()
 	defer s.mapMu.Unlock()
-	if err := wd.ReloadMap(r.Context(), cm); err != nil {
+	// Owners are checked under the map lock, so a member removed meanwhile (freePlaces holds it too)
+	// cannot get their place back from an editor draft made before the removal: it is dropped.
+	owners, err := s.st.MemberNames(r.Context(), se.OfficeID, gamemap.Owners(&m))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	gamemap.KeepOwners(&m, func(u int64) bool { _, ok := owners[u]; return ok })
+	cm, err := gamemap.Compile(&m)
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := wd.ReloadMap(r.Context(), cm, owners); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
@@ -817,6 +854,13 @@ func (s *Server) putProfile(w http.ResponseWriter, r *http.Request) {
 		if wd, err := s.worldFor(office); err == nil {
 			wd.UpdateProfile(r.Context(), uint32(se.UserID), name, av)
 		}
+	}
+	// the member's desk or office shows the new name in every office they own one in
+	s.mu.Lock()
+	running := slices.Collect(maps.Values(s.worlds))
+	s.mu.Unlock()
+	for _, wd := range running {
+		wd.OwnerRenamed(r.Context(), se.UserID, name)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"name": name, "avatar": json.RawMessage(av)})
 }
