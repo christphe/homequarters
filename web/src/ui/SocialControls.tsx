@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { session } from "../session";
-import { setState, useStore } from "../store";
+import { getState, setState, useStore } from "../store";
 import { t, type Key } from "../i18n";
 import { EMOTES } from "../game/emotes";
 import { Modal } from "./Modal";
 import { isOwnedOffice, type Prop } from "../net/protocol";
 import { claimableDesk } from "../game/home";
+import { areaTitle, deskTitle, type NameOf } from "../game/places";
 import { combo } from "../keys";
+
+/** A member's current name: the server's owner names first, then the people online. */
+const nameOf: NameOf = (id) => getState().owners.get(id) ?? getState().roster.get(id)?.n;
 
 /** Low-rate UI state only: avatar reactions themselves are drawn by Pixi, not React. */
 export function SocialControls() {
@@ -61,7 +65,8 @@ export function SocialControls() {
         if (!denied.includes(a.index) || a.index === here) return false;
         return Math.hypot(Math.max(a.x * 16 - p.x, 0, p.x - (a.x + a.w) * 16), Math.max(a.y * 16 - p.y, 0, p.y - (a.y + a.h) * 16)) <= 40;
       });
-      setKnockArea((old) => old?.index === target?.index ? old : target ? { index: target.index, name: target.name } : null);
+      const name = target ? areaTitle(target, nameOf) : "";
+      setKnockArea((old) => old?.index === target?.index && old?.name === name ? old : target ? { index: target.index, name } : null);
     };
     update();
     const timer = window.setInterval(update, 300);
@@ -145,7 +150,7 @@ export function SocialControls() {
         <p>{t("desk.claimBody")}</p>
         <div className="modal-actions"><button className="btn" onClick={() => setConfirmDesk(null)}>{t("desk.claimCancel")}</button><button className="primary" disabled={claiming} onClick={() => void claim(confirmDesk)}>{t("desk.claimConfirm")}</button></div>
       </Modal>}
-      {confirmRelease && <Modal title={t("desk.releaseTitle", { name: confirmRelease.label || t("desk.name") })} onClose={() => setConfirmRelease(null)}>
+      {confirmRelease && <Modal title={t("desk.releaseTitle", { name: deskTitle(confirmRelease, nameOf) || t("desk.name") })} onClose={() => setConfirmRelease(null)}>
         <p>{t("desk.releaseBody")}</p>
         <div className="modal-actions"><button className="btn" onClick={() => setConfirmRelease(null)}>{t("desk.releaseCancel")}</button><button className="primary" disabled={claiming} onClick={() => void release(confirmRelease)}>{t("desk.releaseConfirm")}</button></div>
       </Modal>}

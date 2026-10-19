@@ -8,14 +8,6 @@ import { t } from "../i18n";
 type Tool = "wall" | "prop" | "erase" | "room" | "unroom" | "desk" | "content";
 const INTERACTIVE = ["note", "embed", "image", "portal", "whiteboard", "spotlight"];
 
-/** The server limits names in UTF-8 bytes; cut whole characters until the name fits. */
-function fitBytes(s: string, max: number) {
-  const enc = new TextEncoder();
-  const chars = Array.from(s);
-  while (chars.length && enc.encode(chars.join("")).length > max) chars.pop();
-  return chars.join("");
-}
-
 export function MapEditor({ onClose }: { onClose: () => void }) {
   const roster = useStore((s) => s.roster);
   const [tool, setTool] = useState<Tool>("wall");
@@ -115,24 +107,21 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
         const [w, h] = propSize(q);
         return x >= q.x && x < q.x + w && y >= q.y && y < q.y + h;
       });
-      // elsewhere inside a private office: assign it (or free it with Nobody); its name shows the owner
+      // elsewhere inside a private office: assign it (or free it with Nobody). Only the owner's id is
+      // stored; the office and the desk show their owner's current name (game/places.ts).
       const office = p ? undefined : d.areas.find((a) => a.kind === "room" && a.access.mode === "office" && x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h);
       if (office) {
-        const base = office.name.split(" · ")[0];
         if (assignTo) freePlaces(d, assignTo); // one desk or office per person: the previous one is freed
         office.access = { mode: "office", users: assignTo ? [assignTo] : [] };
-        office.name = fitBytes(assignTo ? t("editor.officeOf", { office: base, name: roster.get(assignTo)?.n ?? "" }) : base, 60);
         apply();
         return;
       }
       if (p && assignTo) {
         freePlaces(d, assignTo); // one desk or office per person: the previous one is freed
         p.assign = assignTo;
-        p.label = t("editor.deskOf", { name: roster.get(assignTo)?.n ?? "" }).slice(0, 40);
         apply();
       } else if (p?.assign) { // Nobody frees the desk (and the server drops its room)
         delete p.assign;
-        delete p.label;
         apply();
       }
     }
@@ -274,15 +263,11 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
 /** Frees whatever desk or private office a person had in the draft (the server allows one per person). */
 function freePlaces(d: MapData, uid: number) {
   for (const p of d.props) {
-    if (p.t === "desk" && p.assign === uid) {
-      delete p.assign;
-      delete p.label;
-    }
+    if (p.t === "desk" && p.assign === uid) delete p.assign;
   }
   for (const a of d.areas) {
     if (a.kind === "room" && a.access.mode === "office" && a.access.users?.includes(uid)) {
       a.access = { mode: "office", users: a.access.users.filter((u) => u !== uid) };
-      if (!a.access.users?.length) a.name = a.name.split(" · ")[0];
     }
   }
 }

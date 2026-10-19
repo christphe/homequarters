@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"homequarters/internal/gamemap"
 )
@@ -47,8 +46,11 @@ func TestClaimAFreeDeskNextToIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := deskAt(h.w, 20, 3); d == nil || d.Assign != 1 || d.Label != "u's desk" {
-		t.Fatalf("the running world assigns the desk and names it after its owner, as the editor does: %+v", d)
+	if d := deskAt(h.w, 20, 3); d == nil || d.Assign != 1 || d.Label != "Desk 1" {
+		t.Fatalf("the running world assigns the desk by id only, keeping its own label: %+v", d)
+	}
+	if h.w.owners[1] != "u" {
+		t.Fatalf("the new owner's name is known for the map frame: %v", h.w.owners)
 	}
 	if officeIndex(t, h.w, "desk-20-3") < 0 || p.area != officeIndex(t, h.w, "desk-20-3") {
 		t.Fatalf("the claimer stands in their new desk room (area %d)", p.area)
@@ -62,8 +64,8 @@ func TestClaimAFreeDeskNextToIt(t *testing.T) {
 	if saved == nil || saved.Assign != 1 {
 		t.Fatal("the returned map, which is persisted, carries the assignment")
 	}
-	if !strings.Contains(frames(other), `"t":"map"`) {
-		t.Fatal("everybody receives the new map")
+	if f := frames(other); !strings.Contains(f, `"t":"map"`) || !strings.Contains(f, `"owners":{"1":"u"}`) {
+		t.Fatal("everybody receives the new map, with its owner's name")
 	}
 }
 
@@ -185,8 +187,8 @@ func TestReleaseMyDesk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := deskAt(h.w, 20, 3); d == nil || d.Assign != 0 || d.Label != "" {
-		t.Fatalf("the running world frees the desk and drops its owner's name, as the editor does: %+v", d)
+	if d := deskAt(h.w, 20, 3); d == nil || d.Assign != 0 || d.Label != "Desk 1" {
+		t.Fatalf("the running world frees the desk, which is named as before it was taken: %+v", d)
 	}
 	for _, a := range h.w.m.Map.Areas {
 		if a.ID == "desk-20-3" {
@@ -201,8 +203,8 @@ func TestReleaseMyDesk(t *testing.T) {
 			t.Fatal("the returned map, which is persisted, is freed too")
 		}
 	}
-	if !strings.Contains(frames(other), `"t":"map"`) {
-		t.Fatal("everybody receives the new map")
+	if f := frames(other); !strings.Contains(f, `"t":"map"`) || !strings.Contains(f, `"owners":{}`) {
+		t.Fatal("everybody receives the new map, and the name of its former owner is forgotten")
 	}
 	if _, err := h.w.doClaimDesk(1, 20, 3, h.now); err != nil {
 		t.Fatalf("a released desk can be taken again: %v", err)
@@ -242,14 +244,64 @@ func TestReleaseDeskIsRefused(t *testing.T) {
 	}
 }
 
-func TestDeskLabelFitsTheMap(t *testing.T) {
-	for _, name := range []string{"Ana", "Éléonore-Hélène Dupré-Lefèvre Ångström"} {
-		l := deskLabel(name)
-		if len(l) > 40 || !utf8.ValidString(l) || !strings.HasPrefix(name+"'s desk", l) {
-			t.Fatalf("%q -> %q (%d bytes)", name, l, len(l))
+func TestPlacesAreNamedAfterTheirOwnersCurrentName(t *testing.T) {
+	h := newHarness(t)
+	h.add(1, "member", 20*16+8, 4*16+8) // on the chair of desk (20,3)
+	other := h.add(2, "member", 2*16, 2*16)
+	h.run(time.Second)
+	if _, err := h.w.doClaimDesk(1, 20, 3, h.now); err != nil {
+		t.Fatal(err)
+	}
+	desk := officeIndex(t, h.w, "desk-20-3")
+	if got := h.w.areaTitle(desk); got != "u's desk" {
+		t.Fatalf("messages name a desk after its owner: %q", got)
+	}
+	drain(other)
+	h.w.doOwnerName(1, "Ana")
+	if f := frames(other); !strings.Contains(f, `{"t":"own","id":1,"n":"Ana"}`) {
+		t.Fatalf("a renamed owner reaches everybody online: %s", f)
+	}
+	if got := h.w.areaTitle(desk); got != "Ana's desk" {
+		t.Fatalf("the desk follows the rename: %q", got)
+	}
+	h.w.doOwnerName(2, "Bob")
+	if strings.Contains(frames(other), `"own"`) || h.w.owners[2] != "" {
+		t.Fatal("renaming somebody with no place says nothing")
+	}
+
+	m, err := h.w.doFreePlaces(1, h.now)
+	if err != nil || m == nil {
+		t.Fatalf("free the places of a removed member: %v %v", m, err)
+	}
+	if d := deskAt(h.w, 20, 3); d.Assign != 0 || len(h.w.owners) != 0 {
+		t.Fatalf("their desk is free and their name forgotten: %+v %v", d, h.w.owners)
+	}
+	if m, err := h.w.doFreePlaces(1, h.now); m != nil || err != nil {
+		t.Fatal("nothing to free: nothing to save")
+	}
+}
+
+func TestOwnedOfficeTitleListsItsOwners(t *testing.T) {
+	h := newHarness(t)
+	m := *h.w.m.Map
+	m.Areas = append([]gamemap.Area(nil), m.Areas...)
+	for i := range m.Areas {
+		if m.Areas[i].ID == "office-2" {
+			m.Areas[i].Access.Users = []int64{3, 4}
 		}
 	}
-	if deskLabel("Ana") != "Ana's desk" {
-		t.Fatal(deskLabel("Ana"))
+	cm, err := gamemap.Compile(&m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.w.owners[3], h.w.owners[4] = "Cid", "Dee"
+	if err := h.w.doReloadMap(cm, h.now); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.w.areaTitle(officeIndex(t, h.w, "office-2")); got != "Office 2 · Cid, Dee" {
+		t.Fatalf("an owned office lists its owners: %q", got)
+	}
+	if got := h.w.areaTitle(officeIndex(t, h.w, "office-1")); got != "Office 1" {
+		t.Fatalf("a free office is named as it is: %q", got)
 	}
 }

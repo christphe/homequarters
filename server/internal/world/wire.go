@@ -155,6 +155,8 @@ func (w *World) sendHello(p *Player) {
 	b = w.appendLocked(b)
 	b = append(b, `},"map":`...)
 	b = append(b, w.m.JSON...)
+	b = append(b, `,"owners":`...)
+	b = w.appendOwners(b)
 	b = append(b, `,"roster":[`...)
 	for i, q := range w.list {
 		if i > 0 {
@@ -397,6 +399,8 @@ func (w *World) sendMap(p *Player, teleport bool) {
 		b = append(b, `,"y":`...)
 		b = strconv.AppendFloat(b, p.Y, 'f', 1, 64)
 	}
+	b = append(b, `,"owners":`...)
+	b = w.appendOwners(b)
 	b = append(b, `,"map":`...)
 	b = append(b, w.m.JSON...)
 	b = append(b, '}')

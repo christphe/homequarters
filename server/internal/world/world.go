@@ -66,6 +66,8 @@ const (
 	evClaim
 	evRename
 	evPlugin
+	evOwnerName
+	evFreePlaces
 )
 
 type ev struct {
@@ -81,6 +83,7 @@ type ev struct {
 	kick   func(reason KickReason)
 	reply  chan joinResult
 	cm     *gamemap.Compiled
+	names  map[int64]string // owner names for evMap
 	snap   chan map[string]map[string]bool
 	errc   chan error
 	x, y   int
@@ -105,6 +108,9 @@ type World struct {
 	// RoomPrefix namespaces SFU room names, e.g. "3fa9c1d2.o1". Empty means "o<office id>".
 	RoomPrefix string
 	m          *gamemap.Compiled
+	// owners names, by user id, the members places of the map belong to (gamemap.Owners). The map
+	// stores ids only; clients join these names when they show a desk or an office.
+	owners     map[int64]string
 	mapW, mapH int // fixed for the life of the world (reloads keep the size); safe to read anywhere
 	media      Media
 	log        *slog.Logger
@@ -157,7 +163,7 @@ type World struct {
 
 func New(cfg Config, officeID int64, name string, m *gamemap.Compiled, md Media, log *slog.Logger) *World {
 	w := &World{cfg: cfg, OfficeID: officeID, Name: name, m: m, mapW: m.W, mapH: m.H, media: md, log: log,
-		players: map[uint32]*Player{}, movers: map[*Player]struct{}{},
+		players: map[uint32]*Player{}, movers: map[*Player]struct{}{}, owners: map[int64]string{},
 		followers: map[*Player]struct{}{}, locks: map[string]*lockState{}, knocks: map[uint32]knockReq{},
 		onSpotSet: map[*Player]struct{}{}, boards: map[string]*board{},
 		groups: map[uint32]*group{}, roomGrp: map[int]*group{},
@@ -319,9 +325,10 @@ func (c *Conn) Board(ctx context.Context, m *BoardMsg) {
 }
 
 // ReloadMap swaps the office map at runtime (admin edits). The map size cannot change on the fly.
-func (w *World) ReloadMap(ctx context.Context, cm *gamemap.Compiled) error {
+// owners names the members the new map's places belong to.
+func (w *World) ReloadMap(ctx context.Context, cm *gamemap.Compiled, owners map[int64]string) error {
 	errc := make(chan error, 1)
-	if !w.post(ctx, ev{kind: evMap, cm: cm, errc: errc}) {
+	if !w.post(ctx, ev{kind: evMap, cm: cm, names: owners, errc: errc}) {
 		return ctx.Err()
 	}
 	select {
@@ -424,7 +431,19 @@ func (w *World) handle(e ev, now time.Time) {
 		w.doJoin(e, now)
 		return
 	case evMap:
+		for id, n := range e.names { // a name the world already has may be newer (a rename since the caller read it)
+			if _, known := w.owners[id]; !known {
+				w.owners[id] = n
+			}
+		}
 		e.errc <- w.doReloadMap(e.cm, now)
+		return
+	case evOwnerName:
+		w.doOwnerName(int64(e.id), e.s)
+		return
+	case evFreePlaces:
+		m, err := w.doFreePlaces(int64(e.id), now)
+		e.claim <- claimResult{m, err}
 		return
 	case evReset:
 		e.errc <- w.doResetContent(e.cm, now)
@@ -620,6 +639,7 @@ func (w *World) doReloadMap(cm *gamemap.Compiled, now time.Time) error {
 	}
 	old := w.m
 	w.m = cm
+	w.pruneOwners()
 	// Areas are counted in the new map's indexes before locks are pruned, or an occupied room
 	// whose index moved would look empty and lose its lock.
 	for _, p := range w.list {
@@ -872,7 +892,7 @@ func (w *World) doLocate(p *Player, id uint32) {
 	}
 	area := ""
 	if q.area >= 0 {
-		area = w.m.Map.Areas[q.area].Name
+		area = w.areaTitle(q.area)
 	}
 	w.sendJSON(p, map[string]any{"t": "loc", "id": id, "ok": true, "x": int(q.X), "y": int(q.Y), "a": area})
 }
