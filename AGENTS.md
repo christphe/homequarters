@@ -14,7 +14,7 @@ Build against written acceptance criteria, reproduce behaviour failures with **r
 
 ## Releases
 
-To make a release, follow [`.agents/skills/release/SKILL.md`](.agents/skills/release/SKILL.md): the changelog is written in the [Keep a Changelog](https://keepachangelog.com) format with `fchange` and `frelease` ([fantastic-change](https://github.com/fantastic-jam/fantastic-change)), the version is tagged, and the GitHub release and the Docker image follow.
+To make a release, follow [`.claude/skills/release/SKILL.md`](.claude/skills/release/SKILL.md) (also the `/release` command in Claude Code): the changelog is written in the [Keep a Changelog](https://keepachangelog.com) format with `fchange` and `frelease` ([fantastic-change](https://github.com/fantastic-jam/fantastic-change)), the version is tagged, and the GitHub release and the Docker image follow.
 
 ## Language rule
 
