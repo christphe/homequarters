@@ -12,6 +12,10 @@ It is **not** affiliated with the original Gather product. Never copy its brand,
 
 Build against written acceptance criteria, reproduce behaviour failures with **red** checks, get `scripts/gauntlet.sh` to `GATES GREEN`, then let independent **critics** (UX, invariants, regression) inspect it, and repeat until no blocker or major is open. Follow [`.agents/skills/gauntlet/SKILL.md`](.agents/skills/gauntlet/SKILL.md) for every feature, fix, refactor or review; it defines proportional evidence for documentation and review-only work. The reasons are in [`docs/gauntlet.md`](docs/gauntlet.md). Look at the frames for anything a person sees: a passing metric once approved a pet that was glued to its owner.
 
+## Releases
+
+To make a release, follow [`.agents/skills/release/SKILL.md`](.agents/skills/release/SKILL.md): the changelog is written in the [Keep a Changelog](https://keepachangelog.com) format with `fchange` and `frelease` ([fantastic-change](https://github.com/fantastic-jam/fantastic-change)), the version is tagged, and the GitHub release and the Docker image follow.
+
 ## Language rule
 
 **Everything is in English**: code, comments, identifiers, commit messages, PR text, issues, README, docs, site copy, error messages and generated art text. (The player-facing UI is English, the only shipped locale, and goes through the i18n dictionary in `web/src/i18n.ts`; new user-visible strings must go there, never inline.)
