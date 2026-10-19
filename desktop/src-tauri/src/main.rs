@@ -3,12 +3,19 @@
 // no access to the shell: commands answer the bundled offices page alone (Tauri refuses IPC from remote
 // origins unless a capability names them, and none does).
 //
+// Signing in never happens in this window: the office page's sign-in button opens the person's own
+// browser, and the window then receives the session (server/internal/httpapi/handoff.go).
+//
 // It lives in the tray: closing the window hides it there, and the page is told so it stops every
 // capture and sets the person busy (web/src/desktopWindow.ts). Quitting is in the menus.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use sha2::{Digest, Sha256};
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -26,6 +33,16 @@ const TRAY: &str = "tray";
 struct Shell {
     dir: PathBuf,
     offices: Mutex<Offices>,
+    /// the office given with --office (not saved)
+    cli_office: Option<Url>,
+}
+
+impl Shell {
+    /// Whether a page belongs to one of the offices this app opens.
+    fn knows(&self, url: &Url) -> bool {
+        self.cli_office.as_ref().is_some_and(|o| office::same_origin(o, url))
+            || self.offices.lock().unwrap().list.iter().any(|o| Url::parse(&o.url).is_ok_and(|o| office::same_origin(&o, url)))
+    }
 }
 
 impl Shell {
@@ -129,16 +146,44 @@ fn refresh_menus(app: &AppHandle) {
     }
 }
 
+/// Signs in through the person's browser: it gets the provider's page with only the hash of a secret
+/// this window keeps, and this window waits for the session with the secret itself.
+fn sign_in_in_browser(app: &AppHandle, start: &Url, provider: &str) {
+    let mut bytes = [0u8; 32];
+    if getrandom::fill(&mut bytes).is_err() {
+        return;
+    }
+    let secret = URL_SAFE_NO_PAD.encode(bytes);
+    let hash = URL_SAFE_NO_PAD.encode(Sha256::digest(secret.as_bytes()));
+    let mut in_browser = start.clone();
+    in_browser.query_pairs_mut().append_pair("handoff", &hash);
+    let _ = tauri_plugin_opener::OpenerExt::opener(app).open_url(in_browser.as_str(), None::<&str>);
+    if let (Some(window), Ok(wait)) = (app.get_webview_window(MAIN), start.join(&format!("/auth/{provider}/handoff/{secret}"))) {
+        let _ = window.navigate(wait);
+    }
+}
+
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
+    let signer = app.clone();
     WebviewWindowBuilder::new(app, MAIN, start)
         .title("Home Quarters")
         .inner_size(1280.0, 800.0)
         .min_inner_size(640.0, 400.0)
         .menu(window_menu(app)?)
         .data_directory(data)
-        // web pages only: no file://, javascript: or custom schemes in the office window
-        .on_navigation(|url| office::navigable(url))
+        .on_navigation(move |url| {
+            // an office's sign-in button: the provider's page opens in the browser, never here
+            if let Some(provider) = office::sign_in_provider(url) {
+                if signer.state::<Shell>().knows(url) {
+                    let (app, url) = (signer.clone(), url.clone());
+                    tauri::async_runtime::spawn(async move { sign_in_in_browser(&app, &url, &provider) });
+                    return false;
+                }
+            }
+            // web pages only: no file://, javascript: or custom schemes in the office window
+            office::navigable(url)
+        })
         // links meant for a new tab (about, privacy, an object's link) open in the default browser
         .on_new_window(move |url, _| {
             if office::navigable(&url) {
@@ -257,6 +302,7 @@ fn main() {
                 .ok()
                 .and_then(|b| serde_json::from_slice(&b).ok())
                 .unwrap_or_default();
+            let cli_office = args.office.as_deref().and_then(|o| office::parse(o).ok());
             let start = args
                 .office
                 .as_deref()
@@ -264,7 +310,7 @@ fn main() {
                 .and_then(|o| office::parse(o).ok())
                 .map(WebviewUrl::External)
                 .unwrap_or_else(|| WebviewUrl::App("index.html".into()));
-            app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices) });
+            app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office });
             open_window(app.handle(), start, dir.join("webview"))?;
             tray(app.handle())?;
             Ok(())

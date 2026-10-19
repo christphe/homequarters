@@ -39,6 +39,24 @@ pub fn navigable(url: &Url) -> bool {
     }
 }
 
+/// The provider of a sign-in the office page starts ("/auth/<provider>/start"), which the app hands to the
+/// person's browser instead of showing the provider's page in its own window.
+pub fn sign_in_provider(url: &Url) -> Option<String> {
+    if !matches!(url.scheme(), "https" | "http") {
+        return None;
+    }
+    let mut parts = url.path_segments()?;
+    match (parts.next(), parts.next(), parts.next(), parts.next()) {
+        (Some("auth"), Some(p), Some("start"), None) if !p.is_empty() => Some(p.to_string()),
+        _ => None,
+    }
+}
+
+/// Same scheme, host and port.
+pub fn same_origin(a: &Url, b: &Url) -> bool {
+    a.origin() == b.origin()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +90,23 @@ mod tests {
         ] {
             assert!(parse(typed).is_err(), "{typed:?} must be refused");
         }
+    }
+
+    #[test]
+    fn sign_ins_are_recognised_by_their_start_address() {
+        for (url, want) in [
+            ("https://hq.example/auth/google/start", Some("google")),
+            ("https://hq.example/auth/fake-oidc/start?invite=abc", Some("fake-oidc")),
+            ("https://hq.example/auth/google/callback?code=x", None),
+            ("https://hq.example/auth/google/start/more", None),
+            ("https://hq.example/auth//start", None),
+            ("https://hq.example/", None),
+            ("tauri://localhost/auth/google/start", None),
+        ] {
+            assert_eq!(sign_in_provider(&Url::parse(url).unwrap()).as_deref(), want, "{url}");
+        }
+        assert!(same_origin(&Url::parse("https://a.example/x").unwrap(), &Url::parse("https://a.example/").unwrap()));
+        assert!(!same_origin(&Url::parse("https://a.example/").unwrap(), &Url::parse("https://a.example:8443/").unwrap()));
     }
 
     #[test]
