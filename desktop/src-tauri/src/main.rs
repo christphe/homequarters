@@ -1,0 +1,283 @@
+// Home Quarters desktop: the office's own web client in a window of its own, in the system webview.
+// The shell remembers the offices you use and opens one at a time. An office is a remote page and gets
+// no access to the shell: commands answer the bundled offices page alone (Tauri refuses IPC from remote
+// origins unless a capability names them, and none does).
+//
+// It lives in the tray: closing the window hides it there, and the page is told so it stops every
+// capture and sets the person busy (web/src/desktopWindow.ts). Quitting is in the menus.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::webview::NewWindowResponse;
+use tauri::{AppHandle, Manager, Runtime, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+
+mod office;
+mod offices;
+
+use offices::Offices;
+
+const MAIN: &str = "main";
+const TRAY: &str = "tray";
+
+struct Shell {
+    dir: PathBuf,
+    offices: Mutex<Offices>,
+}
+
+impl Shell {
+    fn save(&self) -> Result<(), String> {
+        let body = serde_json::to_vec_pretty(&*self.offices.lock().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        std::fs::write(self.dir.join("offices.json"), body).map_err(|e| e.to_string())
+    }
+}
+
+/// The offices page reads the list from here.
+#[tauri::command]
+fn list_offices(shell: State<Shell>) -> Offices {
+    shell.offices.lock().unwrap().clone()
+}
+
+/// Checks an address typed on the offices page (or picked from its list), remembers it and opens it.
+#[tauri::command]
+fn open_office(address: String, app: AppHandle, shell: State<Shell>, window: WebviewWindow) -> Result<(), String> {
+    let url = office::parse(&address)?;
+    shell.offices.lock().unwrap().open(url.as_str());
+    shell.save()?;
+    refresh_menus(&app);
+    window.navigate(url).map_err(|e| e.to_string())
+}
+
+/// Forgets an office; the page gets the list back.
+#[tauri::command]
+fn remove_office(url: String, app: AppHandle, shell: State<Shell>) -> Result<Offices, String> {
+    shell.offices.lock().unwrap().remove(&url);
+    shell.save()?;
+    refresh_menus(&app);
+    Ok(shell.offices.lock().unwrap().clone())
+}
+
+/// Command-line options: `--office=<url>` opens that office without saving it (a shortcut per office),
+/// `--data-dir=<path>` keeps the offices and the webview's cookies and storage there instead of the
+/// user's application data (separate profiles, tests).
+struct Args {
+    office: Option<String>,
+    data_dir: Option<PathBuf>,
+}
+
+fn args() -> Args {
+    let mut a = Args { office: None, data_dir: None };
+    for arg in std::env::args().skip(1) {
+        if let Some(v) = arg.strip_prefix("--office=") {
+            a.office = Some(v.to_string());
+        } else if let Some(v) = arg.strip_prefix("--data-dir=") {
+            a.data_dir = Some(PathBuf::from(v));
+        }
+    }
+    a
+}
+
+/// One entry per saved office (the open one checked), for the window menu and the tray menu.
+fn office_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<CheckMenuItem<R>>> {
+    let offices = app.state::<Shell>().offices.lock().unwrap().clone();
+    offices
+        .list
+        .iter()
+        .enumerate()
+        .map(|(i, o)| CheckMenuItem::with_id(app, format!("go:{i}"), offices::label(o), true, offices.current.as_deref() == Some(&o.url), None::<&str>))
+        .collect()
+}
+
+fn window_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let list = office_items(app)?;
+    let add = MenuItem::with_id(app, "add", "Add office...", true, None::<&str>)?;
+    let manage = MenuItem::with_id(app, "manage", "Manage offices...", true, None::<&str>)?;
+    let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, Some("CmdOrCtrl+Q"))?;
+    let sep = [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
+    let mut items: Vec<&dyn IsMenuItem<R>> = list.iter().map(|i| i as &dyn IsMenuItem<R>).collect();
+    if !items.is_empty() {
+        items.push(&sep[0]);
+    }
+    items.extend([&add as &dyn IsMenuItem<R>, &manage, &reload, &sep[1], &quit]);
+    Menu::with_items(app, &[&Submenu::with_items(app, "Office", true, &items)?])
+}
+
+fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let list = office_items(app)?;
+    let open = MenuItem::with_id(app, "show", "Open Home Quarters", true, None::<&str>)?;
+    let manage = MenuItem::with_id(app, "manage", "Manage offices...", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Home Quarters", true, None::<&str>)?;
+    let sep = [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
+    let mut items: Vec<&dyn IsMenuItem<R>> = vec![&open, &sep[0]];
+    items.extend(list.iter().map(|i| i as &dyn IsMenuItem<R>));
+    items.extend([&manage as &dyn IsMenuItem<R>, &sep[1], &quit]);
+    Menu::with_items(app, &items)
+}
+
+/// Rebuilds both menus after the list or the open office changed.
+fn refresh_menus(app: &AppHandle) {
+    if let (Some(window), Ok(menu)) = (app.get_webview_window(MAIN), window_menu(app)) {
+        let _ = window.set_menu(menu);
+    }
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
+    let opener = app.clone();
+    WebviewWindowBuilder::new(app, MAIN, start)
+        .title("Home Quarters")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(640.0, 400.0)
+        .menu(window_menu(app)?)
+        .data_directory(data)
+        // web pages only: no file://, javascript: or custom schemes in the office window
+        .on_navigation(|url| office::navigable(url))
+        // links meant for a new tab (about, privacy, an object's link) open in the default browser
+        .on_new_window(move |url, _| {
+            if office::navigable(&url) {
+                let _ = tauri_plugin_opener::OpenerExt::opener(&opener).open_url(url.as_str(), None::<&str>);
+            }
+            NewWindowResponse::Deny
+        })
+        // the window says which office it shows ("Home Quarters - <office>"), and the menus learn its name
+        .on_document_title_changed(|window, title| {
+            let _ = window.set_title(&title);
+            let app = window.app_handle();
+            let shell = app.state::<Shell>();
+            let learned = window.url().map(|u| shell.offices.lock().unwrap().learn_name(&u, &title)).unwrap_or(false);
+            if learned {
+                let _ = shell.save();
+                refresh_menus(app);
+            }
+        })
+        .build()
+}
+
+/// Tells the page whether its window is on screen (the `hq-desktop` event of web/src/desktopWindow.ts).
+fn tell_page(window: &WebviewWindow, state: &str) {
+    let _ = window.eval(format!("window.dispatchEvent(new CustomEvent('hq-desktop', {{ detail: '{state}' }}))"));
+}
+
+fn hide(window: &WebviewWindow) {
+    tell_page(window, "hidden");
+    let _ = window.hide();
+}
+
+fn show(window: &WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    tell_page(window, "shown");
+}
+
+fn tray(app: &AppHandle) -> tauri::Result<()> {
+    let mut tray = TrayIconBuilder::with_id(TRAY).tooltip("Home Quarters").menu(&tray_menu(app)?).show_menu_on_left_click(false);
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let Some(window) = tray.app_handle().get_webview_window(MAIN) {
+                if window.is_visible().unwrap_or(false) { hide(&window) } else { show(&window) }
+            }
+        }
+    })
+    .build(app)?;
+    Ok(())
+}
+
+/// The bundled offices page, on whichever origin this platform serves bundled pages from.
+fn offices_page(fragment: &str) -> Option<Url> {
+    let base = if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" };
+    Url::parse(base).and_then(|u| u.join(&format!("index.html{fragment}"))).ok()
+}
+
+fn on_menu(app: &AppHandle, id: &str) {
+    let Some(window) = app.get_webview_window(MAIN) else { return };
+    match id {
+        "show" => show(&window),
+        "quit" => app.exit(0),
+        "reload" => {
+            let _ = window.reload();
+        }
+        "add" | "manage" => {
+            show(&window);
+            if let Some(url) = offices_page(if id == "add" { "#add" } else { "" }) {
+                let _ = window.navigate(url);
+            }
+        }
+        _ => {
+            // "go:<i>": switch to a saved office
+            let Some(i) = id.strip_prefix("go:").and_then(|i| i.parse::<usize>().ok()) else { return };
+            let shell = app.state::<Shell>();
+            let target = {
+                let mut offices = shell.offices.lock().unwrap();
+                let Some(url) = offices.list.get(i).map(|o| o.url.clone()) else { return };
+                offices.open(&url);
+                url
+            };
+            let _ = shell.save();
+            refresh_menus(app);
+            show(&window);
+            if let Ok(url) = Url::parse(&target) {
+                let _ = window.navigate(url);
+            }
+        }
+    }
+}
+
+fn main() {
+    let args = args();
+    let mut builder = tauri::Builder::default();
+    // Launching the app again (Start menu, a shortcut) brings back the window hidden in the tray. Only for
+    // the default profile: one started with its own --data-dir (another profile, a test) runs alongside.
+    if args.data_dir.is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(window) = app.get_webview_window(MAIN) {
+                show(&window);
+            }
+        }));
+    }
+    builder
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![list_offices, open_office, remove_office])
+        .setup(move |app| {
+            let dir = match &args.data_dir {
+                Some(d) => d.clone(),
+                None => app.path().app_local_data_dir()?,
+            };
+            let offices: Offices = std::fs::read(dir.join("offices.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default();
+            let start = args
+                .office
+                .as_deref()
+                .or(offices.current.as_deref())
+                .and_then(|o| office::parse(o).ok())
+                .map(WebviewUrl::External)
+                .unwrap_or_else(|| WebviewUrl::App("index.html".into()));
+            app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices) });
+            open_window(app.handle(), start, dir.join("webview"))?;
+            tray(app.handle())?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                if let Some(window) = window.app_handle().get_webview_window(window.label()) {
+                    hide(&window);
+                }
+            }
+        })
+        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
+        .run(tauri::generate_context!())
+        .expect("error while running Home Quarters");
+}

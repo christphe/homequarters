@@ -1,0 +1,79 @@
+name: Desktop
+
+# The desktop app (desktop/) on the three systems: build it, then run it on e2e/desktop/probe.html, which
+# reads what its webview can do and makes a WebRTC call inside the page. The builds are unsigned.
+on:
+  pull_request:
+    paths: ["desktop/**", "e2e/desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+            bin: desktop/src-tauri/target/release/homequarters-desktop.exe
+            webrtc: "1"
+          - os: macos-latest
+            bundles: app,dmg
+            bin: "desktop/src-tauri/target/release/bundle/macos/Home Quarters.app/Contents/MacOS/homequarters-desktop"
+            webrtc: "1"
+          # WebKitGTK may be built without WebRTC (Debian 13's is): the probe says, it does not gate
+          - os: ubuntu-24.04
+            bundles: appimage,deb
+            bin: desktop/src-tauri/target/release/homequarters-desktop
+            webrtc: "0"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb imagemagick \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
+      - run: pnpm install --frozen-lockfile
+        working-directory: desktop
+      - name: Build
+        run: pnpm tauri build --bundles ${{ matrix.bundles }}
+        working-directory: desktop
+      - name: Probe the webview
+        shell: bash
+        env:
+          REQUIRE_WEBRTC: ${{ matrix.webrtc }}
+        run: |
+          run=""; [ "$RUNNER_OS" = Linux ] && run="xvfb-run -a"
+          $run node e2e/desktop/probe.mjs "${{ matrix.bin }}" probe-out
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          { echo "### ${{ matrix.os }}"; echo '```json'; cat probe-out/probe.json 2>/dev/null || echo "no report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            probe-out/
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: ignore
