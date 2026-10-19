@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - patch
+
+### Fixed
+- Guided walks (double-click, Walk to, Follow, the minimap) go around meeting rooms, offices and desks instead of cutting through someone else's call; they cross a room only when it is the only way (#20)
+
 ## [0.2.0] - 2026-10-19
 
 ### Changed

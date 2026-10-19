@@ -370,17 +370,19 @@ type bfsScratch struct {
 	seen  []uint32
 	prev  []int32
 	queue []int32
+	steps []int32 // findPath: steps from the start, valid where seen == gen
+	seeds []int32 // findPath: room tiles entered from the previous level, visited in this one
+	next  []int32 // findPath: room tiles entered at this level, the next level's seeds
 	gen   uint32
 }
 
-// findPath returns the tiles from (excluding) 'from' to (including) 'to' over tiles p may stand on,
-// or nil. Portals are avoided so a follower does not teleport by accident.
 // bfsReset readies the shared search buffers for a new search.
 func (w *World) bfsReset() *bfsScratch {
 	n := w.m.W * w.m.H
 	s := &w.bfs
 	if len(s.seen) != n {
 		s.seen, s.prev, s.queue, s.gen = make([]uint32, n), make([]int32, n), make([]int32, 0, 256), 0
+		s.steps, s.seeds, s.next = make([]int32, n), make([]int32, 0, 64), make([]int32, 0, 64)
 	}
 	s.gen++
 	return s
@@ -401,35 +403,59 @@ func (w *World) walkable(p *Player, t tile) bool {
 	return ai == p.area || w.canEnterArea(p, ai)
 }
 
+// findPath returns the tiles from (excluding) 'from' to (including) 'to' over tiles p may stand on,
+// or nil. Portals are avoided so a follower does not teleport by accident. The route keeps out of rooms
+// (meeting rooms, offices, desk rooms) other than the ones it starts and ends in, so a walk does not cut
+// through somebody's meeting: it crosses as few of their tiles as it must, then takes the shortest way.
+//
+// The search runs in levels: level k holds the tiles reached over k such room tiles, visited in order
+// of steps by merging two lists that are both sorted by steps, the tiles reached at this level and the
+// room tiles entered from the level before. A room tile always adds one to the level of whatever tile
+// leads to it, so the first time a tile is reached is its best, and each tile is visited once.
 func (w *World) findPath(p *Player, from, to tile) []tile {
 	W, H := w.m.W, w.m.H
-	s := w.bfsReset()
-	pass := func(t tile) bool { return w.walkable(p, t) }
-	if from == to || !pass(to) {
+	if from == to || !w.walkable(p, to) {
 		return nil
 	}
+	s := w.bfsReset()
+	fromArea, toArea := w.m.AreaIndexAt(int(from.x), int(from.y)), w.m.AreaIndexAt(int(to.x), int(to.y))
 	start, goal := int32(int(from.y)*W+int(from.x)), int32(int(to.y)*W+int(to.x))
+	s.seen[start], s.steps[start], s.prev[start] = s.gen, 0, -1
 	s.queue = append(s.queue[:0], start)
-	s.seen[start], s.prev[start] = s.gen, -1
+	s.seeds, s.next = s.seeds[:0], s.next[:0]
 	dirs := [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
-	for head := 0; head < len(s.queue); head++ {
-		cur := s.queue[head]
-		if cur == goal {
-			break
-		}
-		cx, cy := int(cur)%W, int(cur)/W
-		for _, d := range dirs {
-			nx, ny := cx+d[0], cy+d[1]
-			if nx < 0 || ny < 0 || nx >= W || ny >= H {
-				continue
+	for s.seen[goal] != s.gen && (len(s.queue) > 0 || len(s.seeds) > 0) {
+		for qi, si := 0, 0; qi < len(s.queue) || si < len(s.seeds); {
+			var cur int32
+			if si == len(s.seeds) || (qi < len(s.queue) && s.steps[s.queue[qi]] <= s.steps[s.seeds[si]]) {
+				cur, qi = s.queue[qi], qi+1
+			} else {
+				cur, si = s.seeds[si], si+1
 			}
-			ni := int32(ny*W + nx)
-			if s.seen[ni] == s.gen || !pass(tile{int16(nx), int16(ny)}) {
-				continue
+			if cur == goal {
+				break
 			}
-			s.seen[ni], s.prev[ni] = s.gen, cur
-			s.queue = append(s.queue, ni)
+			cx, cy := int(cur)%W, int(cur)/W
+			for _, d := range dirs {
+				nx, ny := cx+d[0], cy+d[1]
+				if nx < 0 || ny < 0 || nx >= W || ny >= H {
+					continue
+				}
+				ni := int32(ny*W + nx)
+				if s.seen[ni] == s.gen || !w.walkable(p, tile{int16(nx), int16(ny)}) {
+					continue
+				}
+				s.seen[ni], s.steps[ni], s.prev[ni] = s.gen, s.steps[cur]+1, cur
+				if ai := w.m.AreaIndexAt(nx, ny); ai >= 0 && ai != fromArea && ai != toArea &&
+					w.m.Map.Areas[ai].Kind == gamemap.KindRoom {
+					s.next = append(s.next, ni)
+				} else {
+					s.queue = append(s.queue, ni)
+				}
+			}
 		}
+		s.queue = s.queue[:0]
+		s.seeds, s.next = s.next, s.seeds[:0]
 	}
 	if s.seen[goal] != s.gen {
 		return nil
