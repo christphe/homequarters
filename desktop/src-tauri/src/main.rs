@@ -6,11 +6,12 @@
 // Signing in never happens in this window: the office page's sign-in button opens the person's own
 // browser, and the window then receives the session (server/internal/httpapi/handoff.go).
 //
-// It lives in the tray: closing the window hides it there, and the page is told so it stops every
+// It lives in the tray (the Dock on a Mac): closing the window hides it there, and the page is told so it stops every
 // capture and sets the person busy (web/src/desktopWindow.ts). Quitting is in the menus.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -29,6 +30,15 @@ use offices::Offices;
 
 const MAIN: &str = "main";
 const TRAY: &str = "tray";
+
+/// Set once the app is really leaving (Quit, Cmd+Q, the Dock's Quit): closing the window then lets it
+/// close instead of hiding it in the tray.
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+fn quit(app: &AppHandle) {
+    QUITTING.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
 
 struct Shell {
     dir: PathBuf,
@@ -109,7 +119,8 @@ fn office_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<CheckMenuIt
         .collect()
 }
 
-fn window_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+/// The Office menu: the saved offices, then adding and managing them, and reloading the page.
+fn office_menu<R: Runtime>(app: &AppHandle<R>, with_quit: bool) -> tauri::Result<Submenu<R>> {
     let list = office_items(app)?;
     let add = MenuItem::with_id(app, "add", "Add office...", true, None::<&str>)?;
     let manage = MenuItem::with_id(app, "manage", "Manage offices...", true, None::<&str>)?;
@@ -120,8 +131,59 @@ fn window_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     if !items.is_empty() {
         items.push(&sep[0]);
     }
-    items.extend([&add as &dyn IsMenuItem<R>, &manage, &reload, &sep[1], &quit]);
-    Menu::with_items(app, &[&Submenu::with_items(app, "Office", true, &items)?])
+    items.extend([&add as &dyn IsMenuItem<R>, &manage, &reload]);
+    if with_quit {
+        items.extend([&sep[1] as &dyn IsMenuItem<R>, &quit]);
+    }
+    Submenu::with_items(app, "Office", true, &items)
+}
+
+/// Windows and Linux: one Office menu in the window, Quit at its end.
+#[cfg(not(target_os = "macos"))]
+fn window_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    Menu::with_items(app, &[&office_menu(app, true)?])
+}
+
+/// macOS: the menus every Mac app has. The app menu holds Quit (Cmd+Q), and the Edit menu is what makes
+/// Cmd+C, Cmd+V and Cmd+A work in the page (a webview gets them from the menu bar).
+#[cfg(target_os = "macos")]
+fn window_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let sep = || PredefinedMenuItem::separator(app);
+    let app_menu = Submenu::with_items(
+        app,
+        "Home Quarters",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, Some("About Home Quarters"), None)?,
+            &sep()?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &sep()?,
+            &MenuItem::with_id(app, "quit", "Quit Home Quarters", true, Some("Cmd+Q"))?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &sep()?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::fullscreen(app, None)?, &sep()?, &PredefinedMenuItem::close_window(app, None)?],
+    )?;
+    Menu::with_items(app, &[&app_menu, &edit, &office_menu(app, false)?, &window])
 }
 
 fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -138,6 +200,12 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
 /// Rebuilds both menus after the list or the open office changed.
 fn refresh_menus(app: &AppHandle) {
+    // a Mac app has one menu bar for the whole app; elsewhere the menu belongs to the window
+    #[cfg(target_os = "macos")]
+    if let Ok(menu) = window_menu(app) {
+        let _ = app.set_menu(menu);
+    }
+    #[cfg(not(target_os = "macos"))]
     if let (Some(window), Ok(menu)) = (app.get_webview_window(MAIN), window_menu(app)) {
         let _ = window.set_menu(menu);
     }
@@ -222,6 +290,7 @@ fn show(window: &WebviewWindow) {
     tell_page(window, "shown");
 }
 
+#[cfg(not(target_os = "macos"))]
 fn tray(app: &AppHandle) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id(TRAY).tooltip("Home Quarters").menu(&tray_menu(app)?).show_menu_on_left_click(false);
     if let Some(icon) = app.default_window_icon() {
@@ -248,7 +317,7 @@ fn on_menu(app: &AppHandle, id: &str) {
     let Some(window) = app.get_webview_window(MAIN) else { return };
     match id {
         "show" => show(&window),
-        "quit" => app.exit(0),
+        "quit" => quit(app),
         "reload" => {
             let _ = window.reload();
         }
@@ -312,11 +381,16 @@ fn main() {
                 .unwrap_or_else(|| WebviewUrl::App("index.html".into()));
             app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office });
             open_window(app.handle(), start, dir.join("webview"))?;
+            // the tray brings a hidden window back on Windows and Linux; on a Mac the Dock does
+            #[cfg(not(target_os = "macos"))]
             tray(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                if QUITTING.load(Ordering::SeqCst) {
+                    return;
+                }
                 api.prevent_close();
                 if let Some(window) = window.app_handle().get_webview_window(window.label()) {
                     hide(&window);
@@ -324,6 +398,18 @@ fn main() {
             }
         })
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
-        .run(tauri::generate_context!())
-        .expect("error while running Home Quarters");
+        .build(tauri::generate_context!())
+        .expect("error while starting Home Quarters")
+        .run(|_app, event| match event {
+            // the Dock's Quit, Cmd+Q from the system, a log-out: leave for real
+            tauri::RunEvent::ExitRequested { .. } => QUITTING.store(true, Ordering::SeqCst),
+            // a click on the Dock icon brings back the window hidden by its close button
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = _app.get_webview_window(MAIN) {
+                    show(&window);
+                }
+            }
+            _ => {}
+        });
 }
