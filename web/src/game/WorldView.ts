@@ -134,7 +134,7 @@ export class WorldView {
     owner: (id) => {
       const e = this.ents.get(id);
       if (!e) return null;
-      const fast = e.id === this.meId ? this.running || this.guided : e.run;
+      const fast = e.id === this.meId ? this.fast : e.run;
       return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible };
     },
     canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
@@ -214,6 +214,7 @@ export class WorldView {
   private hover: { x: number; y: number; w: number; h: number } | null = null;
   private eco = false;
   private guided = false;
+  private guidedRun = false; // a walk-to runs; following a person goes at my own pace
   private nearby: Prop | null = null;
   private nearbyAt = 0;
   private emotes = new Map<number, { text: Text; until: number }>();
@@ -477,6 +478,10 @@ export class WorldView {
   get running() {
     return this.runHeld !== this.runToggle;
   }
+  /** Whether my avatar goes at run speed now, as the server moves it. */
+  private get fast() {
+    return this.running || (this.guided && this.guidedRun);
+  }
   private setRunHeld(on: boolean) {
     if (on === this.runHeld) return;
     this.advanceLocal(performance.now());
@@ -668,8 +673,11 @@ export class WorldView {
     this.hooks.onArea(this.areaName(this.mArea), this.mArea);
   }
 
-  setGuided(on: boolean) {
+  /** The server steers me (a walk-to when run, else following a person) or stopped steering. */
+  setGuided(on: boolean, run = true) {
+    this.advanceLocal(performance.now()); // the old pace holds until this very moment
     this.guided = on;
+    this.guidedRun = on && run;
     if (on) {
       this.keys.clear();
       return;
@@ -697,13 +705,24 @@ export class WorldView {
   }
 
   applySelf(m: SelfPosition) {
-    this.mx = m.x;
-    this.my = m.y;
-    this.vox = this.voy = 0;
-    this.lastLocal = performance.now();
     this.mdir = m.d;
-    if (m.tp) this.teleport(m.x, m.y);
-    else {
+    if (m.tp) {
+      this.mx = m.x;
+      this.my = m.y;
+      this.lastLocal = performance.now();
+      this.teleport(m.x, m.y);
+    } else {
+      // a server-steered walk: my avatar runs on between these 15 Hz positions (advanceLocal), and the
+      // gap to each one fades in instead of jumping there, so it moves smoothly and its followers too
+      this.advanceLocal(performance.now());
+      const ex = m.x - this.mx, ey = m.y - this.my;
+      this.mx = m.x;
+      this.my = m.y;
+      if (Math.hypot(ex, ey) > SNAP_PX) this.vox = this.voy = 0;
+      else {
+        this.vox -= ex;
+        this.voy -= ey;
+      }
       this.dx = m.dx;
       this.dy = m.dy;
       this.mArea = this.areaIndex(m.x, m.y);
@@ -1037,12 +1056,12 @@ export class WorldView {
   private advanceLocal(now: number) {
     const dt = Math.min(Math.max(now - this.lastLocal, 0) / 1000, MAX_ADVANCE);
     this.lastLocal = now;
-    if (this.guided || !this.map || (!this.dx && !this.dy) || dt === 0) return;
+    if (!this.map || (!this.dx && !this.dy) || dt === 0) return;
     const p = this.body;
     p.x = this.mx;
     p.y = this.my;
     const was = this.mArea;
-    this.moveBody(p, this.dx, this.dy, this.speed * (this.running ? this.runMul : 1) * dt, false);
+    this.moveBody(p, this.dx, this.dy, this.speed * (this.fast ? this.runMul : 1) * dt, false);
     this.mx = p.x;
     this.my = p.y;
     this.mArea = was;
@@ -1176,10 +1195,8 @@ export class WorldView {
     const S = this.S;
     const { width: W, height: H } = this.app.screen;
 
-    if (!this.guided) {
-      this.advanceLocal(now);
-      if ((this.dx || this.dy) && now - this.lastBeat > HEARTBEAT_MS) this.sendDir();
-    } else this.lastLocal = now;
+    this.advanceLocal(now);
+    if (!this.guided && (this.dx || this.dy) && now - this.lastBeat > HEARTBEAT_MS) this.sendDir();
     if (this.vox || this.voy) {
       const k = 1 - Math.exp(-dt / SELF_TAU);
       // fading the offset moves the drawn avatar by -b; only where that would go against the held
@@ -1248,7 +1265,7 @@ export class WorldView {
       if (e.ring) e.ring.visible = on && e.speaking;
       if (!on) continue;
       visible++;
-      const fast = isMe ? this.running || this.guided : e.run;
+      const fast = isMe ? this.fast : e.run;
       let phase = e.moving ? [1, 0, 2, 0][Math.floor((now / 1000) * walkRate * (fast ? 1.6 : 1)) & 3] : 0;
       let dir = e.dir;
       let hop = 0;

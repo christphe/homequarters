@@ -7,6 +7,7 @@
 
 ### Fixed
 - Removing a member frees their desk and their place in a private office, and a member's new name shows on their desk and office for everybody at once; maps saved by earlier versions are cleaned on the next start (#18)
+- Walk-to (double-click on the map, Walk to, Ctrl/Cmd+D, the minimap): your avatar runs smoothly instead of hopping at the server's 15 Hz, and its pets run after it with their walk animation (#19)
 
 ## [0.1.0] - 2026-10-19
 

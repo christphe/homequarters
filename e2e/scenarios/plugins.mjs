@@ -149,6 +149,44 @@ export async function run(ctx) {
     check("while the owner walks, the first pet keeps about 20 px behind and the next one about 36 px", ga.length > 10 && ma > 14 && ma < 28 && mb > 28 && mb < 44, `medians ${ma?.toFixed(1)} and ${mb?.toFixed(1)} px over ${ga.length} frames`);
     check("no pet walks on top of its owner", closest > 12, `closest ${closest.toFixed(1)} px`);
 
+    // ---- a walk-to (double-click on the map, Cmd+D, joining someone): the server runs the owner there,
+    // and the pets run after them on every page: smoothly, every frame, with their walk animation (they
+    // used to sit still, then hop after an owner moved only at the server's 15 Hz)
+    const runAfter = (u) => read(u, ({ plugin, owner, ms }) => new Promise((resolve) => {
+      const last = new Map();
+      let max = 0, frames = 0, ownerStill = 0, petStill = 0, since = 0;
+      const t0 = performance.now();
+      const tick = (now) => {
+        const v = window.__hq.view, e = v.ents.get(owner);
+        const running = owner === v.meId ? v.guided : !!(e?.dx || e?.dy);
+        since = running ? since || now : 0;
+        const steady = running && now - since > 300; // under way, not starting
+        if (steady) frames++;
+        const o = last.get("owner");
+        if (steady && o && Math.hypot(e.x - o[0], e.y - o[1]) < 0.1) ownerStill++;
+        last.set("owner", [e.x, e.y]);
+        for (const c of window.__hq.session.plugins.debug(plugin).filter((x) => x.player === owner && x.visible)) {
+          const p = last.get(c.id);
+          if (p) max = Math.max(max, Math.hypot(c.x - p[0], c.y - p[1]));
+          if (steady && p && (Math.hypot(c.x - p[0], c.y - p[1]) < 0.1 || !c.moving)) petStill++;
+          last.set(c.id, [c.x, c.y]);
+        }
+        if (now - t0 < ms) requestAnimationFrame(tick); else resolve({ max, frames, ownerStill, petStill });
+      };
+      requestAnimationFrame(tick);
+    }), { plugin: PLUGIN, owner: rem.id, ms: 3500 });
+    await sleep(800);
+    const [onRem, onMia] = [runAfter(rem), runAfter(mia)];
+    const to = await read(rem, () => window.__hq.view.pageOf(4 * 16 + 8, 27 * 16 + 8));
+    await rem.page.mouse.click(to.x, to.y, { count: 2 });
+    const [jr, jm] = await Promise.all([onRem, onMia]);
+    const arrived = await read(rem, () => { const e = window.__hq.view.ents.get(window.__hq.view.meId); return [e.x, e.y]; });
+    check("a double-click on the map runs the owner there", Math.hypot(arrived[0] - (4 * 16 + 8), arrived[1] - (27 * 16 + 8)) < 12, JSON.stringify(arrived));
+    const say = (r) => `${r.ownerStill} still owner frames, ${r.petStill} still pet frames of ${r.frames}, largest pet step ${r.max.toFixed(1)} px`;
+    check("on a walk-to the owner's own avatar runs smoothly, moving every frame (not in 15 Hz hops)", jr.frames > 20 && jr.ownerStill <= jr.frames * 0.1, say(jr));
+    check("its pets run after it every frame with their walk animation, on the owner's page and on others, never jumping",
+      jr.frames > 20 && jm.frames > 20 && jr.petStill <= jr.frames * 0.05 && jm.petStill <= jm.frames * 0.05 && jr.max < 24 && jm.max < 24, `owner's page: ${say(jr)}; other page: ${say(jm)}`);
+
     // ---- render on demand still holds with pets standing
     await sleep(1500);
     const draws = await read(mia, () => new Promise((resolve) => {
