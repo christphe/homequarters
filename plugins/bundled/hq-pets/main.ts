@@ -29,6 +29,9 @@ const members = new Map<number, Member>();
 let changed = new Set<number>(); // members whose pets changed since the last broadcast
 const gone = new Set<number>(); // members who left since the last broadcast
 const goals = new Map<number, Goals>(); // wander goals to relay
+// where each wandering member's pets went last (the owner's page decides): a page that starts later
+// puts them there, so every page shows them in the same place
+const lastGoals = new Map<number, Goals>();
 const buckets = new Map<number, { tokens: number; at: number }>();
 
 const limit = (): number => hq.settings().limit ?? 3;
@@ -199,6 +202,7 @@ export function onLeave(p: HQ.Player): void {
   members.delete(p.id);
   changed.delete(p.id);
   goals.delete(p.id);
+  lastGoals.delete(p.id);
   buckets.delete(p.id);
   gone.add(p.id);
 }
@@ -257,10 +261,15 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
   const msg = raw as PageMessage;
   switch (msg.t) {
     case "sync": {
-      // a page (re)started: tell it every member's pets
+      // a page (re)started: tell it every member's pets, then where the wandering ones are
       for (const part of pieces([...members].map(([id, m]) => shown(id, m)))) {
         const all: PetsMessage = { t: "pets", set: part, del: [], go: [] };
         hq.send(p.id, all);
+      }
+      const where = [...lastGoals].filter(([id]) => members.get(id)?.mode === "wander").map(([id, g]) => ({ id, g }));
+      for (const part of pieces(where)) {
+        const placed: PetsMessage = { t: "pets", set: [], del: [], go: part, place: true };
+        hq.send(p.id, placed);
       }
       you(me);
       return;
@@ -289,6 +298,7 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
       if ((msg.m !== "follow" && msg.m !== "wander") || !allowed(p.id)) return;
       me.mode = msg.m;
       goals.delete(p.id);
+      lastGoals.delete(p.id);
       changed.add(p.id);
       return;
     case "wander": {
@@ -296,7 +306,11 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
       if (me.mode !== "wander" || !Array.isArray(msg.g) || msg.g.length > MAX_PETS + MAX_GUESTS || !allowed(p.id)) return;
       if (!msg.g.every((g) => g === null || pal(g) || (Array.isArray(g) && coord(g[0]) && coord(g[1]) && speed(g[2])))) return;
       // whole numbers: a goal costs the same few bytes whatever the page sent
-      goals.set(p.id, msg.g.map((g): Goal => (g === null || typeof g === "string" ? g : [Math.round(g[0]), Math.round(g[1]), Math.round(g[2])])));
+      const next = msg.g.map((g): Goal => (g === null || typeof g === "string" ? g : [Math.round(g[0]), Math.round(g[1]), Math.round(g[2])]));
+      goals.set(p.id, next);
+      // remembered per pet: a null keeps the pet's previous goal
+      const before = lastGoals.get(p.id) ?? [];
+      lastGoals.set(p.id, next.map((g, i) => g ?? before[i] ?? null));
       return;
     }
   }
