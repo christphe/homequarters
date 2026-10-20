@@ -2,13 +2,13 @@ name: Desktop
 
 # The desktop app (desktop/) on the three systems: build it, then run it on e2e/desktop/probe.html, which
 # reads what its webview can do and makes a WebRTC call inside the page. The builds are unsigned.
-# On a version tag, the Windows and macOS builds carry that version and go to its GitHub release
-# (Linux uses the browser: docs/desktop.md).
+# On a desktop release tag (desktop-vX.Y.Z), the Windows and macOS builds carry that version and go to its
+# GitHub release (Linux uses the browser: docs/desktop.md).
 on:
   pull_request:
     paths: ["desktop/**", "e2e/desktop/**", ".github/workflows/desktop.yml"]
   push:
-    tags: ["v*"]
+    tags: ["desktop-v*"]
   workflow_dispatch:
 
 permissions:
@@ -69,9 +69,9 @@ jobs:
         shell: bash
         working-directory: desktop
         run: |
-          # a tag builds that version (v0.3.0 -> 0.3.0); otherwise the version in tauri.conf.json
+          # a tag builds that version (desktop-v0.3.2 -> 0.3.2); otherwise the version in tauri.conf.json
           version=()
-          [ "$GITHUB_REF_TYPE" = tag ] && version=(--config "{\"version\":\"${GITHUB_REF_NAME#v}\"}")
+          [ "$GITHUB_REF_TYPE" = tag ] && version=(--config "{\"version\":\"${GITHUB_REF_NAME#desktop-v}\"}")
           pnpm tauri build --bundles ${{ matrix.bundles }} "${version[@]}"
       - name: Probe the webview
         shell: bash
