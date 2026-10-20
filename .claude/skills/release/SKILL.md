@@ -14,17 +14,19 @@ Home Quarters ships two products from this repository. Each has its own changelo
 
 A release is one product's version tag on `main`. It comes with that product's changelog section in the [Keep a Changelog](https://keepachangelog.com) format, and a GitHub release whose notes are that section, under "What's Changed".
 
-The changelogs are kept with [fantastic-change](https://github.com/fantastic-jam/fantastic-change). `fchange.json` lists the repository's top-level folders as packages, so every command names its product with `--pkg server` or `--pkg desktop`:
+The changelogs are kept with [fantastic-change](https://github.com/fantastic-jam/fantastic-change). `fchange.json` lists the repository's top-level folders as packages, so every command needs its product, `--pkg server` or `--pkg desktop` (there is no command for all of them):
 
 - `fchange <type> "<entry>" --pkg <product>` adds an entry under `## [Unreleased]` and records the version bump it implies;
-- `frelease --pkg <product>` turns `[Unreleased]` into the next version.
+- `frelease --pkg <product> --dry-run` prints the next version, or fails with "No [Unreleased] section found" when there is nothing to release;
+- `frelease --pkg <product>` turns `[Unreleased]` into that version;
+- `frelease --pkg <product> changelog-version` prints the last released version, and `frelease --pkg <product> changelog [X.Y.Z]` its notes.
 
 ## Which product
 
 A release is of one product. Each step below is for that product only.
 
-- **The user names it** (`/release server`, `/release desktop`, "release the desktop app"): release that one. If its `[Unreleased]` is empty, say so and stop.
-- **The user names none**: read `## [Unreleased]` in both changelogs and say which products have entries. Release only what the user asked for; "release whatever there is" means each product with entries, one after the other, each a full pass through the steps below.
+- **The user names it** (`/release server`, `/release desktop`, "release the desktop app"): release that one. If `frelease --pkg <product> --dry-run` finds nothing to release, say so and stop.
+- **The user names none**: run `frelease --pkg server --dry-run` and `frelease --pkg desktop --dry-run`, and say which products have something to release and at what version. Release only what the user asked for; "release whatever there is" means each product with entries, one after the other, each a full pass through the steps below.
 
 Never release a product whose `[Unreleased]` is empty.
 
@@ -35,7 +37,7 @@ Never release a product whose `[Unreleased]` is empty.
 
 ## 1. What the release covers
 
-- **The range.** The product's last tag is `git describe --tags --abbrev=0 --match '<product>-v*' origin/main`, and the range runs from it to `origin/main`.
+- **The range.** The product's last tag is `<product>-v` followed by `frelease --pkg <product> changelog-version`, and the range runs from it to `origin/main`.
 - **The commits:** `git log --reverse --format='%h %s' <range>`. For the desktop app, `-- desktop/` keeps the ones that touch it; for the server, the commits that change `server/` or `web/` (and the Dockerfile and deploy files).
   - A squash-merged pull request ends with `(#N)`: read it with `gh pr view N --repo christphe/homequarters --json title,body`.
   - For other commits, read `git show --stat <hash>`.
