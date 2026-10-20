@@ -3,6 +3,7 @@
 ## [Unreleased] - minor
 
 ### Added
+- Desktop app for Windows and macOS: the office in its own window, a list of offices to switch between, a tray icon (the Dock on a Mac) that sets you busy and stops your microphone when you close the window, and sign-in through your browser; the builds come with each release (#22)
 - Desktop apps sign in through the person's own browser, never in their window, and receive the session from it (#23)
 - Install Home Quarters as an app from Chrome or Edge: it opens in its own window, with its own icon, and still updates with the server (#21)
 
