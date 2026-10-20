@@ -39,7 +39,7 @@ const DESCRIPTIONS = {
   overview: "What Home Quarters is: an open source, self-hosted 2D virtual office with proximity audio and video, built to be light on CPU, RAM, GPU and bandwidth.",
   "getting-started": "Run Home Quarters locally in minutes: Go, Node.js with pnpm and LiveKit, one dev script, every environment variable and how to run the tests.",
   "self-hosting": "Self-host Home Quarters with Docker Compose: HTTPS through Caddy, a LiveKit SFU, invite-only joins, firewall ports, backups and a public demo mode.",
-  desktop: "The Home Quarters desktop app for Windows and macOS: the office in its own window, a list of offices, the tray, sign-in through your browser, and why Linux uses the browser.",
+  desktop: "The Home Quarters desktop app for Windows and macOS: its own window, a list of offices, the tray, sign-in through your browser, and why Linux uses the browser.",
   faq: "Answers about Home Quarters: what it is, how it relates to Gather, cost, self-hosting, capacity, privacy, browsers, phones and how to contribute.",
   architecture: "How Home Quarters is built: an authoritative Go world server with a spatial grid, SQLite in WAL mode, a PixiJS client and a LiveKit SFU for media.",
   "proximity-and-media": "How proximity conversations form in Home Quarters: hysteresis, small groups, no chains, isolated rooms, scoped LiveKit tokens and revocation.",
