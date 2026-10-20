@@ -1,11 +1,9 @@
 # Changelog
 
-## [Unreleased] - minor
-
-### Added
-- Desktop app: Cancel (or Escape) on the offices page goes back to the open office (#27)
+## [Unreleased] - patch
 
 ### Fixed
+- Desktop app: the offices page has a Cancel button (and Escape) to go back to the open office (#27)
 - Desktop app on macOS: the menu bar has the Office menu (your offices, add, manage, Cmd+R to reload) instead of the default one (#27)
 - Desktop app on macOS: notifications, "away when my computer is idle" and the keys printed on your keyboard in help texts work, provided by the app where the Mac's web view lacks them; in the app, texts speak of the app rather than of a browser tab (#27)
 
