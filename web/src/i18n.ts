@@ -108,7 +108,9 @@ const en = {
   "notify.open": "Open Home Quarters to read it.",
   "settings.sounds": "Sounds for waves, knocks, direct messages and conversations starting or ending",
   "settings.notify": "Desktop notifications while this tab is in the background",
+  "settings.notify@app": "Desktop notifications while the window is hidden or in the background",
   "settings.notifyDenied": "The browser blocked notifications for this site.",
+  "settings.notifyDenied@app": "Notifications are turned off for Home Quarters in the system settings.",
   "settings.minimap": "Show the minimap (M)",
   "update.title": "New version",
   "update.text": "A new version of Home Quarters is ready. Reload to keep going.",
@@ -140,7 +142,9 @@ const en = {
   "media.noiseFailed": "Noise suppression could not start; your microphone works without it.",
   "settings.osIdle": "Go away when my computer is idle or locked",
   "settings.osIdleHint": "uses the whole computer's activity, not just this tab; the browser asks first.",
+  "settings.osIdleHint@app": "uses the whole computer's activity, not just this window.",
   "settings.osIdleUnsupported": "not available in this browser.",
+  "settings.osIdleUnsupported@app": "not available on this system.",
   "settings.osIdleDenied": "Your browser blocks idle detection for this site. Open this address in a new tab, allow this site, then tick the box again:",
   "settings.osIdleUrl": "Browser setting for idle detection",
   "settings.copy": "Copy",
@@ -234,6 +238,7 @@ const en = {
   "signin.err.invite": "This invite has been used up meanwhile. Ask an administrator for a new one.",
   "signin.linked": "Your account is connected. Sign in with it from any machine.",
   "signin.notMe": "Not {name}? Use this browser as someone else",
+  "signin.notMe@app": "Not {name}? Use this app as someone else",
   "admin.linked": "Signs in as {email}",
   "admin.unlinked": "Has not signed in yet",
   "avatar.skin": "Skin",
@@ -324,7 +329,9 @@ const en = {
   "media.volumeOf": "Volume of {name} for you: {level}% (click to change)",
   "share.expand": "Expand the shared screen",
   "share.unsupported": "This browser cannot share a screen. Open the office in Chrome, Edge, Firefox or Safari on a computer.",
+  "share.unsupported@app": "The app cannot share a screen on this system. Open the office in Chrome, Edge, Firefox or Safari to share one.",
   "share.systemDenied": "Your computer blocked screen sharing. Allow screen recording for this browser in the system settings (on a Mac: Privacy & Security, Screen Recording), then quit and reopen the browser.",
+  "share.systemDenied@app": "Your computer blocked screen sharing. Allow screen recording for Home Quarters in the system settings (on a Mac: Privacy & Security, Screen Recording), then quit and reopen the app.",
   "share.blocked": "This page is not allowed to share the screen here. Open the office directly in Chrome, Edge, Firefox or Safari.",
   "share.couldNotStart": "Screen sharing could not start. Close other apps that are recording the screen and try again.",
   "share.needCall": "Walk up to someone or into a room to share your screen",
@@ -497,8 +504,13 @@ export function hasKey(k: string): k is Key {
 export function setLocale(l: string) {
   if (dicts[l]) locale = l;
 }
+/** Running in the desktop app (desktop/ sets it before the page loads), whose window is not a browser tab. */
+export const inDesktopApp = () => !!(globalThis as { __HQ_DESKTOP__?: unknown }).__HQ_DESKTOP__;
+
 export function t(key: Key, vars?: Record<string, string | number>): string {
-  let s = dicts[locale]?.[key] ?? en[key] ?? key;
+  // a text that speaks of a browser tab has an "@app" variant for the desktop app
+  const app = inDesktopApp() ? ((key + "@app") as Key) : null;
+  let s = (app && (dicts[locale]?.[app] ?? en[app])) || (dicts[locale]?.[key] ?? en[key] ?? key);
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
   return s;
 }

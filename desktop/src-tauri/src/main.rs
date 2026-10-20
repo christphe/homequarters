@@ -23,6 +23,8 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::webview::{NewWindowResponse, PageLoadEvent, PermissionKind, PermissionResponse};
 use tauri::{AppHandle, Manager, Runtime, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
+mod idle;
+mod layout;
 mod office;
 mod offices;
 
@@ -75,6 +77,7 @@ fn list_offices(shell: State<Shell>) -> Offices {
 #[tauri::command]
 fn open_office(address: String, app: AppHandle, shell: State<Shell>, window: WebviewWindow) -> Result<(), String> {
     let url = office::parse(&address)?;
+    allow_office(&app, &url);
     shell.offices.lock().unwrap().open(url.as_str());
     shell.save()?;
     refresh_menus(&app);
@@ -88,6 +91,54 @@ fn remove_office(url: String, app: AppHandle, shell: State<Shell>) -> Result<Off
     shell.save()?;
     refresh_menus(&app);
     Ok(shell.offices.lock().unwrap().clone())
+}
+
+/// The keyboard layout last given to the page, to give it again only when it changes.
+static LAST_LAYOUT: Mutex<String> = Mutex::new(String::new());
+
+/// Gives the page the keyboard's layout (src/missing-apis.js), on the main thread as macOS wants; `force`
+/// on a page load, which starts the page afresh.
+fn push_layout(app: &AppHandle, force: bool) {
+    if !layout::MEASURED {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(keys) = layout::current() else { return };
+        let Ok(json) = serde_json::to_string(&keys) else { return };
+        let mut last = LAST_LAYOUT.lock().unwrap();
+        if !force && *last == json {
+            return;
+        }
+        if let Some(window) = handle.get_webview_window(MAIN) {
+            let _ = window.eval(format!("window.__hqLayout && window.__hqLayout({json})"));
+        }
+        *last = json;
+    });
+}
+
+/// Shows a system notification for the office page (its Notification is src/missing-apis.js on macOS
+/// and Linux). Allowed to office pages only, by a capability added per office (allow_office).
+#[tauri::command]
+fn notify(title: String, body: String, app: AppHandle, shell: State<Shell>) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    let known = shell.page.lock().unwrap().as_ref().is_some_and(|p| shell.knows(p));
+    if !known {
+        return Err("not an office".into());
+    }
+    let cut = |s: &str, n: usize| s.chars().take(n).collect::<String>();
+    app.notification().builder().title(cut(&title, 120)).body(cut(&body, 400)).show().map_err(|e| e.to_string())
+}
+
+/// Lets one office's pages call notify, and nothing else of the app.
+fn allow_office(app: &AppHandle, office: &Url) {
+    let origin = office.origin().ascii_serialization();
+    let id: String = origin.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let capability = tauri::ipc::CapabilityBuilder::new(format!("office-{id}"))
+        .remote(format!("{origin}/*"))
+        .window(MAIN)
+        .permission("allow-notify");
+    let _ = app.add_capability(capability); // already added for this origin: nothing to do
 }
 
 /// Command-line options: `--office=<url>` opens that office without saving it (a shortcut per office),
@@ -233,14 +284,32 @@ fn sign_in_in_browser(app: &AppHandle, start: &Url, provider: &str) {
     }
 }
 
+/// What the page is told before it loads: that it runs in this app, on which system (the web client adapts
+/// texts that speak of a browser tab), and the web APIs this system's web view lacks (src/missing-apis.js;
+/// WebView2 has them all).
+fn page_script() -> String {
+    let os = if cfg!(target_os = "macos") { "macos" } else if cfg!(windows) { "windows" } else { "linux" };
+    let flag = format!("Object.defineProperty(window, '__HQ_DESKTOP__', {{ value: Object.freeze({{ os: '{os}' }}) }});
+");
+    if cfg!(windows) {
+        return flag;
+    }
+    let yes = |b: bool| if b { "true" } else { "false" };
+    flag + &include_str!("missing-apis.js").replace("__HQ_IDLE__", yes(idle::MEASURED)).replace("__HQ_LAYOUT__", yes(layout::MEASURED))
+}
+
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
     let signer = app.clone();
-    WebviewWindowBuilder::new(app, MAIN, start)
+    let builder = WebviewWindowBuilder::new(app, MAIN, start);
+    // the window's own menu, on Windows and Linux; a Mac has one menu bar for the app, set in setup
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.menu(window_menu(app)?);
+    builder
+        .initialization_script(page_script())
         .title("Home Quarters")
         .inner_size(1280.0, 800.0)
         .min_inner_size(640.0, 400.0)
-        .menu(window_menu(app)?)
         .data_directory(data)
         .on_navigation(move |url| {
             // an office's sign-in button: the provider's page opens in the browser, never here
@@ -256,13 +325,12 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
         })
         // The page the window shows, for the permission handler. A page load concerns the window's page
         // only, where a navigation may be a frame's (on a Mac).
-        .on_page_load(|window, payload| {
-            if payload.event() == PageLoadEvent::Started {
-                *window.state::<Shell>().page.lock().unwrap() = Some(payload.url().clone());
-            }
+        .on_page_load(|window, payload| match payload.event() {
+            PageLoadEvent::Started => *window.state::<Shell>().page.lock().unwrap() = Some(payload.url().clone()),
+            PageLoadEvent::Finished => push_layout(window.app_handle(), true),
         })
-        // Camera, microphone and screen go to the offices this app opens, and to no other page. The
-        // office still asks for consent itself, and the system for its own permission.
+        // Camera, microphone, screen, notifications and idle detection go to the offices this app opens, and
+        // to no other page. The office still asks for consent itself, and the system for its own permission.
         .on_permission_request({
             let app = app.clone();
             move |_, kind| {
@@ -270,7 +338,11 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
                 let known = shell.page.lock().unwrap().as_ref().is_some_and(|p| shell.knows(p));
                 match (kind, known) {
                     (_, false) => PermissionResponse::Deny,
-                    (PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::DisplayCapture, true) => PermissionResponse::Allow,
+                    // what the office asks for itself, behind its own settings and consent; idle detection is
+                    // "other" to WebView2
+                    (PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::DisplayCapture | PermissionKind::Notifications | PermissionKind::Other, true) => {
+                        PermissionResponse::Allow
+                    }
                     (_, true) => PermissionResponse::Default,
                 }
             }
@@ -372,7 +444,8 @@ fn on_menu(app: &AppHandle, id: &str) {
 
 fn main() {
     let args = args();
-    let mut builder = tauri::Builder::default();
+    // on a Mac, the menu bar is set once the offices are loaded (setup); not Tauri's default one meanwhile
+    let mut builder = tauri::Builder::default().enable_macos_default_menu(false);
     // Launching the app again (Start menu, a shortcut) brings back the window hidden in the tray. Only for
     // the default profile: one started with its own --data-dir (another profile, a test) runs alongside.
     if args.data_dir.is_none() {
@@ -384,7 +457,8 @@ fn main() {
     }
     builder
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![list_offices, open_office, remove_office])
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![list_offices, open_office, remove_office, notify])
         .setup(move |app| {
             let dir = match &args.data_dir {
                 Some(d) => d.clone(),
@@ -407,10 +481,29 @@ fn main() {
                 _ => None,
             };
             app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office, page: Mutex::new(page) });
+            let offices = app.state::<Shell>().offices.lock().unwrap().list.clone();
+            for o in offices.iter().filter_map(|o| Url::parse(&o.url).ok()).chain(app.state::<Shell>().cli_office.clone()) {
+                allow_office(app.handle(), &o);
+            }
             open_window(app.handle(), start, dir.join("webview"))?;
+            // src/missing-apis.js gets the system's idle time every few seconds, and the keyboard layout
+            // when it changes (another input source)
+            if idle::MEASURED || layout::MEASURED {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    if let (Some(window), Some(s)) = (handle.get_webview_window(MAIN), idle::seconds()) {
+                        let _ = window.eval(format!("window.__hqIdle && window.__hqIdle({})", s.floor()));
+                    }
+                    push_layout(&handle, false);
+                });
+            }
             // the tray brings a hidden window back on Windows and Linux; on a Mac the Dock does
             #[cfg(not(target_os = "macos"))]
             tray(app.handle())?;
+            // a Mac's menu bar: ours replaces Tauri's default one (File, Edit, View, Window, Help)
+            #[cfg(target_os = "macos")]
+            app.set_menu(window_menu(app.handle())?)?;
             Ok(())
         })
         .on_window_event(|window, event| {
