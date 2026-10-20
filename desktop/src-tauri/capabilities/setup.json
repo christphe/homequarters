@@ -3,5 +3,6 @@
   "identifier": "setup",
   "description": "The bundled setup page only. The office itself is a remote page and gets no access to the shell.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "local": true,
+  "permissions": ["core:default", "allow-list-offices", "allow-open-office", "allow-remove-office"]
 }
