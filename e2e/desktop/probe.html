@@ -46,7 +46,7 @@ function srcdocFrame() {
 }
 
 (async () => {
-  const r = { ua: navigator.userAgent, secure: isSecureContext };
+  const r = { ua: navigator.userAgent, secure: isSecureContext, app: window.__HQ_DESKTOP__?.os ?? null };
   try { r.srcdocFrame = await srcdocFrame(); } catch (e) { r.srcdocFrame = false; }
   r.RTCPeerConnection = typeof RTCPeerConnection;
   r.getUserMedia = typeof navigator.mediaDevices?.getUserMedia;

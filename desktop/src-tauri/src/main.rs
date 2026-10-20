@@ -259,20 +259,24 @@ fn sign_in_in_browser(app: &AppHandle, start: &Url, provider: &str) {
     }
 }
 
-/// The web APIs the office's client needs and this system's web view lacks (src/missing-apis.js). WebView2
-/// has them all.
-fn missing_apis() -> String {
+/// What the page is told before it loads: that it runs in this app, on which system (the web client adapts
+/// texts that speak of a browser tab), and the web APIs this system's web view lacks (src/missing-apis.js;
+/// WebView2 has them all).
+fn page_script() -> String {
+    let os = if cfg!(target_os = "macos") { "macos" } else if cfg!(windows) { "windows" } else { "linux" };
+    let flag = format!("Object.defineProperty(window, '__HQ_DESKTOP__', {{ value: Object.freeze({{ os: '{os}' }}) }});
+");
     if cfg!(windows) {
-        return String::new();
+        return flag;
     }
-    include_str!("missing-apis.js").replace("__HQ_IDLE__", if idle::MEASURED { "true" } else { "false" })
+    flag + &include_str!("missing-apis.js").replace("__HQ_IDLE__", if idle::MEASURED { "true" } else { "false" })
 }
 
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
     let signer = app.clone();
     WebviewWindowBuilder::new(app, MAIN, start)
-        .initialization_script(missing_apis())
+        .initialization_script(page_script())
         .title("Home Quarters")
         .inner_size(1280.0, 800.0)
         .min_inner_size(640.0, 400.0)

@@ -48,6 +48,7 @@ console.log(JSON.stringify(report ?? { error: exited === null ? "the page never 
 fs.writeFileSync(path.join(outDir, "probe.json"), JSON.stringify(report, null, 1));
 if (!report) process.exit(1);
 if (report.ipcFromPage !== "refused") { console.log("FAIL the office page can call the shell"); process.exit(1); }
+if (!report.app) { console.log("FAIL the page is not told it runs in the desktop app"); process.exit(1); }
 if (report.srcdocFrame !== true) { console.log("FAIL a sandboxed srcdoc frame (a plugin's) did not run"); process.exit(1); }
 if (process.env.REQUIRE_WEBRTC === "1" && !report.webrtcMedia) { console.log("FAIL no WebRTC media in this webview"); process.exit(1); }
 // REQUIRE_APIS=idle,notify: the APIs this system's app must give the office (natively or from the app)
