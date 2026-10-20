@@ -46,6 +46,29 @@ export async function run(ctx) {
     await click(b, "Follow Admin", ".more-menu button");
     await waitFor(async () => { const p = await pos(b), q = await pos(a); return Math.hypot(p.x - q.x, p.y - q.y) < 33; }, { timeout: 25000, what: "follower reaches leader" });
     check("Follow walks to the leader at server speed, around objects", true);
+    // the leader double-clicks the map and runs there: the follower runs too and keeps close
+    // across the reception (it used to walk and fall behind by half the run)
+    // every frame for 3 s: on the follower's page its gap to the leader and whether it predicts a run,
+    // on the leader's page whether the follower is drawn running
+    const watch = (u, other) => read(u, (other) => new Promise((resolve) => {
+      let widest = 0, fast = false, seenRun = false;
+      const t0 = performance.now();
+      const tick = (now) => {
+        const v = window.__hq.view, me = v.position(), e = v.ents.get(other);
+        if (e) widest = Math.max(widest, Math.hypot(me.x - e.x, me.y - e.y));
+        fast ||= v.fast;
+        seenRun ||= !!e?.run;
+        if (now - t0 < 3000) requestAnimationFrame(tick);
+        else resolve({ widest, fast, seenRun });
+      };
+      requestAnimationFrame(tick);
+    }), other);
+    const [onB, onA] = [watch(b, a.id), watch(a, b.id)];
+    const lto = await read(a, () => window.__hq.view.pageOf(16 * 16 + 8, 10 * 16 + 8));
+    await a.page.mouse.click(lto.x, lto.y, { count: 2 });
+    const [fb, fa] = await Promise.all([onB, onA]);
+    check("following a leader who double-clicks the map, the follower runs with them and keeps close", fb.widest < 80 && fb.fast && fa.seenRun, `widest gap ${fb.widest.toFixed(1)} px, own page runs ${fb.fast}, the leader sees it run ${fa.seenRun}`);
+    await waitFor(async () => { const p = await pos(b), q = await pos(a); return Math.hypot(p.x - q.x, p.y - q.y) < 33; }, { timeout: 5000, what: "follower next to the leader after the run" });
     await click(b, "Stop following");
     await waitFor(() => read(b, () => !window.__hq.state.following), { what: "follow stops" });
 

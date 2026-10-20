@@ -116,6 +116,80 @@ func TestFollowWalksAroundWallsAndStopsOnInput(t *testing.T) {
 	}
 }
 
+func TestFollowerKeepsTheLeadersPace(t *testing.T) {
+	h := newHarness(t)
+	leader := h.add(1, "member", 9*16+8, 20*16+8) // social area
+	f := h.add(2, "member", 9*16+8-followGap, 20*16+8)
+	h.send(f, ev{kind: evFollow, id: 1})
+	h.run(time.Second)
+	drain(f)
+	// the leader double-clicks the reception, behind a wall: a walk-to runs
+	h.send(leader, ev{kind: evGoto, x: 9, y: 6})
+	// at the start the follower stops a tick while still within followGap: stops count once under way
+	worst, ran, selfRun, stalls := 0.0, false, false, 0
+	step := time.Second / time.Duration(h.w.cfg.TickHz)
+	for e := time.Duration(0); e < 9*time.Second && leader.destOn; e += step {
+		h.run(step)
+		if d := dist(f.X, f.Y, leader.X, leader.Y); d > worst {
+			worst = d
+		}
+		if e >= 500*time.Millisecond && f.Dx == 0 && f.Dy == 0 && leader.destOn {
+			stalls++
+		}
+		ran = ran || (f.Dx != 0 || f.Dy != 0) && f.rec().d&(1<<6) != 0
+		selfRun = selfRun || strings.Contains(frames(f), `"r":true`)
+	}
+	if leader.destOn {
+		t.Fatal("the leader must arrive")
+	}
+	if worst > followGap+24 || stalls > 0 {
+		t.Fatalf("the follower must keep up with a running leader: the gap reached %.1f px, %d stops on the way", worst, stalls)
+	}
+	if !ran || !selfRun {
+		t.Fatalf("a follower of a runner runs, for others (run bit %v) and for its own client (self r %v)", ran, selfRun)
+	}
+	h.run(time.Second)
+	if d := dist(f.X, f.Y, leader.X, leader.Y); d > followGap+6 {
+		t.Fatalf("the follower must be next to the leader once they stop, distance %.1f", d)
+	}
+	// the leader walks on: the follower walks too
+	h.send(leader, ev{kind: evInput, seq: 1, dx: 1})
+	h.run(300 * time.Millisecond)
+	if f.running() {
+		t.Fatal("a follower of a walker walks")
+	}
+	// following a runner, a key press takes back control at the follower's own pace
+	h.send(leader, ev{kind: evGoto, x: 9, y: 20})
+	h.run(500 * time.Millisecond)
+	if !f.running() {
+		t.Fatal("the follower runs after the leader again")
+	}
+	drain(f)
+	h.send(f, ev{kind: evInput, seq: 1, dx: 1})
+	if f.follow != 0 || f.running() || f.rec().d&(1<<6) != 0 {
+		t.Fatal("moving on your own ends following and its run")
+	}
+}
+
+func TestTwoPeopleFollowingEachOtherDoNotKeepARunnersPace(t *testing.T) {
+	h := newHarness(t)
+	c := h.add(1, "member", 9*16+8, 20*16+8)
+	a := h.add(2, "member", 9*16+8-followGap, 20*16+8)
+	b := h.add(3, "member", 9*16+8-2*followGap, 20*16+8)
+	h.send(c, ev{kind: evInput, seq: 1, dx: 1, b: true})
+	h.send(a, ev{kind: evFollow, id: 1})
+	h.send(b, ev{kind: evFollow, id: 2})
+	h.run(time.Second)
+	if !a.running() || !b.running() {
+		t.Fatal("a chain behind a runner runs")
+	}
+	h.send(a, ev{kind: evFollow, id: 3}) // a and b now follow each other
+	h.run(2 * time.Second)
+	if a.running() || b.running() {
+		t.Fatalf("with nobody running, followers walk (a %v, b %v)", a.running(), b.running())
+	}
+}
+
 func TestFollowStopsWhenTheLeaderLeavesAndIsBounded(t *testing.T) {
 	h := newHarness(t)
 	leader := h.add(1, "member", sx, sy)
