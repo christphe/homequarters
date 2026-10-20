@@ -120,7 +120,7 @@ func (in *instance) install() error {
 		"__tw_now":       func([]any) (any, error) { return time.Since(in.started).Seconds(), nil },
 		"__tw_expose":    in.jsExpose,
 		"__tw_call":      in.jsCall,
-		"__tw_running":   func(a []any) (any, error) { name, _ := a[0].(string); return in.h.Running(name), nil },
+		"__tw_running":   func(a []any) (any, error) { name, _ := argString(a, 0); return in.h.Running(name), nil },
 		"__tw_settings": func([]any) (any, error) {
 			b, err := json.Marshal(in.h.Settings(in.info.Name))
 			return string(b), err

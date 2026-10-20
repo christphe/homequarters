@@ -164,10 +164,10 @@ export function load() {
 // out the guest pets of a plugin that is off, so they take no place until it runs again.
 const pluginWatcher = `
 export function onJoin() { hq.broadcast({ at: "join", pets: hq.plugins.running("pets") }); }
-export function onPlugins() { hq.broadcast({ at: "change", pets: hq.plugins.running("pets"), me: hq.plugins.running("watch") }); }`
+export function onPlugins() { hq.broadcast({ at: "change", pets: hq.plugins.running("pets"), spin: hq.plugins.running("spin"), me: hq.plugins.running("watch") }); }`
 
 func TestAPluginSeesOthersStartAndStop(t *testing.T) {
-	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "watch": pluginWatcher})
+	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "watch": pluginWatcher, "spin": "export function onMessage() { while (true) {} }"})
 	h.Presence(alice, true)
 	if err := h.Start("watch"); err != nil {
 		t.Fatal(err)
@@ -194,4 +194,23 @@ func TestAPluginSeesOthersStartAndStop(t *testing.T) {
 	if got := h.Running("pets"); got {
 		t.Fatal("pets stopped")
 	}
+	// a crash is a stop too
+	if err := h.Start("spin"); err != nil {
+		t.Fatal(err)
+	}
+	spin := func(on bool) {
+		t.Helper()
+		eventually(t, "spin seen "+map[bool]string{true: "on", false: "off"}[on], func() bool {
+			ds := sink.data(0)
+			for i := len(ds) - 1; i >= 0; i-- {
+				if ds[i]["at"] == "change" {
+					return ds[i]["spin"] == on
+				}
+			}
+			return false
+		})
+	}
+	spin(true)
+	h.Message(alice, "spin", []byte(`{}`))
+	spin(false)
 }

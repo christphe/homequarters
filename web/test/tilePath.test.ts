@@ -46,3 +46,12 @@ test("asked to, it goes as close as it can to a target it cannot reach (off the 
   assert.ok(Math.hypot(last.x - (8 * T + 8), last.y - (1 * T + 8)) <= 2 * T, `next to the walled-in target: ${JSON.stringify(last)}`);
   assert.equal(findPath(0 * T + 8, 2 * T + 8, -100, 2 * T + 8, walkable, 4096, true), null, "already as close as it gets: it stays");
 });
+
+test("asked to, a search that runs out of tiles still heads toward the target", () => {
+  const big = (tx: number, ty: number) => Math.abs(tx) < 1000 && Math.abs(ty) < 1000 && !(tx === 5 && ty !== 990);
+  const p = findPath(0, 0, 900 * T, 900 * T, big, 16, true);
+  assert.ok(p && p.length >= 1, "a partial walk");
+  const end = p![p!.length - 1];
+  assert.ok(Math.hypot(end.x - 900 * T, end.y - 900 * T) < Math.hypot(900 * T, 900 * T), `closer than the start: ${JSON.stringify(end)}`);
+  for (const q of p!) assert.ok(big(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
+});
