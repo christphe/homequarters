@@ -913,8 +913,9 @@ func (p *Player) rec() posRec {
 // guided reports whether the server is steering the player (follow or "walk to").
 func (p *Player) guided() bool { return p.follow != 0 || p.destOn }
 
-// running reports whether the player moves at run speed. A "walk to" always runs.
-func (p *Player) running() bool { return p.run || p.destOn }
+// running reports whether the player moves at run speed. A "walk to" always runs, and a follower
+// keeps its leader's pace.
+func (p *Player) running() bool { return p.run || p.destOn || p.fpace }
 
 func (w *World) speedOf(p *Player) float64 {
 	if p.running() && w.cfg.RunMul > 1 {

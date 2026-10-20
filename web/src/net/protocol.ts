@@ -128,7 +128,7 @@ export interface WaveResult { t: "wvr"; id: number; st: "ok" | "wait" | "offline
 export interface AreaCounts { t: "ac"; c: number[] }
 export interface Announcement { t: "ann"; n: string; x: string }
 export interface OfficeName { t: "office"; n: string }
-export interface SelfPosition { t: "self"; x: number; y: number; dx: number; dy: number; d: number; tp: boolean }
+export interface SelfPosition { t: "self"; x: number; y: number; dx: number; dy: number; d: number; r: boolean; tp: boolean } // r: the server moves me at run speed
 export interface LeadRequest { t: "lreq"; from: number; n: string }
 export interface DoorState { t: "deny"; d: number[]; lk: number[] }
 export interface Knock { t: "knk"; id: number; n?: string; a?: string; done?: boolean }

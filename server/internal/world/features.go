@@ -108,6 +108,8 @@ func (w *World) sendSelf(p *Player, teleport bool) {
 	b = strconv.AppendInt(b, int64(p.Dy), 10)
 	b = append(b, `,"d":`...)
 	b = strconv.AppendInt(b, int64(p.dir), 10)
+	b = append(b, `,"r":`...)
+	b = strconv.AppendBool(b, p.running())
 	b = append(b, `,"tp":`...)
 	b = strconv.AppendBool(b, teleport)
 	b = append(b, '}')
@@ -141,7 +143,7 @@ func (w *World) stopFollow(p *Player, now time.Time, notify, halt bool) {
 	}
 	wasRunning := p.running()
 	w.advance(p, now)
-	p.follow, p.fpath, p.destOn, p.destID = 0, nil, false, 0
+	p.follow, p.fpath, p.destOn, p.destID, p.fpace = 0, nil, false, 0, false
 	delete(w.followers, p)
 	if halt && (p.Dx != 0 || p.Dy != 0) {
 		w.setDrive(p, 0, 0, now)
@@ -312,12 +314,26 @@ func (w *World) driveFollowers(now time.Time) {
 				w.stopFollow(p, now, true, true)
 				continue
 			}
+			// read the leader where it is now, whichever of the two this loop reaches first (a no-op when
+			// already advanced; the tick's own advance of it then is one too)
+			w.advance(q, now)
+			// a leader standing still sets no pace: two people following each other would keep the run forever
+			if r := q.running() && (q.Dx != 0 || q.Dy != 0); r != p.fpace { // advanced above at the old pace
+				p.fpace = r
+				if p.Dx != 0 || p.Dy != 0 {
+					p.shadowAt = now
+					w.sendState(p, now) // the speed changed under a direction clients already extrapolate
+				}
+			}
 			if dist(p.X, p.Y, q.X, q.Y) <= followGap {
 				w.setDrive(p, 0, 0, now)
 				continue
 			}
 			goal := tileOf(q.X, q.Y)
-			if !now.Before(p.fcalc) { // the leader moves: search again, but at most every pathEvery
+			// the leader moves: search again, at most every pathEvery, or when the follower is about to reach
+			// the end of a path it has (stopping there a tick would let a runner pull away; a leader it cannot
+			// reach keeps the pathEvery limit)
+			if !now.Before(p.fcalc) || ((len(p.fpath) == 1 || cur == p.fgoal) && goal != p.fgoal) {
 				p.fpath = w.findPath(p, cur, goal)
 				p.fgoal = goal
 				p.fcalc = now.Add(pathEvery)
@@ -527,7 +543,7 @@ func (w *World) teleportTo(p *Player, x, y float64, portalTile int, now time.Tim
 // dropSocial releases everything a player holds in the social features when they leave the world.
 func (w *World) dropSocial(p *Player) {
 	delete(w.followers, p)
-	p.follow, p.fpath = 0, nil
+	p.follow, p.fpath, p.fpace = 0, nil, false
 	delete(w.knocks, p.ID)
 	w.closeBoard(p)
 	delete(w.onSpotSet, p)

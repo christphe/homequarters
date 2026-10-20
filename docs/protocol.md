@@ -55,7 +55,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `ann` | `n` sender name, `x` text | an administrator's announcement banner (one line, at most 280 characters, never stored) |
 | `office` | `n` name | an administrator renamed the office; later `hello`s carry the new name |
 | `go` | `ok`, `x`, `y`, `near` | a walk-to was accepted (the server now steers you, `self` carries the positions) or refused (`ok: false`: no path, nobody there); `near: true` means the person is behind a door you may not open and the run stops at it; its end arrives as `fol` with `id` 0 |
-| `self` | `x`, `y`, `dx`, `dy`, `d`, `tp` | your authoritative position while following or walking to a place, once more where a guided walk stops, and after a portal (`tp`); between two of them the client runs your avatar on along `dx`/`dy` and blends the gap to each new one in, except after a portal |
+| `self` | `x`, `y`, `dx`, `dy`, `d`, `r`, `tp` | your authoritative position while following or walking to a place, once more where a guided walk stops, and after a portal (`tp`); `r` is true while the server moves you at run speed (a walk-to always runs; a follower runs while the person it follows runs); between two of them the client runs your avatar on along `dx`/`dy` at that pace and blends the gap to each new one in, except after a portal |
 | `lreq` | `from`, `n` | somebody asks you to follow them |
 | `deny` | `d` denied areas, `lk` locked rooms | your blocked-area list (locks change it for everyone) |
 | `knk` | `id`, `n`, `a` | somebody knocks on the room you are in (`done` dismisses) |

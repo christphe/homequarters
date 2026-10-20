@@ -160,6 +160,7 @@ type Player struct {
 	fpath     []tile    // remaining tiles to the followed player
 	fgoal     tile      // tile of the followed player when fpath was computed
 	fcalc     time.Time // do not recompute the path before this time
+	fpace     bool      // following a runner: run too, so the gap does not grow
 	destOn    bool      // a "walk to" is in progress (guided walk towards dest)
 	dest      tile      // target tile of the walk
 	destGap   float64   // stop this close to the target (0 = on the tile)
