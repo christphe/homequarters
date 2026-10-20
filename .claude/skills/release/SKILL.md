@@ -38,6 +38,8 @@ For each product:
 
 A change that spans both (say, a server route the desktop app uses) has an entry in each changelog, each saying what it does for that product. The desktop entry names the server version it needs ("needs server 0.4.0 or later").
 
+What the web client does ships with the **server**, even when only the desktop app shows it: the app loads the client from the office's server. Texts the client adapts for the app, or an API it uses that the app provides, are server entries; only what `desktop/` itself does is a desktop entry.
+
 ## 2. Write the entries
 
 Write one `fchange` call per change people notice, not per commit:
@@ -102,7 +104,7 @@ Read `notes.md` before publishing: the headings must be `### Added`, `### Fixed`
 Tell the user:
 
 - the product and the version;
-- the release URL;
+- the release URL, and the product's list of releases: `https://github.com/christphe/homequarters/releases?q=server-v&expanded=true` or `?q=desktop-v&expanded=true` (GitHub has no labels on releases; the tag prefix and the title tell the products apart);
 - for the server, the image tag and whether the Docker workflow started (`gh run list --repo christphe/homequarters --workflow docker.yml --limit 1`);
 - for the desktop app, whether the Desktop workflow started, and later whether the installer and the `.dmg` are attached (`gh release view <tag> --repo christphe/homequarters --json assets`).
 

@@ -5,6 +5,7 @@ The server and its web client (server/, web/, the Docker image), released as ser
 ## [Unreleased] - patch
 
 ### Fixed
+- In the desktop app, texts speak of the app and its window rather than of a browser tab, and screen-sharing advice names the app (#27)
 - A follower keeps the pace of the person it follows: it runs when they run (a double-click on the map, Shift) instead of falling behind (#28)
 
 ## [0.3.1] - 2026-10-20
