@@ -74,6 +74,9 @@ type Server struct {
 	providers map[string]*auth.Provider
 	fake      *auth.Fake
 	sealer    *auth.Sealer // signs the cookies of sign-ins in progress
+	// sign-ins made in a browser for the desktop app (handoff.go), and how long its window waits per ask
+	handoffs    handoffs
+	handoffWait time.Duration
 }
 
 type chatSave struct {
@@ -102,6 +105,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.St
 	s := &Server{cfg: cfg, log: log, st: st, media: md, ctx: ctx, worlds: map[int64]*world.World{},
 		posQ: make(chan posSave, 1024), chatQ: make(chan chatSave, 256), boardQ: make(chan boardSave, 64), joinLim: newLimiter(float64(cfg.JoinRate), float64(cfg.JoinRate)*2), mapLim: newLimiter(1, 5), profLim: newLimiter(0.5, 5), adminLim: newLimiter(5, 20), annLim: newLimiter(1.0/15, 2), renameLim: newLimiter(1.0/10, 3)}
 	s.version = resolveVersion(cfg.Version, cfg.StaticDir)
+	s.handoffWait = 25 * time.Second
 	if cfg.AuthEnabled() {
 		s.setupAuth()
 	}

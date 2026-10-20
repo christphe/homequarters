@@ -49,6 +49,7 @@ type flow struct {
 	Invite      string `json:"i,omitempty"`
 	Hint        string `json:"h,omitempty"`
 	LinkUser    int64  `json:"l,omitempty"` // a member without identity who is linking one
+	Handoff     string `json:"o,omitempty"` // made for the desktop app: the hash its window waits on (handoff.go)
 }
 
 // signup is a new identity that was admitted and has yet to pick a name.
@@ -103,6 +104,7 @@ func (s *Server) authRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/{provider}/start", s.authStart)
 	mux.HandleFunc("POST /api/signout", s.signOut)
 	mux.HandleFunc("GET /auth/{provider}/callback", s.authCallback)
+	mux.HandleFunc("GET /auth/{provider}/handoff/{secret}", s.redeemHandoff)
 	if s.fake != nil {
 		limited := func(h http.HandlerFunc) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +193,10 @@ func (s *Server) authStart(w http.ResponseWriter, r *http.Request) {
 	if hint := q.Get("login_hint"); len(hint) <= 254 && strings.Contains(hint, "@") {
 		f.Hint = hint
 	}
-	if se, err := s.rawSession(r); err == nil {
+	if h := q.Get("handoff"); handoffLike(h) {
+		// for the desktop app: this browser's own session (or lack of one) has nothing to do with it
+		f.Handoff = h
+	} else if se, err := s.rawSession(r); err == nil {
 		if se.Linked {
 			authDone(w, r, "", nil)
 			return
@@ -233,8 +238,16 @@ func (s *Server) authCallback(w http.ResponseWriter, r *http.Request) {
 		authDone(w, r, "failed", nil)
 		return
 	}
+	// a sign-in made for the desktop app ends in the app, not in this browser
+	done := func(code string) {
+		if f.Handoff != "" {
+			s.handOff(w, &f, handoff{code: code})
+			return
+		}
+		authDone(w, r, code, &f)
+	}
 	if q.Get("error") != "" {
-		authDone(w, r, "cancelled", &f)
+		done("cancelled")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -242,19 +255,19 @@ func (s *Server) authCallback(w http.ResponseWriter, r *http.Request) {
 	claims, err := p.Exchange(ctx, q.Get("code"), f.RedirectURI, f.Verifier, f.Nonce)
 	if err != nil {
 		s.log.Warn("sign-in failed", "provider", p.Name, "err", err) // our own wording: no code, token or address
-		authDone(w, r, "failed", &f)
+		done("failed")
 		return
 	}
 	office, err := s.st.OfficeBySlug(ctx, s.cfg.OfficeSlug)
 	if err != nil {
-		authDone(w, r, "failed", &f)
+		done("failed")
 		return
 	}
 	id := store.Identity{Provider: p.Name, Subject: claims.Subject, Email: claims.Email}
 	uid, err := s.st.UserByIdentity(ctx, office.ID, id.Provider, id.Subject)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.log.Error("identity lookup", "err", err)
-		authDone(w, r, "failed", &f)
+		done("failed")
 		return
 	}
 	found := err == nil
@@ -269,7 +282,7 @@ func (s *Server) authCallback(w http.ResponseWriter, r *http.Request) {
 			authDone(w, r, "taken", &f)
 			return
 		case err != nil: // includes a membership removed while signing in
-			authDone(w, r, "failed", &f)
+			done("failed")
 			return
 		}
 		s.audit(r, &store.Session{UserID: f.LinkUser, OfficeID: office.ID}, "auth.link", f.LinkUser, "", "provider="+p.Name)
@@ -277,10 +290,14 @@ func (s *Server) authCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if found && f.Handoff != "" {
+		s.handOff(w, &f, handoff{user: uid, office: office.ID, provider: p.Name}) // the session is made when the app asks
+		return
+	}
 	if found {
 		tok, err := s.st.CreateSession(ctx, uid, office.ID, s.cfg.SessionTTL)
 		if err != nil {
-			authDone(w, r, "failed", &f)
+			done("failed")
 			return
 		}
 		s.setCookie(w, tok)
@@ -298,12 +315,16 @@ func (s *Server) authCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if !su.DomainOK && su.Invite == "" {
 		f.Invite = "" // it did not admit them: showing it again would contradict the refusal
-		authDone(w, r, "denied", &f)
+		done("denied")
 		return
 	}
 	sealed, err := s.sealer.Seal("signup", su, signupTTL)
 	if err != nil {
-		authDone(w, r, "failed", &f)
+		done("failed")
+		return
+	}
+	if f.Handoff != "" {
+		s.handOff(w, &f, handoff{signup: sealed}) // the name form shows in the app
 		return
 	}
 	s.authCookie(w, signupCookie, sealed, "/", int(signupTTL.Seconds()))
