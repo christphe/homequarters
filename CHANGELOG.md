@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - minor
+## [0.3.0] - 2026-10-20
 
 ### Added
 - Plugins hear when another plugin starts or stops (the onPlugins export) and can ask whether one runs (hq.plugins.running) (#24)
