@@ -46,6 +46,10 @@ The automated suite runs in Google Chrome, including an emulated phone with an o
 
 Yes, in Chrome and Edge, when the office is served over HTTPS (or from localhost), as for the camera: the install button in the address bar, or the install entry in the browser menu, puts it in its own window, with its own icon in the taskbar or the dock. It is the same web client, so it updates with the server and needs nothing else on the computer.
 
+## Is there a desktop app?
+
+For Windows and macOS, yes: the office in its own window, a list of offices to switch between, and a tray icon (the Dock on a Mac) that keeps you reachable with the window closed. It uses the system's own web view, so it stays small and its engine is patched with the system. On Linux, use the browser. See [Desktop app](desktop.md).
+
 ## Can I change the office map?
 
 Yes. Administrators paint walls, place objects, draw meeting rooms with access rules (open, members, admins or a list) and assign desks and private offices from the built-in editor. Changes go live for everyone and persist. A member who has no desk yet can also take a free one: a "Take this desk" button appears next to it, and "Release desk" gives it back.

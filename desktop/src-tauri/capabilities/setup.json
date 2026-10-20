@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "setup",
+  "description": "The bundled setup page only. The office itself is a remote page and gets no access to the shell.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

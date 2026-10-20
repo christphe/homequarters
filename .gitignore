@@ -13,3 +13,6 @@ bench/mediagen/mediagen
 .claude/worktrees/
 # a developer's own plugins next to the bundled ones (scripts/dev.sh)
 plugins/installed/
+desktop/node_modules
+desktop/src-tauri/target
+desktop/src-tauri/gen

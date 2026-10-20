@@ -14,6 +14,7 @@ import { chime, chimeLog, desktopNotify } from "./notify";
 import { convChange } from "./convChime";
 import { isOutdated, pageVersion } from "./version";
 import { PluginManager } from "./plugins/manager";
+import { DESKTOP_EVENT, onWindowHidden, onWindowShown } from "./desktopWindow";
 
 const AWAY_AFTER_MS = 5 * 60 * 1000;
 
@@ -33,6 +34,8 @@ class Session {
   /** The hand state last asked for while the server has not confirmed it yet (null: follow the server). */
   private handWanted: boolean | null = null;
   private handAskedAt = 0;
+  /** The desktop app's tray set us busy when it hid the window: showing it again makes us available. */
+  private trayBusy = false;
   private cleanup: (() => void)[] = [];
 
   async start(host: HTMLElement) {
@@ -72,6 +75,9 @@ class Session {
     };
     for (const ev of ["keydown", "pointerdown", "pointermove"]) window.addEventListener(ev, act, { passive: true });
     this.cleanup.push(() => ["keydown", "pointerdown", "pointermove"].forEach((ev) => window.removeEventListener(ev, act)));
+    const desktop = (e: Event) => this.desktopWindow((e as CustomEvent).detail);
+    window.addEventListener(DESKTOP_EVENT, desktop);
+    this.cleanup.push(() => window.removeEventListener(DESKTOP_EVENT, desktop));
     this.idleTimer = window.setInterval(() => {
       const st = getState();
       // Being in a conversation, or watching a spotlight, is presence. Only the
@@ -308,6 +314,28 @@ class Session {
       void media.leave();
       setState({ conv: null });
       view.setInConversation(new Set());
+    }
+  }
+
+  /** The desktop app hid its window to the tray ("hidden") or showed it again ("shown"). */
+  private desktopWindow(state: unknown) {
+    if (state === "hidden") {
+      // nobody talks into a window they cannot see: every capture stops, whatever the status
+      for (const m of [media, spotlightMedia]) {
+        void m.setMic(false);
+        void m.setCam(false);
+        void m.setShare(false);
+      }
+      const { status, restore } = onWindowHidden(getState().status);
+      this.trayBusy = restore;
+      if (status) {
+        this.autoAway = false;
+        this.setStatus(status);
+      }
+    } else if (state === "shown") {
+      const next = onWindowShown(getState().status, this.trayBusy);
+      this.trayBusy = false;
+      if (next) this.backToAvailable();
     }
   }
 
