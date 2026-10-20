@@ -45,6 +45,7 @@ To make a release, follow [`.claude/skills/release/SKILL.md`](.claude/skills/rel
 | `web/src/session.ts` | glue between socket, world view, media and store |
 | `e2e/` | real-browser test suite (`run.mjs` + `scenarios/`) and art generation |
 | `bench/`, `server/cmd/loadgen`, `scripts/bench.sh` | benchmarks: scripts, raw results, WebSocket load generator, cost model |
+| `desktop/` | desktop app (Tauri 2, Rust) around the system web view: offices page in `ui/`, shell in `src-tauri/` ([`docs/desktop.md`](docs/desktop.md)); `e2e/desktop/` probes its web view |
 | `deploy/` | Dockerfile, Compose (local and production), Caddyfile, production README |
 | `site/` | landing page and docs generator (GitHub Pages) |
 | `docs/` | documentation sources (`docs/decisions/` holds ADRs) |
