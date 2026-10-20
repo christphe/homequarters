@@ -20,10 +20,10 @@ const prelude = `
   var h = {
     send: __tw_send, broadcast: __tw_broadcast, players: __tw_players, get: __tw_kv_get, set: __tw_kv_set,
     del: __tw_kv_delete, route: __tw_route, log: __tw_log, now: __tw_now, settings: __tw_settings,
-    expose: __tw_expose, call: __tw_call,
+    expose: __tw_expose, call: __tw_call, running: __tw_running,
   };
   ["__tw_send", "__tw_broadcast", "__tw_players", "__tw_kv_get", "__tw_kv_set", "__tw_kv_delete", "__tw_route", "__tw_log", "__tw_now", "__tw_settings",
-   "__tw_expose", "__tw_call"]
+   "__tw_expose", "__tw_call", "__tw_running"]
     .forEach(function (k) { delete globalThis[k]; });
   var json = function (v) { var s = JSON.stringify(v === undefined ? null : v); return s === undefined ? "null" : s; };
   var routes = [], hooks = {}, pending = {}, hookReply = "";
@@ -55,6 +55,7 @@ const prelude = `
         var id = h.call(String(plugin), String(hook), json(args));
         return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
       },
+      running: function (plugin) { return h.running(String(plugin)); },
     }),
   });
   globalThis.console = Object.freeze({ log: log, info: log, warn: log, error: log });
@@ -119,6 +120,7 @@ func (in *instance) install() error {
 		"__tw_now":       func([]any) (any, error) { return time.Since(in.started).Seconds(), nil },
 		"__tw_expose":    in.jsExpose,
 		"__tw_call":      in.jsCall,
+		"__tw_running":   func(a []any) (any, error) { name, _ := a[0].(string); return in.h.Running(name), nil },
 		"__tw_settings": func([]any) (any, error) {
 			b, err := json.Marshal(in.h.Settings(in.info.Name))
 			return string(b), err

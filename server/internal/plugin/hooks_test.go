@@ -159,3 +159,39 @@ export function load() {
 		t.Fatalf("route: %v %d %s", err, resp.Status, resp.Body)
 	}
 }
+
+// A plugin learns when another one starts or stops (onPlugins) and asks whether it runs: hq-pets leaves
+// out the guest pets of a plugin that is off, so they take no place until it runs again.
+const pluginWatcher = `
+export function onJoin() { hq.broadcast({ at: "join", pets: hq.plugins.running("pets") }); }
+export function onPlugins() { hq.broadcast({ at: "change", pets: hq.plugins.running("pets"), me: hq.plugins.running("watch") }); }`
+
+func TestAPluginSeesOthersStartAndStop(t *testing.T) {
+	h, sink, _ := newHost(t, map[string]string{"pets": hookCallee, "watch": pluginWatcher})
+	h.Presence(alice, true)
+	if err := h.Start("watch"); err != nil {
+		t.Fatal(err)
+	}
+	seen := func(at string, pets bool) {
+		t.Helper()
+		eventually(t, at+" with pets "+map[bool]string{true: "on", false: "off"}[pets], func() bool {
+			ds := sink.data(0)
+			for i := len(ds) - 1; i >= 0; i-- {
+				if ds[i]["at"] == at {
+					return ds[i]["pets"] == pets && (at == "join" || ds[i]["me"] == true)
+				}
+			}
+			return false
+		})
+	}
+	seen("join", false)
+	if err := h.Start("pets"); err != nil {
+		t.Fatal(err)
+	}
+	seen("change", true)
+	h.Stop("pets")
+	seen("change", false)
+	if got := h.Running("pets"); got {
+		t.Fatal("pets stopped")
+	}
+}
