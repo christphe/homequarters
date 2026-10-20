@@ -3,13 +3,24 @@ name: Desktop
 # The desktop app (desktop/) on the three systems: build it, then run it on e2e/desktop/probe.html, which
 # reads what its webview can do and makes a WebRTC call inside the page. The builds are unsigned.
 # On a desktop release tag (desktop-vX.Y.Z), the Windows and macOS builds carry that version and go to its
-# GitHub release (Linux uses the browser: docs/desktop.md).
+# GitHub release (Linux uses the browser: docs/desktop.md). Run by hand with a tag, it builds that release
+# again and attaches its files, for when a runner never came (GitHub's macOS runners sometimes do not):
+#   gh workflow run desktop.yml -f tag=desktop-v0.3.2 [-f macos=macos-15]
 on:
   pull_request:
     paths: ["desktop/**", "e2e/desktop/**", ".github/workflows/desktop.yml"]
   push:
     tags: ["desktop-v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "A desktop release tag to build again and attach to (desktop-vX.Y.Z); empty: just build"
+        default: ""
+      macos:
+        description: "The macOS runner (another one when macos-latest is never assigned)"
+        type: choice
+        options: [macos-latest, macos-15, macos-14]
+        default: macos-latest
 
 permissions:
   contents: read
@@ -28,7 +39,7 @@ jobs:
             release: desktop/src-tauri/target/release/bundle/nsis/*.exe
           # the in-page call needs WebKit's mDNS host names resolved, which the hosted runner does not do
           # ("ICE timed out"); the APIs are still read and media is checked on a real Mac
-          - os: macos-latest
+          - os: ${{ inputs.macos || 'macos-latest' }}
             bundles: app,dmg
             bin: "desktop/src-tauri/target/release/bundle/macos/Home Quarters.app/Contents/MacOS/homequarters-desktop"
             webrtc: "0"
@@ -45,8 +56,13 @@ jobs:
     permissions:
       contents: write # to attach the builds to a tag's release
     timeout-minutes: 40
+    env:
+      # the release this run builds for: the pushed tag, or the one given by hand; empty otherwise
+      TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -69,9 +85,9 @@ jobs:
         shell: bash
         working-directory: desktop
         run: |
-          # a tag builds that version (desktop-v0.3.2 -> 0.3.2); otherwise the version in tauri.conf.json
+          # a release builds its version (desktop-v0.3.2 -> 0.3.2); otherwise the version in tauri.conf.json
           version=()
-          [ "$GITHUB_REF_TYPE" = tag ] && version=(--config "{\"version\":\"${GITHUB_REF_NAME#desktop-v}\"}")
+          [ -n "$TAG" ] && version=(--config "{\"version\":\"${TAG#desktop-v}\"}")
           pnpm tauri build --bundles ${{ matrix.bundles }} "${version[@]}"
       - name: Probe the webview
         shell: bash
@@ -98,11 +114,11 @@ jobs:
             desktop/src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: ignore
       - name: Attach to the release
-        if: github.ref_type == 'tag' && matrix.release != ''
+        if: env.TAG != '' && matrix.release != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # the release is published by the release steps (.claude/skills/release), maybe after the tag
-          for i in $(seq 1 60); do gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break; sleep 30; done
-          gh release upload "$GITHUB_REF_NAME" ${{ matrix.release }} --clobber
+          for i in $(seq 1 60); do gh release view "$TAG" >/dev/null 2>&1 && break; sleep 30; done
+          gh release upload "$TAG" ${{ matrix.release }} --clobber
