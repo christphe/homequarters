@@ -28,6 +28,32 @@ func TestTheClientPageIsRevalidatedAndHashedAssetsAreCachedForever(t *testing.T)
 	}
 }
 
+// The manifest that makes the client installable is unhashed: revalidated like the page, with its own
+// media type (Go does not know .webmanifest).
+func TestTheManifestIsServedAsAManifestAndRevalidated(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("<!doctype html>"), 0o644)
+	os.WriteFile(filepath.Join(dir, "manifest.webmanifest"), []byte(`{"name":"x"}`), 0o644)
+	h := spa(dir, "v1")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/manifest.webmanifest", nil))
+	if rec.Code != 200 || rec.Body.String() != `{"name":"x"}` {
+		t.Fatalf("manifest: %d %q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/manifest+json" {
+		t.Errorf("Content-Type %q, want application/manifest+json", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control %q, want no-cache", got)
+	}
+	// an icon the manifest names but the build lacks is a 404, not the page served as an image
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/icons/icon-192.png", nil))
+	if rec.Code != 404 {
+		t.Errorf("missing icon: %d %q, want 404", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}
+
 // The page names the version of the server that served it, so a client can tell when the server it
 // talks to has moved on (a deploy) and reload.
 func TestThePageCarriesTheServerVersion(t *testing.T) {
