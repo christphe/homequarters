@@ -5,6 +5,9 @@
 ### Fixed
 - Desktop app on macOS: plugins run again and show their buttons (#25)
 
+### Security
+- A second browser or the desktop app signed in to the same account no longer joins the other one's call without its own consent (#26)
+
 ## [0.3.0] - 2026-10-20
 
 ### Added
