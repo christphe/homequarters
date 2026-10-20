@@ -21,22 +21,31 @@ export function clearLine(ax: number, ay: number, bx: number, by: number, walkab
 
 /**
  * Waypoints (world px) from (fx, fy) to (tx, ty), the start excluded and the exact target last, or null
- * when the target cannot be reached within maxNodes tiles of search.
+ * when the target cannot be reached within maxNodes tiles of search. With closest, a target it cannot
+ * reach (off the map, in a wall, too far) gives the way to the searched tile nearest to it instead,
+ * null only when that is where it already is.
  */
-export function findPath(fx: number, fy: number, tx: number, ty: number, walkable: (tx: number, ty: number) => boolean, maxNodes = 4096): Point[] | null {
+export function findPath(fx: number, fy: number, tx: number, ty: number, walkable: (tx: number, ty: number) => boolean, maxNodes = 4096, closest = false): Point[] | null {
   if (clearLine(fx, fy, tx, ty, walkable)) return [{ x: tx, y: ty }];
-  const sx = Math.floor(fx / T), sy = Math.floor(fy / T), gx = Math.floor(tx / T), gy = Math.floor(ty / T);
-  if (!walkable(gx, gy)) return null;
+  const sx = Math.floor(fx / T), sy = Math.floor(fy / T);
+  let gx = Math.floor(tx / T), gy = Math.floor(ty / T);
+  if (!walkable(gx, gy) && !closest) return null;
   const key = (x: number, y: number) => x + "," + y;
   const prev = new Map<string, string | null>([[key(sx, sy), null]]);
   const queue: [number, number][] = [[sx, sy]];
   let found = false;
+  let near = [sx, sy], nearD = Math.hypot(sx - gx, sy - gy);
   for (let head = 0; head < queue.length; head++) {
-    if (prev.size > maxNodes) return null;
+    if (prev.size > maxNodes) break;
     const [x, y] = queue[head];
     if (x === gx && y === gy) {
       found = true;
       break;
+    }
+    const d = Math.hypot(x - gx, y - gy);
+    if (d < nearD) {
+      near = [x, y];
+      nearD = d;
     }
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = x + dx, ny = y + dy, k = key(nx, ny);
@@ -45,7 +54,12 @@ export function findPath(fx: number, fy: number, tx: number, ty: number, walkabl
       queue.push([nx, ny]);
     }
   }
-  if (!found) return null;
+  if (!found) {
+    if (!closest || (near[0] === sx && near[1] === sy)) return null;
+    [gx, gy] = near;
+    tx = gx * T + T / 2;
+    ty = gy * T + T / 2;
+  }
   // tile centres from start to goal, then the exact target
   const tiles: Point[] = [];
   for (let k: string | null = key(gx, gy); k; k = prev.get(k) ?? null) {

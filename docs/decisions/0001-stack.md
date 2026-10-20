@@ -20,6 +20,8 @@ Versions were looked up in the official registries (Go module proxy, npm and Liv
 
 It builds without CGO, which keeps static binaries and cross-compilation for the Docker image simple. The expected cost is performance below C SQLite. Because the database only holds durable data (never movement), the gap should stay off the hot path, but this has **not been measured yet**.
 
+Every transaction in `store` writes, so they all begin `IMMEDIATE` (`_txlock=immediate`): a deferred transaction that reads first fails at once with `SQLITE_BUSY` when another writer commits in between, without waiting for `busy_timeout`. Removing a member during a map save from the editor returned a 500 that way (2026-10-19). Writers were already serialized by SQLite; a transaction that turns out not to write now holds the write lock for its few statements.
+
 ## Consequences
 
 - One Go binary serves the API, the WebSocket and the static files.

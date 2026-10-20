@@ -147,3 +147,35 @@ func TestPositionsSavedTogetherWhenTheServerStops(t *testing.T) {
 		}
 	}
 }
+
+// A transaction that reads before it writes must wait for a concurrent writer, not fail with
+// SQLITE_BUSY: an editor saving the map while a member is removed once made the removal a 500.
+func TestRemovalWaitsForAConcurrentWriter(t *testing.T) {
+	s, o := open(t)
+	ctx := context.Background()
+	s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
+	stop := make(chan struct{})
+	saved := make(chan struct{})
+	go func() {
+		defer close(saved)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				s.SaveMap(ctx, o.ID, "{}")
+				time.Sleep(100 * time.Microsecond) // an editor saving often, not a writer that never yields
+			}
+		}
+	}()
+	defer func() { close(stop); <-saved }()
+	for i := 0; i < 200; i++ {
+		id, _, err := s.AddMember(ctx, o.ID, "Bia", json.RawMessage("{}"), "")
+		if err != nil {
+			t.Fatalf("add %d: %v", i, err)
+		}
+		if _, err := s.RemoveMember(ctx, o.ID, id); err != nil {
+			t.Fatalf("remove %d: %v", i, err)
+		}
+	}
+}
