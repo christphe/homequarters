@@ -50,6 +50,17 @@ export async function run() {
 
     const errs = [...a.logs, ...b.logs];
     check("no console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+
+    // The same account opened somewhere else (the desktop app, another browser) takes over the
+    // connection; that client never consented, so it is not put in the call the first one was in.
+    await b.page.evaluate(() => window.__hq.session.setConsent(true));
+    await waitFor(async () => (await st(a)).conv?.state === "live" && (await st(b)).conv?.state === "live", { timeout: 15000, what: "back in the call" });
+    const cookie = (await b.ctx.cookies()).find((c) => c.name === "hq_session")?.value;
+    const b2 = await joinAs(browser, "Cib" + t, { cookie });
+    await sleep(2500);
+    const s2 = await st(b2);
+    check("a second client of the same account that has not consented is not in the call", s2.consent === false && s2.conv === null && (await st(a)).conv === null,
+      JSON.stringify({ consent: s2.consent, conv: s2.conv?.state ?? null, other: (await st(a)).conv?.state ?? null }));
   } finally {
     await browser.close();
   }

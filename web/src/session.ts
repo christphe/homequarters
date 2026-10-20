@@ -171,7 +171,9 @@ class Session {
         // a new connection: start every plugin afresh, so its browser code resynchronises with its server code
         void this.plugins?.refresh(true);
         const s = getState();
-        if (s.consent) this.socket?.send({ t: "consent", b: true });
+        // Always say it, false too: the server keeps a player's consent when another client of the same
+        // account takes over (a second browser, the desktop app), and this one may never have opted in.
+        this.socket?.send({ t: "consent", b: s.consent });
         if (s.status !== "available") this.socket?.send({ t: "st", v: s.status });
         const note = localStorage.getItem("hq.note");
         if (note) this.socket?.send({ t: "note", text: note }); // the note lives in memory on the server
