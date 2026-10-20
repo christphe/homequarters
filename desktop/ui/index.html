@@ -22,7 +22,10 @@
           placeholder="office.example.com" aria-describedby="hint error" required />
         <p id="hint" class="hint">The one you open in your browser. Switch between your offices from the Office menu.</p>
         <p id="error" class="error" role="alert"></p>
-        <button type="submit" class="primary">Open</button>
+        <div class="actions">
+          <button type="button" id="cancel" class="secondary" hidden>Cancel</button>
+          <button type="submit" class="primary">Open</button>
+        </div>
       </form>
     </main>
   </body>
