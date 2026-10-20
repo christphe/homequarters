@@ -24,7 +24,7 @@ jobs:
             bundles: nsis
             bin: desktop/src-tauri/target/release/homequarters-desktop.exe
             webrtc: "1"
-            apis: "" # WebView2's own IdleDetector needs a click to ask
+            apis: layout # WebView2's own IdleDetector needs a click to ask
             release: desktop/src-tauri/target/release/bundle/nsis/*.exe
           # the in-page call needs WebKit's mDNS host names resolved, which the hosted runner does not do
           # ("ICE timed out"); the APIs are still read and media is checked on a real Mac
@@ -32,7 +32,7 @@ jobs:
             bundles: app,dmg
             bin: "desktop/src-tauri/target/release/bundle/macos/Home Quarters.app/Contents/MacOS/homequarters-desktop"
             webrtc: "0"
-            apis: idle,notify
+            apis: idle,notify,layout
             release: desktop/src-tauri/target/release/bundle/dmg/*.dmg
           # WebKitGTK may be built without WebRTC (Debian 13's is): the probe says, it does not gate
           - os: ubuntu-24.04

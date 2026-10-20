@@ -24,6 +24,7 @@ use tauri::webview::{NewWindowResponse, PageLoadEvent, PermissionKind, Permissio
 use tauri::{AppHandle, Manager, Runtime, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 mod idle;
+mod layout;
 mod office;
 mod offices;
 
@@ -90,6 +91,30 @@ fn remove_office(url: String, app: AppHandle, shell: State<Shell>) -> Result<Off
     shell.save()?;
     refresh_menus(&app);
     Ok(shell.offices.lock().unwrap().clone())
+}
+
+/// The keyboard layout last given to the page, to give it again only when it changes.
+static LAST_LAYOUT: Mutex<String> = Mutex::new(String::new());
+
+/// Gives the page the keyboard's layout (src/missing-apis.js), on the main thread as macOS wants; `force`
+/// on a page load, which starts the page afresh.
+fn push_layout(app: &AppHandle, force: bool) {
+    if !layout::MEASURED {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(keys) = layout::current() else { return };
+        let Ok(json) = serde_json::to_string(&keys) else { return };
+        let mut last = LAST_LAYOUT.lock().unwrap();
+        if !force && *last == json {
+            return;
+        }
+        if let Some(window) = handle.get_webview_window(MAIN) {
+            let _ = window.eval(format!("window.__hqLayout && window.__hqLayout({json})"));
+        }
+        *last = json;
+    });
 }
 
 /// Shows a system notification for the office page (its Notification is src/missing-apis.js on macOS
@@ -269,7 +294,8 @@ fn page_script() -> String {
     if cfg!(windows) {
         return flag;
     }
-    flag + &include_str!("missing-apis.js").replace("__HQ_IDLE__", if idle::MEASURED { "true" } else { "false" })
+    let yes = |b: bool| if b { "true" } else { "false" };
+    flag + &include_str!("missing-apis.js").replace("__HQ_IDLE__", yes(idle::MEASURED)).replace("__HQ_LAYOUT__", yes(layout::MEASURED))
 }
 
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
@@ -296,10 +322,9 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
         })
         // The page the window shows, for the permission handler. A page load concerns the window's page
         // only, where a navigation may be a frame's (on a Mac).
-        .on_page_load(|window, payload| {
-            if payload.event() == PageLoadEvent::Started {
-                *window.state::<Shell>().page.lock().unwrap() = Some(payload.url().clone());
-            }
+        .on_page_load(|window, payload| match payload.event() {
+            PageLoadEvent::Started => *window.state::<Shell>().page.lock().unwrap() = Some(payload.url().clone()),
+            PageLoadEvent::Finished => push_layout(window.app_handle(), true),
         })
         // Camera, microphone, screen, notifications and idle detection go to the offices this app opens, and
         // to no other page. The office still asks for consent itself, and the system for its own permission.
@@ -457,14 +482,16 @@ fn main() {
                 allow_office(app.handle(), &o);
             }
             open_window(app.handle(), start, dir.join("webview"))?;
-            // the IdleDetector of src/missing-apis.js gets the system's idle time every few seconds
-            if idle::MEASURED {
+            // src/missing-apis.js gets the system's idle time every few seconds, and the keyboard layout
+            // when it changes (another input source)
+            if idle::MEASURED || layout::MEASURED {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || loop {
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     if let (Some(window), Some(s)) = (handle.get_webview_window(MAIN), idle::seconds()) {
                         let _ = window.eval(format!("window.__hqIdle && window.__hqIdle({})", s.floor()));
                     }
+                    push_layout(&handle, false);
                 });
             }
             // the tray brings a hidden window back on Windows and Linux; on a Mac the Dock does

@@ -54,4 +54,5 @@ if (process.env.REQUIRE_WEBRTC === "1" && !report.webrtcMedia) { console.log("FA
 // REQUIRE_APIS=idle,notify: the APIs this system's app must give the office (natively or from the app)
 const need = (process.env.REQUIRE_APIS ?? "").split(",").filter(Boolean);
 if (need.includes("idle") && !["active", "idle"].includes(report.idleState)) { console.log("FAIL no working IdleDetector: " + report.idleState); process.exit(1); }
+if (need.includes("layout") && !/^\S$/.test(report.layoutKeyQ ?? "")) { console.log("FAIL no keyboard layout map: " + report.layoutKeyQ); process.exit(1); }
 if (need.includes("notify") && report.Notification !== "granted") { console.log("FAIL notifications not granted: " + report.Notification); process.exit(1); }

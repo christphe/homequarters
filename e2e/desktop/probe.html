@@ -58,6 +58,10 @@ function srcdocFrame() {
   r.webgl2 = !!document.createElement("canvas").getContext("webgl2");
   r.Notification = typeof Notification === "function" ? Notification.permission : "none";
   try {
+    const map = await timeout(navigator.keyboard.getLayoutMap(), 5000, "getLayoutMap");
+    r.layoutKeyQ = map.get("KeyQ") ?? null;
+  } catch (e) { r.layoutKeyQ = "error: " + e; }
+  try {
     const det = new IdleDetector();
     await timeout(det.start({ threshold: 60000 }), 5000, "IdleDetector.start");
     r.idleState = det.userState;

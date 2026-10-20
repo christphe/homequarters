@@ -47,6 +47,32 @@
     idleReplaced = true;
   }
 
+  // navigator.keyboard.getLayoutMap (Chromium only): what is printed on the keys, so help texts show
+  // "Z Q S D" on an AZERTY keyboard. The app reads the system's layout and calls __hqLayout({code: key})
+  // when the page loads and when the layout changes. Only where the app reads it (__HQ_LAYOUT__).
+  if (__HQ_LAYOUT__ && !navigator.keyboard?.getLayoutMap) {
+    let layout = null;
+    const waiting = [];
+    Object.defineProperty(window, "__hqLayout", {
+      value: (keys) => {
+        layout = new Map(Object.entries(keys ?? {}));
+        for (const resolve of waiting.splice(0)) resolve(layout);
+      },
+    });
+    const keyboard = {
+      getLayoutMap: () =>
+        layout
+          ? Promise.resolve(layout)
+          : new Promise((resolve) => {
+              waiting.push(resolve);
+              setTimeout(() => resolve(layout ?? new Map()), 2000); // no answer: an empty map, like an unknown layout
+            }),
+      lock: async () => {},
+      unlock: () => {},
+    };
+    Object.defineProperty(navigator, "keyboard", { value: keyboard, configurable: true });
+  }
+
   // Notification: an embedded web view refuses it. A notification is shown by the system instead, through
   // the app's notify command (allowed to office pages only).
   if (!("Notification" in window) || Notification.permission !== "granted") {
