@@ -89,10 +89,12 @@ export class PluginManager {
           this.stopReasons.set(name, reason);
           for (const k of [...this.provided.keys()]) if (k.startsWith(name + "|")) this.provided.delete(k);
           if (this.hosts.get(name) === h) this.hosts.delete(name);
+          this.layer.providerStopped(name);
         },
       });
       this.hosts.set(e.name, h);
       h.start();
+      this.layer.providerStarted(e.name); // sheets asked for before it ran, or while it was off
       for (const d of this.early.get(e.name) ?? []) h.deliver(d);
       this.early.delete(e.name);
     }

@@ -50,7 +50,9 @@ type Session struct {
 var ErrNotFound = errors.New("not found")
 
 func Open(path string) (*Store, error) {
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
+	// _txlock=immediate: every transaction here writes, and one that read first under a deferred
+	// lock fails with SQLITE_BUSY when another writer commits, without waiting for busy_timeout.
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

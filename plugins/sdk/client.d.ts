@@ -122,7 +122,7 @@ declare global {
       follow(id: string, memberId: number, opts?: { gap?: number; beside?: number; roam?: number }): void;
       /** Follows another sprite of this plugin the same way, gap px behind; it waits while that sprite is gone or hidden. */
       follow(id: string, who: { sprite: string }, opts?: { gap?: number; beside?: number; roam?: number }): void;
-      /** Walks there along a path around walls (px/s, default 72); somewhere it cannot reach, it stays where it is. */
+      /** Walks there along a path around walls (px/s, default 72); somewhere it cannot reach (off the map, in a wall), as close as it can. */
       walkTo(id: string, x: number, y: number, opts?: { speed?: number }): void;
       stop(id: string): void;
       setAnim(id: string, name: string): void;

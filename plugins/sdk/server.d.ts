@@ -75,6 +75,8 @@ declare global {
         /** Calls another plugin's hook. Rejects if that plugin is off, does not expose the hook, throws, takes over
          * 2 s, or if the arguments or the answer are over 4 KB. At most 64 calls waiting at once; not in load(). */
         call<T = unknown>(plugin: string, hook: string, args?: unknown): Promise<T>;
+        /** Whether that plugin runs in this office now (onPlugins says when it changes). */
+        running(plugin: string): boolean;
       };
     }
 
@@ -92,6 +94,8 @@ declare global {
       onMessage?(player: Player, msg: unknown): void;
       /** An administrator changed a setting: read the new values with hq.settings(). */
       onSettings?(): void;
+      /** Another plugin started or stopped (turned on or off, or crashed): ask with hq.plugins.running. */
+      onPlugins?(): void;
       /** Before the plugin stops. */
       unload?(): void;
     }

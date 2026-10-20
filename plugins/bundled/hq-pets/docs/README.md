@@ -15,7 +15,7 @@ A plugin can put pets of its own drawing with a member: a "guest" pet. `hq-pets`
 - it does **not** count in the office's limit;
 - it is **not** shown in the Pets modal: the member cannot rename, recolour or remove it there. The plugin that put it manages it;
 - at most **4** guest pets per member, all plugins together;
-- it is kept (across restarts) until the plugin that put it removes it.
+- it is kept (across restarts) until the plugin that put it removes it, or stops.
 
 ### For whom
 
@@ -82,7 +82,7 @@ You only ever remove your own pets (same plugin, same `id`, the member you act f
 
 ### When the call fails
 
-`hq.plugins.call` rejects (throws in an `await`) when `hq-pets` is off, busy, or slower than 2 s; check `ok` in the answer for the rest. Your pets stay stored while `hq-pets` is off and come back with it. If your plugin is off, its `shared/` images are not served and nothing answers for its `metadata` pets: its guest pets are not drawn.
+`hq.plugins.call` rejects (throws in an `await`) when `hq-pets` is off, busy, or slower than 2 s; check `ok` in the answer for the rest. Your pets stay stored while `hq-pets` is off and come back with it. When your plugin stops (turned off or crashed), `hq-pets` takes its guest pets away and gives their places back (a member who was away loses them on arrival). Put them again with `setPet` when your plugin runs: in `onJoin`, which runs for every member online right after your plugin starts and for each member who arrives (`caller.member` is that member).
 
 ### A complete example
 

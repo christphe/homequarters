@@ -402,5 +402,28 @@ export async function update() {
 	if md, _ := drawn["metadata"].(map[string]any); md["kind"] != float64(25) || md["alt"] != true || drawn["sheet"] != nil || drawn["cell"] != nil {
 		t.Fatalf("a guest drawn by its plugin goes to the pages with its metadata, without a sheet: %v", drawn)
 	}
+	// the plugin stops: its guests go and their places are given back; running again, it puts them again
+	h.Stop("caller")
+	eventually(t, "guests gone with their plugin", func() bool {
+		left := -1
+		for _, d := range sink.data(0) {
+			if set, ok := d["set"].([]any); ok {
+				for _, m := range set {
+					if mm := m.(map[string]any); mm["id"] == float64(bob.ID) {
+						left = len(mm["guests"].([]any))
+					}
+				}
+			}
+		}
+		return left == 0
+	})
+	if err := h.Start("caller"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		if r := say("setPet", fmt.Sprintf(`{"id":"q%d","sheet":"shared/critter.png","cell":[24,24]}`, i)); r["ok"] != true {
+			t.Fatalf("the places of a stopped plugin's guests are free again (guest %d): %v", i, r)
+		}
+	}
 	running(t, h)
 }

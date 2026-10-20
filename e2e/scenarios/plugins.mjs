@@ -33,9 +33,17 @@ async function hoverOver(u, owner, sprite) {
   const c = (await petsOf(u, owner)).find((x) => x.id === sprite);
   if (!c) return "missing";
   const at = await read(u, ({ x, y }) => window.__hq.view.pageOf(x, y - 8), { x: c.x, y: c.y });
+  // a pet under the top bar or off the canvas cannot be pointed at on this page (CI's 800x450 view)
+  if (!(await u.page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName === "CANVAS", at))) return "covered";
   await u.page.mouse.move(at.x, at.y);
   // a wandering pet keeps walking: read the tag on the next frames, before it walks out from under the mouse
   return read(u, () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__hq.view.hoverText())))));
+}
+/** hoverOver on the first of these pages where the pet is in view. */
+async function hoverOn(pages, owner, sprite) {
+  let tag = "covered";
+  for (const u of pages) if ((tag = await hoverOver(u, owner, sprite)) !== "covered") break;
+  return tag;
 }
 async function openPets(u) {
   await waitFor(() => u.page.evaluate(() => {
@@ -151,10 +159,15 @@ export async function run(ctx) {
 
     // ---- a walk-to (double-click on the map, Cmd+D, joining someone): the server runs the owner there,
     // and the pets run after them on every page: smoothly, every frame, with their walk animation (they
-    // used to sit still, then hop after an owner moved only at the server's 15 Hz)
+    // used to sit still, then hop after an owner moved only at the server's 15 Hz). A browser drawing
+    // under 15 fps (CI's software renderer) sees a server move on nearly every frame even in hops, so
+    // under 20 fps the owner's pace is judged too: a smooth run covers ground in step with the time
+    // between frames (above it, frame jitter on a busy runner moves the pace more than hops would, and
+    // hops already show as still frames).
     const runAfter = (u) => read(u, ({ plugin, owner, ms }) => new Promise((resolve) => {
       const last = new Map();
-      let max = 0, frames = 0, ownerStill = 0, petStill = 0, since = 0;
+      let max = 0, frames = 0, ownerStill = 0, petStill = 0, since = 0, prev = 0, span = 0;
+      const paces = [];
       const t0 = performance.now();
       const tick = (now) => {
         const v = window.__hq.view, e = v.ents.get(owner);
@@ -164,6 +177,11 @@ export async function run(ctx) {
         if (steady) frames++;
         const o = last.get("owner");
         if (steady && o && Math.hypot(e.x - o[0], e.y - o[1]) < 0.1) ownerStill++;
+        if (steady && o && now > prev) {
+          paces.push(Math.hypot(e.x - o[0], e.y - o[1]) / (now - prev));
+          span += now - prev;
+        }
+        prev = now;
         last.set("owner", [e.x, e.y]);
         for (const c of window.__hq.session.plugins.debug(plugin).filter((x) => x.player === owner && x.visible)) {
           const p = last.get(c.id);
@@ -171,7 +189,11 @@ export async function run(ctx) {
           if (steady && p && (Math.hypot(c.x - p[0], c.y - p[1]) < 0.1 || !c.moving)) petStill++;
           last.set(c.id, [c.x, c.y]);
         }
-        if (now - t0 < ms) requestAnimationFrame(tick); else resolve({ max, frames, ownerStill, petStill });
+        if (now - t0 < ms) return requestAnimationFrame(tick);
+        // frames off the median pace by more than a third: 15 Hz hops make one in every few
+        const med = [...paces].sort((a, b) => a - b)[Math.floor(paces.length / 2)] ?? 0;
+        const uneven = paces.filter((x) => Math.abs(x - med) > med / 3).length;
+        resolve({ max, frames, ownerStill, petStill, uneven, span, fps: paces.length / (span / 1000 || 1) });
       };
       requestAnimationFrame(tick);
     }), { plugin: PLUGIN, owner: rem.id, ms: 3500 });
@@ -182,10 +204,10 @@ export async function run(ctx) {
     const [jr, jm] = await Promise.all([onRem, onMia]);
     const arrived = await read(rem, () => { const e = window.__hq.view.ents.get(window.__hq.view.meId); return [e.x, e.y]; });
     check("a double-click on the map runs the owner there", Math.hypot(arrived[0] - (4 * 16 + 8), arrived[1] - (27 * 16 + 8)) < 12, JSON.stringify(arrived));
-    const say = (r) => `${r.ownerStill} still owner frames, ${r.petStill} still pet frames of ${r.frames}, largest pet step ${r.max.toFixed(1)} px`;
-    check("on a walk-to the owner's own avatar runs smoothly, moving every frame (not in 15 Hz hops)", jr.frames > 20 && jr.ownerStill <= jr.frames * 0.1, say(jr));
+    const say = (r) => `${r.ownerStill} still owner frames, ${r.uneven} off its pace, ${r.petStill} still pet frames of ${r.frames} (${r.fps.toFixed(0)} fps over ${(r.span / 1000).toFixed(1)} s), largest pet step ${r.max.toFixed(1)} px`;
+    check("on a walk-to the owner's own avatar runs smoothly, moving every frame (not in 15 Hz hops)", jr.frames >= 8 && jr.span >= 600 && jr.ownerStill <= jr.frames * 0.1 && (jr.fps >= 20 || jr.uneven <= jr.frames * 0.2), say(jr));
     check("its pets run after it every frame with their walk animation, on the owner's page and on others, never jumping",
-      jr.frames > 20 && jm.frames > 20 && jr.petStill <= jr.frames * 0.05 && jm.petStill <= jm.frames * 0.05 && jr.max < 24 && jm.max < 24, `owner's page: ${say(jr)}; other page: ${say(jm)}`);
+      jr.frames >= 8 && jm.frames >= 8 && jr.span >= 600 && jm.span >= 600 && jr.petStill <= jr.frames * 0.05 && jm.petStill <= jm.frames * 0.05 && jr.max < 24 && jm.max < 24, `owner's page: ${say(jr)}; other page: ${say(jm)}`);
 
     // ---- render on demand still holds with pets standing
     await sleep(1500);
@@ -276,14 +298,59 @@ export async function run(ctx) {
     // metadata (setPet without a sheet) and provides its sheet from an OffscreenCanvas (hq.provideSheet)
     await fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
     const drawnPet = (u, owner) => read(u, (id) => (window.__hq.session.plugins?.debug("hq-pets") ?? []).find((c) => c.id.startsWith(id + ":x:drawn-pet:") && c.visible) ?? null, String(owner));
+    // left out, not only hidden: no place behind its owner, nobody to go along with
+    const leftOut = (u, owner) => read(u, (id) => !(window.__hq.session.plugins?.debug("hq-pets") ?? []).some((c) => c.id.startsWith(id + ":x:drawn-pet:")), String(owner));
     const dp = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "Rem's drawn pet on Mia's page" }).catch(() => null);
     check("a guest pet put by metadata is drawn by its plugin on every page and follows its owner like a pet", dp?.mode === "follow" && dp?.player === rem.id, JSON.stringify(dp));
-    await fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
-    await waitFor(async () => !(await drawnPet(mia, rem.id)), { what: "drawn pet gone with its plugin" });
+    const drawnPetOn = (enabled) => fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
+    await drawnPetOn(false);
+    const goneWithIt = await waitFor(async () => (await leftOut(mia, rem.id)) && (await leftOut(rem, rem.id)), { what: "drawn pet gone with its plugin" }).catch(() => false);
+    // hq-pets itself still runs: its own pet stays (a stopped hq-pets would hide the drawn pet too)
+    const catStays = (await petsOf(mia, rem.id)).some((c) => c.id === cat.id) && (await petsOf(rem, rem.id)).some((c) => c.id === cat.id);
+    check("turning the plugin off takes its drawn pet out of every page at once (no place left behind its owner), and leaves the other pets", goneWithIt && catStays, `gone ${goneWithIt}, cat stays ${catStays}`);
+    await drawnPetOn(true);
+    const drawnBack = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "drawn pet back with its plugin" }).catch(() => null);
+    check("turning it on again draws the pet again, without reloading the page", drawnBack?.mode === "follow" && drawnBack?.player === rem.id, JSON.stringify(drawnBack));
+    await drawnPetOn(false);
+    await waitFor(async () => (await leftOut(mia, rem.id)) && (await leftOut(rem, rem.id)), { what: "drawn pet gone again" });
 
     // ---- the name shows on hover, only while the pet wanders
-    check("a following pet shows nothing when the mouse is over it", (await hoverOver(mia, rem.id, cat.id)) === "");
+    check("a following pet shows nothing when the mouse is over it", (await hoverOn([mia, rem], rem.id, cat.id)) === "");
     // ---- Let wander / Call, from the plugin's button in the top bar
+    // first Rem walks to open floor: a pet that picks a spot it cannot reach (a wall, a desk) rests until
+    // its next pick, 18-65 s later, and Rem stands against a wall since the walk-to above
+    const open = await read(rem, () => {
+      const v = window.__hq.view, me = v.ents.get(v.meId), T = 16;
+      const free = (x, y) => { for (let r = 16; r <= 64; r += 16) for (let a = 0; a < 16; a++) if (!v.canStandStatic(x + Math.cos(a * Math.PI / 8) * r, y + Math.sin(a * Math.PI / 8) * r)) return false; return v.canStandStatic(x, y); };
+      let best = null;
+      for (let dy = -12; dy <= 12; dy++) for (let dx = -12; dx <= 12; dx++) {
+        const x = (Math.floor(me.x / T) + dx) * T + T / 2, y = (Math.floor(me.y / T) + dy) * T + T / 2, d = Math.hypot(x - me.x, y - me.y);
+        const at = v.pageOf(x, y);
+        if (document.elementFromPoint(at.x, at.y)?.tagName !== "CANVAS" || !free(x, y)) continue;
+        if (!best || d < best.d) best = { x, y, d, at };
+      }
+      return best;
+    });
+    if (open) {
+      await rem.page.mouse.click(open.at.x, open.at.y, { count: 2 });
+      await waitFor(() => read(rem, ({ x, y }) => { const v = window.__hq.view, e = v.ents.get(v.meId); return !v.guided && Math.hypot(e.x - x, e.y - y) < 12; }, open), { timeout: 15000, what: "Rem on open floor" }).catch(() => {});
+      await sleep(600); // the pets settle behind Rem
+    }
+    // the cat's walks are recorded on Mia's page from the moment it is let go: its first one starts within
+    // 2 s; the recording goes on until it walked (9 to 25 s: a spot it cannot reach costs it one pause)
+    const remAt = await read(mia, (id) => { const e = window.__hq.view.ents.get(id); return { x: e.x, y: e.y }; }, rem.id);
+    const strolling = read(mia, ({ id, plugin }) => new Promise((resolve) => {
+      const seen = [];
+      const t0 = performance.now();
+      const tick = () => {
+        const c = window.__hq.session.plugins.debug(plugin).find((x) => x.id === id);
+        if (c) seen.push([c.x, c.y, c.mode]);
+        const moved = seen.some(([x, y], i) => i > 0 && Math.hypot(x - seen[i - 1][0], y - seen[i - 1][1]) > 0.5);
+        const t = performance.now() - t0;
+        if (t < 9000 || (!moved && t < 25000)) setTimeout(tick, 100); else resolve(seen);
+      };
+      tick();
+    }), { id: cat.id, plugin: PLUGIN });
     await waitFor(() => click(rem, ".topbar .plugin-slot", "Let pets wander"), { what: "Let wander button" });
     // a socializing pet goes along with another wandering pet: Mia's dog joins Rem's cat on Rem's page
     await waitFor(() => click(mia, ".topbar .plugin-slot", "Let pets wander"), { what: "Mia's Let wander" });
@@ -299,21 +366,14 @@ export async function run(ctx) {
     check("a pet can go along with another member's wandering pet, on the other pages too", joined && !!dog);
     await click(mia, ".topbar .plugin-slot", "Call pets");
     let tag = "";
-    await waitFor(async () => ((tag = await hoverOver(mia, rem.id, cat.id)) !== "" && tag !== "missing"), { timeout: 8000, what: "hover tag" }).catch(() => {});
+    await waitFor(async () => ((tag = await hoverOn([mia, rem], rem.id, cat.id)) !== "" && tag !== "missing" && tag !== "covered"), { timeout: 8000, what: "hover tag" }).catch(() => {});
     check("while it wanders, the mouse over the pet shows its name and its owner", tag === "Biscuit\n(Rem" + t + ")", JSON.stringify(tag));
     await mia.page.mouse.move(5, 5);
+    await rem.page.mouse.move(5, 5);
     await waitFor(() => rem.page.evaluate(() => document.querySelector(".topbar .plugin-slot")?.textContent === "Call pets"), { what: "the button now says Call" });
-    const remAt = await read(mia, (id) => { const e = window.__hq.view.ents.get(id); return { x: e.x, y: e.y }; }, rem.id);
-    const strolls = await read(mia, ({ id, plugin }) => new Promise((resolve) => {
-      const seen = [];
-      const t0 = performance.now();
-      const tick = () => {
-        const c = window.__hq.session.plugins.debug(plugin).find((x) => x.player === id);
-        if (c) seen.push([c.x, c.y, c.mode]);
-        if (performance.now() - t0 < 7000) setTimeout(tick, 100); else resolve(seen);
-      };
-      tick();
-    }), { id: rem.id, plugin: PLUGIN });
+    // from the moment Mia's page knows it wanders
+    const all = await strolling;
+    const strolls = all.slice(Math.max(0, all.findIndex((x) => x[2] !== "follow")));
     const moved = strolls.some(([x, y], i) => i > 0 && Math.hypot(x - strolls[i - 1][0], y - strolls[i - 1][1]) > 0.5);
     const far = Math.max(...strolls.map(([x, y]) => Math.hypot(x - remAt.x, y - remAt.y)));
     // its mood decides how far: near home or its owner, or exploring up to 240 px from home

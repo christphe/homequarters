@@ -123,6 +123,14 @@ function save(id: number, m: Member): void {
 /** What pages are told: a lowered limit hides the extra pets without forgetting them. */
 const shown = (id: number, m: Member): MemberPets => ({ id, pets: m.pets.slice(0, limit()), guests: m.guests, mode: m.mode });
 
+/** A member's guests, without those of plugins that are off: their places are given back (the plugin
+ * puts its pets again with setPet when it runs). Saved when some went. */
+function guestsOfRunning(id: number, guests: GuestPet[]): GuestPet[] {
+  const kept = guests.filter((g) => hq.plugins.running(g.from));
+  if (kept.length !== guests.length) saveGuests(id, kept);
+  return kept;
+}
+
 /** Cuts a list into pieces whose JSON stays under BUDGET bytes. */
 function pieces<T>(list: T[]): T[][] {
   const out: T[][] = [];
@@ -191,7 +199,7 @@ export function load(): void {
 }
 
 export function onJoin(p: HQ.Player): void {
-  const m: Member = { player: p, pets: stored(p.id), guests: storedGuests(p.id), mode: "follow" };
+  const m: Member = { player: p, pets: stored(p.id), guests: guestsOfRunning(p.id, storedGuests(p.id)), mode: "follow" };
   members.set(p.id, m);
   changed.add(p.id);
   gone.delete(p.id);
@@ -205,6 +213,11 @@ export function onLeave(p: HQ.Player): void {
   lastGoals.delete(p.id);
   buckets.delete(p.id);
   gone.add(p.id);
+}
+
+/** Another plugin started or stopped: a plugin that is off gives back the places of its guest pets. */
+export function onPlugins(): void {
+  for (const [id, m] of members) guestsOfRunning(id, m.guests);
 }
 
 /** An administrator changed the limit: a lower one hides pets, a higher one shows remembered ones again. */
