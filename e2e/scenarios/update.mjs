@@ -36,6 +36,36 @@ async function keepsLegacyStorage(browser, t) {
   }
 }
 
+// Installable as an app (Chrome/Edge "Install"): Chrome itself reports no installability error and reads
+// the manifest, with no service worker in the way of deploys.
+async function installable(browser) {
+  const page = await browser.newPage();
+  try {
+    await page.goto(APP + "/", { waitUntil: "load" });
+    const cdp = await page.createCDPSession();
+    const { manifest } = await waitFor(async () => {
+      const r = await cdp.send("Page.getAppManifest");
+      return r.url && r.data ? { manifest: { url: r.url, data: JSON.parse(r.data) } } : null;
+    }, { timeout: 10000, what: "manifest" });
+    const m = manifest.data;
+    const icons = (m.icons ?? []).map((i) => i.sizes + "/" + (i.purpose ?? "any"));
+    check("the page links a manifest for Home Quarters, standalone, from /",
+      m.name === "Home Quarters" && m.display === "standalone" && m.start_url === "/" && m.scope === "/", JSON.stringify({ name: m.name, display: m.display, start: m.start_url, scope: m.scope }));
+    check("...with 192 and 512 px icons, one of them maskable",
+      icons.includes("192x192/any") && icons.includes("512x512/any") && icons.some((i) => i.endsWith("/maskable")), icons.join(","));
+    const res = await page.evaluate(async (u) => { const r = await fetch(u); return { ok: r.ok, type: r.headers.get("content-type") }; }, manifest.url);
+    check("...and every icon it names loads", (await page.evaluate(async (list, base) => {
+      for (const i of list) { const r = await fetch(new URL(i.src, base)); if (!r.ok || !(r.headers.get("content-type") ?? "").startsWith("image/")) return false; }
+      return true;
+    }, m.icons ?? [], manifest.url)) && res.ok, res.type ?? "");
+    const { installabilityErrors } = await cdp.send("Page.getInstallabilityErrors");
+    check("Chrome finds the client installable", installabilityErrors.length === 0, installabilityErrors.map((e) => e.errorId).join(","));
+    check("...without a service worker", !(await page.evaluate(async () => (await navigator.serviceWorker?.getRegistrations?.())?.length ?? 0)));
+  } finally {
+    await page.close();
+  }
+}
+
 export async function run(ctx) {
   resetChecks();
   const external = !!process.env.HQ_EXTERNAL_URL;
@@ -43,6 +73,7 @@ export async function run(ctx) {
   const t = String(Date.now() % 10000);
   try {
     await keepsLegacyStorage(browser, t);
+    await installable(browser);
     if (external) return summary(); // the rest restarts the server
     const u = await joinAs(browser, "Upd" + t);
     const v1 = await meta(u);

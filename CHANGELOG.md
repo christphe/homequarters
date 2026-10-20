@@ -4,6 +4,7 @@
 
 ### Added
 - Desktop apps sign in through the person's own browser, never in their window, and receive the session from it (#23)
+- Install Home Quarters as an app from Chrome or Edge: it opens in its own window, with its own icon, and still updates with the server (#21)
 
 ### Fixed
 - Guided walks (double-click, Walk to, Follow, the minimap) go around meeting rooms, offices and desks instead of cutting through someone else's call; they cross a room only when it is the only way (#20)

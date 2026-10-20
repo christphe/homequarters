@@ -418,7 +418,8 @@ func spa(dir, version string) http.Handler {
 		}
 		p := filepath.Join(dir, filepath.Clean("/"+r.URL.Path))
 		if fi, err := os.Stat(p); err != nil || fi.IsDir() {
-			if !strings.HasPrefix(r.URL.Path, "/assets/") {
+			// a missing script or icon is a 404, not the page: the browser would take HTML for it
+			if !strings.HasPrefix(r.URL.Path, "/assets/") && !strings.HasPrefix(r.URL.Path, "/icons/") {
 				page(w)
 				return
 			}
@@ -429,6 +430,9 @@ func spa(dir, version string) http.Handler {
 			// index.html and other unhashed files: revalidate on every load, or a browser may keep
 			// running the previous client for hours after a deploy (heuristic caching from Last-Modified)
 			w.Header().Set("Cache-Control", "no-cache")
+		}
+		if strings.HasSuffix(r.URL.Path, ".webmanifest") {
+			w.Header().Set("Content-Type", "application/manifest+json") // unknown to Go's mime table
 		}
 		fsrv.ServeHTTP(w, r)
 	})
