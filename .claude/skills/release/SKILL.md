@@ -19,7 +19,14 @@ The changelogs are kept with [fantastic-change](https://github.com/fantastic-jam
 - `fchange <type> "<entry>" --pkg <product>` adds an entry under `## [Unreleased]` and records the version bump it implies;
 - `frelease --pkg <product>` turns `[Unreleased]` into the next version.
 
-Release the products separately. Each one is released only when its `[Unreleased]` has entries.
+## Which product
+
+A release is of one product. Each step below is for that product only.
+
+- **The user names it** (`/release server`, `/release desktop`, "release the desktop app"): release that one. If its `[Unreleased]` is empty, say so and stop.
+- **The user names none**: read `## [Unreleased]` in both changelogs and say which products have entries. Release only what the user asked for; "release whatever there is" means each product with entries, one after the other, each a full pass through the steps below.
+
+Never release a product whose `[Unreleased]` is empty.
 
 ## 0. Before
 
@@ -27,8 +34,6 @@ Release the products separately. Each one is released only when its `[Unreleased
 - Work on `main`, up to date with `origin/main` (`git pull --ff-only`).
 
 ## 1. What the release covers
-
-For each product:
 
 - **The range.** The product's last tag is `git describe --tags --abbrev=0 --match '<product>-v*' origin/main`, and the range runs from it to `origin/main`.
 - **The commits:** `git log --reverse --format='%h %s' <range>`. For the desktop app, `-- desktop/` keeps the ones that touch it; for the server, the commits that change `server/` or `web/` (and the Dockerfile and deploy files).
