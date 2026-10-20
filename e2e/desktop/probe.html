@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<title>Home Quarters desktop probe</title>
+<body style="font: 14px system-ui; background: #1b1830; color: #f2eefc; padding: 16px">
+<h1>Desktop probe</h1>
+<pre id="out">probing...</pre>
+<script>
+// What the office needs from the webview, read inside the desktop shell itself (e2e/desktop/probe.mjs).
+// The WebRTC check is a real call within the page: a generated tone and a canvas go from one peer
+// connection to another, and the receiver must count RTP bytes. No microphone or camera needed.
+const timeout = (p, ms, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + " timed out")), ms))]);
+
+async function loopback() {
+  const a = new RTCPeerConnection(), b = new RTCPeerConnection();
+  a.onicecandidate = (e) => e.candidate && b.addIceCandidate(e.candidate);
+  b.onicecandidate = (e) => e.candidate && a.addIceCandidate(e.candidate);
+  const ac = new AudioContext();
+  const osc = ac.createOscillator(), dest = ac.createMediaStreamDestination();
+  osc.connect(dest); osc.start();
+  const canvas = Object.assign(document.createElement("canvas"), { width: 160, height: 120 });
+  const g = canvas.getContext("2d");
+  const paint = setInterval(() => { g.fillStyle = `hsl(${Date.now() / 10 % 360} 70% 50%)`; g.fillRect(0, 0, 160, 120); }, 50);
+  const audio = dest.stream.getAudioTracks()[0], video = canvas.captureStream(15).getVideoTracks()[0];
+  a.addTrack(audio, dest.stream); a.addTrack(video, dest.stream);
+  const offer = await a.createOffer(); await a.setLocalDescription(offer); await b.setRemoteDescription(offer);
+  const answer = await b.createAnswer(); await b.setLocalDescription(answer); await a.setRemoteDescription(answer);
+  await timeout(new Promise((ok) => { const f = () => ["connected", "completed"].includes(b.iceConnectionState) && ok(); b.oniceconnectionstatechange = f; f(); }), 10000, "ICE");
+  await new Promise((r) => setTimeout(r, 3000));
+  const got = { audio: 0, video: 0 };
+  (await b.getStats()).forEach((s) => { if (s.type === "inbound-rtp") got[s.kind] += s.bytesReceived; });
+  clearInterval(paint); a.close(); b.close(); ac.close();
+  return got;
+}
+
+(async () => {
+  const r = { ua: navigator.userAgent, secure: isSecureContext };
+  r.RTCPeerConnection = typeof RTCPeerConnection;
+  r.getUserMedia = typeof navigator.mediaDevices?.getUserMedia;
+  r.getDisplayMedia = typeof navigator.mediaDevices?.getDisplayMedia;
+  r.setSinkId = typeof HTMLMediaElement.prototype.setSinkId;
+  r.AudioWorklet = typeof AudioWorkletNode;
+  r.IdleDetector = typeof IdleDetector;
+  r.keyboardLayoutMap = typeof navigator.keyboard?.getLayoutMap;
+  r.webgl2 = !!document.createElement("canvas").getContext("webgl2");
+  r.Notification = typeof Notification === "function" ? Notification.permission : "none";
+  try {
+    const pc = new RTCPeerConnection();
+    pc.addTransceiver("audio"); pc.addTransceiver("video");
+    const o = await pc.createOffer();
+    r.codecs = [...new Set((o.sdp.match(/a=rtpmap:\d+ [^/]+/g) || []).map((s) => s.split(" ")[1]))].join(",");
+    pc.close();
+  } catch (e) { r.offerError = String(e); }
+  try { r.loopbackBytes = await timeout(loopback(), 20000, "loopback"); } catch (e) { r.loopbackError = String(e); }
+  r.webrtcMedia = !!(r.loopbackBytes && r.loopbackBytes.audio > 0 && r.loopbackBytes.video > 0);
+  try { r.ipcFromPage = (await window.__TAURI__.core.invoke("current_office"), "ALLOWED"); } catch (e) { r.ipcFromPage = "refused"; }
+  document.getElementById("out").textContent = JSON.stringify(r, null, 1);
+  await fetch("/report", { method: "POST", body: JSON.stringify(r) });
+})();
+</script>
+</body>
+</html>

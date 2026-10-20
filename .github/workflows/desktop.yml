@@ -1,0 +1,104 @@
+name: Desktop
+
+# The desktop app (desktop/) on the three systems: build it, then run it on e2e/desktop/probe.html, which
+# reads what its webview can do and makes a WebRTC call inside the page. The builds are unsigned.
+# On a version tag, the Windows and macOS builds carry that version and go to its GitHub release
+# (Linux uses the browser: docs/desktop.md).
+on:
+  pull_request:
+    paths: ["desktop/**", "e2e/desktop/**", ".github/workflows/desktop.yml"]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+            bin: desktop/src-tauri/target/release/homequarters-desktop.exe
+            webrtc: "1"
+            release: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          # the in-page call needs WebKit's mDNS host names resolved, which the hosted runner does not do
+          # ("ICE timed out"); the APIs are still read and media is checked on a real Mac
+          - os: macos-latest
+            bundles: app,dmg
+            bin: "desktop/src-tauri/target/release/bundle/macos/Home Quarters.app/Contents/MacOS/homequarters-desktop"
+            webrtc: "0"
+            release: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          # WebKitGTK may be built without WebRTC (Debian 13's is): the probe says, it does not gate
+          - os: ubuntu-24.04
+            bundles: appimage,deb
+            bin: desktop/src-tauri/target/release/homequarters-desktop
+            webrtc: "0"
+            release: ""
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # to attach the builds to a tag's release
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb imagemagick \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
+      - run: pnpm install --frozen-lockfile
+        working-directory: desktop
+      - name: Build
+        shell: bash
+        working-directory: desktop
+        run: |
+          # a tag builds that version (v0.3.0 -> 0.3.0); otherwise the version in tauri.conf.json
+          version=()
+          [ "$GITHUB_REF_TYPE" = tag ] && version=(--config "{\"version\":\"${GITHUB_REF_NAME#v}\"}")
+          pnpm tauri build --bundles ${{ matrix.bundles }} "${version[@]}"
+      - name: Probe the webview
+        shell: bash
+        env:
+          REQUIRE_WEBRTC: ${{ matrix.webrtc }}
+        run: |
+          run=""; [ "$RUNNER_OS" = Linux ] && run="xvfb-run -a"
+          $run node e2e/desktop/probe.mjs "${{ matrix.bin }}" probe-out
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          { echo "### ${{ matrix.os }}"; echo '```json'; cat probe-out/probe.json 2>/dev/null || echo "no report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            probe-out/
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: ignore
+      - name: Attach to the release
+        if: github.ref_type == 'tag' && matrix.release != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # the release is published by the release steps (.claude/skills/release), maybe after the tag
+          for i in $(seq 1 60); do gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break; sleep 30; done
+          gh release upload "$GITHUB_REF_NAME" ${{ matrix.release }} --clobber
