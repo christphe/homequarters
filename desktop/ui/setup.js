@@ -4,7 +4,8 @@ const { invoke } = window.__TAURI__.core;
 const form = document.getElementById("office");
 const input = document.getElementById("address");
 const error = document.getElementById("error");
-const submit = form.querySelector("button");
+const submit = form.querySelector("button[type=submit]");
+const cancel = document.getElementById("cancel");
 const saved = document.getElementById("saved");
 const list = document.getElementById("list");
 
@@ -35,7 +36,12 @@ function render(offices) {
         remove.textContent = "Click again to remove";
         return;
       }
-      render(await invoke("remove_office", { url: o.url }));
+      const after = await invoke("remove_office", { url: o.url });
+      if (o.url === current) {
+        current = null; // nothing left to go back to
+        cancel.hidden = true;
+      }
+      render(after);
     });
     remove.addEventListener("blur", () => {
       delete remove.dataset.armed;
@@ -59,7 +65,16 @@ async function go(address) {
   }
 }
 
+// Cancel (and Escape) go back to the office that was open, changing nothing; a first start has none
+let current = null;
+cancel.addEventListener("click", () => current && go(current));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && current) go(current);
+});
+
 invoke("list_offices").then((offices) => {
+  current = offices.list.some((o) => o.url === offices.current) ? offices.current : null;
+  cancel.hidden = !current;
   render(offices);
   // "Add office..." comes with #add; a first start has nothing else to do
   if (location.hash === "#add" || offices.list.length === 0) input.focus();
