@@ -301,12 +301,15 @@ fn page_script() -> String {
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
     let signer = app.clone();
-    WebviewWindowBuilder::new(app, MAIN, start)
+    let builder = WebviewWindowBuilder::new(app, MAIN, start);
+    // the window's own menu, on Windows and Linux; a Mac has one menu bar for the app, set in setup
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.menu(window_menu(app)?);
+    builder
         .initialization_script(page_script())
         .title("Home Quarters")
         .inner_size(1280.0, 800.0)
         .min_inner_size(640.0, 400.0)
-        .menu(window_menu(app)?)
         .data_directory(data)
         .on_navigation(move |url| {
             // an office's sign-in button: the provider's page opens in the browser, never here
@@ -441,7 +444,8 @@ fn on_menu(app: &AppHandle, id: &str) {
 
 fn main() {
     let args = args();
-    let mut builder = tauri::Builder::default();
+    // on a Mac, the menu bar is set once the offices are loaded (setup); not Tauri's default one meanwhile
+    let mut builder = tauri::Builder::default().enable_macos_default_menu(false);
     // Launching the app again (Start menu, a shortcut) brings back the window hidden in the tray. Only for
     // the default profile: one started with its own --data-dir (another profile, a test) runs alongside.
     if args.data_dir.is_none() {
@@ -497,6 +501,9 @@ fn main() {
             // the tray brings a hidden window back on Windows and Linux; on a Mac the Dock does
             #[cfg(not(target_os = "macos"))]
             tray(app.handle())?;
+            // a Mac's menu bar: ours replaces Tauri's default one (File, Edit, View, Window, Help)
+            #[cfg(target_os = "macos")]
+            app.set_menu(window_menu(app.handle())?)?;
             Ok(())
         })
         .on_window_event(|window, event| {
