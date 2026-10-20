@@ -23,6 +23,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::webview::{NewWindowResponse, PageLoadEvent, PermissionKind, PermissionResponse};
 use tauri::{AppHandle, Manager, Runtime, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
+mod idle;
 mod office;
 mod offices;
 
@@ -75,6 +76,7 @@ fn list_offices(shell: State<Shell>) -> Offices {
 #[tauri::command]
 fn open_office(address: String, app: AppHandle, shell: State<Shell>, window: WebviewWindow) -> Result<(), String> {
     let url = office::parse(&address)?;
+    allow_office(&app, &url);
     shell.offices.lock().unwrap().open(url.as_str());
     shell.save()?;
     refresh_menus(&app);
@@ -88,6 +90,30 @@ fn remove_office(url: String, app: AppHandle, shell: State<Shell>) -> Result<Off
     shell.save()?;
     refresh_menus(&app);
     Ok(shell.offices.lock().unwrap().clone())
+}
+
+/// Shows a system notification for the office page (its Notification is src/missing-apis.js on macOS
+/// and Linux). Allowed to office pages only, by a capability added per office (allow_office).
+#[tauri::command]
+fn notify(title: String, body: String, app: AppHandle, shell: State<Shell>) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    let known = shell.page.lock().unwrap().as_ref().is_some_and(|p| shell.knows(p));
+    if !known {
+        return Err("not an office".into());
+    }
+    let cut = |s: &str, n: usize| s.chars().take(n).collect::<String>();
+    app.notification().builder().title(cut(&title, 120)).body(cut(&body, 400)).show().map_err(|e| e.to_string())
+}
+
+/// Lets one office's pages call notify, and nothing else of the app.
+fn allow_office(app: &AppHandle, office: &Url) {
+    let origin = office.origin().ascii_serialization();
+    let id: String = origin.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let capability = tauri::ipc::CapabilityBuilder::new(format!("office-{id}"))
+        .remote(format!("{origin}/*"))
+        .window(MAIN)
+        .permission("allow-notify");
+    let _ = app.add_capability(capability); // already added for this origin: nothing to do
 }
 
 /// Command-line options: `--office=<url>` opens that office without saving it (a shortcut per office),
@@ -233,10 +259,20 @@ fn sign_in_in_browser(app: &AppHandle, start: &Url, provider: &str) {
     }
 }
 
+/// The web APIs the office's client needs and this system's web view lacks (src/missing-apis.js). WebView2
+/// has them all.
+fn missing_apis() -> String {
+    if cfg!(windows) {
+        return String::new();
+    }
+    include_str!("missing-apis.js").replace("__HQ_IDLE__", if idle::MEASURED { "true" } else { "false" })
+}
+
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
     let signer = app.clone();
     WebviewWindowBuilder::new(app, MAIN, start)
+        .initialization_script(missing_apis())
         .title("Home Quarters")
         .inner_size(1280.0, 800.0)
         .min_inner_size(640.0, 400.0)
@@ -261,8 +297,8 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
                 *window.state::<Shell>().page.lock().unwrap() = Some(payload.url().clone());
             }
         })
-        // Camera, microphone and screen go to the offices this app opens, and to no other page. The
-        // office still asks for consent itself, and the system for its own permission.
+        // Camera, microphone, screen, notifications and idle detection go to the offices this app opens, and
+        // to no other page. The office still asks for consent itself, and the system for its own permission.
         .on_permission_request({
             let app = app.clone();
             move |_, kind| {
@@ -270,7 +306,11 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
                 let known = shell.page.lock().unwrap().as_ref().is_some_and(|p| shell.knows(p));
                 match (kind, known) {
                     (_, false) => PermissionResponse::Deny,
-                    (PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::DisplayCapture, true) => PermissionResponse::Allow,
+                    // what the office asks for itself, behind its own settings and consent; idle detection is
+                    // "other" to WebView2
+                    (PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::DisplayCapture | PermissionKind::Notifications | PermissionKind::Other, true) => {
+                        PermissionResponse::Allow
+                    }
                     (_, true) => PermissionResponse::Default,
                 }
             }
@@ -384,7 +424,8 @@ fn main() {
     }
     builder
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![list_offices, open_office, remove_office])
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![list_offices, open_office, remove_office, notify])
         .setup(move |app| {
             let dir = match &args.data_dir {
                 Some(d) => d.clone(),
@@ -407,7 +448,21 @@ fn main() {
                 _ => None,
             };
             app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office, page: Mutex::new(page) });
+            let offices = app.state::<Shell>().offices.lock().unwrap().list.clone();
+            for o in offices.iter().filter_map(|o| Url::parse(&o.url).ok()).chain(app.state::<Shell>().cli_office.clone()) {
+                allow_office(app.handle(), &o);
+            }
             open_window(app.handle(), start, dir.join("webview"))?;
+            // the IdleDetector of src/missing-apis.js gets the system's idle time every few seconds
+            if idle::MEASURED {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    if let (Some(window), Some(s)) = (handle.get_webview_window(MAIN), idle::seconds()) {
+                        let _ = window.eval(format!("window.__hqIdle && window.__hqIdle({})", s.floor()));
+                    }
+                });
+            }
             // the tray brings a hidden window back on Windows and Linux; on a Mac the Dock does
             #[cfg(not(target_os = "macos"))]
             tray(app.handle())?;

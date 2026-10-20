@@ -58,6 +58,11 @@ function srcdocFrame() {
   r.webgl2 = !!document.createElement("canvas").getContext("webgl2");
   r.Notification = typeof Notification === "function" ? Notification.permission : "none";
   try {
+    const det = new IdleDetector();
+    await timeout(det.start({ threshold: 60000 }), 5000, "IdleDetector.start");
+    r.idleState = det.userState;
+  } catch (e) { r.idleState = "error: " + e; }
+  try {
     const pc = new RTCPeerConnection();
     pc.addTransceiver("audio"); pc.addTransceiver("video");
     const o = await pc.createOffer();

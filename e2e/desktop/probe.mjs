@@ -50,3 +50,7 @@ if (!report) process.exit(1);
 if (report.ipcFromPage !== "refused") { console.log("FAIL the office page can call the shell"); process.exit(1); }
 if (report.srcdocFrame !== true) { console.log("FAIL a sandboxed srcdoc frame (a plugin's) did not run"); process.exit(1); }
 if (process.env.REQUIRE_WEBRTC === "1" && !report.webrtcMedia) { console.log("FAIL no WebRTC media in this webview"); process.exit(1); }
+// REQUIRE_APIS=idle,notify: the APIs this system's app must give the office (natively or from the app)
+const need = (process.env.REQUIRE_APIS ?? "").split(",").filter(Boolean);
+if (need.includes("idle") && !["active", "idle"].includes(report.idleState)) { console.log("FAIL no working IdleDetector: " + report.idleState); process.exit(1); }
+if (need.includes("notify") && report.Notification !== "granted") { console.log("FAIL notifications not granted: " + report.Notification); process.exit(1); }
