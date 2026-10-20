@@ -20,10 +20,12 @@ jobs:
             bundles: nsis
             bin: desktop/src-tauri/target/release/homequarters-desktop.exe
             webrtc: "1"
+          # the in-page call needs WebKit's mDNS host names resolved, which the hosted runner does not do
+          # ("ICE timed out"); the APIs are still read and media is checked on a real Mac
           - os: macos-latest
             bundles: app,dmg
             bin: "desktop/src-tauri/target/release/bundle/macos/Home Quarters.app/Contents/MacOS/homequarters-desktop"
-            webrtc: "1"
+            webrtc: "0"
           # WebKitGTK may be built without WebRTC (Debian 13's is): the probe says, it does not gate
           - os: ubuntu-24.04
             bundles: appimage,deb

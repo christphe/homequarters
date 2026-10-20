@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::webview::NewWindowResponse;
+use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
 use tauri::{AppHandle, Manager, Runtime, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 mod office;
@@ -45,6 +45,8 @@ struct Shell {
     offices: Mutex<Offices>,
     /// the office given with --office (not saved)
     cli_office: Option<Url>,
+    /// the page the window shows, kept at each navigation for the permission handler
+    page: Mutex<Option<Url>>,
 }
 
 impl Shell {
@@ -250,7 +252,25 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
                 }
             }
             // web pages only: no file://, javascript: or custom schemes in the office window
-            office::navigable(url)
+            let ok = office::navigable(url);
+            if ok {
+                *signer.state::<Shell>().page.lock().unwrap() = Some(url.clone());
+            }
+            ok
+        })
+        // Camera, microphone and screen go to the offices this app opens, and to no other page. The
+        // office still asks for consent itself, and the system for its own permission.
+        .on_permission_request({
+            let app = app.clone();
+            move |_, kind| {
+                let shell = app.state::<Shell>();
+                let known = shell.page.lock().unwrap().as_ref().is_some_and(|p| shell.knows(p));
+                match (kind, known) {
+                    (_, false) => PermissionResponse::Deny,
+                    (PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::DisplayCapture, true) => PermissionResponse::Allow,
+                    (_, true) => PermissionResponse::Default,
+                }
+            }
         })
         // links meant for a new tab (about, privacy, an object's link) open in the default browser
         .on_new_window(move |url, _| {
@@ -379,7 +399,11 @@ fn main() {
                 .and_then(|o| office::parse(o).ok())
                 .map(WebviewUrl::External)
                 .unwrap_or_else(|| WebviewUrl::App("index.html".into()));
-            app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office });
+            let page = match &start {
+                WebviewUrl::External(url) => Some(url.clone()),
+                _ => None,
+            };
+            app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office, page: Mutex::new(page) });
             open_window(app.handle(), start, dir.join("webview"))?;
             // the tray brings a hidden window back on Windows and Linux; on a Mac the Dock does
             #[cfg(not(target_os = "macos"))]
