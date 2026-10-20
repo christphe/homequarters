@@ -42,6 +42,9 @@ interface Sheet {
   failed: boolean;
   /** the decoded picture, for previews in the plugin's interface (hq.ui.sprite with sheet) */
   bitmap: ImageBitmap | null;
+  /** drawn by another plugin's browser code for metadata (hq.provideSheet), and its latest ask */
+  provided: { from: string; metadata: unknown } | null;
+  ask: number;
 }
 
 interface PEnt {
@@ -125,7 +128,10 @@ export class PluginLayer {
     const g = this.plugins.get(plugin);
     if (!g) return;
     for (const e of g.ents.values()) e.spr.destroy();
-    for (const s of g.sheets.values()) s.frames?.[0]?.[0]?.source.destroy();
+    for (const s of g.sheets.values()) {
+      s.frames?.[0]?.[0]?.source.destroy();
+      s.bitmap?.close(); // destroying the texture leaves the decoded picture to the garbage collector
+    }
     this.plugins.delete(plugin);
     this.loaded = true; // redraw without them
   }
@@ -139,22 +145,13 @@ export class PluginLayer {
         case "sprite": {
           if (g.sheets.has(c.key)) break;
           if (g.sheets.size >= LIMITS.sprites) return `more than ${LIMITS.sprites} sprite sheets`;
-          const sheet: Sheet = { frames: null, anims: c.anims, failed: false, bitmap: null };
+          const sheet: Sheet = { frames: null, anims: c.anims, failed: false, bitmap: null, provided: c.provided ?? null, ask: 0 };
           g.sheets.set(c.key, sheet);
           // image data the plugin made, or a PNG: its own, or another plugin's shared/ one (same assets URL,
           // under that plugin's name)
           const base = c.from ? g.base.replace(/\/plugins\/[^/]+\/assets\/$/, "/plugins/" + c.from + "/assets/") : g.base;
-          if (c.provided) {
-            const { from, metadata } = c.provided;
-            const ask = this.provider ? this.provider(from, metadata) : Promise.reject(new Error("no provider"));
-            // a copy for this sheet: the provider's image may be drawn by other sheets too, and dropping a
-            // plugin destroys its textures
-            ask.then((s) => createImageBitmap(s.image).then((bmp) => this.load(g, sheet, bmp, s.frameW, s.frameH)))
-              .catch((err) => {
-                sheet.failed = true;
-                console.warn(`plugin sprite failed to load: the sheet ${from} draws`, err);
-              });
-          } else this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH);
+          if (c.provided) this.askProvider(g, sheet);
+          else this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH);
           break;
         }
         case "spawn": {
@@ -242,7 +239,7 @@ export class PluginLayer {
           break;
         }
         case "walkTo": {
-          // along a path around walls (tilePath.ts); somewhere it cannot reach, it stays where it is
+          // along a path around walls (tilePath.ts); somewhere it cannot reach (off the map, a wall), as close as it can
           const e = g.ents.get(c.id);
           if (!e) break;
           // searched on a later frame, within the per-frame budget; until then it keeps what it does
@@ -250,7 +247,7 @@ export class PluginLayer {
           this.searches.request(plugin + "/" + c.id, { e, x: c.x, y: c.y }, ({ e, x, y }) => {
             if (!g.ents.has(c.id) || g.ents.get(c.id) !== e) return; // removed or replaced since
             const walkable = (tx: number, ty: number) => this.host.canStand(tx * 16 + 8, ty * 16 + 8);
-            const path = findPath(e.x, e.y, x, y, walkable);
+            const path = findPath(e.x, e.y, x, y, walkable, undefined, true);
             e.path = path;
             e.mode = path ? "walk" : "still";
             if (!path) this.setMoving(e, false, performance.now());
@@ -278,6 +275,51 @@ export class PluginLayer {
       }
     }
     return null;
+  }
+
+  /** Asks the plugin that draws a sheet (hq.provideSheet) for it; an answer to an older ask is dropped. */
+  private askProvider(g: Gfx, sheet: Sheet) {
+    const { from, metadata } = sheet.provided!;
+    const n = ++sheet.ask;
+    const ask = this.provider ? this.provider(from, metadata) : Promise.reject(new Error("no provider"));
+    // a copy for this sheet: the provider's image may be drawn by other sheets too, and dropping a
+    // plugin destroys its textures
+    ask.then((s) => createImageBitmap(s.image).then((bmp) => {
+      if (sheet.ask !== n) return bmp.close();
+      return this.load(g, sheet, bmp, s.frameW, s.frameH);
+    })).catch((err) => {
+      if (sheet.ask !== n) return;
+      sheet.failed = true;
+      console.warn(`plugin sprite failed to load: the sheet ${from} draws`, err);
+    });
+  }
+
+  /** A plugin stopped on this page: the sheets it drew for other plugins go blank, and their sprites
+   *  with them, until it runs again (a plugin that is off draws nothing). */
+  providerStopped(from: string) {
+    for (const g of this.plugins.values()) {
+      for (const sheet of g.sheets.values()) {
+        if (sheet.provided?.from !== from) continue;
+        sheet.ask++; // an answer still on its way is stale
+        sheet.frames?.[0]?.[0]?.source.destroy();
+        sheet.frames = null;
+        sheet.bitmap?.close();
+        sheet.bitmap = null;
+        sheet.failed = false;
+        this.loaded = true;
+      }
+    }
+  }
+
+  /** A plugin started on this page: it is asked again for the sheets it draws that are blank. */
+  providerStarted(from: string) {
+    for (const g of this.plugins.values()) {
+      for (const sheet of g.sheets.values()) {
+        if (sheet.provided?.from !== from || sheet.frames) continue;
+        sheet.failed = false;
+        this.askProvider(g, sheet);
+      }
+    }
   }
 
   private setManual(e: PEnt, name: string, now: number) {

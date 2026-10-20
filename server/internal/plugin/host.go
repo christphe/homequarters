@@ -268,8 +268,18 @@ func (h *Host) Start(name string) error {
 		in.presence(h.online[id], true)
 	}
 	h.inst[name] = in
+	h.othersChanged(name)
 	go in.run()
 	return nil
+}
+
+// othersChanged tells every running plugin but name that name started or stopped. Called with h.mu held.
+func (h *Host) othersChanged(name string) {
+	for n, in := range h.inst {
+		if n != name {
+			in.othersChanged()
+		}
+	}
 }
 
 // Stop stops a plugin (calling unload) and waits for it.
@@ -280,6 +290,9 @@ func (h *Host) Stop(name string) {
 	in := h.inst[name]
 	delete(h.inst, name)
 	delete(h.crashed, name)
+	if in != nil {
+		h.othersChanged(name)
+	}
 	h.mu.Unlock()
 	if in != nil {
 		in.halt()
@@ -308,6 +321,7 @@ func (h *Host) crash(in *instance, reason string) {
 	if mine {
 		delete(h.inst, in.info.Name)
 		h.crashed[in.info.Name] = reason
+		h.othersChanged(in.info.Name)
 	}
 	h.mu.Unlock()
 	if mine {

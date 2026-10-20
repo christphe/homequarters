@@ -67,7 +67,7 @@ const (
 )
 
 // exportNames are the functions a server module may export.
-var exportNames = map[string]bool{"load": true, "update": true, "onJoin": true, "onLeave": true, "onMessage": true, "onSettings": true, "unload": true}
+var exportNames = map[string]bool{"load": true, "update": true, "onJoin": true, "onLeave": true, "onMessage": true, "onSettings": true, "onPlugins": true, "unload": true}
 
 // instance is one running plugin. A single goroutine (run) owns its QuickJS VM; everything else
 // reaches it through the bounded inbox, or the presence queue, which is never dropped so the
@@ -90,6 +90,8 @@ type instance struct {
 	wake    chan struct{}
 	// settingsChanged: an administrator changed the plugin's settings; onSettings runs on the next wake
 	settingsChanged atomic.Bool
+	// pluginsChanged: another plugin started or stopped; onPlugins runs on the next wake
+	pluginsChanged atomic.Bool
 
 	stop    chan struct{}
 	done    chan struct{}
@@ -177,7 +179,7 @@ func (in *instance) checkExports() error {
 	}
 	for _, n := range names {
 		if !exportNames[n] {
-			return fmt.Errorf("unknown export %q: a server module exports only load, update, onJoin, onLeave, onMessage and unload", n)
+			return fmt.Errorf("unknown export %q: a server module exports only load, update, onJoin, onLeave, onMessage, onSettings, onPlugins and unload", n)
 		}
 	}
 	return nil
@@ -250,6 +252,15 @@ func (in *instance) settings() {
 	}
 }
 
+// othersChanged tells the plugin another one started or stopped (it asks with hq.plugins.running).
+func (in *instance) othersChanged() {
+	in.pluginsChanged.Store(true)
+	select {
+	case in.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (in *instance) presence(p Player, online bool) {
 	in.pmu.Lock()
 	if i, ok := in.presIdx[p.ID]; ok {
@@ -300,6 +311,12 @@ func (in *instance) run() {
 		}
 		if in.settingsChanged.Swap(false) {
 			if err := in.check(in.callExport("onSettings")); err != nil {
+				in.h.crash(in, err.Error())
+				return
+			}
+		}
+		if in.pluginsChanged.Swap(false) {
+			if err := in.check(in.callExport("onPlugins")); err != nil {
 				in.h.crash(in, err.Error())
 				return
 			}
