@@ -214,7 +214,7 @@ export class WorldView {
   private hover: { x: number; y: number; w: number; h: number } | null = null;
   private eco = false;
   private guided = false;
-  private guidedRun = false; // a walk-to runs; following a person goes at my own pace
+  private guidedRun = false; // a walk-to runs; following a person goes at their pace (`self` tells)
   private nearby: Prop | null = null;
   private nearbyAt = 0;
   private emotes = new Map<number, { text: Text; until: number }>();
@@ -715,6 +715,7 @@ export class WorldView {
       // a server-steered walk: my avatar runs on between these 15 Hz positions (advanceLocal), and the
       // gap to each one fades in instead of jumping there, so it moves smoothly and its followers too
       this.advanceLocal(performance.now());
+      if (this.guided) this.guidedRun = m.r; // a follower runs while the person it follows runs
       const ex = m.x - this.mx, ey = m.y - this.my;
       this.mx = m.x;
       this.my = m.y;
