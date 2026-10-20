@@ -68,6 +68,7 @@ Art (output goes to `site/assets/`; details in `docs/art-style.md`):
 - `e2e/export-art.mjs`: sprite sheets and the baked map from the art code (needs only the Vite preview).
 - `e2e/art.mjs`: cast and walking GIF. Standalone (Chrome + ffmpeg only).
 - `e2e/banner.mjs`: social banner from a real in-game scene; builds and starts its own server (port 38090, temp database, no media).
+- `e2e/export-icons.mjs`: the installed-app icons in `web/public/icons` from the favicon. Standalone (Chrome only).
 - `e2e/screens.mjs`: clean in-game screenshots; needs a game server serving the built client.
 
 ## Invariants: do not break these
