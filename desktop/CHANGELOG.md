@@ -2,7 +2,7 @@
 
 The desktop app (desktop/), released as desktop-vX.Y.Z. The server and web client: server/CHANGELOG.md.
 
-## [Unreleased] - patch
+## [0.3.2] - 2026-10-20
 
 ### Fixed
 - The offices page has a Cancel button (and Escape) to go back to the open office (#27)
