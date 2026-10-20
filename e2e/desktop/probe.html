@@ -33,8 +33,21 @@ async function loopback() {
   return got;
 }
 
+// A plugin runs in a sandboxed srcdoc iframe (web/src/plugins/host.ts): the app must let such a frame load.
+function srcdocFrame() {
+  return timeout(new Promise((ok) => {
+    window.addEventListener("message", (e) => e.data === "frame-ran" && ok(true));
+    const f = document.createElement("iframe");
+    f.setAttribute("sandbox", "allow-scripts");
+    f.hidden = true;
+    f.srcdoc = "<script>parent.postMessage('frame-ran', '*')<\/script>";
+    document.body.append(f);
+  }), 5000, "srcdoc frame");
+}
+
 (async () => {
   const r = { ua: navigator.userAgent, secure: isSecureContext };
+  try { r.srcdocFrame = await srcdocFrame(); } catch (e) { r.srcdocFrame = false; }
   r.RTCPeerConnection = typeof RTCPeerConnection;
   r.getUserMedia = typeof navigator.mediaDevices?.getUserMedia;
   r.getDisplayMedia = typeof navigator.mediaDevices?.getDisplayMedia;

@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
+use tauri::webview::{NewWindowResponse, PageLoadEvent, PermissionKind, PermissionResponse};
 use tauri::{AppHandle, Manager, Runtime, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 mod office;
@@ -45,7 +45,7 @@ struct Shell {
     offices: Mutex<Offices>,
     /// the office given with --office (not saved)
     cli_office: Option<Url>,
-    /// the page the window shows, kept at each navigation for the permission handler
+    /// the page the window shows, kept at each page load for the permission handler
     page: Mutex<Option<Url>>,
 }
 
@@ -252,11 +252,14 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
                 }
             }
             // web pages only: no file://, javascript: or custom schemes in the office window
-            let ok = office::navigable(url);
-            if ok {
-                *signer.state::<Shell>().page.lock().unwrap() = Some(url.clone());
+            office::navigable(url)
+        })
+        // The page the window shows, for the permission handler. A page load concerns the window's page
+        // only, where a navigation may be a frame's (on a Mac).
+        .on_page_load(|window, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                *window.state::<Shell>().page.lock().unwrap() = Some(payload.url().clone());
             }
-            ok
         })
         // Camera, microphone and screen go to the offices this app opens, and to no other page. The
         // office still asks for consent itself, and the system for its own permission.
