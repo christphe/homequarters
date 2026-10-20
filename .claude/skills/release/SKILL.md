@@ -1,20 +1,25 @@
 ---
 name: release
-description: Cut a Home Quarters release. Write the changelog from the commits since the last release (Keep a Changelog, with fchange), promote it with frelease, tag the version, and publish the GitHub release ("What's Changed") and the Docker image. Use when asked to make, cut or publish a release.
+description: Cut a Home Quarters release, of the server (server and web client, Docker image) or of the desktop app, each with its own changelog and tags. Write the changelog from the commits since that product's last release (Keep a Changelog, with fchange --pkg), promote it with frelease, tag the version, and publish the GitHub release ("What's Changed") with the Docker image or the desktop builds. Use when asked to make, cut or publish a release.
 ---
 
 # Release
 
-A release is a version tag on `main`. It comes with:
+Home Quarters ships two products from this repository. Each has its own changelog, version and tags:
 
-- a `CHANGELOG.md` section in the [Keep a Changelog](https://keepachangelog.com) format;
-- a GitHub release whose notes are that section, under "What's Changed";
-- the Docker image `ghcr.io/christphe/homequarters:X.Y.Z`, which `.github/workflows/docker.yml` publishes when the tag is pushed.
+| Product | What it is | Changelog | Tag | What the tag publishes |
+| --- | --- | --- | --- | --- |
+| `server` | the Go server, the web client it serves, the Docker image | `server/CHANGELOG.md` | `server-vX.Y.Z` | the image `ghcr.io/christphe/homequarters:X.Y.Z` and `:X.Y` (`.github/workflows/docker.yml`) |
+| `desktop` | the desktop app (`desktop/`) | `desktop/CHANGELOG.md` | `desktop-vX.Y.Z` | the Windows installer and the macOS `.dmg`, attached to the release (`.github/workflows/desktop.yml`) |
 
-The changelog is kept with [fantastic-change](https://github.com/fantastic-jam/fantastic-change), configured by `fchange.json`:
+A release is one product's version tag on `main`. It comes with that product's changelog section in the [Keep a Changelog](https://keepachangelog.com) format, and a GitHub release whose notes are that section, under "What's Changed".
 
-- `fchange <type> "<entry>"` adds an entry under `## [Unreleased]` and records the version bump it implies;
-- `frelease` turns `[Unreleased]` into the next version.
+The changelogs are kept with [fantastic-change](https://github.com/fantastic-jam/fantastic-change). `fchange.json` lists the repository's top-level folders as packages, so every command names its product with `--pkg server` or `--pkg desktop`:
+
+- `fchange <type> "<entry>" --pkg <product>` adds an entry under `## [Unreleased]` and records the version bump it implies;
+- `frelease --pkg <product>` turns `[Unreleased]` into the next version.
+
+Release the products separately. Each one is released only when its `[Unreleased]` has entries.
 
 ## 0. Before
 
@@ -23,12 +28,15 @@ The changelog is kept with [fantastic-change](https://github.com/fantastic-jam/f
 
 ## 1. What the release covers
 
-- **The range.** The last tag is `git describe --tags --abbrev=0 origin/main`, and the range runs from it to `origin/main`.
-- **No tag yet** (the first release): `git fetch upstream` and use `upstream/main..origin/main`. That is this fork's own work, not the history inherited from the original project.
-- **The commits:** `git log --reverse --format='%h %s' <range>`.
+For each product:
+
+- **The range.** The product's last tag is `git describe --tags --abbrev=0 --match '<product>-v*' origin/main`, and the range runs from it to `origin/main`.
+- **The commits:** `git log --reverse --format='%h %s' <range>`. For the desktop app, `-- desktop/` keeps the ones that touch it; for the server, the commits that change `server/` or `web/` (and the Dockerfile and deploy files).
   - A squash-merged pull request ends with `(#N)`: read it with `gh pr view N --repo christphe/homequarters --json title,body`.
   - For other commits, read `git show --stat <hash>`.
-- **Entries already there.** Read `## [Unreleased]` in `CHANGELOG.md`: entries recorded with `fchange` during development are already there. Do not add them twice.
+- **Entries already there.** Read `## [Unreleased]` in the product's changelog: entries recorded with `fchange` during development are already there. Do not add them twice.
+
+A change that spans both (say, a server route the desktop app uses) has an entry in each changelog, each saying what it does for that product. The desktop entry names the server version it needs ("needs server 0.4.0 or later").
 
 ## 2. Write the entries
 
@@ -40,7 +48,7 @@ Write one `fchange` call per change people notice, not per commit:
 | `changed` | something that now works differently, including configuration, environment variables, the plugin API, the protocol | minor |
 | `deprecated` | something that still works but will go | minor |
 | `removed` | something gone | major |
-| `fixed` | a bug that no longer happens | patch |
+| `fixed` | a bug that no longer happens, or something missing that people expected (a button to go back) | patch |
 | `security` | a security fix | patch |
 
 How to write them:
@@ -50,49 +58,52 @@ How to write them:
 - **Describe the result, not how it was made.** No commit hashes, no rebases, no review rounds, no "first version then fixed". Group the commits of one change into one entry.
 - **Leave out** tests, CI, refactors and docs-only commits, unless they change something for operators (a new migration, a new image tag, a new requirement).
 
-Example: `fchange added "Plugins: operator-installed TypeScript plugins, turned on per office by administrators (#9)"`.
+Example: `fchange added "Plugins: operator-installed TypeScript plugins, turned on per office by administrators (#9)" --pkg server`.
 
 ## 3. The version
 
-`frelease --dry-run` prints the version the entries imply, from the last version in `CHANGELOG.md` (0.0.0 when there is none: a first release is 0.1.0).
+`frelease --pkg <product> --dry-run` prints the version the entries imply, from the last version in that product's changelog.
 
 The project is in alpha. **If the dry run gives a major version (X.0.0), stop and ask the user**: a `removed` entry implies one, and a removal in an alpha rarely means 1.0. Otherwise go on.
 
 ## 4. Promote, commit, tag
 
-1. Run `frelease` on `main`: it writes the version heading into `CHANGELOG.md` and prints the version.
-2. Commit `CHANGELOG.md` on `main` as `Release vX.Y.Z` and push `main`. No branch, no pull request.
+1. Run `frelease --pkg <product>` on `main`: it writes the version heading into the product's changelog and prints the version.
+2. Commit that changelog on `main` as `Release <product> vX.Y.Z` and push `main`. No branch, no pull request.
 3. Tag that commit and push the tag:
 
    ~~~bash
-   git tag -a vX.Y.Z -m "vX.Y.Z"
-   git push origin vX.Y.Z
+   git tag -a <product>-vX.Y.Z -m "<product>-vX.Y.Z"
+   git push origin <product>-vX.Y.Z
    ~~~
 
-   Pushing the tag starts `docker.yml`, which publishes the image tags `X.Y.Z` and `X.Y`.
+   A `server-v` tag starts `docker.yml`, which publishes the image tags `X.Y.Z` and `X.Y`. A `desktop-v` tag starts `desktop.yml`, which builds the app with that version and attaches the installer and the `.dmg` to the release once it exists. GitHub's hosted macOS runners are sometimes never assigned: a macOS job cancelled after about 15 minutes with no steps is rerun with `gh run rerun <run> --job <job>` until it runs.
 
 ## 5. The GitHub release
 
-The notes are the version's section, under "What's Changed", followed by the comparison with the previous release:
+The notes are the version's section, under "What's Changed", followed by the comparison with the product's previous release:
 
 ~~~bash
 {
   printf "## What's Changed\n\n"
-  frelease changelog X.Y.Z
-  printf "\n**Full Changelog**: https://github.com/christphe/homequarters/compare/vPREVIOUS...vX.Y.Z\n"
+  frelease --pkg <product> changelog X.Y.Z
+  printf "\n**Full Changelog**: https://github.com/christphe/homequarters/compare/<product>-vPREVIOUS...<product>-vX.Y.Z\n"
 } > notes.md
-gh release create vX.Y.Z --repo christphe/homequarters --title "vX.Y.Z" --notes-file notes.md --latest
+gh release create <product>-vX.Y.Z --repo christphe/homequarters --title "<Title> vX.Y.Z" --notes-file notes.md <latest>
 ~~~
 
-For the first release, compare from the first commit of the range instead of a previous tag. Read `notes.md` before publishing: the headings must be `### Added`, `### Fixed` and so on, under "What's Changed".
+- The title is `Server vX.Y.Z` or `Desktop vX.Y.Z`.
+- `<latest>` is `--latest` for a server release, and `--latest=false` for a desktop release: GitHub's "Latest" badge stays on the server, which is what most people install.
+
+Read `notes.md` before publishing: the headings must be `### Added`, `### Fixed` and so on, under "What's Changed".
 
 ## 6. Report
 
 Tell the user:
 
-- the version;
+- the product and the version;
 - the release URL;
-- the image tag;
-- whether the Docker workflow started (`gh run list --repo christphe/homequarters --workflow docker.yml --limit 1`).
+- for the server, the image tag and whether the Docker workflow started (`gh run list --repo christphe/homequarters --workflow docker.yml --limit 1`);
+- for the desktop app, whether the Desktop workflow started, and later whether the installer and the `.dmg` are attached (`gh release view <tag> --repo christphe/homequarters --json assets`).
 
-Say what is not finished yet: the image is still building while that run is in progress.
+Say what is not finished yet: the image is still building, or the desktop builds are not attached, while those runs are in progress.

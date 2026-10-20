@@ -19,7 +19,7 @@ Use the browser on Linux, installed as an app from Chrome or Edge if you want a 
 
 ## Installing a build
 
-Each [release](https://github.com/christphe/homequarters/releases) carries the Windows installer (`Home Quarters_<version>_x64-setup.exe`) and the macOS disk image (`Home Quarters_<version>_aarch64.dmg`, Apple silicon). A pull request that touches `desktop/` builds them too, as artifacts of its Desktop workflow run. They are not signed yet:
+Each desktop [release](https://github.com/christphe/homequarters/releases) (`desktop-vX.Y.Z`, with its own [changelog](../desktop/CHANGELOG.md)) carries the Windows installer (`Home Quarters_<version>_x64-setup.exe`) and the macOS disk image (`Home Quarters_<version>_aarch64.dmg`, Apple silicon). A pull request that touches `desktop/` builds them too, as artifacts of its Desktop workflow run. They are not signed yet:
 
 - **Windows**: SmartScreen says it protected your PC. Choose "More info", then "Run anyway".
 - **macOS**: the app is signed ad hoc only. After copying it to Applications, remove the quarantine attribute once:

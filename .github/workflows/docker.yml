@@ -1,11 +1,11 @@
 # Publishes the server image (web client included) to GitHub Container Registry:
 #   ghcr.io/christphe/homequarters:latest   on every push to main
-#   ghcr.io/christphe/homequarters:vX.Y.Z   on version tags
+#   ghcr.io/christphe/homequarters:X.Y.Z    and :X.Y on server release tags (server-vX.Y.Z)
 name: Docker image
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["server-v*"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,7 +29,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
-            type=semver,pattern={{version}}
+            type=match,pattern=server-v(\d+\.\d+\.\d+),group=1
+            type=match,pattern=server-v(\d+\.\d+)\.\d+,group=1
       - uses: docker/build-push-action@v6
         with:
           context: .
