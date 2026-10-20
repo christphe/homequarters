@@ -2,7 +2,7 @@
 
 The server and its web client (server/, web/, the Docker image), released as server-vX.Y.Z. The desktop app: desktop/CHANGELOG.md.
 
-## [Unreleased] - patch
+## [0.3.2] - 2026-10-20
 
 ### Fixed
 - In the desktop app, texts speak of the app and its window rather than of a browser tab, and screen-sharing advice names the app (#27)
