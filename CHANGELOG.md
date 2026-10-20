@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - patch
+
+### Fixed
+- Desktop app on macOS: plugins run again and show their buttons (#25)
+
 ## [0.3.0] - 2026-10-20
 
 ### Added

@@ -29,11 +29,13 @@ pub fn parse(address: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-/// Pages the office window may show: the web (the office, a sign-in provider and back) and the bundled
-/// setup page. Never files, scripts in the address bar or other schemes.
+/// Pages the office window may show: the web (the office, a sign-in provider and back), the bundled
+/// setup page, and the local documents a page builds for its frames (a plugin's sandboxed
+/// `about:srcdoc` iframe, `blob:` and `data:`). Never files, scripts in the address bar or other schemes.
+/// A Mac asks this for every frame, not only the page (wry passes WKWebView's frame navigations on).
 pub fn navigable(url: &Url) -> bool {
     match url.scheme() {
-        "https" | "http" => true,
+        "https" | "http" | "about" | "blob" | "data" => true,
         "tauri" => url.host_str() == Some("localhost"),
         _ => false,
     }
@@ -116,6 +118,10 @@ mod tests {
             ("https://accounts.google.com/o/oauth2/auth", true),
             ("http://tauri.localhost/index.html", true),
             ("tauri://localhost/index.html", true),
+            ("about:srcdoc", true),
+            ("about:blank", true),
+            ("blob:https://hq.example/2f1c6a0e-8d1b-4c43-9d7a-0d6b8e3f5a21", true),
+            ("data:text/html,<p>x</p>", true),
             ("file:///C:/Windows/win.ini", false),
             ("javascript:alert(1)", false),
             ("tauri://evil/index.html", false),
