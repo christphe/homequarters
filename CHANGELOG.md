@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - patch
+
+### Fixed
+- Desktop app on macOS: notifications and "away when my computer is idle" work, provided by the app where the Mac's web view lacks them (#27)
+
 ## [0.3.1] - 2026-10-20
 
 ### Fixed
