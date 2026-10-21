@@ -13,6 +13,12 @@ It is a small shell around the system's own web view: WebView2 on Windows, WKWeb
 - **The office knows it runs in the app.** The app sets `window.__HQ_DESKTOP__` (`{ os }`) before the page loads, and the web client then speaks of the window and the app where it would speak of a browser tab (`@app` texts in `web/src/i18n.ts`).
 - **What the office page may do.** The office page can only ask the app to show a notification; anything else in the app is refused to it. Only office pages get the camera, microphone, screen, notifications and idle detection, and the office still asks for your consent first. Links meant for a new tab open in your default browser.
 
+## Updates
+
+The app updates itself from the desktop releases. It looks for a newer one at start (after 30 seconds) and then every 6 hours, downloads it in the background, and says so with a system notification and "Restart to update to X" at the top of the Office menu (and of the tray menu on Windows). It never installs on its own: a restart in the middle of a call would cut it.
+
+Updates are signed with the project's updater key, separate from Apple's and Microsoft's code signing: the app holds its public half and refuses an update whose signature does not verify, and it reads its feed (`latest.json` in the `desktop-latest` release) only over HTTPS. On a Mac, an app that is only signed ad hoc gets a new identity with every build, so macOS asks again for the camera and the microphone after an update; a Developer ID signature would keep them.
+
 ## Linux
 
 Use the browser on Linux, installed as an app from Chrome or Edge if you want a window and an icon. The system web view there, WebKitGTK, is built without WebRTC by Debian 13 and Ubuntu 24.04, and by every distribution we found reports about. In it the office would show, but no call could connect. The desktop workflow measures this on Ubuntu at every change ([decision 0027](decisions/0027-desktop-app.md)).
@@ -43,6 +49,8 @@ pnpm tauri build --no-bundle     # the executable alone
 
 On Windows without Visual Studio's C++ build tools, the GNU toolchain works too (`rustup toolchain install stable-x86_64-pc-windows-gnu` with MinGW-w64, then `RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu`).
 
-Options: `--office=<url>` opens that office without saving it, and `--data-dir=<path>` keeps the offices, cookies and storage in another folder (another profile, or a test that runs beside your own app).
+Options: `--office=<url>` opens that office without saving it, `--data-dir=<path>` keeps the offices, cookies and storage in another folder (another profile, or a test that runs beside your own app), and `--update-url=<url>` reads updates from another feed (a profile of its own looks for updates only with it; a release build reads HTTPS feeds only).
+
+Release builds sign their update files with the updater key: the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. A key lost is the end of automatic updates for every app installed: keep a copy outside GitHub.
 
 `node e2e/desktop/probe.mjs <app executable>` runs the app on a probe page. The page reports which web APIs the web view has and makes a WebRTC call inside itself. CI runs the probe on Windows, macOS and Ubuntu.

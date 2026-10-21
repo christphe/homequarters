@@ -1,7 +1,5 @@
 # Changelog
 
-The server and its web client (server/, web/, the Docker image), released as server-vX.Y.Z. The desktop app: desktop/CHANGELOG.md.
-
 ## [0.3.2] - 2026-10-20
 
 ### Fixed
