@@ -3,7 +3,9 @@ name: Desktop
 # The desktop app (desktop/) on the three systems: build it, then run it on e2e/desktop/probe.html, which
 # reads what its webview can do and makes a WebRTC call inside the page. The builds are unsigned.
 # On a desktop release tag (desktop-vX.Y.Z), the Windows and macOS builds carry that version and go to its
-# GitHub release (Linux uses the browser: docs/desktop.md). Run by hand with a tag, it builds that release
+# GitHub release (Linux uses the browser: docs/desktop.md), with their signed update files; the feed job then
+# writes latest.json, which installed apps read from the "desktop-latest" release to update themselves.
+# Run by hand with a tag, it builds that release
 # again and attaches its files, for when a runner never came (GitHub's macOS runners sometimes do not):
 #   gh workflow run desktop.yml -f tag=desktop-v0.3.2 [-f macos=macos-15]
 on:
@@ -36,7 +38,8 @@ jobs:
             bin: desktop/src-tauri/target/release/homequarters-desktop.exe
             webrtc: "1"
             apis: layout # WebView2's own IdleDetector needs a click to ask
-            release: desktop/src-tauri/target/release/bundle/nsis/*.exe
+            # the installer is also the update (with its .sig)
+            release: desktop/src-tauri/target/release/bundle/nsis/*.exe desktop/src-tauri/target/release/bundle/nsis/*.exe.sig
           # the in-page call needs WebKit's mDNS host names resolved, which the hosted runner does not do
           # ("ICE timed out"); the APIs are still read and media is checked on a real Mac
           - os: ${{ inputs.macos || 'macos-latest' }}
@@ -44,7 +47,7 @@ jobs:
             bin: "desktop/src-tauri/target/release/bundle/macos/Home Quarters.app/Contents/MacOS/homequarters-desktop"
             webrtc: "0"
             apis: idle,notify,layout
-            release: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            release: desktop/src-tauri/target/release/bundle/dmg/*.dmg desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
           # WebKitGTK may be built without WebRTC (Debian 13's is): the probe says, it does not gate
           - os: ubuntu-24.04
             bundles: appimage,deb
@@ -84,11 +87,19 @@ jobs:
       - name: Build
         shell: bash
         working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          # a release builds its version (desktop-v0.3.2 -> 0.3.2); otherwise the version in tauri.conf.json
-          version=()
-          [ -n "$TAG" ] && version=(--config "{\"version\":\"${TAG#desktop-v}\"}")
-          pnpm tauri build --bundles ${{ matrix.bundles }} "${version[@]}"
+          # a release builds its version (desktop-v0.3.2 -> 0.3.2) and, with the updater key, its signed
+          # update files; otherwise the version in tauri.conf.json and no update files
+          config=()
+          if [ -n "$TAG" ]; then
+            updater=false
+            if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then updater=true; else echo "::warning::no TAURI_SIGNING_PRIVATE_KEY: this release cannot update installed apps"; fi
+            config=(--config "{\"version\":\"${TAG#desktop-v}\",\"bundle\":{\"createUpdaterArtifacts\":$updater}}")
+          fi
+          pnpm tauri build --bundles ${{ matrix.bundles }} "${config[@]}"
       - name: Probe the webview
         shell: bash
         env:
@@ -121,4 +132,25 @@ jobs:
         run: |
           # the release is published by the release steps (.claude/skills/release), maybe after the tag
           for i in $(seq 1 60); do gh release view "$TAG" >/dev/null 2>&1 && break; sleep 30; done
+          shopt -s nullglob
           gh release upload "$TAG" ${{ matrix.release }} --clobber
+
+  # The update feed: latest.json lists each system's signed update in the release, and goes to the
+  # "desktop-latest" release whose address the app reads. Only for the newest desktop release, so rebuilding
+  # an older one never offers it as an update.
+  feed:
+    needs: desktop
+    if: always() && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/desktop-v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Write latest.json
+        run: bash desktop/scripts/update-feed.sh "$TAG"

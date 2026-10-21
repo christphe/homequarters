@@ -1,6 +1,9 @@
 # Changelog
 
-The desktop app (desktop/), released as desktop-vX.Y.Z. The server and web client: server/CHANGELOG.md.
+## [Unreleased] - minor
+
+### Added
+- The app updates itself: it downloads a newer release in the background, checks its signature, and offers "Restart to update" in the Office menu; it never installs on its own (#29)
 
 ## [0.3.2] - 2026-10-20
 

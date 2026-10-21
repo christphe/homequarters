@@ -27,6 +27,7 @@ mod idle;
 mod layout;
 mod office;
 mod offices;
+mod update;
 
 use offices::Offices;
 
@@ -143,22 +144,46 @@ fn allow_office(app: &AppHandle, office: &Url) {
 
 /// Command-line options: `--office=<url>` opens that office without saving it (a shortcut per office),
 /// `--data-dir=<path>` keeps the offices and the webview's cookies and storage there instead of the
-/// user's application data (separate profiles, tests).
+/// user's application data (separate profiles, tests), `--update-url=<url>` reads updates from that feed
+/// instead of the releases' (tests; a profile of its own looks for updates only with it).
 struct Args {
     office: Option<String>,
     data_dir: Option<PathBuf>,
+    update_url: Option<Url>,
 }
 
 fn args() -> Args {
-    let mut a = Args { office: None, data_dir: None };
+    let mut a = Args { office: None, data_dir: None, update_url: None };
     for arg in std::env::args().skip(1) {
         if let Some(v) = arg.strip_prefix("--office=") {
             a.office = Some(v.to_string());
         } else if let Some(v) = arg.strip_prefix("--data-dir=") {
             a.data_dir = Some(PathBuf::from(v));
+        } else if let Some(v) = arg.strip_prefix("--update-url=") {
+            a.update_url = Url::parse(v).ok();
         }
     }
     a
+}
+
+/// "Restart to update to X", while a downloaded update waits.
+fn update_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Option<MenuItem<R>>> {
+    match app.state::<update::Updates>().ready_version() {
+        Some(v) => Ok(Some(MenuItem::with_id(app, "update", format!("Restart to update to {v}"), true, None::<&str>)?)),
+        None => Ok(None),
+    }
+}
+
+/// A downloaded update: the menus offer it, and the system says so once.
+fn update_ready(app: &AppHandle, version: &str) {
+    refresh_menus(app);
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app
+        .notification()
+        .builder()
+        .title("Home Quarters update")
+        .body(format!("Version {version} is ready. Restart the app from the Office menu to update."))
+        .show();
 }
 
 /// One entry per saved office (the open one checked), for the window menu and the tray menu.
@@ -179,9 +204,14 @@ fn office_menu<R: Runtime>(app: &AppHandle<R>, with_quit: bool) -> tauri::Result
     let manage = MenuItem::with_id(app, "manage", "Manage offices...", true, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, Some("CmdOrCtrl+Q"))?;
-    let sep = [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
-    let mut items: Vec<&dyn IsMenuItem<R>> = list.iter().map(|i| i as &dyn IsMenuItem<R>).collect();
-    if !items.is_empty() {
+    let update = update_item(app)?;
+    let sep = [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
+    let mut items: Vec<&dyn IsMenuItem<R>> = Vec::new();
+    if let Some(u) = &update {
+        items.extend([u as &dyn IsMenuItem<R>, &sep[2]]);
+    }
+    items.extend(list.iter().map(|i| i as &dyn IsMenuItem<R>));
+    if !list.is_empty() {
         items.push(&sep[0]);
     }
     items.extend([&add as &dyn IsMenuItem<R>, &manage, &reload]);
@@ -244,8 +274,13 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let open = MenuItem::with_id(app, "show", "Open Home Quarters", true, None::<&str>)?;
     let manage = MenuItem::with_id(app, "manage", "Manage offices...", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Home Quarters", true, None::<&str>)?;
+    let update = update_item(app)?;
     let sep = [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
-    let mut items: Vec<&dyn IsMenuItem<R>> = vec![&open, &sep[0]];
+    let mut items: Vec<&dyn IsMenuItem<R>> = vec![&open];
+    if let Some(u) = &update {
+        items.push(u);
+    }
+    items.push(&sep[0]);
     items.extend(list.iter().map(|i| i as &dyn IsMenuItem<R>));
     items.extend([&manage as &dyn IsMenuItem<R>, &sep[1], &quit]);
     Menu::with_items(app, &items)
@@ -413,6 +448,10 @@ fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "show" => show(&window),
         "quit" => quit(app),
+        "update" => {
+            QUITTING.store(true, Ordering::SeqCst);
+            update::install_and_restart(app);
+        }
         "reload" => {
             let _ = window.reload();
         }
@@ -458,6 +497,7 @@ fn main() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![list_offices, open_office, remove_office, notify])
         .setup(move |app| {
             let dir = match &args.data_dir {
@@ -481,6 +521,11 @@ fn main() {
                 _ => None,
             };
             app.manage(Shell { dir: dir.clone(), offices: Mutex::new(offices), cli_office, page: Mutex::new(page) });
+            app.manage(update::Updates::default());
+            // the user's own app looks for updates; a profile of its own (a test) only with a feed given
+            if args.data_dir.is_none() || args.update_url.is_some() {
+                update::watch(app.handle().clone(), args.update_url.clone(), update_ready);
+            }
             let offices = app.state::<Shell>().offices.lock().unwrap().list.clone();
             for o in offices.iter().filter_map(|o| Url::parse(&o.url).ok()).chain(app.state::<Shell>().cli_office.clone()) {
                 allow_office(app.handle(), &o);

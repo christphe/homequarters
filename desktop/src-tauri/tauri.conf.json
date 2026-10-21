@@ -15,7 +15,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "deb", "appimage", "app", "dmg"],
+    "targets": [
+      "nsis",
+      "deb",
+      "appimage",
+      "app",
+      "dmg"
+    ],
     "category": "Business",
     "shortDescription": "A 2D virtual office",
     "licenseFile": "../../LICENSE",
@@ -29,6 +35,18 @@
     "macOS": {
       "entitlements": "entitlements.plist",
       "signingIdentity": "-"
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY1MzA5RUREMkNBQzM2RjUKUldUMU5xd3MzWjR3WlJHWGNpV0M0eXBmZ2FZdEhabm1EZlQrNzg5Qk03djBCRThQcjJmdVMvTXkK",
+      "endpoints": [
+        "https://github.com/christphe/homequarters/releases/download/desktop-latest/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
