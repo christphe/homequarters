@@ -36,8 +36,13 @@ export interface Settings {
   /** Noise suppression on the microphone, with `noiseEngine` (loaded only when on). */
   denoise: boolean;
   noiseEngine: NoiseEngine;
+  /** Once a conversation ends (after a grace, media/autoOff.ts), the next one starts with the microphone muted. */
+  autoMuteMic: boolean;
+  /** Likewise for the camera. */
+  autoCamOff: boolean;
 }
 
+/** The devices to use, and microphone and camera on or off as last set on the media bar. */
 export interface MediaPrefs {
   micOn: boolean;
   camOn: boolean;
@@ -135,7 +140,7 @@ const initial: State = {
   conv: null,
   chat: [],
   unread: 0,
-  settings: load<Settings>("hq.settings", { eco: false, maxVideos: 6, audioOnly: false, debug: false, sounds: true, notify: false, minimap: true, osIdle: false, denoise: false, noiseEngine: "gtcrn" }),
+  settings: load<Settings>("hq.settings", { eco: false, maxVideos: 6, audioOnly: false, debug: false, sounds: true, notify: false, minimap: true, osIdle: false, denoise: false, noiseEngine: "gtcrn", autoMuteMic: false, autoCamOff: true }),
   prefs: load<MediaPrefs>("hq.prefs", { micOn: true, camOn: false, micId: "", camId: "", spkId: "" }),
   mic: false,
   cam: false,
@@ -173,14 +178,13 @@ export function setState(p: Partial<State>) {
   state = { ...state, ...p };
   subs.forEach((f) => f());
 }
+/** Calls cb after every state change; returns the unsubscribe. */
+export function subscribe(cb: () => void) {
+  subs.add(cb);
+  return () => void subs.delete(cb);
+}
 export function useStore<T>(sel: (s: State) => T): T {
-  return useSyncExternalStore(
-    (cb) => {
-      subs.add(cb);
-      return () => subs.delete(cb);
-    },
-    () => sel(state),
-  );
+  return useSyncExternalStore(subscribe, () => sel(state));
 }
 
 export function saveSettings(s: Partial<Settings>) {

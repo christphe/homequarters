@@ -1,6 +1,7 @@
 import { PluginSlots } from "./PluginUI";
 import { session } from "../session";
 import { activeMedia, canShareScreen } from "../media/MediaManager";
+import { autoOff } from "../media/autoOffState";
 import { savePrefs, setState, toast, useStore } from "../store";
 import { t } from "../i18n";
 import { CamIcon, CamOffIcon, GearIcon, LeaveIcon, MicIcon, MicOffIcon, ScreenIcon } from "./Icons";
@@ -21,11 +22,14 @@ export function MediaBar({ onEnable, onSettings }: { onEnable: () => void; onSet
   const micOn = live ? mic : prefs.micOn;
   const camOn = live ? cam : prefs.camOn;
 
+  // between calls, a choice made here wins over a pending turn-off after the last conversation
   const toggleMic = () => {
+    autoOff.chose("mic");
     savePrefs({ micOn: !micOn });
     if (live) void activeMedia().setMic(!mic);
   };
   const toggleCam = () => {
+    autoOff.chose("cam");
     savePrefs({ camOn: !camOn });
     if (live) void activeMedia().setCam(!cam);
   };

@@ -8,7 +8,7 @@
 
 ## Features
 
-- **Proximity calls.** Walk up to someone and audio and video start; walk away and they stop. Small groups, nothing captured before you opt in, optional noise suppression, and microphone, camera and speaker can be changed at any time.
+- **Proximity calls.** Walk up to someone and audio and video start; walk away and they stop. Small groups, nothing captured before you opt in, optional noise suppression, and microphone, camera and speaker can be changed at any time. The camera (and, if you want, the microphone) turns itself off once a conversation ends.
 - **Desks and offices.** Each member can have a desk or a private office: a small room with its own call that its owner can lock, where visitors knock. A member without one takes a free desk; Ctrl+D runs back to it.
 - **Meeting rooms** with access rules enforced by the server (open, members, admins, a list), lockable, with knocking.
 - **Presence.** Available, busy, away and invisible. You go away when the computer is idle or locked, never during a call; busy keeps you out of automatic calls. Waves, raised hands, status notes and a chime in and out of conversations. Anybody in a call can turn off a camera or microphone somebody forgot on, or their screen share; the person is told who did it.

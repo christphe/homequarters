@@ -4,6 +4,15 @@
 
 Nobody's camera or microphone is touched before they opt in. The **Enable audio and video** dialog previews camera and microphone, lets you choose devices (and the audio output where the browser supports it), and explains that media is only sent to people nearby or in the same room, and only while your status is *Available*.
 
+## Microphone and camera between conversations
+
+The microphone and camera buttons of the media bar are remembered: the next conversation starts with them as you last set them, whether you set them in a call or between calls. Two settings in the same dialog (also under **Settings > Microphone, camera and speaker**) turn them off once a conversation ends, so a call started for one visitor does not open the next one with the camera on:
+
+- **Turn the camera off when a conversation ends**, on by default;
+- **Mute the microphone when a conversation ends**, off by default.
+
+They apply to proximity conversations, meeting rooms and your own spotlight. They wait 15 seconds after the end: a new conversation within that time (somebody stepped away and back, a call that dropped and formed again) starts as the last one was. A reconnection of the same call is not an end. After 15 seconds the buttons show off and the next conversation starts without them; you turn them back on from the bar. Turning a button on or off yourself during those 15 seconds keeps your choice for that device. The pending turn-off is kept in the browser, so it still applies if the page is closed or reloaded meanwhile.
+
 ## Who can be in a conversation
 
 A person is eligible only if **all** of these are true:
