@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeMediaError, media, spotlightMedia } from "../media/MediaManager";
 import { session } from "../session";
-import { savePrefs, useStore } from "../store";
+import { savePrefs, saveSettings, useStore } from "../store";
+import { AUTO_OFF_GRACE_MS } from "../media/autoOff";
 import { t } from "../i18n";
 import { Modal } from "./Modal";
 
@@ -13,8 +14,11 @@ const canPickOutput = typeof HTMLMediaElement !== "undefined" && "setSinkId" in 
  */
 export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void; mode?: "enable" | "devices" }) {
   const prefs = useStore((s) => s.prefs);
-  const [micOn, setMicOn] = useState(prefs.micOn);
-  const [camOn, setCamOn] = useState(prefs.camOn);
+  const settings = useStore((s) => s.settings);
+  // The preview always shows the microphone's level, and the camera when the bar has it on.
+  const [camOn] = useState(prefs.camOn);
+  const [autoMuteMic, setAutoMuteMic] = useState(settings.autoMuteMic);
+  const [autoCamOff, setAutoCamOff] = useState(settings.autoCamOff);
   const [micId, setMicId] = useState(prefs.micId);
   const [camId, setCamId] = useState(prefs.camId);
   const [spkId, setSpkId] = useState(prefs.spkId);
@@ -46,14 +50,13 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
   useEffect(() => {
     let cancelled = false;
     stop();
-    if (!micOn && !camOn) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setErr(t("media.noDevice"));
       return;
     }
     navigator.mediaDevices
       .getUserMedia({
-        audio: micOn ? (micId ? { deviceId: { exact: micId } } : true) : false,
+        audio: micId ? { deviceId: { exact: micId } } : true,
         video: camOn ? (camId ? { deviceId: { exact: camId }, width: 640, height: 360 } : { width: 640, height: 360 }) : false,
       })
       .then(async (s) => {
@@ -62,7 +65,7 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
         setErr("");
         if (video.current) video.current.srcObject = s;
         await refreshDevices();
-        if (micOn && s.getAudioTracks().length) {
+        if (s.getAudioTracks().length) {
           const ctx = new AudioContext();
           const an = ctx.createAnalyser();
           an.fftSize = 512;
@@ -85,12 +88,13 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
       cancelled = true;
       stop();
     };
-  }, [micOn, camOn, micId, camId, stop, refreshDevices]);
+  }, [camOn, micId, camId, stop, refreshDevices]);
 
   const opts = (kind: MediaDeviceKind) => devices.filter((d) => d.kind === kind);
   const activate = () => {
     stop();
-    savePrefs({ micOn, camOn, micId, camId, spkId });
+    savePrefs({ micId, camId, spkId });
+    saveSettings({ autoMuteMic, autoCamOff });
     if (mode === "enable") session.setConsent(true);
     else
       for (const m of [media, spotlightMedia]) {
@@ -119,8 +123,9 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
       </div>
       <div className="meter" aria-hidden><i style={{ width: `${Math.round(level * 100)}%` }} /></div>
       {err && <p className="error" role="alert">{err}</p>}
-      <label className="check"><input type="checkbox" checked={micOn} onChange={(e) => setMicOn(e.target.checked)} /> {t("media.startWithMic")}</label>
-      <label className="check"><input type="checkbox" checked={camOn} onChange={(e) => setCamOn(e.target.checked)} /> {t("media.startWithCam")}</label>
+      <label className="check"><input type="checkbox" checked={autoMuteMic} onChange={(e) => setAutoMuteMic(e.target.checked)} /> {t("media.autoMuteMic")}</label>
+      <label className="check"><input type="checkbox" checked={autoCamOff} onChange={(e) => setAutoCamOff(e.target.checked)} /> {t("media.autoCamOff")}</label>
+      <small className="muted">{t("media.autoOffHint", { seconds: AUTO_OFF_GRACE_MS / 1000 })}</small>
       <label className="field"><span>{t("media.mic")}</span>
         <select value={micId} onChange={(e) => setMicId(e.target.value)}>
           <option value="">{t("media.default")}</option>

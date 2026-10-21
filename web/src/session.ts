@@ -8,6 +8,7 @@ import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, Person, Prop, ServerMsg, Status } from "./net/protocol";
 import { boardModel } from "./game/boardModel";
 import { media, spotlightMedia } from "./media/MediaManager";
+import { autoOff, startAutoOff } from "./media/autoOffState";
 import { getState, setState, toast, type ChatMsg } from "./store";
 import { t } from "./i18n";
 import { chime, chimeLog, desktopNotify } from "./notify";
@@ -40,6 +41,7 @@ class Session {
 
   async start(host: HTMLElement) {
     this.stopped = false;
+    startAutoOff();
     const view = new WorldView({
       sendInput: (seq, dx, dy, run) => this.socket?.send(run ? { t: "in", s: seq, x: dx, y: dy, b: true } : { t: "in", s: seq, x: dx, y: dy }),
       onGoto: (x, y) => this.socket?.send({ t: "go", x, y }),
@@ -91,7 +93,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this, plugins: this.plugins };
+    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this, plugins: this.plugins };
   }
 
   private applyAutoStatus(inactive: boolean) {
