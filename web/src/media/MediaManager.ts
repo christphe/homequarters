@@ -165,8 +165,10 @@ export class MediaManager {
     if (prefs.spkId) await room.switchActiveDevice("audiooutput", prefs.spkId).catch(() => {});
     this.applySubscriptions();
     this.refresh();
-    if (publish && prefs.micOn) await this.setMic(true);
-    if (publish && prefs.camOn && !getState().settings.audioOnly) await this.setCam(true);
+    // what somebody turned off in this call stays off when it reconnects, until I turn it on myself
+    const held = this.offByOthers.room === info.room ? this.offByOthers.kinds : new Set<string>();
+    if (publish && prefs.micOn && !held.has("mic")) await this.setMic(true);
+    if (publish && prefs.camOn && !getState().settings.audioOnly && !held.has("cam")) await this.setCam(true);
   }
 
   async leave(intentional = true) {
@@ -385,8 +387,12 @@ export class MediaManager {
   private testWasMicOn = false;
   private micTest = false;
 
+  /** Kinds another participant turned off in this room: a rejoin of the same call does not turn them back on. */
+  private offByOthers: { room: string; kinds: Set<string> } = { room: "", kinds: new Set() };
+
   async setMic(on: boolean) {
     if (!this.room || !this.publishing) return;
+    if (on) this.offByOthers.kinds.delete("mic");
     try {
       await this.room.localParticipant.setMicrophoneEnabled(on);
       setState({ deviceError: "" });
@@ -398,6 +404,7 @@ export class MediaManager {
 
   async setCam(on: boolean) {
     if (!this.room || !this.publishing) return;
+    if (on) this.offByOthers.kinds.delete("cam");
     try {
       await this.room.localParticipant.setCameraEnabled(on);
       setState({ deviceError: "" });
@@ -405,6 +412,29 @@ export class MediaManager {
       setState({ deviceError: describeMediaError(e) });
     }
     this.refresh();
+  }
+
+  /**
+   * Somebody in the call turned off my microphone, camera or screen share: stop capturing it. The track is
+   * unpublished and stopped (a LiveKit mute would leave a microphone open). Returns whether it was
+   * published, muted or not: the SFU's mute may reach LiveKit's client first and mute it locally. Only
+   * then is the person told, so a repeated request about something already off makes no noise.
+   */
+  async release(kind: "mic" | "cam" | "scr"): Promise<boolean> {
+    const room = this.room;
+    if (!room || !this.publishing) return false;
+    if (this.offByOthers.room !== this.roomName) this.offByOthers = { room: this.roomName, kinds: new Set() };
+    this.offByOthers.kinds.add(kind);
+    const lp = room.localParticipant;
+    if (kind === "scr") {
+      const was = !!lp.getTrackPublication(Track.Source.ScreenShare)?.track;
+      if (was) await this.setShare(false);
+      return was;
+    }
+    const track = lp.getTrackPublication(kind === "mic" ? Track.Source.Microphone : Track.Source.Camera)?.track;
+    if (track) await lp.unpublishTrack(track, true).catch(() => track.stop());
+    this.refresh();
+    return !!track;
   }
 
   async setShare(on: boolean) {

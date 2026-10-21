@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - minor
+
+### Added
+- Anybody in a call can turn off another person's microphone, camera or screen share from their video tile's menu, never turn them on, and the person is told who did it (#32)
+
 ## [0.3.2] - 2026-10-20
 
 ### Fixed
