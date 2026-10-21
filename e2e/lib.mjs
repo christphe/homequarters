@@ -37,6 +37,8 @@ export async function launch(extra = [], { waitEmpty = true } = {}) {
       "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", "--no-first-run", "--enable-unsafe-swiftshader",
       // GitHub's Ubuntu runners forbid the Chrome sandbox (AppArmor); the browser only ever loads our own test pages.
       ...(process.env.CI ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"] : []),
+      // On Windows, headless Chrome's fake camera track ends at once while the GPU process runs; without it, it streams.
+      ...(process.platform === "win32" ? ["--disable-gpu"] : []),
       ...extra,
     ],
   });

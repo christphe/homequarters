@@ -46,6 +46,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .run-toggle.on { outline: 2px solid var(--amber); }
 .tile .vol { position: absolute; top: 4px; right: 4px; background: #000a; color: #fff; border: 0; border-radius: 6px; font-size: 13px; line-height: 1; padding: 3px 4px; opacity: .8; }
 .tile .vol:hover, .tile .vol:focus-visible { opacity: 1; }
+/* turn off somebody's microphone, camera or screen share: shown on hover or keyboard focus, like the share tools */
+.tile .tile-more { position: absolute; top: 4px; left: 4px; background: #000a; color: #fff; border: 0; border-radius: 6px; font-size: 14px; line-height: 1; padding: 3px 6px; opacity: 0; }
+.tile:hover .tile-more, .tile:focus-within .tile-more, .tile .tile-more[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { .tile .tile-more { opacity: .85; min-width: 32px; min-height: 28px; font-size: 16px; } } /* a finger needs more than the mouse */
+.menu.tile-menu { position: fixed; right: auto; z-index: 35; min-width: 190px; }
+.tile-menu-who { padding: 4px 9px 6px; font-size: 12px; opacity: .75; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* whose devices these are */ /* over the dock, an expanded share (30) and toasts */
 .announce { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 12; max-width: min(640px, calc(100vw - 24px)); display: flex; gap: 8px; align-items: center; background: #fff6a8; color: #1a1526; border: 3px solid #1a1526; border-radius: 10px; padding: 8px 12px; box-shadow: 0 3px 0 #1a1526; }
 .announce span:nth-of-type(2) { overflow-wrap: anywhere; }
 .keys { border-collapse: collapse; width: 100%; }

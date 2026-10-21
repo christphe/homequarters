@@ -130,7 +130,7 @@ Other agents or people may be working in the same tree at the same time.
 - Avatar sheet cells are 18x30 px (16x24 body plus a 1 px outline margin and 4 rows on top for hats and tall hair). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops rows 4-28 when it reuses cells. Name tags follow the drawing's real top (`AvatarFrames.tall`), not the cell height.
 - The camera uses integer zoom (`VIEW_REF_W/H` in `WorldView.ts`). Keep the server's area of interest large enough to cover the visible world at the smallest zoom.
 - Tests that need real media use Chrome flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`. The fake microphone is a beep: it proves audio flows, not how well noise suppression cleans a voice.
-- On Windows, video RTP does not cross Docker Desktop's network, so the video RTP checks of `proximity` and `spotlight` fail locally; leave them to CI. Vite may listen on `::1` only: open `http://localhost`, not `127.0.0.1`.
+- On Windows, headless Chrome's fake camera track ends as soon as it starts unless the GPU is off: `launch()` in `e2e/lib.mjs` adds `--disable-gpu` there. Video RTP does not cross Docker Desktop's network either, so with LiveKit in Docker the video RTP checks of `proximity` and `spotlight` fail locally; with LiveKit's Windows binary on the host (`livekit-server.exe --dev` with its own `port` and `rtc` ports in a config) the whole suite passed (2026-10-21). Vite may listen on `::1` only: open `http://localhost`, not `127.0.0.1`.
 - Load generators must run **outside** the machine being measured.
 
 ## The site (GitHub Pages)

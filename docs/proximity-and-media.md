@@ -39,6 +39,7 @@ Behaviours these rules produce, all covered by unit tests:
 - Connects to the room named by the server with a scoped token.
 - Publishes the microphone (and camera if enabled) with simulcast and DTX. Screen sharing is available inside a live conversation.
 - **Audio is always subscribed; video is limited** to a configurable number of tiles, ranked so active speakers come first. Audio-only mode never subscribes to camera video.
+- **Anybody in the call can turn off another person's microphone, camera or screen share** from the menu of that person's video tile (the "⋯" button or a right click). The server checks that both share the call, mutes the tracks on the SFU and tells the person who did it; their browser then stops that capture. Only off: each person turns their own devices back on. In a spotlight, the audience can do it to the speaker ([decision 0028](decisions/0028-remote-mute.md)).
 - On leaving a conversation it disconnects and **stops all capture** (the microphone and camera are released).
 - If the SFU connection drops unexpectedly, it asks the world server for a fresh token and rejoins.
 
