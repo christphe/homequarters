@@ -17,6 +17,7 @@ import (
 type fakeMedia struct {
 	mu      sync.Mutex
 	revoked []string
+	muted   []string
 }
 
 func (f *fakeMedia) Enabled() bool     { return true }
@@ -27,6 +28,11 @@ func (f *fakeMedia) Token(g media.Grants) (string, error) {
 func (f *fakeMedia) Revoke(room, id string) {
 	f.mu.Lock()
 	f.revoked = append(f.revoked, room+"/"+id)
+	f.mu.Unlock()
+}
+func (f *fakeMedia) Mute(room, id, kind string) {
+	f.mu.Lock()
+	f.muted = append(f.muted, room+"/"+id+"/"+kind)
 	f.mu.Unlock()
 }
 

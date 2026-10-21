@@ -124,6 +124,10 @@ export interface ObjectReply { t: "obj"; k: "note" | "embed" | "image"; l: strin
 export interface Follow { t: "fol"; id: number; n: string }
 export interface GoResult { t: "go"; ok: boolean; x?: number; y?: number; near?: boolean } // near: stopped at a closed door
 export interface Wave { t: "wv"; from: number; n: string }
+/** What another participant may turn off: microphone, camera, screen share (never on). */
+export type MuteKind = "mic" | "cam" | "scr";
+/** Somebody in your call turned off your microphone, camera or screen share. */
+export interface Muted { t: "muted"; by: number; n: string; k: MuteKind }
 export interface WaveResult { t: "wvr"; id: number; st: "ok" | "wait" | "offline" }
 export interface AreaCounts { t: "ac"; c: number[] }
 export interface Announcement { t: "ann"; n: string; x: string }
@@ -150,4 +154,4 @@ export type PluginMsg = { t: "plg"; pl: string; d: unknown };
 /** The set of running plugins changed: fetch GET /api/plugins again. */
 export type PluginsChanged = { t: "plgs" };
 
-export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;
+export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | Muted | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

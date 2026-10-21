@@ -21,6 +21,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `hand` | `b` | raise or lower your hand (shown in the roster and over the avatar) |
 | `note` | `text` | set your status note, one line, at most 60 characters ("" clears it); kept in memory only |
 | `wave` | `id` | wave at somebody anywhere in the office (2 s cooldown); busy and away people get it too, at most one per sender every 30 s (`wvr` `wait` otherwise); invisible people look offline |
+| `mute` | `id`, `k` (`mic`, `cam`, `scr`) | turn off that person's microphone, camera or screen share; only when you share a call with them (the same live proximity or room call, or you hold a token for the spotlight they speak in). The server mutes the tracks on the SFU and tells them (`muted`); anything else is ignored. There is no way to turn anything on ([decision 0028](decisions/0028-remote-mute.md)) |
 | `use` | `x`, `y` tile | interact with the object at that tile (note, site, image, whiteboard); the server checks distance and area access |
 | `fol` | `id` (0 stops) | follow that player; any movement key stops it |
 | `lead` | `id` | ask that player to follow you (they decide) |
@@ -50,6 +51,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `obj` | `k` note/embed/image, `l` label, `d` content | object content, only after a nearby authorised `use` (never in the map) |
 | `fol` | `id`, `n` | you are now following (or stopped, `id` 0) |
 | `wv` | `from`, `n` | somebody waved at you |
+| `muted` | `by` id, `n` name, `k` (`mic`, `cam`, `scr`) | somebody in your call turned that off; the SFU muted it already, the client stops the capture and says who did it. Nobody else is told |
 | `wvr` | `id`, `st` ok / busy / away / offline | what happened to your wave |
 | `ac` | `c` [count per area] | visible people per map area, in map order; sent with `hello` and then at most every 2 s when a count changes |
 | `ann` | `n` sender name, `x` text | an administrator's announcement banner (one line, at most 280 characters, never stored) |

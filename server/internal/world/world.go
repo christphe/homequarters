@@ -24,6 +24,9 @@ type Media interface {
 	PublicURL() string
 	Token(media.Grants) (string, error)
 	Revoke(room, identity string)
+	// Mute asks the SFU to mute the identity's published tracks of one kind ("mic", "cam" or "scr") in the
+	// room. Only ever off: nothing turns a track on remotely.
+	Mute(room, identity, kind string)
 }
 
 type cell struct {
@@ -68,6 +71,7 @@ const (
 	evPlugin
 	evOwnerName
 	evFreePlaces
+	evMute
 )
 
 type ev struct {
@@ -291,6 +295,11 @@ func (c *Conn) Hand(ctx context.Context, up bool) {
 // Note sets the player's short status line ("" clears it).
 func (c *Conn) Note(ctx context.Context, text string) {
 	c.w.post(ctx, ev{kind: evNote, p: c.P, gen: c.Gen, s: text})
+}
+
+// Mute asks to turn off another participant's microphone ("mic"), camera ("cam") or screen share ("scr").
+func (c *Conn) Mute(ctx context.Context, id uint32, kind string) {
+	c.w.post(ctx, ev{kind: evMute, p: c.P, gen: c.Gen, id: id, s: kind})
 }
 
 // Wave pings another player.
@@ -543,6 +552,8 @@ func (w *World) handle(e ev, now time.Time) {
 		w.doNote(p, e.s)
 	case evWave:
 		w.doWave(p, e.id, now)
+	case evMute:
+		w.doMute(p, e.id, e.s)
 	case evLead:
 		w.doLead(p, e.id, now)
 	case evLock:

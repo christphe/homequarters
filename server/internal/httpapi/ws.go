@@ -19,17 +19,18 @@ import (
 )
 
 type inMsg struct {
-	T     string `json:"t"`
-	S     uint32 `json:"s"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
-	V     string `json:"v"`
-	B     bool   `json:"b"`
-	ID    uint32 `json:"id"`
-	Scope string `json:"sc"`
-	Text  string `json:"text"`
-	C     int64  `json:"c"`
-	N     int    `json:"n"`
+	T     string          `json:"t"`
+	S     uint32          `json:"s"`
+	X     int             `json:"x"`
+	Y     int             `json:"y"`
+	V     string          `json:"v"`
+	K     json.RawMessage `json:"k"` // a string for "mute", a number for "wb": decoded where used
+	B     bool            `json:"b"`
+	ID    uint32          `json:"id"`
+	Scope string          `json:"sc"`
+	Text  string          `json:"text"`
+	C     int64           `json:"c"`
+	N     int             `json:"n"`
 }
 
 const maxFrame = 2048
@@ -224,6 +225,11 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 			conn.Note(ctx, m.Text)
 		case "wave":
 			conn.Wave(ctx, m.ID)
+		case "mute":
+			// turn off somebody else's microphone, camera or screen share; the world checks the call
+			if k := muteKind(m.K); k != "" {
+				conn.Mute(ctx, m.ID, k)
+			}
 		case "use":
 			conn.Use(ctx, m.X, m.Y)
 		case "fol":
@@ -322,4 +328,17 @@ func dropReason(err error, kicked world.KickReason, pingFailed bool) string {
 		return "network timeout"
 	}
 	return "connection error"
+}
+
+// muteKind returns the kind a "mute" frame names ("mic", "cam" or "scr"), or "".
+func muteKind(raw json.RawMessage) string {
+	var k string
+	if json.Unmarshal(raw, &k) != nil {
+		return ""
+	}
+	switch k {
+	case "mic", "cam", "scr":
+		return k
+	}
+	return ""
 }

@@ -11,7 +11,7 @@
 - **Proximity calls.** Walk up to someone and audio and video start; walk away and they stop. Small groups, nothing captured before you opt in, optional noise suppression, and microphone, camera and speaker can be changed at any time. The camera (and, if you want, the microphone) turns itself off once a conversation ends.
 - **Desks and offices.** Each member can have a desk or a private office: a small room with its own call that its owner can lock, where visitors knock. A member without one takes a free desk; Ctrl+D runs back to it.
 - **Meeting rooms** with access rules enforced by the server (open, members, admins, a list), lockable, with knocking.
-- **Presence.** Available, busy, away and invisible. You go away when the computer is idle or locked, never during a call; busy keeps you out of automatic calls. Waves, raised hands, status notes and a chime in and out of conversations.
+- **Presence.** Available, busy, away and invisible. You go away when the computer is idle or locked, never during a call; busy keeps you out of automatic calls. Waves, raised hands, status notes and a chime in and out of conversations. Anybody in a call can turn off a camera or microphone somebody forgot on, or their screen share; the person is told who did it.
 - **Screen sharing** up to 1080p, over the map, full screen or picture-in-picture, and a spotlight pad that broadcasts to the whole office.
 - **Chat** for the office, the conversation and direct messages; only the last 500 office messages are kept.
 - **Getting around.** Shortcuts by key position (ZQSD works on AZERTY), zoom, drag to look around, double-click to run, "Walk to" anyone, follow, portals, a minimap and a touch pad on phones.

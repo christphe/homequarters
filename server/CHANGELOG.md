@@ -2,6 +2,9 @@
 
 ## [Unreleased] - minor
 
+### Added
+- Anybody in a call can turn off another person's microphone, camera or screen share from their video tile's menu, never turn them on, and the person is told who did it (#32)
+
 ### Changed
 - The camera turns itself off 15 seconds after a conversation ends, and the microphone too if you choose so in the audio and video settings; the next conversation starts as you left the media bar's buttons, replacing the "join with the microphone/camera on" choices (#31)
 

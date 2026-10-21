@@ -5,7 +5,7 @@ import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
 import { ownerMap } from "./game/places";
 import { Socket, type ConnState } from "./net/socket";
-import type { BoardCommand, Person, Prop, ServerMsg, Status } from "./net/protocol";
+import type { BoardCommand, MuteKind, Person, Prop, ServerMsg, Status } from "./net/protocol";
 import { boardModel } from "./game/boardModel";
 import { media, spotlightMedia } from "./media/MediaManager";
 import { autoOff, startAutoOff } from "./media/autoOffState";
@@ -251,6 +251,17 @@ class Session {
         chime("wave");
         desktopNotify(t("wave.incoming", { name: m.n }), t("notify.open"));
         break;
+      case "muted": {
+        // somebody in the call turned it off: the SFU muted the track already; release the device too
+        void Promise.all([media, spotlightMedia].map((mm) => mm.release(m.k).catch(() => false))).then((was) => {
+          if (!was.some(Boolean)) return; // already off: nothing to tell (a repeated request makes no noise)
+          const msg = t(`muted.${m.k}`, { name: m.n });
+          toast(msg, 6000);
+          chime("wave");
+          desktopNotify(msg, t("muted.notifyBody"));
+        });
+        break;
+      }
       case "wvr": {
         const name = getState().roster.get(m.id)?.n ?? "?";
         toast(t(`wave.${m.st}`, { name }));
@@ -397,6 +408,8 @@ class Session {
     return !!r?.ok;
   }
   wave(id: number) { this.socket?.send({ t: "wave", id }); }
+  /** Turns off another participant's microphone, camera or screen share (the server checks we share a call). */
+  mute(id: number, k: MuteKind) { this.socket?.send({ t: "mute", id, k }); }
   hand(up: boolean) { this.handWanted = up; this.handAskedAt = Date.now(); this.socket?.send({ t: "hand", b: up }); }
   /** H key and the hand button: invert what was last asked for, so quick presses do not repeat a raise. */
   toggleHand() {
