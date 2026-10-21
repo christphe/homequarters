@@ -174,6 +174,19 @@ export async function lk(method, body, room) {
 export const lkParticipants = async (room) => ((await lk("ListParticipants", { room }, room)).participants ?? []).map((p) => p.identity);
 
 /** Sum of RTP bytes on the LiveKit peer connection (single-PC mode: publisher.pc carries both directions). */
+/** Audio or video packets received so far: a stream that still flows, even silent (Opus sends a packet
+ * every 400 ms when there is nothing to say, so bytes depend on the sound, packets much less). */
+export const rtpPackets = (u, kind) =>
+  u.page.evaluate(async (kind) => {
+    const pm = window.__hq.media.room.engine.pcManager;
+    const pc = pm.subscriber?.pc ?? pm.publisher.pc;
+    let total = 0;
+    (await pc.getStats()).forEach((s) => {
+      if (s.kind === kind && s.type === "inbound-rtp") total += s.packetsReceived;
+    });
+    return total;
+  }, kind);
+
 export const rtpBytes = (u, dir, kind) =>
   u.page.evaluate(async (dir, kind) => {
     const pm = window.__hq.media.room.engine.pcManager;

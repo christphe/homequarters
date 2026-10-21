@@ -62,6 +62,22 @@ export async function run() {
     // Every input leaves the page 0-120 ms late (in order), like a bad Wi-Fi. While "right" is held
     // at run speed, the own avatar must never be drawn stepping back, and it must end where the server says.
     await walkTo(a, 4 * 16 + 8, 28 * 16 + 8);
+    // Recorded for the convergence check below, which failed once on a starved CI runner (the observer's
+    // view kept running 213 px past the stop) and never on a workstation, even with the CPU slowed 10x:
+    // what B receives about A, what the server acknowledges to A, and what A sends. Reported on failure.
+    await read(b, (id) => {
+      const v = window.__hq.view, f = v.applyWorld.bind(v);
+      window.__tapB = [];
+      v.applyWorld = (m) => { for (const r of m.m ?? []) if (r[0] === id) window.__tapB.push([Math.round(performance.now()), r[1], r[2], r[3]]); if (m.l?.includes(id)) window.__tapB.push([Math.round(performance.now()), "leave"]); return f(m); };
+    }, a.id);
+    await read(a, () => {
+      const v = window.__hq.view, f = v.applyAck.bind(v);
+      window.__tapA = [];
+      v.applyAck = (k) => { window.__tapA.push([Math.round(performance.now()), k.s, k.x, k.y]); return f(k); };
+      const send = WebSocket.prototype.send;
+      window.__sentA = [];
+      WebSocket.prototype.send = function (d) { if (String(d).includes('"t":"in"')) window.__sentA.push([Math.round(performance.now()), String(d)]); return send.call(this, d); };
+    });
     await read(a, () => {
       const orig = WebSocket.prototype.send;
       let last = 0;
@@ -106,6 +122,12 @@ export async function run() {
       }, { timeout: 20000, every: 500, what: "observer converges on the stopped runner" });
       converged = true;
     } catch { /* reported below with the trajectory */ }
+    if (!converged) {
+      // [ms, x, y, state] B got for A; [ms, seq, x, y] acks to A; [ms, frame] inputs A sent
+      console.log("  observer got:", JSON.stringify(await read(b, () => window.__tapB.slice(-12))));
+      console.log("  runner's acks:", JSON.stringify(await read(a, () => window.__tapA.slice(-8))));
+      console.log("  runner sent:", JSON.stringify(await read(a, () => window.__sentA.slice(-8))));
+    }
     check("...and stops where the server and other people see it", converged && gap < 1, gap.toFixed(2) + " px after " + ((Date.now() - tc0) / 1000).toFixed(1) + " s, trail " + gtrail.join("->") + ", mine " + JSON.stringify(mine) + " theirs " + JSON.stringify(theirs));
     await read(a, () => { WebSocket.prototype.send = window.__origSend; });
     // the same on a diagonal at walking speed, where each axis moves slowest (51 px/s): both axes monotonic
