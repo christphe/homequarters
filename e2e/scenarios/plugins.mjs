@@ -51,8 +51,14 @@ async function openPets(u) {
     if (b && b.getAttribute("aria-selected") !== "true") b.click();
     return !!b;
   }), { what: "Plugins tab in the side panel" });
-  await waitFor(() => click(u, ".plugins-panel button", "Pets"), { what: "Pets entry" });
-  await waitFor(() => u.page.$('.modal.plugin-modal[aria-label="Pets"]'), { what: "the Pets modal" });
+  // A plugin that has just started shows its entry before its code answers it: click again until the
+  // modal opens, as a person would (a single click right after enabling was lost on a loaded runner).
+  let clickedAt = 0;
+  await waitFor(async () => {
+    if (await u.page.$('.modal.plugin-modal[aria-label="Pets"]')) return true;
+    if (Date.now() - clickedAt > 3000 && (await click(u, ".plugins-panel button", "Pets"))) clickedAt = Date.now();
+    return false;
+  }, { timeout: 30000, what: "the Pets modal" });
 }
 
 async function setEnabled(admin, on, title = "Pets", plugin = PLUGIN) {
