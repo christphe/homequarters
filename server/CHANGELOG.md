@@ -8,6 +8,9 @@
 ### Changed
 - The camera turns itself off 15 seconds after a conversation ends, and the microphone too if you choose so in the audio and video settings; the next conversation starts as you left the media bar's buttons, replacing the "join with the microphone/camera on" choices (#31)
 
+### Fixed
+- A chosen microphone, camera or speaker that is not there any more (unplugged, switched off, a remote desktop session) gives way to the default one with a message, instead of a call playing on a speaker that fails or the device dialog saying "No device found"; the choice is kept for when the device is back (#33)
+
 ## [0.3.2] - 2026-10-20
 
 ### Fixed
