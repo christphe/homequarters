@@ -57,11 +57,13 @@ export async function run() {
 
     // 2. The device dialog previews the default devices instead of saying "No device found"
     await walkTo(host, ...AWAY);
+    // the call lets go only after its leave dwell: reloading inside it would rejoin the old call
+    await waitFor(async () => !(await st(host)).conv, { timeout: 15000, what: "call over" });
     await reloadWith(host, GONE, "0");
     const opened = await host.page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === "Enable audio and video"); b?.click(); return !!b; });
     check("the media bar offers to enable audio and video", opened);
     await waitFor(() => host.page.$(".modal"), { what: "device dialog" });
-    check("the dialog says, once, that the default devices are previewed", await toastSoon(host, DEVICE_TOAST) && (await host.page.evaluate(() => window.__toasts.length)) === 1, JSON.stringify(await host.page.evaluate(() => window.__toasts)));
+    check("the dialog says, once, that the default devices are previewed", await toastSoon(host, DEVICE_TOAST) && (await host.page.evaluate((x) => window.__toasts.filter((y) => y === x).length, DEVICE_TOAST)) === 1, JSON.stringify(await host.page.evaluate(() => window.__toasts)));
     await waitFor(async () => (await host.page.$(".modal .error")) === null && (await host.page.evaluate(() => !!document.querySelector(".modal video")?.srcObject)), { timeout: 10000, what: "dialog preview" }).catch(() => {});
     const dialogErr = await host.page.evaluate(() => document.querySelector(".modal .error")?.textContent ?? "");
     check("the preview shows no device error", !dialogErr, dialogErr);
