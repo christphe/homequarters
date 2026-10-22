@@ -4,6 +4,8 @@
 
 Nobody's camera or microphone is touched before they opt in. The **Enable audio and video** dialog previews camera and microphone, lets you choose devices (and the audio output where the browser supports it), and explains that media is only sent to people nearby or in the same room, and only while your status is *Available*.
 
+A chosen microphone, camera or speaker that is not there now (unplugged, switched off, another computer, a remote desktop session with its own devices) gives way to the default one, with a message: in a call the choice is kept for when the device is back; in that dialog the preview shows the default and **Enable** or **Save** keeps it.
+
 ## Microphone and camera between conversations
 
 The microphone and camera buttons of the media bar are remembered: the next conversation starts with them as you last set them, whether you set them in a call or between calls. Two settings in the same dialog (also under **Settings > Microphone, camera and speaker**) turn them off once a conversation ends, so a call started for one visitor does not open the next one with the camera on:

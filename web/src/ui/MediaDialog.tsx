@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeMediaError, media, spotlightMedia } from "../media/MediaManager";
+import { isListed, isMissingDevice } from "../media/devices";
 import { session } from "../session";
-import { savePrefs, saveSettings, useStore } from "../store";
+import { savePrefs, saveSettings, toast, useStore } from "../store";
 import { AUTO_OFF_GRACE_MS } from "../media/autoOff";
 import { t } from "../i18n";
 import { Modal } from "./Modal";
@@ -28,6 +29,13 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const stopAudio = useRef<() => void>(() => {});
+  // one message per dialog, whichever devices fell back (a second toast would replace the first at once)
+  const toldGone = useRef(false);
+  const tellGone = useCallback(() => {
+    if (toldGone.current) return;
+    toldGone.current = true;
+    toast(t("media.deviceGone"), 6000);
+  }, []);
 
   const stop = useCallback(() => {
     stopAudio.current();
@@ -40,9 +48,11 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
 
   const refreshDevices = useCallback(async () => {
     try {
-      setDevices(await navigator.mediaDevices.enumerateDevices());
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setDevices(list);
+      return list;
     } catch {
-      /* no device API */
+      return []; // no device API
     }
   }, []);
 
@@ -64,7 +74,13 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
         stream.current = s;
         setErr("");
         if (video.current) video.current.srcObject = s;
-        await refreshDevices();
+        const list = await refreshDevices();
+        if (cancelled) return; // the cleanup stopped this stream
+        // a chosen speaker that is not there now: the default one (kept as the choice only if saved)
+        if (spkId && isListed(list, "audiooutput", spkId) === false) {
+          setSpkId("");
+          tellGone();
+        }
         if (s.getAudioTracks().length) {
           const ctx = new AudioContext();
           const an = ctx.createAnalyser();
@@ -83,12 +99,29 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
           };
         }
       })
-      .catch((e) => !cancelled && setErr(describeMediaError(e)));
+      .catch(async (e) => {
+        if (cancelled) return;
+        if (isMissingDevice(e)) {
+          // a chosen microphone or camera that is not there now (or not known yet): preview the default one
+          const list = await refreshDevices();
+          if (cancelled) return;
+          const dropMic = !!micId && isListed(list, "audioinput", micId) !== true;
+          const dropCam = camOn && !!camId && isListed(list, "videoinput", camId) !== true;
+          if (dropMic || dropCam) {
+            if (dropMic) setMicId("");
+            if (dropCam) setCamId("");
+            tellGone();
+            return; // the preview restarts on the default
+          }
+        }
+        setErr(describeMediaError(e));
+      });
     return () => {
       cancelled = true;
       stop();
     };
-  }, [camOn, micId, camId, stop, refreshDevices]);
+    // spkId is read for the check only: choosing a speaker does not restart the preview
+  }, [camOn, micId, camId, stop, refreshDevices, tellGone]);
 
   const opts = (kind: MediaDeviceKind) => devices.filter((d) => d.kind === kind);
   const activate = () => {

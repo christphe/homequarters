@@ -13,6 +13,7 @@ import {
 } from "livekit-client";
 import { getState, setState, toast } from "../store";
 import { t } from "../i18n";
+import { isListed } from "./devices";
 
 export interface Tile {
   identity: string;
@@ -65,6 +66,9 @@ export function clearShareMessage() {
   const cur = getState().deviceError;
   if (cur && SHARE_MESSAGES.some((k) => t(k) === cur)) setState({ deviceError: "" });
 }
+
+// Said once per page: the same missing speaker would otherwise be announced at every call.
+let speakerGoneTold = false;
 
 /**
  * Owns the LiveKit connection for the *current* conversation group only.
@@ -162,13 +166,35 @@ export class MediaManager {
       return;
     }
     this.setPlaybackState("live");
-    if (prefs.spkId) await room.switchActiveDevice("audiooutput", prefs.spkId).catch(() => {});
     this.applySubscriptions();
     this.refresh();
     // what somebody turned off in this call stays off when it reconnects, until I turn it on myself
     const held = this.offByOthers.room === info.room ? this.offByOthers.kinds : new Set<string>();
     if (publish && prefs.micOn && !held.has("mic")) await this.setMic(true);
     if (publish && prefs.camOn && !getState().settings.audioOnly && !held.has("cam")) await this.setCam(true);
+    // after the capture: browsers show device ids once it is allowed
+    if (gen === this.gen) await this.applySpeaker(room);
+  }
+
+  /**
+   * Plays the call on the saved speaker when the browser lists it, else on the default output. A speaker that is
+   * not there (unplugged, another machine) would make every remote track fail its setSinkId; the choice is kept
+   * for when it is back.
+   */
+  private async applySpeaker(room: Room) {
+    const id = getState().prefs.spkId;
+    if (!id) return;
+    let there: boolean | null = null;
+    try {
+      there = isListed(await navigator.mediaDevices.enumerateDevices(), "audiooutput", id);
+    } catch {
+      /* no device API: the default output plays */
+    }
+    if (there) await room.switchActiveDevice("audiooutput", id).catch(() => {});
+    else if (there === false && !speakerGoneTold) {
+      speakerGoneTold = true;
+      toast(t("media.speakerGone"), 6000);
+    }
   }
 
   async leave(intentional = true) {

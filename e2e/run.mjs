@@ -18,7 +18,7 @@ const LK_PORT = Number(process.env.HQ_TEST_LK_PORT ?? "7880");
 process.env.HQ_LK_HTTP ??= `http://127.0.0.1:${LK_PORT}`;
 process.env.HQ_TEST_LK_URL = `ws://127.0.0.1:${LK_PORT}`;
 
-const all = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff"];
+const all = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices"];
 const wanted = process.argv.slice(2).length ? process.argv.slice(2) : EXTERNAL ? ["proximity", "consent", "rooms"] : all;
 
 // Windows: go build names the binary as given, while spawning "bin/homequarters" runs a stale homequarters.exe;
