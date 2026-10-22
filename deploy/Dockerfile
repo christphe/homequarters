@@ -19,7 +19,7 @@ COPY server/ ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/homequarters ./cmd/homequarters \
  && mkdir /data
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 # The deploy's commit: clients loaded from another version are asked to reload. Without it the server
 # uses a hash of the built page, which also changes with every client build.
 ARG HQ_VERSION=
