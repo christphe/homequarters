@@ -328,6 +328,8 @@ const en = {
   "media.cancel": "Cancel",
   "media.deny": "Permission denied. Allow the camera and microphone in your browser settings.",
   "media.noDevice": "No device found.",
+  "media.deviceGone": "A chosen microphone, camera or speaker is not available: the default one is used.",
+  "media.speakerGone": "Your chosen speaker is not available: sound plays on the default one.",
   "media.busyDevice": "The device is in use by another application.",
   "media.default": "System default",
   "media.live": "LIVE",
