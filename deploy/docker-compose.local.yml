@@ -20,7 +20,9 @@ services:
     depends_on: [livekit]
   livekit:
     image: livekit/livekit-server:v1.13.7
-    command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "127.0.0.1"]
+    # the address it announces for media: this computer only, or HQ_LK_NODE_IP for other computers of the
+    # network (scripts/dev.sh --lan)
+    command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "${HQ_LK_NODE_IP:-127.0.0.1}"]
     ports:
       - "127.0.0.1:7880:7880"
       - "7881:7881"
