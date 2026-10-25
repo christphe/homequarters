@@ -7,14 +7,14 @@ import { FELT_H, FELT_W } from "./games.ts";
 import { UP, type Table } from "./table.ts";
 
 export { FELT_H, FELT_W };
-export const SIDE = 64; // the width of the left and right columns of seats
+export const SIDE = 48; // the width of the left and right columns of seats (416 px in all: 1.5x fits a large window)
 export const TOP = 36; // the height of the band of seats above the felt
 export const HAND = 44; // the height of my hand's strip under the felt
 export const FX = SIDE;
 export const FY = TOP;
 export const VIEW_W = SIDE + FELT_W + SIDE;
 export const VIEW_H = TOP + FELT_H + HAND;
-export const SEAT_W = 60;
+export const SEAT_W = 46;
 export const SEAT_H = 32;
 
 export interface SeatSpot { seat: number; x: number; y: number; side: "top" | "left" | "right" }

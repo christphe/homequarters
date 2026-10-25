@@ -126,8 +126,18 @@ async function within(fn, limit) {
     await sleep(40);
   }
 }
+const nearDeck = (u) => read(u, () => window.__hq.state.nearby?.t === "hq-cards/deck");
+/** Walks to a spot within reach of the deck, again if a walk stopped short (another avatar in the way). */
+async function goTo(u, x, y) {
+  u.spot = { x, y };
+  for (let i = 0; i < 3; i++) {
+    await walkTo(u, x, y).catch(() => {});
+    if (await waitFor(() => nearDeck(u), { timeout: 3000, what: "near" }).catch(() => false)) return;
+  }
+}
 async function openWithX(u) {
-  await waitFor(() => read(u, () => window.__hq.state.nearby?.t === "hq-cards/deck"), { what: u.name + " next to the deck" });
+  if (!(await nearDeck(u)) && u.spot) await goTo(u, u.spot.x, u.spot.y);
+  await waitFor(() => nearDeck(u), { what: u.name + " next to the deck" });
   await u.page.keyboard.press("x");
   await waitFor(() => viewFrame(u), { what: u.name + "'s Cards window" });
   await waitFor(async () => (await drawn(u)) !== null, { what: u.name + "'s table drawn" });
@@ -149,7 +159,7 @@ export async function run(ctx) {
     users.push(ann, bo, cy);
     for (const u of users) await countFrames(u);
     const feet = 23 * T + 8;
-    await Promise.all([walkTo(ann, 204, feet), walkTo(bo, 212, feet), walkTo(cy, 220, feet)]);
+    await Promise.all([goTo(ann, 204, feet), goTo(bo, 212, feet), goTo(cy, 220, feet)]);
 
     // ---- criterion 1: the deck on the table, with the X hint
     const sprite = await waitFor(async () => {
@@ -215,7 +225,7 @@ export async function run(ctx) {
     const di = await joinAs(browser, "Di" + t, { avatar: { sk: 2, hs: 0, hc: 4, sh: 3, pa: 1 } });
     users.push(di);
     await countFrames(di);
-    await walkTo(di, 196, feet);
+    await goTo(di, 196, feet);
     await openWithX(di);
     check("5: Di, without a seat, watches: no hand", (await drawn(di))?.seat === null && (await handOf(di)).length === 0);
     d = await drag(di, feltAt(60, 120), feltAt(200, 140));
@@ -267,7 +277,7 @@ export async function run(ctx) {
     const handN = (await handOf(ann)).length;
     await ann.page.keyboard.press("ArrowLeft");
     await ann.page.keyboard.press("ArrowRight"); // the cursor on my first card
-    const sayFirst = await said(ann);
+    const sayFirst = await waitFor(async () => (await said(ann)) || null, { timeout: 2000, what: "the live region" }).catch(() => "");
     await ann.page.keyboard.press("Enter");
     const looseN = (await drawn(ann)).cards.filter((c) => c.where === "loose").length;
     for (let i = 0; i < handN + looseN; i++) await ann.page.keyboard.press("ArrowRight"); // to the first pile, Stock
@@ -285,7 +295,7 @@ export async function run(ctx) {
         await waitFor(() => read(u, () => window.__hq?.state?.conn === "open"), { timeout: 30000, what: u.name + " reconnected" });
         await countFrames(u);
       }
-      await Promise.all([walkTo(ann, 204, feet), walkTo(bo, 212, feet)]);
+      await Promise.all([goTo(ann, 204, feet), goTo(bo, 212, feet)]);
       await openWithX(ann);
       await openWithX(bo);
       await waitFor(async () => (await handOf(ann)).length === beforeRestart.ann.length, { timeout: 5000, what: "Ann's hand after the restart" }).catch(() => {});

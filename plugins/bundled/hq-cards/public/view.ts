@@ -320,10 +320,10 @@ function draw(): void {
     const x0 = sp.x - SEAT_W / 2, y0 = sp.y - SEAT_H / 2;
     const s: Spot = { k: "seat", seat: sp.seat };
     if (!seat) {
-      text(`Seat ${sp.seat + 1}: free`, sp.x, sp.y, C.muted);
+      text(sp.side === "top" ? `Seat ${sp.seat + 1}: free` : `${sp.seat + 1}: free`, sp.x, sp.y, C.muted);
     } else {
       const away = !st!.here.includes(seat.id);
-      text(short(seat.name, 12) + (away ? " (away)" : ""), sp.x, y0 + 5, away ? C.muted : C.text);
+      text(short(seat.name, sp.side === "top" ? 14 : 8) + (away ? " (away)" : ""), sp.x, y0 + 5, away ? C.muted : C.text);
       const n = t.hands[sp.seat].length;
       const shown = Math.min(n, 6);
       for (let i = 0; i < shown; i++) drawCard(0, false, sp.x - (shown * 5) / 2 + i * 5 - 2, y0 + 10, 10);
@@ -468,7 +468,7 @@ function finishLook(): void {
   send({ t: "unlook" });
   look = null;
   draw();
-  canvas.focus();
+  canvas.focus({ preventScroll: true });
 }
 
 function cancelLook(): void {
@@ -476,7 +476,7 @@ function cancelLook(): void {
   send({ t: "unlook" });
   look = null;
   draw();
-  canvas.focus();
+  canvas.focus({ preventScroll: true });
 }
 
 function moveInLook(from: number, to: number): void {
@@ -497,9 +497,9 @@ let lookDrag: { from: number; x: number; y: number } | null = null;
 
 canvas.addEventListener("pointerdown", (e) => {
   if (!st || !game) return;
-  canvas.focus();
-  cursorShown = false;
   const p = toView(e);
+  canvas.focus({ preventScroll: true }); // scrolling now would move the canvas from under the pointer
+  cursorShown = false;
   if (look) {
     const i = rowIndexAt(look.cards.length, p.x, p.y);
     if (i !== null) {
@@ -701,7 +701,8 @@ canvas.addEventListener("keydown", (e) => {
 function fit(): void {
   const w = window.innerWidth - 12;
   const k = w / VIEW_W;
-  const next = k >= 1 ? Math.max(1, Math.min(4, Math.floor(k))) : Math.max(0.5, k);
+  // whole and half steps: at 1x a 20 x 28 card is too small to read in a large window (about 700 px wide)
+  const next = k >= 1 ? Math.max(1, Math.min(4, Math.floor(k * 2) / 2)) : Math.max(0.5, k);
   if (next !== scale) {
     scale = next;
     draw();
