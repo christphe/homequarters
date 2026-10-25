@@ -155,3 +155,326 @@ test("parseLog survives broken storage", () => {
   assert.deepEqual(parseLog('{"a":1}'), []);
   assert.deepEqual(parseLog('[{"s":0,"v":"drew","p":"Stock"},{"s":"x"}]'), [{ s: 0, v: "drew", p: "Stock" }]);
 });
+
+// ---- table.ts
+import {
+  UP, TABLE_MAX, newTable, parseTable, choose, seatOf, take, place, flip, order, offer, pick, dealAll, deal, shuffle, gather,
+  createPile, removePile, reorderPile, draw, counted, defaultCount, canReset, reset, encodedSize, type Table,
+} from "../../plugins/bundled/hq-cards/public/table.ts";
+
+function lcg(seed = 7) {
+  let s = seed;
+  return () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+}
+const ANN = { id: 1, name: "Ann" }, BO = { id: 2, name: "Bo" }, CY = { id: 3, name: "Cy" };
+function free3(): Table {
+  const t = newTable();
+  choose(t, FREE, lcg());
+  for (const [i, who] of [ANN, BO, CY].entries()) assert.equal(take(t, i, who).ok, true);
+  return t;
+}
+const stock = (t: Table) => t.piles[0];
+const sorted = (a: number[]) => [...a].sort((x, y) => x - y);
+const all = (t: Table) => sorted([...t.hands.flat(), ...t.piles.flatMap((p) => p.cards.map((c) => c & ~UP)), ...t.loose.map((l) => l.c & ~UP)]);
+const deck54 = Array.from({ length: 54 }, (_, i) => i);
+
+test("choose sets up the free table", () => {
+  const t = newTable();
+  assert.equal(t.game, null);
+  choose(t, FREE, lcg());
+  assert.equal(t.game, "free");
+  assert.equal(t.seats.length, 8);
+  assert.ok(t.seats.every((s) => s === null));
+  assert.equal(stock(t).name, "Stock");
+  assert.equal(stock(t).face, "down");
+  assert.equal(stock(t).cards.length, 54);
+  assert.ok(stock(t).cards.every((c) => c < UP), "face down");
+  assert.deepEqual(all(t), deck54);
+  assert.notDeepEqual(stock(t).cards, deck54, "shuffled");
+});
+
+test("take: one seat per member, a taken or missing seat refused", () => {
+  const t = newTable();
+  assert.equal(take(t, 0, ANN).ok, false, "no game yet");
+  choose(t, FREE, lcg());
+  assert.equal(take(t, 0, ANN).ok, true);
+  assert.equal(take(t, 0, BO).ok, false);
+  assert.equal(take(t, 1, ANN).ok, false);
+  assert.equal(take(t, 8, BO).ok, false);
+  assert.equal(take(t, -1, BO).ok, false);
+  assert.equal(take(t, 1.5, BO).ok, false);
+  assert.equal(seatOf(t, 1), 0);
+  assert.equal(seatOf(t, 2), null);
+});
+
+test("dealAll deals round the seats after the dealer", () => {
+  const t = free3();
+  const r = dealAll(t, 0, "p0", FREE);
+  assert.equal(r.ok, true);
+  assert.deepEqual(t.hands.slice(0, 3).map((h) => h.length), [18, 18, 18]);
+  assert.equal(stock(t).cards.length, 0);
+  assert.deepEqual(all(t), deck54);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "dealt" });
+
+  const t2 = free3();
+  const top = stock(t2).cards.at(-1);
+  stock(t2).cards.splice(0, 52); // two cards left
+  assert.equal(dealAll(t2, 0, "p0", FREE).ok, true);
+  assert.deepEqual(t2.hands.slice(0, 3).map((h) => h.length), [0, 1, 1]);
+  assert.equal(t2.hands[1][0], top, "the first card goes to the seat after the dealer");
+
+  const t3 = newTable();
+  choose(t3, FREE, lcg());
+  assert.equal(dealAll(t3, 0, "p0", FREE).ok, false, "nobody seated");
+  assert.equal(dealAll(free3(), 5, "p0", FREE).ok, false, "an empty seat cannot deal");
+  assert.equal(dealAll(free3(), null, "p0", FREE).ok, false, "a spectator cannot deal");
+  assert.equal(dealAll(free3(), 0, "nope", FREE).ok, false);
+});
+
+test("deal N stops when the pile runs out", () => {
+  const t = free3();
+  stock(t).cards.splice(0, 44); // ten left
+  const r = deal(t, 0, "p0", 4, FREE);
+  assert.equal(r.ok, true);
+  assert.deepEqual(t.hands.slice(0, 3).map((h) => h.length), [3, 4, 3]);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "dealt", n: 4 });
+  assert.equal(deal(free3(), 0, "p0", 0, FREE).ok, false);
+  assert.equal(deal(free3(), 0, "p0", 53, FREE).ok, false);
+  assert.equal(deal(free3(), 0, "p0", 2.5, FREE).ok, false);
+});
+
+test("place moves a card between hands, the felt and piles", () => {
+  const t = free3();
+  deal(t, 0, "p0", 5, FREE);
+  const mine = t.hands[0][0];
+  let r = place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [40, 50] }, true, FREE);
+  assert.equal(r.ok, true);
+  assert.deepEqual(t.loose, [{ c: mine | UP, at: [40, 50] }]);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "placed", c: mine });
+  assert.equal(t.hands[0].length, 4);
+
+  r = place(t, 1, { k: "loose", c: mine }, { k: "pile", id: "p0" }, false, FREE);
+  assert.equal(r.ok, true, "anybody seated moves a loose card");
+  assert.equal(stock(t).cards.at(-1), mine);
+  assert.deepEqual(t.loose, []);
+  if (r.ok) assert.deepEqual(r.log, { s: 1, v: "placed", p: "Stock" });
+
+  r = place(t, 2, { k: "pile", id: "p0" }, { k: "hand", seat: 1 }, false, FREE);
+  assert.equal(r.ok, true);
+  assert.equal(t.hands[1].at(-1), mine);
+  if (r.ok) assert.deepEqual(r.log, { s: 2, v: "gave", to: 1 });
+
+  const bo = t.hands[1][0];
+  r = place(t, 1, { k: "hand", i: 0 }, { k: "hand", seat: 2 }, false, FREE);
+  assert.equal(r.ok, true);
+  assert.equal(t.hands[2].at(-1), bo);
+
+  assert.equal(place(t, 0, { k: "pile", id: "p0" }, { k: "hand", seat: 0 }, false, FREE).ok, false, "that is draw");
+  assert.equal(place(t, 0, { k: "hand", i: 99 }, { k: "felt", at: [1, 1] }, true, FREE).ok, false, "not in my hand");
+  assert.equal(place(t, null, { k: "pile", id: "p0" }, { k: "felt", at: [1, 1] }, true, FREE).ok, false, "a spectator");
+  assert.equal(place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [999, 1] }, true, FREE).ok, false, "off the felt");
+  assert.equal(place(t, 0, { k: "hand", i: 0 }, { k: "hand", seat: 0 }, true, FREE).ok, false, "my hand into my hand");
+  assert.equal(place(t, 0, { k: "hand", i: 0 }, { k: "hand", seat: 5 }, true, FREE).ok, false, "an empty seat");
+  assert.equal(place(t, 0, { k: "pile", id: "p0" }, { k: "pile", id: "p0" }, true, FREE).ok, false, "onto its own pile");
+  assert.equal(place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [1, 1] }, true, { ...FREE, allow: ["draw"] }).ok, false, "not allowed");
+});
+
+test("a loose card moved twice at once: the second is refused once it is gone", () => {
+  const t = free3();
+  deal(t, 0, "p0", 1, FREE);
+  const c = t.hands[0][0];
+  place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [10, 10] }, true, FREE);
+  assert.equal(place(t, 1, { k: "loose", c }, { k: "felt", at: [20, 20] }, true, FREE).ok, true);
+  place(t, 1, { k: "loose", c }, { k: "hand", seat: 1 }, false, FREE);
+  assert.equal(place(t, 2, { k: "loose", c }, { k: "felt", at: [30, 30] }, true, FREE).ok, false, "gone from the felt");
+  assert.equal(t.hands[1].at(-1), c);
+});
+
+test("a loose card goes back into my hand", () => {
+  const t = free3();
+  deal(t, 0, "p0", 1, FREE);
+  const c = t.hands[0][0];
+  place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [10, 10] }, false, FREE);
+  const r = place(t, 0, { k: "loose", c }, { k: "hand", seat: 0 }, false, FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "took back" });
+  assert.deepEqual(t.hands[0], [c]);
+});
+
+test("flip turns a loose card or a pile's top over", () => {
+  const t = free3();
+  const top = stock(t).cards.at(-1)!;
+  let r = flip(t, 0, { k: "pile", id: "p0" }, FREE);
+  assert.equal(r.ok, true);
+  assert.equal(stock(t).cards.at(-1), top | UP);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "flipped", c: top });
+  r = flip(t, 0, { k: "pile", id: "p0" }, FREE);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "flipped" });
+  assert.equal(stock(t).cards.at(-1), top);
+  assert.equal(flip(t, 0, { k: "hand", i: 0 }, FREE).ok, false);
+});
+
+test("order rearranges my hand with the same cards, unlogged", () => {
+  const t = free3();
+  deal(t, 0, "p0", 3, FREE);
+  const h = [...t.hands[0]];
+  assert.deepEqual(order(t, 0, [h[2], h[0], h[1]]), { ok: true });
+  assert.deepEqual(t.hands[0], [h[2], h[0], h[1]]);
+  assert.equal(order(t, 0, [h[0], h[0], h[1]]).ok, false);
+  assert.equal(order(t, 0, [h[0], h[1]]).ok, false);
+  assert.equal(order(t, null, h).ok, false);
+});
+
+test("offer and pick", () => {
+  const t = free3();
+  deal(t, 0, "p0", 4, FREE);
+  assert.equal(offer(t, 0, 0, FREE).ok, false, "to myself");
+  assert.equal(offer(t, 0, 5, FREE).ok, false, "to an empty seat");
+  let r = offer(t, 0, 1, FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "offered", to: 1 });
+  assert.deepEqual(t.offer, { from: 0, to: 1 });
+  assert.equal(pick(t, 2, 0, FREE).ok, false, "only the one offered");
+  assert.equal(pick(t, 1, 9, FREE).ok, false);
+  const third = t.hands[0][2];
+  r = pick(t, 1, 2, FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 1, v: "picked", to: 0 });
+  assert.equal(t.hands[1].at(-1), third);
+  assert.equal(t.hands[0].length, 3);
+  assert.equal(t.offer, null);
+
+  offer(t, 0, 1, FREE);
+  r = offer(t, 0, null, FREE);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "withdrew" });
+  assert.equal(pick(t, 1, 0, FREE).ok, false, "withdrawn");
+  assert.equal(offer(t, 0, null, FREE).ok, false, "nothing to withdraw");
+  assert.equal(offer(t, 0, 1, { ...FREE, allow: ["place"] }).ok, false);
+});
+
+test("gather puts every card back face down and removes the players' piles", () => {
+  const t = free3();
+  dealAll(t, 0, "p0", FREE);
+  createPile(t, 1, "Tricks", "down", [20, 20], FREE);
+  place(t, 0, { k: "hand", i: 0 }, { k: "pile", id: "p1" }, true, FREE);
+  place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [5, 5] }, true, FREE);
+  offer(t, 0, 1, FREE);
+  assert.equal(gather(t, 2, FREE).ok, true);
+  assert.equal(t.piles.length, 1);
+  assert.equal(stock(t).cards.length, 54);
+  assert.ok(stock(t).cards.every((c) => c < UP));
+  assert.deepEqual(t.loose, []);
+  assert.ok(t.hands.every((h) => h.length === 0));
+  assert.equal(t.offer, null);
+});
+
+test("createPile and removePile", () => {
+  const t = free3();
+  let r = createPile(t, 0, "Discard", "up", [100, 100], FREE);
+  assert.equal(r.ok, true);
+  assert.equal(t.piles[1].id, "p1");
+  assert.equal(t.piles[1].mine, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "created", p: "Discard" });
+  assert.equal(createPile(t, 0, "x".repeat(17), "up", [1, 1], FREE).ok, false);
+  assert.equal(createPile(t, 0, " ", "up", [1, 1], FREE).ok, false);
+  assert.equal(createPile(t, 0, "A", "sideways" as "up", [1, 1], FREE).ok, false);
+  for (let i = 2; i < 16; i++) assert.equal(createPile(t, 0, "P" + i, "up", [1, 1], FREE).ok, true);
+  assert.equal(createPile(t, 0, "P16", "up", [1, 1], FREE).ok, false, "16 piles at most");
+  assert.equal(removePile(t, 0, "p0", FREE).ok, false, "a game's pile stays");
+  place(t, 0, { k: "pile", id: "p0" }, { k: "pile", id: "p1" }, true, FREE);
+  assert.equal(removePile(t, 0, "p1", FREE).ok, false, "not empty");
+  r = removePile(t, 1, "p2", FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 1, v: "removed", p: "P2" });
+});
+
+test("draw and reorderPile", () => {
+  const t = free3();
+  const top = stock(t).cards.at(-1);
+  let r = draw(t, 1, "p0", FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 1, v: "drew", p: "Stock" });
+  assert.deepEqual(t.hands[1], [top]);
+  const before = [...stock(t).cards];
+  const turned = [...before].reverse();
+  r = reorderPile(t, 0, "p0", turned, FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "reordered", p: "Stock" });
+  assert.deepEqual(stock(t).cards, turned);
+  assert.equal(reorderPile(t, 0, "p0", [...turned.slice(1), turned[1]], FREE).ok, false, "other cards");
+  const onlyPlace = { ...FREE, allow: ["place" as const] };
+  assert.equal(draw(t, 1, "p0", onlyPlace).ok, false);
+  assert.equal(reorderPile(t, 0, "p0", before, onlyPlace).ok, false);
+  const empty = free3();
+  empty.piles[0].cards = [];
+  assert.equal(draw(empty, 0, "p0", FREE).ok, false);
+});
+
+test("shuffle: an empty pile is a no-op without a log entry", () => {
+  const t = free3();
+  const before = [...stock(t).cards];
+  const r = shuffle(t, 0, "p0", FREE, lcg(3));
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 0, v: "shuffled", p: "Stock" });
+  assert.notDeepEqual(stock(t).cards, before);
+  assert.deepEqual(sorted(stock(t).cards), sorted(before));
+  stock(t).cards = [];
+  assert.deepEqual(shuffle(t, 0, "p0", FREE), { ok: true });
+});
+
+test("counted keeps the text, cut to 200 characters, and logs it", () => {
+  const t = free3();
+  const r = counted(t, 0, "x".repeat(300), FREE);
+  assert.equal(t.count.length, 200);
+  if (r.ok) assert.equal(r.log?.v, "counted");
+  assert.equal(counted(t, 0, "n", { ...FREE, allow: ["place"] }).ok, false);
+});
+
+test("defaultCount", () => {
+  const t = free3();
+  deal(t, 0, "p0", 5, FREE);
+  createPile(t, 0, "Pairs", "up", [1, 1], FREE);
+  place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [1, 1] }, true, FREE);
+  assert.equal(defaultCount(t), "Ann 4, Bo 5, Cy 5 · Stock 39, Pairs 0 · 1 on the table");
+});
+
+test("the worst case stays under TABLE_MAX, and an action that would not fit is refused", () => {
+  const def = validateDefinition(custom(108, 108));
+  assert.ok(def.ok);
+  if (!def.ok) return;
+  const g: Game = { ...def.def, name: "big", complete: true };
+  const t = newTable();
+  choose(t, g, lcg());
+  for (let i = 0; i < 8; i++) take(t, i, { id: 100 + i, name: "N".repeat(24) });
+  for (let i = 1; i < 16; i++) createPile(t, 0, "x".repeat(16), "up", [319, 179], g);
+  deal(t, 0, "p0", 5, g);
+  let i = 0;
+  while (t.piles[0].cards.length) {
+    const to = i % 3 ? { k: "pile" as const, id: "p" + (1 + (i % 15)) } : { k: "felt" as const, at: [300 + (i % 19), 170 + (i % 9)] as [number, number] };
+    if (!place(t, 0, { k: "pile", id: "p0" }, to, true, g).ok) break;
+    i++;
+  }
+  assert.ok(encodedSize(t) <= TABLE_MAX, "size " + encodedSize(t));
+  if (t.piles[0].cards.length) {
+    const snapshot = JSON.stringify(t);
+    assert.equal(place(t, 0, { k: "pile", id: "p0" }, { k: "felt", at: [301, 171] }, true, g).ok, false);
+    assert.equal(JSON.stringify(t), snapshot, "a refused action changes nothing");
+  }
+});
+
+test("canReset mirrors chess, and reset clears the table", () => {
+  const t = free3();
+  assert.equal(canReset(t, 1, new Set([1, 9])), true, "a present seated player");
+  assert.equal(canReset(t, 9, new Set([1, 9])), false, "a spectator while a seated player is here");
+  assert.equal(canReset(t, 9, new Set([9])), true, "nobody seated is here");
+  reset(t);
+  assert.deepEqual(t, newTable());
+});
+
+test("parseTable survives broken storage", () => {
+  assert.deepEqual(parseTable(null), newTable());
+  assert.deepEqual(parseTable("{"), newTable());
+  assert.deepEqual(parseTable('{"game":3}'), newTable());
+  const t = free3();
+  assert.deepEqual(parseTable(JSON.stringify(t)), t);
+});
