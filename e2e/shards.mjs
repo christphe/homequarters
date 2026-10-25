@@ -1,5 +1,5 @@
-// Splits the browser suite into shards that run in parallel, one CI job per shard.
-// Pure: no dependency, no I/O.
+// Splits the browser suite into shards that run in parallel: one CI job per shard, or
+// E2E_PARALLELISM=N shards on one machine (see parallel.mjs). Pure: no dependency, no I/O.
 
 // The whole suite, in the order a single run executes it.
 export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates"];

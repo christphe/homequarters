@@ -1,6 +1,7 @@
 // Self-contained acceptance runner: fresh SQLite DB, production-style static serving,
 // real Chrome (fake camera/mic) and a real LiveKit server. Usage: node run.mjs [--shard i/n] [scenario ...]
-// --shard i/n runs only shard i of n (see shards.mjs).
+// --shard i/n runs only shard i of n (see shards.mjs); E2E_PARALLELISM=N runs the whole suite as N shards
+// at once, each with its own server, LiveKit and Chrome (see parallel.mjs).
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,6 +28,7 @@ const names = shardAt < 0 ? args : args.filter((_, k) => k !== shardAt && (args[
 const listed = names.length ? names : EXTERNAL ? ["proximity", "consent", "rooms"] : ALL;
 let wanted = listed;
 if (shardSpec) { const { i, n } = parseShard(shardSpec); wanted = shard(listed, i, n); console.log(`# shard ${i}/${n}: ${wanted.join(", ") || "(empty)"}`); }
+const PARALLEL = Number(process.env.E2E_PARALLELISM ?? "1") || 1;
 
 // Windows: go build names the binary as given, while spawning "bin/homequarters" runs a stale homequarters.exe;
 // pnpm is a .cmd that only a shell finds; and a signal from Node is a hard kill (see stopServer).
@@ -41,6 +43,14 @@ if (!process.env.SKIP_BUILD && !EXTERNAL) {
   console.log("# building web + server");
   execFileSync("pnpm", ["build"], { cwd: path.join(root, "web"), stdio: "inherit", shell: WIN });
   execFileSync("go", ["build", "-o", BIN, "./cmd/homequarters"], { cwd: path.join(root, "server"), stdio: "inherit" });
+}
+
+// The whole local suite in E2E_PARALLELISM shards at once; the build above is the only shared step.
+if (PARALLEL > 1 && !names.length && !shardSpec && !EXTERNAL) {
+  const { runParallel } = await import("./parallel.mjs");
+  const ok = await runParallel({ n: PARALLEL, scenarios: ALL, root });
+  console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
+  process.exit(ok ? 0 : 1);
 }
 
 // livekit-server --dev always listens on 7880, so another port needs a LiveKit started beforehand.
@@ -82,6 +92,23 @@ const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push(
   await done;
   clearTimeout(timer);
 } };
+// A shard started by parallel.mjs stops its server and exits when asked: a signal, or on Windows (where a
+// signal from Node is a hard kill) its stdin closing. Exiting also closes the Chrome puppeteer launched.
+if (process.env.E2E_SHARD_CHILD) {
+  let stopping = false;
+  const stopShard = async () => {
+    if (stopping) return;
+    stopping = true;
+    console.log("# shard stopped");
+    for (const c of children) c.kill("SIGTERM");
+    await Promise.race([ctx.stopServer(), sleep(5000)]);
+    process.exit(130);
+  };
+  process.on("SIGINT", stopShard);
+  process.on("SIGTERM", stopShard);
+  process.on("SIGBREAK", stopShard);
+  if (WIN) { process.stdin.on("end", stopShard); process.stdin.on("close", stopShard); process.stdin.resume(); }
+}
 if (!EXTERNAL) await ctx.startServer();
 console.log("# server logs:", path.join(dir, "server.log"));
 

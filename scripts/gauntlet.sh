@@ -3,6 +3,7 @@
 #   scripts/gauntlet.sh                 # static gates + the whole browser suite (CI viewport)
 #   scripts/gauntlet.sh social movement # static gates + only these scenarios
 #   GAUNTLET_SKIP_E2E=1 scripts/gauntlet.sh
+#   E2E_PARALLELISM=2 scripts/gauntlet.sh   # the whole browser suite as 2 shards at once (see e2e/parallel.mjs)
 # Prints one PASS/FAIL line per gate and exits non-zero if any gate failed.
 # The same lines go to .gauntlet/last-gates.log with the commit, a hash of the working tree and the
 # time, so critics can tell whether the gates ran on the code they review.
@@ -48,7 +49,7 @@ gate vite-build bash -c 'cd web && pnpm exec vite build'
 gate web-lint node scripts/lint-web.mjs
 # plugin code is TypeScript type-checked against plugins/sdk/*.d.ts: the sample and the suite's test plugin
 gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done'
-gate web-unit bash -c "node --test 'web/test/*.test.ts'"
+gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then
   gate e2e bash -c 'cd e2e && CI=1 node run.mjs "$@"' _ "$@"
