@@ -175,7 +175,7 @@ At most 8 slots per plugin and 256 live callbacks; texts are plain text.
 
 ### Views
 
-The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, forms, popups or top navigation) with the hidden iframe's Content Security Policy: the plugin's folder and its `externalHosts`, nothing else. Its one global is `hqView`; it cannot call `hq`. Types: [`plugins/sdk/view.d.ts`](../plugins/sdk/view.d.ts).
+The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, forms, popups or top navigation) with the hidden iframe's Content Security Policy: the plugin's folder and its `externalHosts`, nothing else, plus images (`img-src`) from `/plugins/<name>/assets/shared/` of each plugin running when the view starts. Its one global is `hqView`; it cannot call `hq`. Types: [`plugins/sdk/view.d.ts`](../plugins/sdk/view.d.ts).
 
 | Function | Meaning |
 | --- | --- |

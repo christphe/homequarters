@@ -61,7 +61,7 @@ jobs:
         run: pnpm exec tsc -p tsconfig.test.json --noEmit
         working-directory: web
       - name: Type-check the plugins against plugins/sdk (the sample and the e2e test plugin)
-        run: for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done
+        run: for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../plugins/bundled/hq-cards ../plugins/bundled/hq-cards/public ../plugins/bundled/hq-card-pouilleux ../plugins/bundled/hq-card-lastcard ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done
         working-directory: web
       - name: Build and check the docs site (links, SEO metadata, sitemap, llms.txt)
         run: pnpm install --frozen-lockfile && node build.mjs && node check.mjs

@@ -3,11 +3,14 @@
 ## [Unreleased] - minor
 
 ### Added
+- Old Maid and Last Card, two card games for the Cards table, each a bundled plugin of its own; card games are plugins that register with Cards and can only narrow its actions or add a deck, piles and a count (#38)
+- Cards: a bundled plugin with a card deck to place on a table; anybody can sit down at its card table to deal, shuffle, put cards anywhere on the felt or on piles, give a card, offer their hand for a pick or look through a pile, and every action is written in the table's log (#38)
 - Chess: a bundled plugin with a chessboard to place on a table; take the White or Black seat, anybody else with the window open watches, and each board keeps its game (#36)
 - Plugins can put objects on the map that X opens (placed by administrators in the map editor, hidden while the plugin is off), draw them, react to them being added or removed, show a view of their own in their window and pin a sprite above a member's head (#36)
 - Administrators can switch the office to a ready-made layout from Admin > Office: Loft (today's starter office), Lodge (36 desks) or Manor (48 desks in islands of back-to-back desks, meeting rooms, mini meeting rooms, a break room whose duo and couch corners each have their own call, an arena); the whole map is replaced, desk assignments carry over by desk number and everybody online reconnects into the new office at its entrance (#35)
 
 ### Changed
+- A plugin's view can draw the images other running plugins put in their shared folder (#38)
 - Couches no longer block the way: people sit on them as on chairs (#35)
 - The office looks more lived in: desks have legs, a monitor, a keyboard and a mouse, chairs that face away are seen from behind, armchairs beside a table face it, tables have legs (low ones among couches), and a doorway carries each room's floor up to a thin sill instead of a doormat (#35)
 - Maps hold up to 128 areas instead of 64, and the map format has new furniture (armchair, stands, stairs, an arena field, a banner, a scoreboard) and desks turned around (`up`) for back-to-back islands (#35)
