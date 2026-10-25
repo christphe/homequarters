@@ -184,6 +184,10 @@
       const target = typeof who === "object" && who !== null ? { sprite: who.sprite } : { player: who };
       push({ op: "follow", id, ...target, gap: opts.gap, beside: opts.beside, roam: opts.roam });
     },
+    /** Pins the sprite above that member's head, over their name tag; null lets it go (it stays where it is). */
+    attach(id, memberId) {
+      push({ op: "attach", id, player: memberId });
+    },
     stop(id) {
       push({ op: "stop", id });
     },

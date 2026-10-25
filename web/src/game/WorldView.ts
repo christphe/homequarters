@@ -143,6 +143,15 @@ export class WorldView {
     canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
     me: () => this.meId,
+    headPoint: (id, out) => {
+      const e = this.ents.get(id);
+      if (!e || !e.spr.visible) return false;
+      // the name tag is in screen pixels, over the drawing's real top; the sprite goes 2 px above its top
+      out.x = e.x;
+      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.S);
+      out.feetY = e.y;
+      return true;
+    },
   });
   private people = new Map<number, Person>();
   /** Names of the members places belong to (the server's owner names); online people fill the gaps. */

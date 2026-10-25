@@ -128,6 +128,9 @@ declare global {
       follow(id: string, memberId: number, opts?: { gap?: number; beside?: number; roam?: number }): void;
       /** Follows another sprite of this plugin the same way, gap px behind; it waits while that sprite is gone or hidden. */
       follow(id: string, who: { sprite: string }, opts?: { gap?: number; beside?: number; roam?: number }): void;
+      /** Pins the sprite above that member's head, over their name tag, moving with them; hidden while they are off screen.
+       * null lets it go (it stays where it is). While pinned it ignores moveTo, walkTo and follow. */
+      attach(id: string, memberId: number | null): void;
       /** Walks there along a path around walls (px/s, default 72); somewhere it cannot reach (off the map, in a wall), as close as it can. */
       walkTo(id: string, x: number, y: number, opts?: { speed?: number }): void;
       stop(id: string): void;

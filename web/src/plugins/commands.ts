@@ -13,6 +13,7 @@ export type Cmd =
   | { op: "spawn"; id: string; key: string; x?: number; y?: number; anim?: string }
   | { op: "remove"; id: string }
   | { op: "moveTo"; id: string; x: number; y: number; speed?: number }
+  | { op: "attach"; id: string; player: number | null }
   | { op: "follow"; id: string; player?: number; sprite?: string; gap?: number; beside?: number; roam?: number }
   | { op: "tint"; id: string; colour: string | null }
   | { op: "label"; id: string; text: string | null; owner?: number }
@@ -265,6 +266,9 @@ function parseOne(c: unknown): Cmd {
       return { op: "close" };
     case "moveTo":
       return { op: "moveTo", id: str(o.id, "id"), x: num(o.x, "x", -COORD, COORD), y: num(o.y, "y", -COORD, COORD), speed: opt(o.speed, (v) => num(v, "speed", 1, 1000)) };
+    case "attach":
+      // a member's id, or null to let it go
+      return { op: "attach", id: str(o.id, "id"), player: o.player === null ? null : num(o.player, "player", 1, 2 ** 32 - 1, true) };
     case "follow": {
       // a member's trail, or another sprite of the same plugin (one of the two)
       const id = str(o.id, "id");

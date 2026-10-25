@@ -129,6 +129,7 @@ The browser code runs in a hidden iframe with `sandbox="allow-scripts"`, after t
 | `hq.spawn(id, key, { x, y, anim })` | Puts sprite `id` with sheet `key` at `x, y` (world px, bottom centre of the frame), standing still. Without `x, y`, a new sprite waits for `follow` or `moveTo` to place it, and an existing one keeps its place and what it does (only its sheet changes). |
 | `hq.remove(id)` | Takes it away. |
 | `hq.moveTo(id, x, y, { speed })` | Walks there in a straight line at `speed` px/s (1-1000, default 72); stops at the first wall. |
+| `hq.attach(id, memberId \| null)` | Pins the sprite above that member's head, 2 px over their name tag, moving with them every frame; hidden while they are off screen. `null` lets it go (it stays where it is). A pinned sprite ignores `moveTo`, `walkTo` and `follow`. |
 | `hq.follow(id, memberId, { gap, beside })` | Walks that member's trail `gap` px behind (0-200, default 36); rests `beside` px to their side (0-120, default 22); with `roam` (0-48) it potters about their feet instead, a new free spot about every 20 s, chosen from the sprite's id and the clock so every page shows the same. If the sprite is already on the map elsewhere, it first walks back along a path around walls. Hidden while the member is off screen. |
 | `hq.stop(id)` | Stands still. |
 | `hq.setAnim(id, name)` | Plays that animation while standing (until it moves). |
