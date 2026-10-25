@@ -105,3 +105,53 @@ test("FREE is the free table: a 54-card stock, 2 to 8 seats, everything allowed"
   const cg = clientGame(FREE);
   assert.equal(cg.allow.length, 10);
 });
+
+// ---- log.ts
+import { append, parseLog, sentence, LOG_MAX, type LogEntry } from "../../plugins/bundled/hq-cards/public/log.ts";
+
+const names = ["Ann", "Bo", "Cy"];
+const say = (e: LogEntry) => sentence(e, (s) => names[s] ?? "Seat " + (s + 1), (c) => (c === 7 ? "the 8 of spades" : "card " + c));
+
+test("sentence says each action", () => {
+  const cases: [LogEntry, string][] = [
+    [{ s: 0, v: "chose", text: "Old Maid" }, "Ann chose Old Maid"],
+    [{ s: 1, v: "took" }, "Bo took seat 2"],
+    [{ s: 0, v: "looked", p: "Discard" }, "Ann looked at Discard"],
+    [{ s: 0, v: "reordered", p: "Discard" }, "Ann reordered Discard"],
+    [{ s: 1, v: "picked", to: 0 }, "Bo drew a card from Ann's hand"],
+    [{ s: 2, v: "placed", c: 7, p: "Pairs" }, "Cy put the 8 of spades on Pairs"],
+    [{ s: 2, v: "placed", p: "Stock" }, "Cy put a card on Stock"],
+    [{ s: 2, v: "placed", c: 7 }, "Cy put the 8 of spades on the table"],
+    [{ s: 2, v: "placed" }, "Cy put a card on the table"],
+    [{ s: 2, v: "gave", to: 1 }, "Cy gave a card to Bo"],
+    [{ s: 2, v: "took back" }, "Cy took a card back"],
+    [{ s: 0, v: "flipped", c: 7 }, "Ann turned the 8 of spades face up"],
+    [{ s: 0, v: "flipped" }, "Ann turned a card face down"],
+    [{ s: 0, v: "offered", to: 1 }, "Ann offered their hand to Bo"],
+    [{ s: 0, v: "withdrew" }, "Ann withdrew the offer"],
+    [{ s: 0, v: "dealt", n: 7 }, "Ann dealt 7 cards each"],
+    [{ s: 0, v: "dealt" }, "Ann dealt all the cards"],
+    [{ s: 0, v: "shuffled", p: "Stock" }, "Ann shuffled Stock"],
+    [{ s: 0, v: "gathered" }, "Ann gathered all the cards"],
+    [{ s: 0, v: "counted", text: "Bo keeps the jack of spades" }, "Ann counted: Bo keeps the jack of spades"],
+    [{ s: 0, v: "created", p: "Tricks" }, "Ann created the pile Tricks"],
+    [{ s: 0, v: "removed", p: "Tricks" }, "Ann removed the pile Tricks"],
+    [{ s: 1, v: "drew", p: "Stock" }, "Bo drew a card from Stock"],
+  ];
+  for (const [e, want] of cases) assert.equal(say(e), want);
+});
+
+test("append keeps the newest entries under LOG_MAX", () => {
+  let log: LogEntry[] = [];
+  for (let i = 0; i < 500; i++) log = append(log, { s: i % 3, v: "drew", p: "Pile " + i });
+  assert.ok(JSON.stringify(log).length <= LOG_MAX);
+  assert.equal(log[log.length - 1].p, "Pile 499");
+  assert.ok(log.length > 20, "a useful history: " + log.length);
+});
+
+test("parseLog survives broken storage", () => {
+  assert.deepEqual(parseLog(null), []);
+  assert.deepEqual(parseLog("{"), []);
+  assert.deepEqual(parseLog('{"a":1}'), []);
+  assert.deepEqual(parseLog('[{"s":0,"v":"drew","p":"Stock"},{"s":"x"}]'), [{ s: 0, v: "drew", p: "Stock" }]);
+});
