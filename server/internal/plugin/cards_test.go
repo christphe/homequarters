@@ -253,7 +253,7 @@ func TestCardsMessageSizes(t *testing.T) {
 	for i := 5; i <= 8; i++ {
 		players = append(players, Player{ID: uint32(i), Name: fmt.Sprintf("%024d", i), Role: "member"})
 	}
-	h, sink, _ := cardsHost(t, newMemKV(), []string{cards}, players...)
+	h, sink, errs := cardsHost(t, newMemKV(), []string{cards}, players...)
 	freeTable(t, h, sink, 9, 9, players...)
 	for i := 1; i < 16; i++ {
 		cardSend(h, alice, `{"t":"newPile","x":9,"y":9,"name":"%016d","face":"up","at":[300,170]}`, i)
@@ -261,11 +261,17 @@ func TestCardsMessageSizes(t *testing.T) {
 	for i := 0; i < 54; i++ {
 		cardSend(h, players[i%8], `{"t":"place","x":9,"y":9,"from":{"k":"pile","id":"p0"},"to":{"k":"felt","at":[%d,%d]},"up":true}`, 100+i, 100+i)
 		if i%4 == 3 {
-			// the page's own budget (8 a second) would space them out; the test only needs them applied
-			waitTable(t, sink, alice.ID, 9, 9, "drops applied", func(tb, _ map[string]any) bool { return len(tb["loose"].([]any)) >= i-2 })
+			time.Sleep(50 * time.Millisecond) // a page's own budget (8 a second) spaces them out too
 		}
 	}
-	waitTable(t, sink, alice.ID, 9, 9, "54 cards on the felt", func(tb, _ map[string]any) bool { return len(tb["loose"].([]any)) == 54 })
+	// about 10 s on one core under the race detector: every drop saves the table and sends it to 8 pages
+	slowly(t, 30*time.Second, "54 cards on the felt", func() bool {
+		tb, _ := tableOf(sink, alice.ID, 9, 9)
+		return tb != nil && len(tb["loose"].([]any)) == 54
+	})
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("%d plugin errors", n)
+	}
 	sink.mu.Lock()
 	defer sink.mu.Unlock()
 	for _, s := range sink.sends {
@@ -372,6 +378,8 @@ func TestCardsWideNamesStayUnderTheLimits(t *testing.T) {
 		}
 	}
 	sink.mu.Unlock()
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
 	for k, v := range kv.m[cards] {
 		if len(v) > 4096 {
 			t.Fatalf("%s is %d bytes", k, len(v))
@@ -561,4 +569,17 @@ func TestCardsResetFreesKeysAndLookOnce(t *testing.T) {
 		_, b := kv.m[cards]["log:8,8"]
 		return !a && !b
 	})
+}
+
+// slowly is eventually with a longer limit, for checks that wait on many messages under the race detector
+// on a slow runner.
+func slowly(t *testing.T, limit time.Duration, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(limit)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out: %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
