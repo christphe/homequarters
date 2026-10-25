@@ -25,7 +25,8 @@ export type Cmd =
   | { op: "unslot"; id: string }
   | { op: "modal"; title: string; size: "small" | "medium" | "large"; place: "center" | "right"; close?: string; content: UINode[] }
   | { op: "close" }
-  | { op: "send"; d: unknown };
+  | { op: "send"; d: unknown }
+  | { op: "post"; d: unknown };
 
 /** Where a plugin may put things: buttons in Home Quarters' bars, or a floating box on the map (screen). */
 export const ANCHORS = ["topbar", "topright", "bottombar", "sidebar", "minimap", "screen"] as const;
@@ -47,7 +48,11 @@ export type UINode =
   | { type: "appToken" }
   | { type: "color"; label: string; value: string; change?: string; hideLabel?: boolean }
   | { type: "number"; label: string; value: number; min: number; max: number; change?: string }
-  | { type: "field"; label: string; value: string; maxLength: number; placeholder?: string; change?: string; hideLabel?: boolean };
+  | { type: "field"; label: string; value: string; maxLength: number; placeholder?: string; change?: string; hideLabel?: boolean }
+  | { type: "view"; view: string; label: string; height: ViewHeight; message?: string };
+
+export const VIEW_HEIGHTS = ["small", "medium", "large"] as const;
+export type ViewHeight = (typeof VIEW_HEIGHTS)[number];
 
 export const LIMITS = {
   batch: 512, // commands per batch
@@ -76,6 +81,8 @@ export const LIMITS = {
   copy: 2000,
   callbacks: 256,
   screenOffset: 200, // px from the chosen corner
+  viewBytes: 4096, // a message between a view and its plugin's client code, as JSON, each way
+  viewRate: 30, // such messages a second, each way per view; the rest are dropped
 };
 
 class Bad extends Error {}
@@ -152,9 +159,11 @@ const oneOf = <T extends string>(v: unknown, list: readonly T[], what: string): 
   return v as T;
 };
 
-/** A UI tree: at most LIMITS.nodes nodes, LIMITS.depth deep. */
-function tree(v: unknown): UINode[] {
-  let count = 0;
+const VIEW_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** A UI tree: at most LIMITS.nodes nodes, LIMITS.depth deep; in a modal (views), at most one view. */
+function tree(v: unknown, views = false): UINode[] {
+  let count = 0, viewCount = 0;
   const walk = (list: unknown, depth: number): UINode[] => {
     if (!Array.isArray(list)) throw new Bad("content must be an array");
     if (depth > LIMITS.depth) throw new Bad(`content deeper than ${LIMITS.depth}`);
@@ -179,6 +188,12 @@ function tree(v: unknown): UINode[] {
         case "number": {
           const min = num(o.min, "min", -1e6, 1e6, true), max = num(o.max, "max", min, 1e6, true);
           return { type: "number", label: label(o.label), value: num(o.value, "value", min, max, true), min, max, change: opt(o.change, cb) };
+        }
+        case "view": {
+          if (!views) throw new Bad("a view goes in a modal");
+          if (++viewCount > 1) throw new Bad("at most one view per modal");
+          if (typeof o.view !== "string" || !VIEW_NAME.test(o.view)) throw new Bad("view must be the name of a view of the manifest");
+          return { type: "view", view: o.view, label: label(o.label), height: oneOf(o.height ?? "medium", VIEW_HEIGHTS, "height"), message: opt(o.message, cb) };
         }
       }
       throw new Bad(`unknown UI element ${String(o.type).slice(0, 20)}`);
@@ -245,7 +260,7 @@ function parseOne(c: unknown): Cmd {
       return { op: "slot", id: str(o.id, "id"), anchor, label: opt(o.label, label), icon: opt(o.icon, url), click: opt(o.click, cb), pressed: opt(o.pressed, (x) => bool(x, "pressed")) };
     }
     case "modal":
-      return { op: "modal", title: label(o.title, "title"), size: oneOf(o.size ?? "medium", ["small", "medium", "large"] as const, "size"), place: oneOf(o.place ?? "center", ["center", "right"] as const, "place"), close: opt(o.close, cb), content: tree(o.content) };
+      return { op: "modal", title: label(o.title, "title"), size: oneOf(o.size ?? "medium", ["small", "medium", "large"] as const, "size"), place: oneOf(o.place ?? "center", ["center", "right"] as const, "place"), close: opt(o.close, cb), content: tree(o.content, true) };
     case "close":
       return { op: "close" };
     case "moveTo":
@@ -274,6 +289,9 @@ function parseOne(c: unknown): Cmd {
       return { op: o.op, id: str(o.id, "id"), on: bool(o.on, "on") };
     case "send":
       return { op: "send", d: o.d };
+    case "post":
+      // to the open view: checked (checkViewMessage) and rate limited when the page relays it, dropped if bad
+      return { op: "post", d: o.d };
   }
   throw new Bad(`unknown command ${String(o.op).slice(0, 20)}`);
 }
@@ -290,6 +308,31 @@ export class SendBudget {
     this.at = now;
     if (this.tokens < 1) return false;
     this.tokens--;
+    return true;
+  }
+}
+
+/** Why a message between a view and its plugin's client code cannot go through (not JSON, or over
+ *  LIMITS.viewBytes), or null. Such a message is dropped; the view and the plugin go on. */
+export function checkViewMessage(d: unknown): string | null {
+  let s: string | undefined;
+  try {
+    s = JSON.stringify(d);
+  } catch {
+    return "the message is not JSON";
+  }
+  if (s === undefined) return "the message is not JSON";
+  if (new TextEncoder().encode(s).length > LIMITS.viewBytes) return `the message is over ${LIMITS.viewBytes} bytes`;
+  return null;
+}
+
+/** LIMITS.viewRate messages in any second, one direction of one view. Dropped messages do not count. */
+export class ViewRate {
+  private times: number[] = [];
+  allow(now: number): boolean {
+    while (this.times.length > 0 && now - this.times[0] >= 1000) this.times.shift();
+    if (this.times.length >= LIMITS.viewRate) return false;
+    this.times.push(now);
     return true;
   }
 }

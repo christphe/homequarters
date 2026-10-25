@@ -13,6 +13,7 @@ interface Entry {
   client: string | null;
   hosts?: string[]; // externalHosts of its manifest: what its iframe may fetch
   objects?: Omit<PluginObjectSpec, "plugin">[]; // map objects of its manifest
+  views?: string[]; // names of the views of its manifest
 }
 
 /** Starts and stops plugin hosts to match GET /api/plugins, and routes messages to them. */
@@ -99,7 +100,7 @@ export class PluginManager {
           if (this.hosts.get(name) === h) this.hosts.delete(name);
           this.layer.providerStopped(name);
         },
-      });
+      }, e.views ?? []);
       this.hosts.set(e.name, h);
       h.start();
       this.layer.providerStarted(e.name); // sheets asked for before it ran, or while it was off
@@ -125,6 +126,13 @@ export class PluginManager {
   /** A click on something a plugin drew: runs its callback in the plugin's iframe. */
   event(plugin: string, callback: string | undefined, value?: string | number) {
     if (callback) this.hosts.get(plugin)?.callback(callback, value);
+  }
+
+  /** Connects the view iframe of a plugin's modal (PluginViewFrame); returns what disconnects it. */
+  attachView(plugin: string, view: string, frame: HTMLIFrameElement, fail: (reason: string) => void): () => void {
+    const h = this.hosts.get(plugin);
+    if (!h) return () => {};
+    return h.attachView(view, frame, fail);
   }
 
   /** The person closed the plugin modal. */

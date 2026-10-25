@@ -191,7 +191,7 @@ The view runs in an iframe with `sandbox="allow-scripts"` only (no `allow-same-o
 | Message size, each way | 4096 bytes of JSON |
 | Messages, each way | 30 a second per view; the rest are dropped with a console warning |
 
-Redrawing the modal with the same view in the same place keeps the iframe and its state; it is not reloaded. Closing the modal, another plugin's modal replacing it, or the plugin stopping on that page removes the iframe. Messages over a limit are dropped with a console warning, and the view stays. A view that fails in another way (it does not start, or is invalid or not declared in your manifest) is removed, and the modal stays. Send a message when something happens (a drop, a click), never one per animation frame.
+Redrawing the modal with the same view in the same place keeps the iframe and its state; it is not reloaded. Closing the modal, another plugin's modal replacing it, or the plugin stopping on that page removes the iframe. Messages over a limit are dropped with a console warning, and the view stays. A view that fails in another way (it does not start within 10 s, or your manifest does not declare it) is removed with a console warning, and the modal stays; a malformed view element (a bad name, label or height, two views in one modal, a view outside a modal) stops the plugin on that page like any malformed element. What `hq.ui.post` sends while the view is still starting waits for it (up to 30 messages); without a view in the open modal it does nothing. The view's scripts run in its `<body>`, so `document.body` is there from the start. Send a message when something happens (a drop, a click), never one per animation frame.
 
 ## Browser side
 

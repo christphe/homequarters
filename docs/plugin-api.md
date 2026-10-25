@@ -178,7 +178,7 @@ The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `al
 | `hqView.send(msg)` | To the `onMessage` of the view element. |
 | `hqView.onMessage(fn)` | `fn(msg)` for each `hq.ui.post` of the plugin's client code. |
 
-Messages are JSON of at most 4096 bytes, 30 a second each way per view; beyond that they are dropped with a console warning. The page relays over MessageChannels and never interprets the content. The iframe is removed when the modal closes, another plugin's modal replaces it, or the plugin stops on that page; a view that fails in another way (handshake failure, an invalid or undeclared view) is removed with a console warning and the modal stays. Messages over a limit never remove the view.
+Messages are JSON of at most 4096 bytes, 30 a second each way per view; beyond that they are dropped with a console warning. The page relays over MessageChannels and never interprets the content. The iframe is removed when the modal closes, another plugin's modal replaces it, or the plugin stops on that page; a view that fails in another way (no handshake within 10 s, a view the manifest does not declare) is removed with a console warning and the modal stays. Messages over a limit never remove the view. A malformed view element (bad name, label or height, a second view, a view outside a modal) is refused with its batch and stops the plugin on that page, like any malformed element. `hq.ui.post` made while the view is starting is held for it (up to 30); with no view in the open modal it is a no-op.
 
 ### Page limits
 

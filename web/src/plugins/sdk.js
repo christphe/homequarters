@@ -72,6 +72,8 @@
         const { onChange, ...rest } = n;
         return { ...rest, change: reg(owner, onChange) };
       }
+      // what the view sends reaches onMessage as this callback's value (the page relays it)
+      if (n && n.type === "view") return { type: "view", view: n.view, label: n.label, height: n.height, message: reg(owner, n.onMessage) };
       return n;
     });
 
@@ -91,6 +93,22 @@
     number: (opts) => ({ type: "number", label: opts.label, value: opts.value, min: opts.min, max: opts.max, onChange: opts.onChange }),
     /** Home Quarters' own widget to create, copy (once) and revoke this member's token for this plugin. */
     appToken: () => ({ type: "appToken" }),
+    /** A view of the manifest ("views") in a sandboxed iframe, at most one per modal; onMessage(msg) gets what it sends. */
+    view: (opts) => ({ type: "view", view: opts.view, label: opts.label, height: opts.height ?? "medium", onMessage: opts.onMessage }),
+    /** Sends msg (JSON, at most 4096 bytes) to the open view's hqView.onMessage; nothing without an open view. */
+    post(msg) {
+      let s;
+      try {
+        s = JSON.stringify(msg);
+      } catch {
+        s = undefined;
+      }
+      if (s === undefined || new TextEncoder().encode(s).length > 4096) {
+        console.warn("hq.ui.post: message dropped, it must be JSON of at most 4096 bytes");
+        return;
+      }
+      push({ op: "post", d: JSON.parse(s) });
+    },
     /** A button at an anchor (topbar, topright, bottombar, sidebar, minimap), or a box on the map (screen). */
     slot(id, anchor, opts = {}) {
       const owner = "slot:" + id;

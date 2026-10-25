@@ -525,6 +525,53 @@ export async function run(ctx) {
     await mia.page.keyboard.press("Escape");
     await waitFor(async () => (await boxText()).includes("modal closed"), { what: "onClose callback" });
     check("buttons inside the modal and closing it reach the plugin", true);
+
+    // ---- a view in the modal (ui-demo's views/echo.ts), opened and driven through the modal's buttons
+    const openDemo = async () => {
+      await waitFor(() => click(mia, ".plugins-panel button", "UI demo"), { what: "UI demo entry" });
+      await waitFor(() => mia.page.$('.modal.plugin-modal[aria-label="UI demo"]'), { what: "UI demo modal" });
+    };
+    const modalText = () => read(mia, () => document.querySelector(".modal.plugin-modal .plugin-body")?.textContent ?? "");
+    const warnings = [];
+    mia.page.on("console", (m) => { if (m.type() === "warn") warnings.push(m.text()); });
+    await openDemo();
+    await waitFor(() => click(mia, ".modal.plugin-modal button", "Echo view"), { what: "Echo view button" });
+    await waitFor(async () => (await modalText()).includes("View: hello"), { timeout: 15000, what: "the view's hello" });
+    const viewEl = await mia.page.$('.modal.plugin-modal iframe.plugin-view[data-view="echo"]');
+    const viewAttrs = await viewEl.evaluate((f) => ({ sandbox: f.getAttribute("sandbox"), title: f.title, height: f.getBoundingClientRect().height }));
+    check("the view is an iframe with sandbox=allow-scripts only, titled by its label", viewAttrs.sandbox === "allow-scripts" && viewAttrs.title === "Echo view" && viewAttrs.height > 0, JSON.stringify(viewAttrs));
+    check("the page is out of the view's reach (parent.document throws inside it)", (await modalText()).includes("View: hello, page blocked"), await modalText());
+    const view = await viewEl.contentFrame();
+    await view.evaluate(() => { window.__mark = 42; });
+    await view.evaluate(() => hqView.send({ t: "ping", n: 7 }));
+    await waitFor(async () => (await view.evaluate(() => document.getElementById("out")?.textContent)) === "pong 7", { what: "pong in the view" });
+    check("a message goes view -> client code -> view", true);
+    await waitFor(async () => (await modalText()).includes("View: ping 7"), { what: "the modal redrawn after the ping" });
+    check("redrawing the modal keeps the view's iframe and its state", (await viewEl.evaluate((f) => f.isConnected)) && (await view.evaluate(() => window.__mark)) === 42);
+    // 100 messages in one second each way: at most 30 go through, and nothing stops
+    await view.evaluate(() => { for (let i = 0; i < 100; i++) hqView.send({ t: "flood" }); });
+    await waitFor(() => click(mia, ".modal.plugin-modal button", "Flood the view"), { what: "Flood the view" });
+    await sleep(1500);
+    const fromView = Number(/From the view: (\d+)/.exec(await modalText())?.[1] ?? -1);
+    const toView = Number(/flood (\d+)/.exec(await view.evaluate(() => document.getElementById("out")?.textContent ?? ""))?.[1] ?? -1);
+    check("100 view messages in a second: at most 30 reach the client code", fromView >= 1 && fromView <= 30, "got " + fromView);
+    check("100 hq.ui.post in a second: at most 30 reach the view", toView >= 1 && toView <= 30, "got " + toView);
+    const dropped = ["from the view", "to the view"].map((dir) => warnings.some((w) => w.includes("view message dropped: more than 30 a second " + dir)));
+    check("the dropped messages are reported with a console warning, each way", dropped.every(Boolean), JSON.stringify(warnings.slice(0, 4)));
+    const stillRuns = await read(mia, () => !window.__hq.session.plugins.stopReasons.has("ui-demo") && !!document.querySelector('iframe.plugin-frame[data-plugin="ui-demo"]') && !!document.querySelector("iframe.plugin-view"));
+    check("a flooding view or client code is throttled, not stopped: the plugin and its view still run", stillRuns);
+    await waitFor(() => click(mia, ".modal.plugin-modal .modal-actions button", "Close"), { what: "Close" });
+    await waitFor(async () => (await boxText()).includes("echo closed"), { what: "the echo modal's onClose" });
+    check("closing the modal removes the view's iframe", !(await read(mia, () => !!document.querySelector("iframe.plugin-view"))));
+    // a view the manifest does not declare: the view goes, the modal stays, the plugin runs
+    await openDemo();
+    await waitFor(() => click(mia, ".modal.plugin-modal button", "Missing view"), { what: "Missing view button" });
+    await waitFor(async () => (await modalText()).includes("No view here"), { what: "the Missing modal" });
+    await sleep(300);
+    const missing = await read(mia, () => ({ frame: !!document.querySelector("iframe.plugin-view"), modal: !!document.querySelector('.modal.plugin-modal[aria-label="Missing"]'), runs: !window.__hq.session.plugins.stopReasons.has("ui-demo") }));
+    check("a view the manifest does not declare is left out; the modal stays and the plugin runs", !missing.frame && missing.modal && missing.runs, JSON.stringify(missing));
+    await waitFor(() => click(mia, ".modal.plugin-modal .modal-actions button", "Close"), { what: "Close" });
+
     await setEnabled(admin, false, "UI demo", "ui-demo");
     await waitFor(() => read(mia, () => !document.querySelector(".plugin-screen, .plugin-slot")), { what: "plugin UI removed" });
     check("disabling a plugin removes its buttons and boxes everywhere", true);
