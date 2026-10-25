@@ -1,6 +1,6 @@
 import type { Cmd } from "./plugins/commands";
 import { useSyncExternalStore } from "react";
-import type { AvatarSpec, ObjectReply, Person, Prop, Role, Status } from "./net/protocol";
+import type { AvatarSpec, ObjectReply, Person, PluginObjectSpec, Prop, Role, Status } from "./net/protocol";
 import { migrateStorage } from "./storageMigration";
 
 export interface ChatMsg {
@@ -112,6 +112,8 @@ export interface State {
   spotlight: { id: number; name: string; me: boolean; state: ConvState } | null;
   /** What running plugins show: their anchored buttons and screen boxes, and the one open plugin modal. */
   pluginUI: { slots: PluginSlot[]; modal: PluginModal | null };
+  /** Map objects of the running plugins (with or without browser code), and those plugins' titles. */
+  pluginObjects: { specs: PluginObjectSpec[]; titles: Record<string, string> };
 }
 
 // Before the first read below: an upgraded browser keeps what it saved under the old name.
@@ -168,6 +170,7 @@ const initial: State = {
   announcement: null,
   spotlight: null,
   pluginUI: { slots: [], modal: null },
+  pluginObjects: { specs: [], titles: {} },
 };
 
 let state = initial;

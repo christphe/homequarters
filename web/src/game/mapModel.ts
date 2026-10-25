@@ -1,42 +1,41 @@
-import type { MapData, Prop } from "../net/protocol";
+import type { MapData } from "../net/protocol";
 import { t } from "../i18n";
+import { PROP_DEFS, isSolidProp, propSize } from "./props";
 
-export const PROP_TYPES: { t: string; w: number; h: number; solid: boolean; label: string }[] = [
-  { t: "desk", w: 2, h: 1, solid: true, label: "Desk" },
-  { t: "chair", w: 1, h: 1, solid: false, label: "Chair" },
-  { t: "table", w: 3, h: 2, solid: true, label: "Table" },
-  { t: "couch", w: 3, h: 1, solid: false, label: "Couch" },
-  { t: "plant", w: 1, h: 1, solid: true, label: "Plant" },
-  { t: "bookshelf", w: 2, h: 1, solid: true, label: "Bookshelf" },
-  { t: "coffee", w: 1, h: 1, solid: true, label: "Coffee machine" },
-  { t: "whiteboard", w: 3, h: 1, solid: false, label: "Whiteboard" },
-  { t: "rug", w: 4, h: 3, solid: false, label: "Rug" },
-  { t: "lamp", w: 1, h: 1, solid: true, label: "Lamp" },
-  { t: "reception_desk", w: 6, h: 1, solid: true, label: "Reception desk" },
-  { t: "armchair", w: 1, h: 1, solid: false, label: t("prop.armchair") },
-  { t: "bleachers", w: 4, h: 2, solid: false, label: t("prop.bleachers") },
-  { t: "court", w: 6, h: 4, solid: false, label: t("prop.court") },
-  { t: "stairs", w: 2, h: 2, solid: false, label: t("prop.stairs") },
-  { t: "banner", w: 1, h: 1, solid: false, label: t("prop.banner") },
-  { t: "scoreboard", w: 4, h: 1, solid: false, label: t("prop.scoreboard") },
-  { t: "note", w: 1, h: 1, solid: true, label: t("prop.note") },
-  { t: "embed", w: 2, h: 1, solid: true, label: t("prop.embed") },
-  { t: "image", w: 1, h: 1, solid: true, label: t("prop.image") },
-  { t: "portal", w: 1, h: 1, solid: false, label: t("prop.portal") },
-  { t: "spotlight", w: 1, h: 1, solid: false, label: t("prop.spotlight") },
-];
-const byType = new Map(PROP_TYPES.map((p) => [p.t, p]));
+export { propSize } from "./props";
 
-export function propSize(p: Prop): [number, number] {
-  const d = byType.get(p.t);
-  return [p.w ?? d?.w ?? 1, p.h ?? d?.h ?? 1];
-}
+const LABELS: Record<string, string> = {
+  desk: "Desk",
+  chair: "Chair",
+  table: "Table",
+  couch: "Couch",
+  plant: "Plant",
+  bookshelf: "Bookshelf",
+  coffee: "Coffee machine",
+  whiteboard: "Whiteboard",
+  rug: "Rug",
+  lamp: "Lamp",
+  reception_desk: "Reception desk",
+  armchair: t("prop.armchair"),
+  bleachers: t("prop.bleachers"),
+  court: t("prop.court"),
+  stairs: t("prop.stairs"),
+  banner: t("prop.banner"),
+  scoreboard: t("prop.scoreboard"),
+  note: t("prop.note"),
+  embed: t("prop.embed"),
+  image: t("prop.image"),
+  portal: t("prop.portal"),
+  spotlight: t("prop.spotlight"),
+};
+
+export const PROP_TYPES: { t: string; w: number; h: number; solid: boolean; label: string }[] = PROP_DEFS.map((p) => ({ ...p, label: LABELS[p.t] ?? p.t }));
 
 /** Same rule as the server (gamemap.Compile): walls plus the footprint of solid props. */
 export function computeSolid(map: MapData): string[] {
   const rows = map.walls.map((r) => Array.from(r, (c) => (c === "#" ? "1" : "0")));
   for (const p of map.props) {
-    if (!byType.get(p.t)?.solid) continue;
+    if (!isSolidProp(p.t)) continue;
     const [w, h] = propSize(p);
     for (let y = p.y; y < p.y + h; y++) for (let x = p.x; x < p.x + w; x++) if (rows[y]?.[x] !== undefined) rows[y][x] = "1";
   }

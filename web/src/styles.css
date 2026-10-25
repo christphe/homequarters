@@ -232,6 +232,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .editor-layer { position: absolute; inset: 0; z-index: 4; cursor: crosshair; touch-action: none; }
 .editor { position: absolute; left: 12px; bottom: 96px; width: 300px; z-index: 6; background: var(--panel); border: 1px solid var(--amber); border-radius: 14px; padding: 14px; display: grid; gap: 10px; }
 .editor h3 { margin: 0; }
+/* a plugin object's picture beside the object list, its pixels kept square */
+.editor-object-icon { display: block; image-rendering: pixelated; background-repeat: no-repeat; }
+img.editor-object-icon { height: 48px; max-width: 100%; object-fit: contain; object-position: left; }
 
 /* administration dialog */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

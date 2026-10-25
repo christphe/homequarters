@@ -2,6 +2,7 @@ import { PluginHost, type ProvidedSheet } from "./host";
 import { LIMITS, SendBudget } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 import { setState, type PluginSlot } from "../store";
+import type { PluginObjectSpec } from "../net/protocol";
 
 const EARLY_PLUGINS = 16;
 const EARLY_MESSAGES = 64;
@@ -11,6 +12,7 @@ interface Entry {
   title: string;
   client: string | null;
   hosts?: string[]; // externalHosts of its manifest: what its iframe may fetch
+  objects?: Omit<PluginObjectSpec, "plugin">[]; // map objects of its manifest
 }
 
 /** Starts and stops plugin hosts to match GET /api/plugins, and routes messages to them. */
@@ -30,7 +32,12 @@ export class PluginManager {
   /** Sheets drawn by a plugin for metadata, by "<plugin>|<metadata JSON>": asked once per page. */
   private provided = new Map<string, Promise<ProvidedSheet>>();
 
-  constructor(private layer: PluginLayer, private socketSend: (plugin: string, d: unknown) => void) {
+  constructor(
+    private layer: PluginLayer,
+    private socketSend: (plugin: string, d: unknown) => void,
+    /** The map objects of the running plugins changed (the world view draws them). */
+    private objectsChanged: (specs: PluginObjectSpec[]) => void = () => {},
+  ) {
     layer.provider = (from, metadata) => {
       const k = from + "|" + JSON.stringify(metadata);
       let p = this.provided.get(k);
@@ -71,6 +78,7 @@ export class PluginManager {
       return; // offline: the next hello or plgs tries again
     }
     if (gen !== this.gen) return; // a newer refresh won
+    this.setObjects(list);
     const want = new Map(list.filter((e) => e.client).map((e) => [e.name, e]));
     for (const [name, h] of this.hosts) {
       if (restart || !want.has(name)) {
@@ -134,6 +142,20 @@ export class PluginManager {
     this.early.clear();
     this.modalOwner = "";
     setState({ pluginUI: { slots: [], modal: null } });
+    this.setObjects([]);
+  }
+
+  /** Map objects come from every running plugin, browser code or not. */
+  private setObjects(list: Entry[]) {
+    const specs: PluginObjectSpec[] = [];
+    const titles: Record<string, string> = {};
+    for (const e of list) {
+      if (!Array.isArray(e.objects) || e.objects.length === 0) continue;
+      titles[e.name] = e.title;
+      for (const o of e.objects) specs.push({ ...o, plugin: e.name });
+    }
+    setState({ pluginObjects: { specs, titles } });
+    this.objectsChanged(specs);
   }
 
   running() {
