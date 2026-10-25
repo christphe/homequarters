@@ -13,6 +13,7 @@ import { bakeMapCanvas } from "./art/tiles";
 import { depthAtlas } from "./art/objects";
 import { PluginLayer } from "./pluginLayer";
 import { areaTitle, deskTitle, type NameOf } from "./places";
+import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
 
 const T = 16;
 // Reference view in world pixels. A 240x160 handheld screen would be 15x10 tiles; an office wants a little more room.
@@ -173,10 +174,12 @@ export class WorldView {
   private nameOf: NameOf = (id) => this.owners.get(id) ?? this.people.get(id)?.n;
   private map: MapData | null = null;
   private solid = new Uint8Array(0);
-  private areaAt = new Int16Array(0);
+  /** The map's tiles: which area each is in. */
+  private grid = { w: 0, h: 0, areaAt: new Int16Array(0) };
   // the area named to the player for each area: itself, or for a desk room the area it sits in
   private shownOf = new Int16Array(0);
-  private mShown = -1;
+  /** My area (room access) and the area named for it (the signboard). */
+  private where = new Whereabouts();
   private deny = new Set<number>();
   private speed = 72;
   private runMul = 2;
@@ -218,7 +221,6 @@ export class WorldView {
   private dx = 0;
   private dy = 0;
   private mdir = 0;
-  private mArea = -1;
   private seq = 0;
   private hist = new Map<number, { x: number; y: number }>();
   private lastAck = 0; // newest acknowledgement sequence applied
@@ -551,13 +553,8 @@ export class WorldView {
     this.map = map;
     this.deny = new Set(deny);
     this.solid = new Uint8Array(map.w * map.h);
-    this.areaAt = new Int16Array(map.w * map.h).fill(-1);
     for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) this.solid[y * map.w + x] = map.solid[y][x] === "1" ? 1 : 0;
-    for (let pass = 0; pass < 2; pass++)
-      map.areas.forEach((a, i) => {
-        if ((a.kind === "room") !== (pass === 1)) return;
-        for (let y = a.y; y < a.y + a.h; y++) for (let x = a.x; x < a.x + a.w; x++) this.areaAt[y * map.w + x] = i;
-      });
+    this.grid = { w: map.w, h: map.h, areaAt: areaGrid(map) };
     this.mapSprite?.destroy({ texture: true, textureSource: true }); // do not leak a GPU texture per edit
     const tex = bakeMap(this.app.renderer, map);
     this.baked = tex.source.resource as HTMLCanvasElement;
@@ -566,11 +563,7 @@ export class WorldView {
     this.buildDepth(map);
     this.areaLabels.forEach((l) => l.text.destroy());
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
-    this.shownOf = new Int16Array(map.areas.length).map((_, i) => {
-      const a = map.areas[i];
-      if (!a.auto) return i;
-      return map.areas.findLastIndex((p) => p.kind !== "room" && a.x >= p.x && a.y >= p.y && a.x < p.x + p.w && a.y < p.y + p.h);
-    });
+    this.shownOf = shownAreas(map);
     this.areaLabels = map.areas.flatMap((a, ai) => {
       if (a.auto) return []; // the desk's own label already names it
       const text = new BitmapText({ text: this.areaLabel(ai), style: TAG_STYLE });
@@ -584,7 +577,7 @@ export class WorldView {
     this.deskLabels = map.props
       .filter((p) => p.t === "desk" && p.assign)
       .map((p) => {
-        const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
+        const ai = deskRoom(map, p); // the desk's own room
         const text = new BitmapText({ text: this.deskLabel(p, ai), style: DESK_STYLE });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
@@ -599,9 +592,9 @@ export class WorldView {
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
     if (this.meEnt) {
-      this.mArea = this.areaIndex(this.mx, this.my);
-      this.hooks.onArea(this.areaName(this.mArea), this.mArea);
-      this.mShown = this.shownArea(this.mArea);
+      this.where.area = this.areaIndex(this.mx, this.my);
+      this.hooks.onArea(this.areaName(this.where.area), this.where.area);
+      this.where.shown = shownArea(this.shownOf, this.where.area);
     }
     this.layout();
   }
@@ -616,10 +609,10 @@ export class WorldView {
     this.lastAck = 0;
     this.speed = speed;
     this.runMul = runMul;
-    this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.mArea), this.mArea);
-    this.mShown = this.shownArea(this.mArea);
-    if (this.mShown >= 0) this.showBanner(this.areaName(this.mArea));
+    this.where.area = this.areaIndex(x, y);
+    this.hooks.onArea(this.areaName(this.where.area), this.where.area);
+    this.where.shown = shownArea(this.shownOf, this.where.area);
+    if (this.where.shown >= 0) this.showBanner(this.areaName(this.where.area));
     if (!this.meEnt) {
       this.meEnt = this.makeEnt(id);
       this.ents.set(id, this.meEnt);
@@ -716,8 +709,8 @@ export class WorldView {
     this.lastAck = 0;
     this.hist.clear();
     this.keys.clear();
-    this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+    this.where.area = this.areaIndex(x, y);
+    this.hooks.onArea(this.areaName(this.where.area), this.where.area);
   }
 
   /** The server steers me (a walk-to when run, else following a person) or stopped steering. */
@@ -773,8 +766,8 @@ export class WorldView {
       }
       this.dx = m.dx;
       this.dy = m.dy;
-      this.mArea = this.areaIndex(m.x, m.y);
-      this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+      this.where.area = this.areaIndex(m.x, m.y);
+      this.hooks.onArea(this.areaName(this.where.area), this.where.area);
     }
   }
 
@@ -814,7 +807,7 @@ export class WorldView {
       const s = this.deskLabel(l.p, l.ai);
       if (l.text.text !== s) l.text.text = s;
     }
-    if (this.meEnt) this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+    if (this.meEnt) this.hooks.onArea(this.areaName(this.where.area), this.where.area);
   }
 
   showEmote(id: number, kind: number) {
@@ -991,6 +984,11 @@ export class WorldView {
     return { x: this.mx, y: this.my };
   }
 
+  /** Tests: the area index I am in (room access). */
+  get mArea() {
+    return this.where.area;
+  }
+
   /** Rebuilt with the bake, never touched per frame: the sort they join already runs as avatars move. */
   private buildDepth(map: MapData) {
     for (const s of this.depthSprites) s.destroy();
@@ -1137,10 +1135,7 @@ export class WorldView {
 
   // ---- movement / collision (mirrors the server) ----
   private areaIndex(x: number, y: number) {
-    if (!this.map) return -1;
-    const tx = Math.floor(x / T), ty = Math.floor(y / T);
-    if (tx < 0 || ty < 0 || tx >= this.map.w || ty >= this.map.h) return -1;
-    return this.areaAt[ty * this.map.w + tx];
+    return this.map ? areaIndex(this.grid, x, y) : -1;
   }
 
   private canStand(x: number, y: number) {
@@ -1150,8 +1145,8 @@ export class WorldView {
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
         if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h || this.solid[ty * m.w + tx]) return false;
-        const ai = this.areaAt[ty * m.w + tx];
-        if (ai !== this.mArea && this.deny.has(ai)) return false;
+        const ai = this.grid.areaAt[ty * m.w + tx];
+        if (ai !== this.where.area && this.deny.has(ai)) return false;
       }
     }
     return true;
@@ -1200,7 +1195,7 @@ export class WorldView {
           if ((vy > 0 ? c > p.y : c < p.y) && this.stand(p.x, c, isStatic)) p.y = c;
         }
       }
-      if (!isStatic) this.mArea = this.areaIndex(p.x, p.y); // room access follows the walk, as on the server
+      if (!isStatic) this.where.area = this.areaIndex(p.x, p.y); // room access follows the walk, as on the server
     }
   }
 
@@ -1216,37 +1211,27 @@ export class WorldView {
     const p = this.body;
     p.x = this.mx;
     p.y = this.my;
-    const was = this.mArea;
+    const was = this.where.area;
     this.moveBody(p, this.dx, this.dy, this.speed * (this.fast ? this.runMul : 1) * dt, false);
     this.mx = p.x;
     this.my = p.y;
-    this.mArea = was;
+    this.where.area = was;
     this.syncArea();
   }
 
-  /** The area to name for area index ai (a desk room shows as the area around it), or -1. */
-  private shownArea(ai: number) {
-    return ai >= 0 ? this.shownOf[ai] ?? ai : -1;
-  }
-
   private areaName(ai: number) {
-    const i = this.shownArea(ai);
+    const i = shownArea(this.shownOf, ai);
     return this.map && i >= 0 ? areaTitle(this.map.areas[i], this.nameOf) : "";
   }
 
   private syncArea() {
     if (!this.map) return;
     const ai = this.areaIndex(this.mx, this.my);
-    if (ai !== this.mArea) {
-      this.mArea = ai;
-      this.hooks.onArea(this.areaName(ai), ai);
-      // a desk room is part of the desks around it: no banner walking in or out of one
-      const shown = this.shownArea(ai);
-      if (shown !== this.mShown) {
-        this.mShown = shown;
-        if (shown >= 0) this.showBanner(this.areaName(ai));
-      }
-    }
+    const change = this.where.enter(ai, this.shownOf);
+    if (change === SAME) return;
+    this.hooks.onArea(this.areaName(ai), ai);
+    // a desk room is part of the desks around it: no banner walking in or out of one
+    if (change === SHOWN && this.where.shown >= 0) this.showBanner(this.areaName(ai));
   }
 
   // ---- zoom / area of interest ----
