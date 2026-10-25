@@ -1,6 +1,6 @@
 // Social banner (site/assets/banner.png, 1280x640, the site's og:image) from a REAL in-game scene.
 //
-//   cd e2e && CHROME="/c/Program Files/Google/Chrome/Application/chrome.exe" node banner.mjs
+//   cd e2e && node banner.mjs   (CHROME from the .env at the repository root)
 //
 // It builds the client and the server (SKIP_BUILD=1 skips that), starts its own server on
 // HQ_BANNER_PORT (default 38090) with a fresh database in the OS temp dir, and no media: LiveKit

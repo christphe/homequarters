@@ -1,5 +1,6 @@
 // Writes the installed-app icons (web/public/icons) from the HQ favicon (web/src/assets/favicon.svg).
 // Standalone: needs only Chrome. Rerun after changing the favicon; the output is committed.
+import { chrome } from "./env.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import puppeteer from "puppeteer-core";
@@ -22,7 +23,7 @@ const icons = [
 ];
 
 const browser = await puppeteer.launch({
-  executablePath: process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  executablePath: chrome(),
   headless: true,
   args: ["--no-first-run"],
 });

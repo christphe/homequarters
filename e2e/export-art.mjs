@@ -1,5 +1,6 @@
 // Writes the sprite sheets and the baked office map to site/assets from the art code.
 // Needs only the Vite dev server (cd web && pnpm exec vite --port 5180); no game server.
+import { chrome } from "./env.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import puppeteer from "puppeteer-core";
@@ -7,7 +8,7 @@ import puppeteer from "puppeteer-core";
 const URL = process.env.ART_PREVIEW_URL ?? "http://127.0.0.1:5180/dev/art-preview.html";
 const OUT = path.resolve(import.meta.dirname, "../site/assets");
 const browser = await puppeteer.launch({
-  executablePath: process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  executablePath: chrome(),
   headless: true,
   args: ["--no-first-run"],
 });

@@ -1,4 +1,5 @@
 // Shared helpers for real-browser end-to-end tests (Chrome + fake camera/mic).
+import { chrome } from "./env.mjs";
 import puppeteer from "puppeteer-core";
 import crypto from "node:crypto";
 
@@ -7,7 +8,7 @@ export const API = process.env.HQ_API ?? "http://127.0.0.1:8080";
 export const LK = process.env.HQ_LK_HTTP ?? "http://127.0.0.1:7880";
 const KEY = process.env.LIVEKIT_API_KEY ?? "devkey";
 const SECRET = process.env.LIVEKIT_API_SECRET ?? "secret";
-const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let results = [];
@@ -31,7 +32,7 @@ export async function launch(extra = [], { waitEmpty = true } = {}) {
   // HQ_SHARED_OFFICE=1: a public instance (the demo) may have real visitors and no /metrics; do not wait.
   if (waitEmpty && !process.env.HQ_SHARED_OFFICE) await waitForEmptyOffice();
   return puppeteer.launch({
-    executablePath: CHROME,
+    executablePath: chrome(),
     headless: true,
     args: [
       "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", "--no-first-run", "--enable-unsafe-swiftshader",
