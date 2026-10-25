@@ -489,6 +489,73 @@ test("a table at TABLE_MAX still fits a 4 KB state message with 8 seats here and
   assert.ok(extra.length < room, `the wrapping takes ${extra.length} bytes, TABLE_MAX leaves ${room}`);
 });
 
+// ---- art.ts and layout.ts
+import { CARD_W, CARD_H, PALETTE, paintCard, paintBack } from "../../plugins/bundled/hq-cards/public/art.ts";
+import { FELT_W, FELT_H, VIEW_W, VIEW_H, FX, FY, seatSpots, handSpots, cardAt, hit } from "../../plugins/bundled/hq-cards/public/layout.ts";
+
+function picture(paint: (set: (x: number, y: number, hex: string) => void) => void): { key: string; outside: number; colours: Set<string> } {
+  const px: string[] = Array(CARD_W * CARD_H).fill(".");
+  let outside = 0;
+  const colours = new Set<string>();
+  paint((x, y, hex) => {
+    if (x < 0 || y < 0 || x >= CARD_W || y >= CARD_H || !Number.isInteger(x) || !Number.isInteger(y)) return void outside++;
+    px[y * CARD_W + x] = hex;
+    colours.add(hex);
+  });
+  return { key: px.join(","), outside, colours };
+}
+
+test("every standard card paints a distinct picture in the palette, inside its cell", () => {
+  const keys = new Set<string>();
+  for (const code of STANDARD) {
+    const p = picture((set) => paintCard(code, set));
+    assert.equal(p.outside, 0, code);
+    for (const c of p.colours) assert.ok(PALETTE.includes(c), `${code}: ${c} not in the palette`);
+    assert.ok(p.colours.has("#1a1526"), code + " has the outline");
+    keys.add(p.key);
+  }
+  assert.equal(keys.size, 54);
+  const back = picture(paintBack);
+  assert.equal(back.outside, 0);
+  assert.ok(!keys.has(back.key));
+  for (const c of back.colours) assert.ok(PALETTE.includes(c), "back: " + c);
+});
+
+test("seatSpots puts everybody but me around the felt, never on it", () => {
+  for (const [n, me, want] of [[8, 0, 7], [4, null, 4], [2, 1, 1], [3, 0, 2]] as const) {
+    const spots = seatSpots(n, me);
+    assert.equal(spots.length, want, `${n} seats, me ${me}`);
+    assert.ok(!spots.some((s) => s.seat === me));
+    for (const s of spots) {
+      assert.ok(s.x >= 0 && s.x <= VIEW_W && s.y >= 0 && s.y <= VIEW_H, JSON.stringify(s));
+      const onFelt = s.x > FX && s.x < FX + FELT_W && s.y > FY && s.y < FY + FELT_H;
+      assert.ok(!onFelt, "on the felt: " + JSON.stringify(s));
+    }
+  }
+  // clockwise from my left: seat 1 is on my left when I sit at 0 of 8
+  assert.equal(seatSpots(8, 0)[0].seat, 1);
+  assert.equal(seatSpots(8, 0)[0].side, "left");
+});
+
+test("hit finds the topmost thing under a point", () => {
+  const t = free3();
+  deal(t, 0, "p0", 3, FREE);
+  const top = stock(t).cards.at(-1)!;
+  // loose cards are drawn over piles: a loose card on the stock is what a click there takes
+  place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [...t.piles[0].at] as [number, number] }, true, FREE);
+  const pc = cardAt(t.piles[0].at);
+  assert.deepEqual(hit(t, 0, pc.x + 2, pc.y + 2), { k: "loose", c: t.loose[0].c & ~UP });
+  place(t, 0, { k: "loose", c: t.loose[0].c & ~UP }, { k: "felt", at: [20, 20] }, true, FREE);
+  assert.deepEqual(hit(t, 0, pc.x + 2, pc.y + 2), { k: "pile", id: "p0" });
+  assert.notEqual(top, undefined);
+  const h = handSpots(t.hands[0].length);
+  assert.deepEqual(hit(t, 0, h[1].x + 2, h[1].y + 10), { k: "hand", i: 1 });
+  assert.deepEqual(hit(t, null, h[1].x + 2, h[1].y + 10), null, "a spectator has no hand");
+  const bo = seatSpots(t.seats.length, 0).find((s) => s.seat === 1)!;
+  assert.deepEqual(hit(t, 0, bo.x, bo.y), { k: "seat", seat: 1 });
+  assert.deepEqual(hit(t, 0, FX + 300, FY + 170), { k: "felt", at: [300, 170] });
+});
+
 test("canReset mirrors chess, and reset clears the table", () => {
   const t = free3();
   assert.equal(canReset(t, 1, new Set([1, 9])), true, "a present seated player");
