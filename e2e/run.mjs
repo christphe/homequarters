@@ -55,9 +55,9 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => onSig
 // A local run takes an e2e slot (one per shard) before it builds or starts anything, waiting while
 // E2E_MAX_PARALLEL runs hold them all (slots.mjs). The slot gives its ports and its own LiveKit, never the
 // dev stack's on 7880; HQ_TEST_PORT and HQ_TEST_LK_PORT still override (then no LiveKit is started).
-// On GitHub Actions each job is one run on its own runner (the suite is split beforehand with --shard):
-// no slot to take, the default ports, and its LiveKit on 7880 as before.
-const oneRunner = process.env.GITHUB_ACTIONS === "true";
+// On a CI runner (CI set, as GitHub Actions does) each job is one run of its own (the suite is split
+// beforehand with --shard): no slot to take, the default ports, and its LiveKit on 7880 as before.
+const oneRunner = !!process.env.CI;
 let slots = [];
 let lkMode = null;
 const ownLiveKit = !EXTERNAL && !SHARD_CHILD && (parallelRun || !process.env.HQ_TEST_LK_PORT);

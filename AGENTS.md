@@ -55,7 +55,7 @@ Two products are released separately from this repository, each with its own cha
 ~~~bash
 ./scripts/dev.sh                          # LiveKit (dev) + Go server + Vite; logs in .run/
 cd server && go vet ./... && go test -race ./...
-scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, race tests, tsc, build, web lint, browser suite (CI=1)
+scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, race tests, tsc, build, web lint, browser suite (E2E_VIEWPORT=small, CI's 800x450)
 node scripts/lint-web.mjs                # static web rules (effects return a cleanup or nothing, i18n)
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
 cd e2e && node run.mjs                    # real Chrome + real LiveKit; takes an e2e slot, builds, starts its own server (fresh database) and LiveKit

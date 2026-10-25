@@ -110,4 +110,5 @@ jobs:
         working-directory: e2e
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          E2E_VIEWPORT: small
         run: node run.mjs --shard ${{ matrix.shard }}/4

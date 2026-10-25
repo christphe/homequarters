@@ -52,7 +52,7 @@ gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plug
 gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs e2e/slots.test.mjs"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then
-  gate e2e bash -c 'cd e2e && CI=1 node run.mjs "$@"' _ "$@"
+  gate e2e bash -c 'cd e2e && E2E_VIEWPORT=small node run.mjs "$@"' _ "$@"
 else
   echo 'SKIPPED e2e' | tee -a "$record"
 fi
