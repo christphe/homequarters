@@ -36,8 +36,11 @@ export async function run(ctx) {
 
     // ---- office chat reaches everyone; text is trimmed and bounded server-side
     await send(a, "o", "  hello office  ");
-    await waitFor(async () => (await chatOf(c)).some((m) => m.sc === "o" && m.text === "hello office"), { what: "office chat reaches C" });
-    check("office chat reaches everybody (trimmed)", (await chatOf(b)).some((m) => m.sc === "o" && m.text === "hello office" && m.from === a.id));
+    // Each page gets its own deadline: the server queues the frame for everybody in one pass, but the
+    // sockets deliver it independently, so one page having it says nothing about the others yet.
+    const gotHello = (u) => waitFor(async () => (await chatOf(u)).some((m) => m.sc === "o" && m.text === "hello office" && m.from === a.id), { timeout: 10000, what: "office chat reaches " + u.name }).then(() => null, async () => u.name + " has " + JSON.stringify((await chatOf(u)).filter((m) => m.sc === "o").slice(-3)));
+    const missed = (await Promise.all([a, b, c].map(gotHello))).filter(Boolean);
+    check("office chat reaches everybody (trimmed)", missed.length === 0, missed.join("; "));
     await sleep(700);
     await send(a, "o", "x".repeat(900));
     await waitFor(async () => (await chatOf(b)).some((m) => m.text.startsWith("xxxx")), { what: "long message" });
