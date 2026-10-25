@@ -15,7 +15,7 @@ import { allows, clientGame, CLIENT_GAME_MAX, FREE, utf8Bytes, validateCards, va
 import { append, parseLog, type LogEntry } from "./public/log.ts";
 import {
   canReset, choose, counted, createPile, deal, dealAll, defaultCount, draw, flip, gather, offer, order, parseTable, pick, place,
-  removePile, reorderPile, reset, seatOf, shuffle, take, UP, type Done, type Table,
+  movePile, moveCards, removePile, reorderPile, reset, seatOf, setAside, setSnap, shuffle, take, UP, type Done, type Table,
 } from "./public/table.ts";
 import type { Act, Looking, TableState, ToClient, ToServer } from "./public/messages.ts";
 
@@ -262,6 +262,10 @@ function act(p: HQ.Player, k: string, m: Act): void {
     case "delPile": return done(k, p.id, removePile(t, seat, m.pile, g));
     case "reorder": return done(k, p.id, reorderPile(t, seat, m.pile, m.cards, g));
     case "draw": return done(k, p.id, draw(t, seat, m.pile, g));
+    case "snap": return done(k, p.id, setSnap(t, seat, m.on));
+    case "moveCards": return done(k, p.id, moveCards(t, seat, m.cards, m.dx, m.dy, g));
+    case "movePile": return done(k, p.id, movePile(t, seat, m.pile, m.at, g));
+    case "setAside": return done(k, p.id, setAside(t, seat, m.from, g));
     case "look": {
       const pile = t.piles.find((x) => x.id === m.pile);
       if (seat === null || !pile || !allows(g, "viewPile")) return done(k, p.id, { ok: false });

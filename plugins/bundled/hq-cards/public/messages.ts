@@ -23,7 +23,11 @@ export type Act =
   | { t: "gather" | "count" | "reset" | "unlook" }
   | { t: "newPile"; name: string; face: "up" | "down"; at: [number, number] }
   | { t: "delPile" | "look" | "draw"; pile: string }
-  | { t: "reorder"; pile: string; cards: number[] };
+  | { t: "reorder"; pile: string; cards: number[] }
+  | { t: "snap"; on: boolean }
+  | { t: "moveCards"; cards: number[]; dx: number; dy: number }
+  | { t: "movePile"; pile: string; at: [number, number] }
+  | { t: "setAside"; from: Src };
 
 export type ToServer = { t: "hello" } | (At & { t: "close" }) | (At & Act);
 

@@ -8,7 +8,7 @@ import { canReset, DEAL_MAX } from "./table.ts";
 import type { Act, LogEntry, TableState, ToClient, ToServer, ViewIn } from "./messages.ts";
 
 const NAME_MAX = 24; // a seat's label must stay within a button's 40 characters
-const ACTS = new Set(["choose", "seat", "place", "flip", "order", "offer", "pick", "dealAll", "deal", "shuffle", "gather", "count", "reset", "unlook", "newPile", "delPile", "look", "draw", "reorder"]);
+const ACTS = new Set(["choose", "seat", "place", "flip", "order", "offer", "pick", "dealAll", "deal", "shuffle", "gather", "count", "reset", "unlook", "newPile", "delPile", "look", "draw", "reorder", "snap", "moveCards", "movePile", "setAside"]);
 
 let me = 0;
 let open: { x: number; y: number } | null = null;

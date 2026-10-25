@@ -583,3 +583,55 @@ func slowly(t *testing.T, limit time.Duration, what string, ok func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// Round 2 through the real host: snapping for the table, cards and piles moved, cards set aside until a reset.
+func TestCardsRoundTwo(t *testing.T) {
+	h, sink, errs := cardsHost(t, newMemKV(), []string{cards}, alice, bob)
+	freeTable(t, h, sink, 3, 7, alice, bob)
+	cardSend(h, bob, `{"t":"snap","x":3,"y":7,"on":false}`)
+	waitTable(t, sink, alice.ID, 3, 7, "snapping off for everybody", func(tb, _ map[string]any) bool { return tb["snap"] == false })
+	eventually(t, "the switch logged", func() bool { return has(logVerbs(sink, alice.ID, 3, 7), "snap") })
+	for i := 0; i < 3; i++ {
+		cardSend(h, alice, `{"t":"place","x":3,"y":7,"from":{"k":"pile","id":"p0"},"to":{"k":"felt","at":[60,%d]},"up":true}`, 48+13*i)
+	}
+	tb := waitTable(t, sink, alice.ID, 3, 7, "a cascade of 3", func(tb, _ map[string]any) bool { return len(tb["loose"].([]any)) == 3 })
+	var ids []string
+	for _, l := range tb["loose"].([]any) {
+		ids = append(ids, fmt.Sprint(int(l.(map[string]any)["c"].(float64))&^128))
+	}
+	cardSend(h, bob, `{"t":"moveCards","x":3,"y":7,"cards":[%s],"dx":100,"dy":10}`, strings.Join(ids, ","))
+	waitTable(t, sink, alice.ID, 3, 7, "the cascade moved", func(tb, _ map[string]any) bool {
+		at := tb["loose"].([]any)[0].(map[string]any)["at"].([]any)
+		return at[0] == 160.0 && at[1] == 58.0
+	})
+	cardSend(h, alice, `{"t":"newPile","x":3,"y":7,"name":"Waste","face":"up","at":[20,20]}`)
+	cardSend(h, alice, `{"t":"movePile","x":3,"y":7,"pile":"p1","at":[40,200]}`)
+	waitTable(t, sink, bob.ID, 3, 7, "the pile moved", func(tb, _ map[string]any) bool {
+		ps := tb["piles"].([]any)
+		return len(ps) == 2 && ps[1].(map[string]any)["at"].([]any)[1] == 200.0
+	})
+	cardSend(h, alice, `{"t":"setAside","x":3,"y":7,"from":{"k":"pile","id":"p0"}}`)
+	waitTable(t, sink, bob.ID, 3, 7, "a card set aside", func(tb, _ map[string]any) bool { return len(tb["out"].([]any)) == 1 })
+	cardSend(h, alice, `{"t":"gather","x":3,"y":7}`)
+	waitTable(t, sink, bob.ID, 3, 7, "gathered, the card still out", func(tb, _ map[string]any) bool {
+		return len(tb["piles"].([]any)[0].(map[string]any)["cards"].([]any)) == 53 && len(tb["out"].([]any)) == 1
+	})
+	// hostile shapes: refused, never thrown
+	for _, m := range []string{
+		`{"t":"snap","x":3,"y":7,"on":"yes"}`, `{"t":"moveCards","x":3,"y":7,"cards":"1","dx":1,"dy":1}`,
+		`{"t":"moveCards","x":3,"y":7,"cards":[1],"dx":"1","dy":1}`, `{"t":"movePile","x":3,"y":7,"pile":{},"at":[1,1]}`,
+		`{"t":"movePile","x":3,"y":7,"pile":"p0","at":"1,1"}`, `{"t":"setAside","x":3,"y":7,"from":null}`,
+		`{"t":"setAside","x":3,"y":7,"from":{"k":"hand","i":99}}`,
+	} {
+		cardSend(h, alice, "%s", m)
+	}
+	cardSend(h, alice, `{"t":"reset","x":3,"y":7}`)
+	eventually(t, "the choice again", func() bool { tb, _ := tableOf(sink, alice.ID, 3, 7); return tb != nil && tb["game"] == nil })
+	cardSend(h, alice, `{"t":"choose","x":3,"y":7,"game":"free"}`)
+	waitTable(t, sink, alice.ID, 3, 7, "a new game from the whole deck", func(tb, _ map[string]any) bool {
+		return tb["game"] == "free" && len(tb["piles"].([]any)[0].(map[string]any)["cards"].([]any)) == 54 && len(tb["out"].([]any)) == 0
+	})
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("%d plugin errors", n)
+	}
+}
