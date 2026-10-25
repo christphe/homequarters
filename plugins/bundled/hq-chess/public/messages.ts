@@ -10,7 +10,8 @@ export type ToServer =
   | { t: "place"; x: number; y: number; piece: string; to: number }
   | { t: "stash"; x: number; y: number; from: number }
   | { t: "reset"; x: number; y: number }
-  | { t: "close"; x: number; y: number };
+  | { t: "close"; x: number; y: number }
+  | { t: "opened"; x: number; y: number }; // the window of an open was drawn
 
 export type SeatState = Seat & { here: boolean };
 // r: the reserve (captured pieces, in capture order); at most 30 letters, so a state stays far under 4 KB.

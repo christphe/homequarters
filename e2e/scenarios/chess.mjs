@@ -182,9 +182,12 @@ async function countFrames(u) {
     try {
       const m = JSON.parse(e.response.payloadData);
       if (m.t === "plg" && m.pl === PLUGIN) { u.sent.push(m.d); u.sentAt.push(Date.now()); }
+      if (m.t === "use") u.usedAt = Date.now(); // X on an object
     } catch { /* not JSON */ }
   });
 }
+/** Whether fn() comes to hold within ms (another page catching up): waits, never samples once. */
+const until = (fn, ms = 5000, what = "condition") => waitFor(fn, { timeout: ms, what }).then(() => true, () => false);
 /** How long until fn() holds, in ms, or -1 past limit. */
 async function within(fn, limit) {
   const t0 = Date.now();
@@ -460,6 +463,9 @@ export async function run(ctx) {
     // when the reloaded page starts the plugin and says hello: that is when "away" can start, and the 1 s is
     // measured from there. The time from the reload itself is reported (it includes loading the page).
     const firstTrue = async (fn) => { for (const t0 = Date.now(); Date.now() - t0 < 15000; await sleep(40)) { try { if (await fn()) return Date.now(); } catch { /* reloading */ } } return NaN; };
+    // the clocks below start only once the precondition holds: Bo here on Ann's page, his badge on Cy's
+    const preReload = await until(async () => (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (here)`) && badgeAbove(await badgeOf(cy, bo.id), "b"));
+    check("before Bo reloads: Ann sees him here and Cy's page shows his badge", preReload);
     const nBo = bo.sent.length, reloadAt = Date.now();
     const awayAt = firstTrue(async () => (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (away)`);
     const badgeAt = firstTrue(async () => !(await badgeOf(cy, bo.id)).badge);
@@ -472,9 +478,11 @@ export async function run(ctx) {
     await waitFor(() => read(bo, () => window.__hq?.state?.conn === "open"), { timeout: 30000, what: "Bo back" });
     await walkTo(bo, 212, feet);
     await openWithX(bo);
-    await waitFor(async () => (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (here)`), { timeout: 3000, what: "Bo here again" }).catch(() => {});
-    const boBack = await button(bo, "Black");
-    check("7: reopening, Bo is back in his seat (Black: his name, pressed) with the game as it was", boBack?.text === "Black: " + bo.name && boBack.pressed && (await board(bo)).p === expected.p, JSON.stringify(boBack));
+    const boBackOk = await until(async () => {
+      const x = await button(bo, "Black");
+      return x?.text === "Black: " + bo.name && x.pressed && (await board(bo))?.p === expected.p && (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (here)`);
+    });
+    check("7: reopening, Bo is back in his seat (Black: his name, pressed) with the game as it was", boBackOk, JSON.stringify(await button(bo, "Black")));
     // Bo closes his window: away within 1 s
     await press(bo, "Close");
     const closeMs = await within(async () => (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (away)`), 1000);
@@ -482,21 +490,25 @@ export async function run(ctx) {
     check("7: while Ann (seated) is present, the spectator's Reset is disabled", (await button(cy, "Reset")).disabled === true);
     check("7: the present seated player's Reset is enabled", (await button(ann, "Reset")).disabled === false);
     // Ann closes: her badge goes from Cy's page within 1 s; now nobody seated is present, Cy may reset
+    const preClose = await until(async () => badgeAbove(await badgeOf(cy, ann.id), "w"));
+    check("before Ann closes: Cy's page shows her badge", preClose);
     await press(ann, "Close");
     const annBadgeMs = await within(async () => !(await badgeOf(cy, ann.id)).badge, 1000);
     check("13: Ann closes the window: her badge disappears from Cy's page within 1 s", annBadgeMs >= 0, `${annBadgeMs} ms`);
-    await waitFor(async () => (await button(cy, "Reset"))?.disabled === false, { timeout: 3000, what: "Cy's Reset enabled" }).catch(() => {});
-    check("7: with neither seated player present, the spectator's Reset is enabled", (await button(cy, "Reset")).disabled === false, (await modalState(cy)).holders);
+    const cyMayReset = await until(async () => (await button(cy, "Reset"))?.disabled === false);
+    check("7: with neither seated player present, the spectator's Reset is enabled", cyMayReset, (await modalState(cy)).holders);
     await press(cy, "Reset");
-    await waitFor(async () => (await board(cy))?.p === START, { timeout: 3000, what: "reset" }).catch(() => {});
-    const afterReset = await modalState(cy), cyBoard = await board(cy);
-    check("7: Reset puts the start position back, empties the reserve and frees both seats", cyBoard.p === START && cyBoard.w === "" && cyBoard.b === "" && afterReset.holders === "White: free · Black: free" && !b(afterReset, "White").disabled && !b(afterReset, "Black").disabled, JSON.stringify({ afterReset, cyBoard }));
+    const resetOk = await until(async () => {
+      const m = await modalState(cy), c = await board(cy);
+      return c?.p === START && c.w === "" && c.b === "" && m.holders === "White: free · Black: free" && !b(m, "White").disabled && !b(m, "Black").disabled;
+    });
+    check("7: Reset puts the start position back, empties the reserve and frees both seats", resetOk, JSON.stringify({ afterReset: await modalState(cy), cyBoard: await board(cy) }));
     await press(cy, "White");
-    await waitFor(async () => (await button(cy, "White"))?.text === "White: " + cy.name, { timeout: 3000, what: "Cy seated" }).catch(() => {});
-    check("7: anyone can then take a seat (Cy takes White)", (await button(cy, "White"))?.pressed === true);
+    const cySeated = await until(async () => { const x = await button(cy, "White"); return x?.text === "White: " + cy.name && x.pressed; });
+    check("7: anyone can then take a seat (Cy takes White)", cySeated, JSON.stringify(await button(cy, "White")));
     await press(cy, "Reset"); // a present seated player resets: seats free again
-    await waitFor(async () => (await modalState(cy)).holders === "White: free · Black: free", { timeout: 3000, what: "seats free" }).catch(() => {});
-    check("7: a present seated player can reset (Cy frees the seats again)", (await modalState(cy)).holders === "White: free · Black: free");
+    const freed = await until(async () => (await modalState(cy)).holders === "White: free · Black: free");
+    check("7: a present seated player can reset (Cy frees the seats again)", freed, (await modalState(cy)).holders);
     await press(cy, "Close");
 
     // ---- criterion 8: a server restart keeps the position and the seats
@@ -521,9 +533,11 @@ export async function run(ctx) {
       await walkTo(bo, 212, feet);
       await openWithX(ann);
       await openWithX(bo);
-      await waitFor(async () => (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, { timeout: 3000, what: "seats after restart" }).catch(() => {});
-      const r = await modalState(ann);
-      check("8: after a server restart the board has its position and both players their seats", (await board(ann)).p === expected.p && (await board(bo)).p === expected.p && b(r, "White").text === "White: " + ann.name && b(r, "White").pressed && r.holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, JSON.stringify(r));
+      const restored = await until(async () => {
+        const r = await modalState(ann);
+        return (await board(ann))?.p === expected.p && (await board(bo))?.p === expected.p && b(r, "White").text === "White: " + ann.name && b(r, "White").pressed && r.holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`;
+      });
+      check("8: after a server restart the board has its position and both players their seats", restored, JSON.stringify(await modalState(ann)));
     } else check("8: server restart (skipped against an external stack)", true);
 
     // ---- criteria 4 and 8: plugin off: the sprite goes and X does nothing; on: back with its game
@@ -535,14 +549,26 @@ export async function run(ctx) {
     await ann.page.keyboard.press("x");
     await sleep(1000);
     check("4: plugin off: X next to where the board was does nothing", !(await ann.page.$(".modal")) && (await read(ann, () => window.__hq.state.nearby)) === null);
+    // Bo's page gets the plugin's browser code 2.5 s late, so he presses X before the plugin runs on his page
+    // (as on a slow machine): the window it then opens must count as open, whatever the page's hello says
+    const slowClient = (r) => { if (r.isInterceptResolutionHandled()) return; if (r.url().endsWith(`/plugins/${PLUGIN}/client.js`)) setTimeout(() => r.continue().catch(() => {}), 2500); else r.continue().catch(() => {}); };
+    await bo.page.setRequestInterception(true);
+    bo.page.on("request", slowClient);
+    const boHelloFrom = bo.sent.length;
     await setPlugin(ctx, true);
     await waitFor(() => read(ann, () => window.__hq.view.objSprites.some((x) => !x.destroyed && x.texture.width === 16)), { timeout: 15000, what: "board back" });
-    await openWithX(ann);
     await openWithX(bo);
-    await waitFor(async () => (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, { timeout: 3000, what: "seats after off/on" }).catch(() => {});
-    check("4, 8: plugin on again: the board is back, X opens it, with its game and its players", (await board(ann)).p === expected.p && (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, (await modalState(ann)).holders);
+    bo.page.off("request", slowClient);
+    await bo.page.setRequestInterception(false);
+    const helloIdx = bo.sent.findIndex((d, j) => j >= boHelloFrom && d.t === "hello");
+    const xFirst = helloIdx >= 0 && bo.usedAt < bo.sentAt[helloIdx];
+    await openWithX(ann);
+    const bothHere = `White: ${ann.name} (here) · Black: ${bo.name} (here)`;
+    const backOn = await waitFor(async () => (await board(ann))?.p === expected.p && (await modalState(ann)).holders === bothHere, { timeout: 5000, what: "seats after off/on" }).catch(() => false);
+    check("4, 8: plugin on again: the board is back, X opens it, with its game and its players", backOn === true, (await modalState(ann)).holders);
+    check("a window opened before the plugin ran on that page stays open (the page's late hello does not close it)", xFirst && backOn === true, JSON.stringify({ xFirst, holders: (await modalState(ann)).holders }));
     // criterion 13, the reset half: both badges are up on Cy's page, and a reset takes them down within 1 s
-    const upBeforeReset = await waitFor(async () => badgeAbove(await badgeOf(cy, ann.id), "w") && badgeAbove(await badgeOf(cy, bo.id), "b"), { timeout: 3000, what: "badges before the reset" }).catch(() => false);
+    const upBeforeReset = await waitFor(async () => badgeAbove(await badgeOf(cy, ann.id), "w") && badgeAbove(await badgeOf(cy, bo.id), "b"), { timeout: 5000, what: "badges before the reset" }).catch(() => false);
     check("13: with Ann and Bo seated and present, Cy's page shows both badges", upBeforeReset === true, JSON.stringify([await badgeOf(cy, ann.id), await badgeOf(cy, bo.id)]));
     await press(ann, "Reset"); // also leaves the board as new
     const resetGoneMs = await within(async () => !(await badgeOf(cy, ann.id)).badge && !(await badgeOf(cy, bo.id)).badge, 1000);

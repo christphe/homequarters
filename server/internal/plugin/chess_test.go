@@ -213,6 +213,36 @@ func TestChessHelloMakesAbsent(t *testing.T) {
 	waitBoard(t, sink, bob.ID, 1, 1, "away after leaving", func(s map[string]any) bool { return seat(s, "w") == "Alice (away)" })
 }
 
+// A page whose plugin starts after its member pressed X says hello after the board opened. The window it
+// then draws counts: the page confirms it ("opened") and the member is a viewer again. A confirmation that
+// no open is waiting for (never opened, or closed since) changes nothing.
+func TestChessLateHelloKeepsTheWindowOpen(t *testing.T) {
+	h, sink, _ := chessHost(t, newMemKV(), alice, bob)
+	h.Use(bob, chess, "chessboard", 1, 1)
+	h.Use(alice, chess, "chessboard", 1, 1)
+	send(h, alice, `{"t":"seat","x":1,"y":1,"side":"w"}`)
+	waitBoard(t, sink, bob.ID, 1, 1, "seated", func(s map[string]any) bool { return seat(s, "w") == "Alice" })
+	send(h, alice, `{"t":"hello"}`) // her plugin started after the open was sent
+	waitBoard(t, sink, bob.ID, 1, 1, "away for a moment", func(s map[string]any) bool { return seat(s, "w") == "Alice (away)" })
+	send(h, alice, `{"t":"opened","x":1,"y":1}`) // her page drew the window
+	waitBoard(t, sink, bob.ID, 1, 1, "here again", func(s map[string]any) bool { return seat(s, "w") == "Alice" })
+	send(h, alice, `{"t":"move","x":1,"y":1,"from":52,"to":36}`)
+	waitBoard(t, sink, bob.ID, 1, 1, "she plays", func(s map[string]any) bool { return s["p"] != startPos })
+
+	// closed: a confirmation afterwards does not reopen it; nor does one for a board never opened
+	send(h, alice, `{"t":"close","x":1,"y":1}`)
+	waitBoard(t, sink, bob.ID, 1, 1, "away after closing", func(s map[string]any) bool { return seat(s, "w") == "Alice (away)" })
+	send(h, alice, `{"t":"opened","x":1,"y":1}`)
+	send(h, alice, `{"t":"opened","x":2,"y":2}`)
+	time.Sleep(300 * time.Millisecond)
+	if s, _ := boardOf(sink, bob.ID, 1, 1); seat(s, "w") != "Alice (away)" {
+		t.Fatalf("an unexpected confirmation reopened the window: %v", s)
+	}
+	if _, n := boardOf(sink, alice.ID, 2, 2); n != 0 {
+		t.Fatal("a confirmation for a board never opened sent its state")
+	}
+}
+
 func TestChessSurvivesRestart(t *testing.T) {
 	kv := newMemKV()
 	h, sink, _ := chessHost(t, kv, alice, bob)

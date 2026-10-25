@@ -18,6 +18,9 @@ const boards = new Map<string, Board>(); // loaded on first use
 const viewers = new Map<string, Set<number>>(); // board key -> members with its window open
 const toSend = new Map<number, Set<string>>(); // member -> boards whose state they must be sent
 const toOpen = new Map<number, string>(); // member -> the board their window must open on (a refused send)
+// member -> the board an open was sent for, until their page confirms it drew the window ("opened"). A page
+// whose plugin starts late says hello after the open: the confirmation makes the member a viewer again.
+const unconfirmed = new Map<number, string>();
 // members who must be sent the playing list (it changed, or they joined): each on their own, so a member
 // whose budget is spent never holds it back from the others
 const toTell = new Set<number>();
@@ -109,15 +112,21 @@ function sendTo(id: number, msg: ToClient): boolean {
 
 const playingMsg = (list: { id: number; side: Side }[]): ToClient => ({ t: "playing", list });
 
+/** That member has the board's window open; a seated player is here again. */
+function addViewer(id: number, k: string): void {
+  let v = viewers.get(k);
+  if (!v) viewers.set(k, (v = new Set()));
+  if (v.has(id)) return;
+  v.add(id);
+  if (seatOf(board(k), id) !== null) changed(k);
+}
+
 export function onUse(p: HQ.Player, o: { kind: string; x: number; y: number }): void {
   if (o.kind !== "chessboard" || !tile(o.x) || !tile(o.y)) return;
   const k = key(o.x, o.y);
-  let v = viewers.get(k);
-  if (!v) viewers.set(k, (v = new Set()));
-  const wasHere = v.has(p.id);
-  v.add(p.id);
+  addViewer(p.id, k);
+  unconfirmed.set(p.id, k);
   toSend.get(p.id)?.delete(k); // the open message carries the state
-  if (!wasHere && seatOf(board(k), p.id) !== null) changed(k);
   if (!sendTo(p.id, { t: "open", x: o.x, y: o.y, s: stateOf(k) })) toOpen.set(p.id, k);
 }
 
@@ -130,6 +139,7 @@ export function onLeave(p: HQ.Player): void {
   toSend.delete(p.id);
   toOpen.delete(p.id);
   toTell.delete(p.id);
+  unconfirmed.delete(p.id);
 }
 
 export function onMessage(p: HQ.Player, raw: unknown): void {
@@ -142,6 +152,18 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
   }
   if (!("x" in msg) || !tile(msg.x) || !tile(msg.y)) return;
   const k = key(msg.x, msg.y);
+  if (msg.t === "opened") {
+    // the page drew the window of the board it was last opened on (X, within reach): it is open, even when
+    // the page's hello came after the open; any other confirmation changes nothing
+    if (unconfirmed.get(p.id) !== k) return;
+    unconfirmed.delete(p.id);
+    if (!viewers.get(k)?.has(p.id)) {
+      addViewer(p.id, k);
+      queue(p.id, k); // its window shows the state of the open: send the current one
+    }
+    return;
+  }
+  if (msg.t === "close" && unconfirmed.get(p.id) === k) unconfirmed.delete(p.id); // a closed window stays closed
   if (!viewers.get(k)?.has(p.id)) return; // only from somebody who has this board open
   const b = board(k);
   switch (msg.t) {
