@@ -386,6 +386,7 @@ function publish(): void {
     cards: drawn.map((d) => ({ ...d, x: d.x * scale, y: d.y * scale })),
     scale,
     seat: mySeat,
+    sheet: !game || "standard" in game.deck ? null : sheet ? "loaded" : "loading",
     log: [...logList.children].map((li) => li.textContent),
   };
   toolbar();

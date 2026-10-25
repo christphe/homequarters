@@ -3,7 +3,9 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -271,4 +273,96 @@ func TestCardsMessageSizes(t *testing.T) {
 			t.Fatalf("a frame of %d bytes: %.200s", len(s.frame), s.frame)
 		}
 	}
+}
+
+// A game registering again (games do whenever another plugin starts or stops) never makes its tables
+// unavailable while its split deck arrives: the table keeps the complete definition it had.
+const partGame = `
+const def = (title) => ({ title, seats: [2, 4], deck: { sheet: "shared/c.png", cell: [20, 28], back: 4, total: 4, cards: [{ name: "One" }, { name: "Two" }] } });
+export function onMessage(p, m) {
+  if (m.t === "part1") hq.plugins.call("hq-cards", "register", def(m.title)).then((r) => hq.send(p.id, { t: "r1", r }));
+  if (m.t === "part2") hq.plugins.call("hq-cards", "registerCards", { from: 2, cards: [{ name: "Three" }, { name: "Four" }] }).then((r) => hq.send(p.id, { t: "r2", r }));
+}
+`
+
+func TestCardsReRegisterKeepsTables(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"installed/partgame/plugin.json": `{"name":"partgame","title":"Part game","version":"1.0.0","description":"d","server":"main.js"}`,
+		"installed/partgame/main.js":     partGame,
+	}
+	src := filepath.Join("..", "..", "..", "plugins", "bundled", "hq-cards")
+	if err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		b, err := os.ReadFile(path)
+		files["bundled/hq-cards/"+filepath.ToSlash(rel)] = string(b)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, root, files)
+	cat, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &fakeSink{}
+	h := NewHost(cat, sink, newMemKV(), slog.New(&errCounter{}))
+	t.Cleanup(h.Close)
+	h.Presence(alice, true)
+	h.Presence(bob, true)
+	for _, n := range []string{cards, "partgame"} {
+		if err := h.Start(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part := func(n int) {
+		t.Helper()
+		typ := fmt.Sprintf("r%d", n)
+		before := 0
+		for _, d := range sink.data(alice.ID) {
+			if d["t"] == typ {
+				before++
+			}
+		}
+		h.Message(alice, "partgame", []byte(fmt.Sprintf(`{"t":"part%d","title":"Part game"}`, n)))
+		eventually(t, typ+" answered", func() bool {
+			c := 0
+			var last map[string]any
+			for _, d := range sink.data(alice.ID) {
+				if d["t"] == typ {
+					c, last = c+1, d
+				}
+			}
+			if c > before && last["r"].(map[string]any)["ok"] != true {
+				t.Fatalf("%s refused: %v", typ, last)
+			}
+			return c > before
+		})
+	}
+	part(1)
+	part(2)
+	const x, y = 2, 3
+	h.Use(alice, cards, "deck", x, y)
+	h.Use(bob, cards, "deck", x, y)
+	eventually(t, "the part game listed", func() bool {
+		d := lastOf(sink, alice.ID, "games", x, y)
+		return d != nil && len(d["list"].([]any)) == 2
+	})
+	cardSend(h, alice, `{"t":"choose","x":%d,"y":%d,"game":"partgame"}`, x, y)
+	waitTable(t, sink, alice.ID, x, y, "the part game chosen", func(tb, s map[string]any) bool { return tb["game"] == "partgame" && s["unavailable"] == false })
+	part(1) // registering again: only the first part has arrived
+	cardSend(h, bob, `{"t":"seat","x":%d,"y":%d,"seat":1}`, x, y)
+	_, s := tableOf(sink, alice.ID, x, y)
+	eventually(t, "Bob's seat", func() bool {
+		var tb map[string]any
+		tb, s = tableOf(sink, alice.ID, x, y)
+		return tb["seats"].([]any)[1] != nil
+	})
+	if s["unavailable"] != false {
+		t.Fatalf("the table went unavailable while its game registered again: %v", s)
+	}
+	part(2)
 }

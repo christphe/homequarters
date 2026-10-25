@@ -23,7 +23,8 @@ const tables = new Map<string, Table>(); // "x,y" -> table, loaded on first use
 const logs = new Map<string, LogEntry[]>();
 const viewers = new Map<string, Set<number>>(); // table -> members with its window open
 const lookers = new Map<string, Map<number, string>>(); // table -> member -> the pile they look through
-const games = new Map<string, Game>(); // plugin name -> its registered game
+const games = new Map<string, Game>(); // plugin name -> its registered game, complete
+const pending = new Map<string, Game>(); // plugin name -> a definition whose cards are still arriving
 // member -> table -> what they must be sent: h (the game or the games), s (the state), l (the log), o (as an open)
 const toSend = new Map<number, Map<string, { h: boolean; s: boolean; l: boolean; o: boolean }>>();
 
@@ -123,12 +124,13 @@ export function load(): void {
     const r = validateDefinition(def);
     if (!r.ok) return { ok: false, err: r.err };
     const d = r.def.deck;
-    games.set(caller.plugin, { ...r.def, name: caller.plugin, complete: !("cards" in d) || d.cards.length === d.total });
-    gamesChanged();
+    const g: Game = { ...r.def, name: caller.plugin, complete: !("cards" in d) || d.cards.length === d.total };
+    if (g.complete) settle(g);
+    else pending.set(caller.plugin, g); // the game it replaces keeps serving its tables until the rest arrives
     return { ok: true };
   });
   hq.expose("registerCards", (caller: HQ.Caller, args: unknown) => {
-    const g = games.get(caller.plugin);
+    const g = pending.get(caller.plugin);
     const a = (typeof args === "object" && args !== null ? args : {}) as { from?: unknown; cards?: unknown };
     if (!g || !("cards" in g.deck)) return { ok: false, err: "register a custom deck first" };
     const d = g.deck;
@@ -137,19 +139,30 @@ export function load(): void {
     if (!r.ok) return { ok: false, err: r.err };
     const next: Game = { ...g, deck: { ...d, cards: [...d.cards, ...r.cards] } };
     next.complete = "cards" in next.deck && next.deck.cards.length === d.total;
-    if (next.complete && JSON.stringify(clientGame(next)).length > CLIENT_GAME_MAX) return { ok: false, err: "deck: the card names are too big for a page's message" };
-    games.set(caller.plugin, next);
-    if (next.complete) gamesChanged();
+    if (next.complete && JSON.stringify(clientGame(next)).length > CLIENT_GAME_MAX) {
+      pending.delete(caller.plugin);
+      return { ok: false, err: "deck: the card names are too big for a page's message" };
+    }
+    if (next.complete) settle(next);
+    else pending.set(caller.plugin, next);
     return { ok: true };
   });
 }
 
+/** A game's definition is complete: it serves its tables, and open windows hear of it if it changed. */
+function settle(g: Game): void {
+  pending.delete(g.name);
+  const before = games.get(g.name);
+  games.set(g.name, g);
+  if (!before || JSON.stringify(before) !== JSON.stringify(g)) gamesChanged();
+}
+
 export function onPlugins(): void {
   let gone = false;
-  for (const name of [...games.keys()]) {
+  for (const name of [...games.keys(), ...pending.keys()]) {
     if (!hq.plugins.running(name)) {
-      games.delete(name);
-      gone = true;
+      pending.delete(name);
+      if (games.delete(name)) gone = true;
     }
   }
   if (gone) gamesChanged();
