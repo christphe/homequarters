@@ -245,6 +245,27 @@ func TestChessMovesApplyInOrder(t *testing.T) {
 	}
 }
 
+// A refused move leaves the mover's view showing it (optimistic): they are sent the server's state again.
+func TestChessRefusedMoveResendsState(t *testing.T) {
+	h, sink, _ := chessHost(t, newMemKV(), alice, bob)
+	h.Use(alice, chess, "chessboard", 2, 2)
+	h.Use(bob, chess, "chessboard", 2, 2)
+	send(h, alice, `{"t":"seat","x":2,"y":2,"side":"w"}`)
+	waitBoard(t, sink, alice.ID, 2, 2, "seated", func(s map[string]any) bool { return seat(s, "w") == "Alice" })
+	time.Sleep(200 * time.Millisecond)
+	_, before := boardOf(sink, alice.ID, 2, 2)
+	_, bobBefore := boardOf(sink, bob.ID, 2, 2)
+	send(h, alice, `{"t":"move","x":2,"y":2,"from":12,"to":28}`) // a black pawn: refused
+	eventually(t, "a fresh state for the mover", func() bool { _, n := boardOf(sink, alice.ID, 2, 2); return n > before })
+	if s, _ := boardOf(sink, alice.ID, 2, 2); s["p"] != startPos {
+		t.Fatalf("the board did not change: %v", s)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, n := boardOf(sink, bob.ID, 2, 2); n != bobBefore {
+		t.Fatal("only the mover is sent the state again")
+	}
+}
+
 func TestChessBoardKeyIsItsTile(t *testing.T) {
 	kv := newMemKV()
 	h, sink, _ := chessHost(t, kv, alice)

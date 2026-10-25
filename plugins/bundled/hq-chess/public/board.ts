@@ -23,6 +23,9 @@ const COLOURS = {
 
 let synced = false; // a first state came: later changes are moves to announce
 let shown = START; // what the canvas draws: the server's position, or my move until it confirms it
+let server = START; // the last position the server sent
+let unconfirmed = 0; // timer: my move was not answered by a state yet
+const CONFIRM_MS = 1000; // a move lost on the way (a budget, a full queue) is undone after this
 let mine: Side | null = null;
 let flipped = false;
 // held: a piece picked up (pointer or keyboard); drag: where the pointer is while dragging, in board pixels
@@ -145,6 +148,14 @@ function play(from: number, to: number): void {
   shown = a.join("");
   const out: ViewOut = { t: "move", from, to };
   hqView.send(out);
+  // the server answers every move of mine with a state, applied or refused; without one, the move was lost
+  clearTimeout(unconfirmed);
+  unconfirmed = setTimeout(() => {
+    if (shown === server) return;
+    shown = server;
+    say("Move not received: the board shows the last position again");
+    draw();
+  }, CONFIRM_MS);
   say(`${sideName(mine!)}: ${PIECE_NAMES[piece.toLowerCase()]} ${squareName(from)} to ${squareName(to)}`);
 }
 
@@ -275,7 +286,8 @@ hqView.onMessage<ViewIn>((m) => {
     flipped = side === "b";
     if (turn) cursor = flipped ? 12 : 52; // my pawn in front of my king
   }
-  shown = s.p;
+  clearTimeout(unconfirmed);
+  shown = server = s.p;
   // somebody else's move (mine was said when I made it, and the server's copy matches what I show)
   if (synced && before !== shown) {
     const mv = moveBetween(before, shown);

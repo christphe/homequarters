@@ -46,13 +46,16 @@ function coords(k: string): { x: number; y: number } {
   return { x, y };
 }
 
+/** That member must be sent the board's state (in update()). */
+function queue(id: number, k: string): void {
+  let s = toSend.get(id);
+  if (!s) toSend.set(id, (s = new Set()));
+  s.add(k);
+}
+
 /** The board's viewers must be sent its state, and the playing list may have changed. */
 function changed(k: string): void {
-  for (const id of seen(k)) {
-    let s = toSend.get(id);
-    if (!s) toSend.set(id, (s = new Set()));
-    s.add(k);
-  }
+  for (const id of seen(k)) queue(id, k);
   playingSent = false;
 }
 
@@ -143,6 +146,8 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
       return;
     case "move":
       if (square(msg.from) && square(msg.to) && move(b, p.id, msg.from, msg.to)) save(k);
+      // refused: the mover's view already shows the move (optimistic), so it gets the real position again
+      else if (seatOf(b, p.id) !== null) queue(p.id, k);
       return;
     case "reset":
       if (canReset(b, p.id, seen(k))) {
