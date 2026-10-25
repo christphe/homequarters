@@ -1,4 +1,4 @@
-import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
+import { Application, BitmapText, Cache, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
@@ -27,6 +27,18 @@ const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
 // Jersey 10 is drawn on a 10 px grid and has a small x-height: map text uses twice its grid (20 px,
 // 30 for the area banner), which stays crisp and reads like the interface.
 const FONT = '"Jersey 10", ui-monospace, Menlo, monospace';
+// One TextStyle per look, shared by every BitmapText that wears it: Pixi keys a stroked bitmap font
+// (its own glyph atlas, never freed) by the TextStyle instance, so a style per label made a font per label.
+// Never destroy a text with { style: true } (or destroy(true)): it would break every label sharing the style.
+const OUTLINE = { color: 0x1a1526, width: 3 };
+const TAG_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: OUTLINE });
+const DESK_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 20, fill: 0xffe9a8, stroke: OUTLINE });
+const NOTE_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 18, fill: 0xffe9a8, align: "center", stroke: OUTLINE });
+const PLUGIN_NOTE_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 18, fill: 0x9fe0ff, align: "center", stroke: OUTLINE });
+// no outline: on the light plate it only smeared the pixel letters
+const BANNER_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 30, fill: 0x383858 });
+/** For tests: how many bitmap fonts Pixi holds (it keeps them in its asset cache under keys holding "-bitmap"). */
+export const bitmapFonts = () => [...(Cache as unknown as { _cache: Map<unknown, unknown> })._cache.keys()].filter((k) => typeof k === "string" && k.includes("-bitmap")).length;
 const BOX_HW = 5;
 const BOX_HH = 3;
 // Movement rules shared with the server (world.move): sub-steps of at most SUB_STEP_PX so no wall
@@ -182,7 +194,7 @@ export class WorldView {
   /** The mouse over the map (canvas pixels), for the name of a plugin sprite under it; null elsewhere or for touch. */
   private mouse: { x: number; y: number } | null = null;
   /** A plugin sprite's label and its owner's name, shown while the mouse is over the sprite. */
-  private hoverTag = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 18, fill: 0xffe9a8, align: "center", stroke: { color: 0x1a1526, width: 3 } } });
+  private hoverTag = new BitmapText({ text: "", style: NOTE_STYLE });
   private dragEndAt = 0;
   // the server's area of interest (hello): its cell size, default and largest radius in cells
   private cellPx = 0;
@@ -273,8 +285,7 @@ export class WorldView {
     this.hoverTag.anchor.set(0.5, 1);
     this.hoverTag.visible = false;
     this.hud.addChild(this.hoverTag);
-    // no outline: on the light plate it only smeared the pixel letters
-    this.bannerText = new BitmapText({ text: "", style: { fontFamily: FONT, fontSize: 30, fill: 0x383858 } });
+    this.bannerText = new BitmapText({ text: "", style: BANNER_STYLE });
     this.banner.addChild(this.bannerG, this.bannerText);
     this.banner.visible = false;
     this.hud.addChild(this.banner);
@@ -562,10 +573,7 @@ export class WorldView {
     });
     this.areaLabels = map.areas.flatMap((a, ai) => {
       if (a.auto) return []; // the desk's own label already names it
-      const text = new BitmapText({
-        text: this.areaLabel(ai),
-        style: { fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
-      });
+      const text = new BitmapText({ text: this.areaLabel(ai), style: TAG_STYLE });
       text.anchor.set(0.5, 0);
       text.alpha = 0.85;
       this.hud.addChild(text);
@@ -577,7 +585,7 @@ export class WorldView {
       .filter((p) => p.t === "desk" && p.assign)
       .map((p) => {
         const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
-        const text = new BitmapText({ text: this.deskLabel(p, ai), style: { fontFamily: FONT, fontSize: 20, fill: 0xffe9a8, stroke: { color: 0x1a1526, width: 3 } } });
+        const text = new BitmapText({ text: this.deskLabel(p, ai), style: DESK_STYLE });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
         this.hud.addChild(text);
@@ -872,8 +880,8 @@ export class WorldView {
       });
     }
     if (!this.editing) return;
-    const label = (text: string, fill: number, p: Prop, w: number, h: number) => {
-      const b = new BitmapText({ text, style: { fontFamily: FONT, fontSize: 18, fill, align: "center", stroke: { color: 0x1a1526, width: 3 } } });
+    const label = (text: string, style: TextStyle, p: Prop, w: number, h: number) => {
+      const b = new BitmapText({ text, style });
       b.anchor.set(0.5, 0.5);
       this.hud.addChild(b);
       this.placeholderLabels.push({ text: b, x: (p.x + w / 2) * T, y: (p.y + h / 2) * T });
@@ -883,7 +891,7 @@ export class WorldView {
     for (const { prop: p, spec } of plugin) {
       const [w, h] = propSize(p);
       this.placeholderG.rect(p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
-      label(t("editor.pluginDraws", { label: spec.label }), 0x9fe0ff, p, w, h);
+      label(t("editor.pluginDraws", { label: spec.label }), PLUGIN_NOTE_STYLE, p, w, h);
     }
     if (plugin.length > 0) this.placeholderG.fill({ color: 0x9fe0ff, alpha: 0.15 }).stroke({ color: 0x9fe0ff, width: 1 });
     // objects of plugins that are not running: a dashed box with their type
@@ -892,7 +900,7 @@ export class WorldView {
       if (!isPluginProp(p.t) || shown.has(p)) continue;
       const [w, h] = propSize(p);
       dashedRect(this.placeholderG, p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
-      label(t("editor.pluginMissing", { type: p.t }), 0xffe9a8, p, w, h);
+      label(t("editor.pluginMissing", { type: p.t }), NOTE_STYLE, p, w, h);
     }
     this.placeholderG.stroke({ color: 0xffe9a8, width: 1 });
   }
@@ -1052,10 +1060,7 @@ export class WorldView {
     this.entLayer.addChild(spr);
     const label = new Container();
     const dot = new Graphics();
-    const text = new BitmapText({
-      text: p?.n ?? "…",
-      style: { fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: { color: 0x1a1526, width: 3 } },
-    });
+    const text = new BitmapText({ text: p?.n ?? "…", style: TAG_STYLE });
     text.anchor.set(0.5, 1);
     label.addChild(dot, text);
     this.hud.addChild(label);
