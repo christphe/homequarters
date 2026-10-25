@@ -313,12 +313,52 @@ export function moveCards(t: Table, seat: number | null, cards: number[], dx: nu
   });
 }
 
+/** A pile turned over as a whole, as a deck is: its order reversed, every card the other face, the pile's face too. */
+export function turnPile(t: Table, seat: number | null, id: string, g: Game): Done {
+  return act(t, seat, g, "place", (me) => {
+    const p = pile(t, id);
+    if (!p) return null;
+    p.cards = p.cards.reverse().map((c) => c ^ UP);
+    p.face = p.face === "up" ? "down" : "up";
+    return { s: me, v: "turned pile", p: p.name };
+  });
+}
+
 export function movePile(t: Table, seat: number | null, id: string, at: [number, number], g: Game): Done {
   return act(t, seat, g, "place", (me) => {
     const p = pile(t, id);
     if (!p || !onFelt(at)) return null;
     p.at = [at[0], at[1]];
     return { s: me, v: "moved pile", p: p.name };
+  });
+}
+
+const RANK_ORDER = "23456789TJQKA";
+const RANK_WORDS: Record<string, string> = { A: "aces", T: "10s", J: "jacks", Q: "queens", K: "kings" };
+/** "the 2s, 3s and the jokers": the ranks set aside, for the log. */
+function rankList(ranks: string[]): string {
+  const words = [...RANK_ORDER].filter((r) => ranks.includes(r)).map((r) => RANK_WORDS[r] ?? r + "s");
+  const all = [...words.map((w, i) => (i === 0 ? "the " + w : w)), ...(ranks.includes("X") ? ["the jokers"] : [])];
+  return all.length > 1 ? all.slice(0, -1).join(", ") + " and " + all[all.length - 1] : all[0];
+}
+
+/**
+ * Every card of these ranks (rank letters of the standard deck, X for the jokers) out of the game, wherever
+ * it is, until a reset: a 32- or a 52-card game from the standard deck. Nothing left of them: nothing to log.
+ */
+export function setAsideRanks(t: Table, seat: number | null, ranks: string[], g: Game): Done {
+  if (!Array.isArray(ranks) || !ranks.length || ranks.some((r) => typeof r !== "string" || r.length !== 1 || !(RANK_ORDER + "X").includes(r))) return NO;
+  if (!("standard" in g.deck)) return NO;
+  const codes = g.deck.standard;
+  return act(t, seat, g, "remove", (me) => {
+    const out = (c: number) => ranks.includes(codes[card(c)]?.[0] ?? "");
+    const gone = [...t.hands.flat(), ...t.piles.flatMap((p) => p.cards), ...t.loose.map((l) => l.c)].filter(out).map(card);
+    if (!gone.length) return undefined;
+    for (const h of t.hands) h.splice(0, h.length, ...h.filter((c) => !out(c)));
+    for (const p of t.piles) p.cards = p.cards.filter((c) => !out(c));
+    t.loose = t.loose.filter((l) => !out(l.c));
+    t.out.push(...gone);
+    return { s: me, v: "set aside", n: gone.length, text: rankList(ranks) };
   });
 }
 

@@ -579,6 +579,7 @@ function toolbar(): void {
         if (allowed("viewPile") && p.cards.length) out.push(button(`Look through ${short(p.name, 12)}`, () => startLook(id)));
         if (allowed("shuffle") && p.cards.length > 1) out.push(button(`Shuffle ${short(p.name, 12)}`, () => send({ t: "shuffle", pile: id })));
         if (allowed("place") && p.cards.length) out.push(button("Turn the top over", () => send({ t: "flip", from: { k: "pile", id } })));
+        if (allowed("place") && p.cards.length) out.push(button("Turn the pile over", () => send({ t: "turnPile", pile: id })));
         if (allowed("remove") && p.cards.length) out.push(button("Set the top aside", () => send({ t: "setAside", from: { k: "pile", id } })));
         // any pile but the stock: its cards go back to the stock
         if (allowed("createPile") && p !== t.piles[0]) out.push(button(`Remove the pile ${short(p.name, 12)}`, () => ((selected = null), send({ t: "delPile", pile: id }))));

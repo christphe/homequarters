@@ -784,3 +784,46 @@ test("groupFrom: a card and the cards put on it; groups: the bottom of each", ()
   assert.deepEqual(groups(t).map((g) => g.c), [a], "only the cascade has a handle");
   void e;
 });
+
+// ---- setting aside a whole set of ranks (a 32- or 52-card game from the standard deck)
+import { setAsideRanks } from "../../plugins/bundled/hq-cards/public/table.ts";
+
+test("setAsideRanks takes every card of those ranks out of the game, wherever it is", () => {
+  const t = free3();
+  deal(t, 0, "p0", 3, FREE);
+  place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [40, 40] }, true, FREE);
+  const r = setAsideRanks(t, 1, ["2", "3", "4", "5", "6", "X"], FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 1, v: "set aside", n: 22, text: "the 2s, 3s, 4s, 5s, 6s and the jokers" });
+  assert.equal(t.out.length, 22);
+  const left = [...t.hands.flat(), ...t.piles.flatMap((p) => p.cards), ...t.loose.map((l) => l.c)].map((c) => STANDARD[c & ~UP]);
+  assert.equal(left.length, 32);
+  assert.ok(left.every((code) => "789TJQKA".includes(code[0])), left.join(" "));
+  assert.equal(sentence(r.ok ? r.log! : { s: 0, v: "drew" }, (s) => names[s], String), "Bo set aside the 2s, 3s, 4s, 5s, 6s and the jokers");
+  assert.deepEqual(setAsideRanks(t, 1, ["2"], FREE), { ok: true }, "nothing left of those: nothing to log");
+  assert.equal(setAsideRanks(t, 1, ["Z"], FREE).ok, false, "not a rank");
+  assert.equal(setAsideRanks(t, 1, [], FREE).ok, false);
+  assert.equal(setAsideRanks(t, null, ["7"], FREE).ok, false, "a spectator");
+  assert.equal(setAsideRanks(t, 1, ["7"], { ...FREE, allow: ["place"] }).ok, false, "not allowed");
+  const custom = { ...FREE, deck: { sheet: "shared/c.png", cell: [20, 28] as [number, number], back: 0, total: 2, cards: [{ name: "a" }, { name: "b" }] } };
+  assert.equal(setAsideRanks(t, 1, ["7"], custom).ok, false, "a deck of its own has no ranks");
+});
+
+// ---- turning a named pile over (the discard pile back into a stock)
+import { turnPile } from "../../plugins/bundled/hq-cards/public/table.ts";
+
+test("turnPile turns a whole pile over: its order reversed, every card the other face, the pile's face too", () => {
+  const t = free3();
+  createPile(t, 0, "Discard", "up", [40, 40], FREE);
+  for (let i = 0; i < 3; i++) place(t, 0, { k: "pile", id: "p0" }, { k: "pile", id: "p1" }, true, FREE);
+  const before = [...t.piles[1].cards];
+  assert.ok(before.every((c) => c & UP));
+  const r = turnPile(t, 1, "p1", FREE);
+  assert.deepEqual(r, { ok: true, log: { s: 1, v: "turned pile", p: "Discard" } });
+  assert.deepEqual(t.piles[1].cards, [...before].reverse().map((c) => c & ~UP));
+  assert.equal(t.piles[1].face, "down");
+  assert.equal(sentence({ s: 1, v: "turned pile", p: "Discard" }, (s) => names[s], String), "Bo turned the pile Discard over");
+  assert.equal(turnPile(t, null, "p1", FREE).ok, false);
+  assert.equal(turnPile(t, 1, "nope", FREE).ok, false);
+  assert.equal(turnPile(t, 1, "p1", { ...FREE, allow: ["draw"] }).ok, false);
+});

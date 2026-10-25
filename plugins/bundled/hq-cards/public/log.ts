@@ -6,10 +6,10 @@ import { utf8Bytes } from "./games.ts";
 
 export type Verb =
   | "chose" | "took" | "placed" | "gave" | "took back" | "flipped" | "offered" | "withdrew" | "picked" | "dealt" | "shuffled"
-  | "gathered" | "counted" | "created" | "removed" | "looked" | "reordered" | "drew" | "snap" | "moved" | "moved pile" | "set aside";
+  | "gathered" | "counted" | "created" | "removed" | "looked" | "reordered" | "drew" | "snap" | "moved" | "moved pile" | "set aside" | "turned pile";
 const VERBS: readonly string[] = [
   "chose", "took", "placed", "gave", "took back", "flipped", "offered", "withdrew", "picked", "dealt", "shuffled",
-  "gathered", "counted", "created", "removed", "looked", "reordered", "drew", "snap", "moved", "moved pile", "set aside",
+  "gathered", "counted", "created", "removed", "looked", "reordered", "drew", "snap", "moved", "moved pile", "set aside", "turned pile",
 ];
 
 /** s: the seat that acted; c: a card, named because it ended face up; p: a pile's name; to: another seat; n: a number; text: a count or a game's title. */
@@ -62,6 +62,7 @@ export function sentence(e: LogEntry, seat: (s: number) => string, card: (c: num
     case "snap": return `${who} turned snapping ${e.n ? "on" : "off"}`;
     case "moved": return `${who} moved ${e.n} card${e.n === 1 ? "" : "s"}`;
     case "moved pile": return `${who} moved the pile ${e.p}`;
-    case "set aside": return `${who} set ${it} aside`;
+    case "turned pile": return `${who} turned the pile ${e.p} over`;
+    case "set aside": return e.text ? `${who} set aside ${e.text}` : `${who} set ${it} aside`;
   }
 }

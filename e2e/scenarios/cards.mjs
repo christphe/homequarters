@@ -487,7 +487,8 @@ export async function run(ctx) {
       await openWithX(ann);
       await setPlugin(ctx, "hq-card-lastcard", true);
       const again = await within(async () => (await drawn(ann))?.sheet === "loaded" && (await handOf(ann)).length === 6, 20000); // a plugin turned on under load can take seconds to register
-      check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
+      const inWindow = await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => globalThis.__cards?.()).catch((x) => String(x));
+      check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ inWindow, modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
     } else check("10b: Last Card (hq-card-lastcard is not in this tree yet)", false, "not installed");
 
     // ---- round 2 (R1-R7): a solitaire on the free table, Ann alone, through the real controls; Bo watches
@@ -574,6 +575,23 @@ export async function run(ctx) {
     await press(ann, "Count");
     const outCount = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "the count" }).catch(() => "");
     check("R6: a card set aside stays out through Gather all (Count: Stock 53 and 1 set aside)", /Stock 53/.test(outCount) && /1 set aside/.test(outCount), outCount);
+    // a named pile turned over as a whole: the stock, face down, comes face up (its bottom card on top)
+    await click(ann, stockAt);
+    await pressInView(ann, "Turn the pile over");
+    const turned = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} turned the pile Stock over` && (await drawn(bo)).cards.some((c) => c.where === "pile" && c.up), 3000);
+    check("a named pile turns over: the log says so and its top card now shows face up on every page", turned >= 0, `${turned} ms`);
+    await click(ann, stockAt);
+    await pressInView(ann, "Turn the pile over"); // back face down
+    // a 32-card game: the jokers, then the 2s to 6s chosen one by one, set aside from the panel
+    await press(ann, "52 cards");
+    await waitFor(async () => /set aside the jokers$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "the jokers set aside" }).catch(() => {});
+    for (const r of ["2", "3", "4", "5", "6"]) await press(ann, r);
+    await press(ann, "Set the chosen aside");
+    const ranksOut = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} set aside the 2s, 3s, 4s, 5s and 6s`, 3000);
+    await press(ann, "Count");
+    const deck32 = await waitFor(async () => { const x = (await modal(bo))?.texts.find((t) => t.startsWith("Count: ")); return x && x !== outCount ? x : null; }, { timeout: 5000, what: "the new count" }).catch(() => "");
+    const m32 = /Stock (\d+) · (\d+) set aside/.exec(deck32 ?? "");
+    check("a 32-card game from the panel: whole ranks set aside in one line of the log; at most 32 cards left, the rest set aside", ranksOut >= 0 && !!m32 && Number(m32[1]) <= 32 && Number(m32[1]) + Number(m32[2]) === 54, `${ranksOut} ms; ${deck32}`);
 
     const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     for (const u of users) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));

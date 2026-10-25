@@ -663,3 +663,20 @@ func TestCardsSplitGameOffAndOn(t *testing.T) {
 		t.Fatalf("%d plugin errors", n)
 	}
 }
+
+// A 32-card game from the free table: the 2s to 6s and the jokers set aside in one message, back at a reset.
+func TestCardsSetAsideRanks(t *testing.T) {
+	h, sink, errs := cardsHost(t, newMemKV(), []string{cards}, alice, bob)
+	freeTable(t, h, sink, 8, 3, alice, bob)
+	cardSend(h, bob, `{"t":"setAsideRanks","x":8,"y":3,"ranks":["2","3","4","5","6","X"]}`)
+	waitTable(t, sink, alice.ID, 8, 3, "22 cards set aside", func(tb, _ map[string]any) bool {
+		return len(tb["out"].([]any)) == 22 && len(tb["piles"].([]any)[0].(map[string]any)["cards"].([]any)) == 32
+	})
+	eventually(t, "logged", func() bool { return has(logVerbs(sink, alice.ID, 8, 3), "set aside") })
+	for _, m := range []string{`{"t":"setAsideRanks","x":8,"y":3,"ranks":"2"}`, `{"t":"setAsideRanks","x":8,"y":3,"ranks":[2]}`, `{"t":"setAsideRanks","x":8,"y":3,"ranks":["22"]}`} {
+		cardSend(h, bob, "%s", m)
+	}
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("%d plugin errors", n)
+	}
+}

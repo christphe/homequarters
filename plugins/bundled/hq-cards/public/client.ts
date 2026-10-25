@@ -5,7 +5,7 @@
 import type { ClientGame } from "./games.ts";
 import type { Act, LogEntry, TableState, ToClient, ToServer, ViewIn } from "./messages.ts";
 
-const ACTS = new Set(["choose", "seat", "place", "flip", "order", "offer", "pick", "dealAll", "deal", "shuffle", "gather", "count", "reset", "unlook", "newPile", "delPile", "look", "draw", "reorder", "snap", "moveCards", "movePile", "setAside"]);
+const ACTS = new Set(["choose", "seat", "place", "flip", "order", "offer", "pick", "dealAll", "deal", "shuffle", "gather", "count", "reset", "unlook", "newPile", "delPile", "look", "draw", "reorder", "snap", "moveCards", "movePile", "setAside", "setAsideRanks", "turnPile"]);
 
 let me = 0;
 let open: { x: number; y: number } | null = null;
@@ -109,8 +109,14 @@ hq.onUpdate((_dt, world) => {
   draw();
 });
 
+// for tests (e2e/scenarios/cards.mjs): the last messages this window got, and what it shows
+const heard: string[] = [];
+(globalThis as unknown as { __cards: () => unknown }).__cards = () => ({ heard, open, game: game?.name ?? null, unavailable: state?.unavailable ?? null, viewShown, viewFor, renewing });
+
 hq.onMessage<ToClient>((m) => {
   if (!m || typeof m !== "object") return;
+  heard.push(m.t + ("s" in m ? (m.s.unavailable ? ":off" : ":on") : "g" in m ? ":" + m.g.name : "list" in m ? ":" + m.list.length : ""));
+  if (heard.length > 12) heard.shift();
   if (m.t === "open") {
     // another table's window was open: that one is closed now
     if (open && (open.x !== m.x || open.y !== m.y)) send({ t: "close", x: open.x, y: open.y });

@@ -27,7 +27,9 @@ export type Act =
   | { t: "snap"; on: boolean }
   | { t: "moveCards"; cards: number[]; dx: number; dy: number }
   | { t: "movePile"; pile: string; at: [number, number] }
-  | { t: "setAside"; from: Src };
+  | { t: "setAside"; from: Src }
+  | { t: "setAsideRanks"; ranks: string[] }
+  | { t: "turnPile"; pile: string };
 
 export type ToServer = { t: "hello" } | (At & { t: "close" }) | (At & Act);
 

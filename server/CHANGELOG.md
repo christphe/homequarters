@@ -4,7 +4,7 @@
 
 ### Added
 - Old Maid and Last Card, two card games for the Cards table, each a bundled plugin of its own; card games are plugins that register with Cards and can only narrow its actions or add a deck, piles and a count (#38)
-- Cards: a bundled plugin with a card deck to place on a table; its card table opens full screen, and anybody can sit down to deal, shuffle, put cards anywhere on the felt (snapping to a grid and into cascades, for a solitaire) or on piles, move a stack or a pile by its handle, give a card, offer their hand for a pick, look through a pile or set cards aside; every action is written in the table's log (#38)
+- Cards: a bundled plugin with a card deck to place on a table; its card table opens full screen, and anybody can sit down to deal, shuffle, put cards anywhere on the felt (snapping to a grid and into cascades, for a solitaire) or on piles, move a stack or a pile by its handle, turn a pile over, give a card, offer their hand for a pick, look through a pile, or set cards aside one by one or a whole rank at a time (a 32- or 52-card game); every action is written in the table's log (#38)
 - A PC object stands on desks (the map format's pc, with a small visual offset, dx and dy); the layouts put one on every desk, and maps saved before keep their desks' built-in screens (#37)
 - Chess: a bundled plugin with a chessboard to place on a table; take the White or Black seat, anybody else with the window open watches, and each board keeps its game (#36)
 - Plugins can put objects on the map that X opens (placed by administrators in the map editor, hidden while the plugin is off), draw them, react to them being added or removed, show a view of their own in their window and pin a sprite above a member's head (#36)

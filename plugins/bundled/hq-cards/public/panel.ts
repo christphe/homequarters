@@ -27,6 +27,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
 
   let dealN = 7;
   let pileName = "";
+  let chosen: string[] = []; // ranks picked to set aside (rank letters of the standard deck, X for the jokers)
   let key = "";
   let logKey = "";
 
@@ -66,7 +67,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
       return k < 0 ? null : k;
     })();
     const present = new Set<number>([me, ...st.here]);
-    const sig = JSON.stringify([t.seats, st.here, t.offer, t.count, t.snap, t.piles[0]?.name, game.allow, game.title, mine, canReset(t, me, present), pileName.trim() !== "", t.hands[mine ?? 0]?.length > 0]);
+    const sig = JSON.stringify([t.seats, st.here, t.offer, t.count, t.snap, t.piles[0]?.name, game.allow, game.title, mine, canReset(t, me, present), pileName.trim() !== "", t.hands[mine ?? 0]?.length > 0, chosen]);
     if (sig !== key) {
       key = sig;
       const kids: HTMLElement[] = [];
@@ -126,6 +127,22 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
           kids.push(row(field("New pile", f), button("Face up", make("up"), { disabled: !ok }), button("Face down", make("down"), { disabled: !ok })));
         }
         kids.push(row(button(t.snap ? "Snapping: on" : "Snapping: off", () => send({ t: "snap", on: !t.snap }), { pressed: t.snap })));
+        // a smaller deck from the standard one: whole ranks out of the game until a reset
+        if (allows(game, "remove") && "standard" in game.deck) {
+          const aside = (ranks: string[]) => () => send({ t: "setAsideRanks", ranks });
+          kids.push(row(text("Set aside:"), button("32 cards", aside(["2", "3", "4", "5", "6", "X"])), button("52 cards", aside(["X"]))));
+          const pick = (r: string) => () => {
+            chosen = chosen.includes(r) ? chosen.filter((x) => x !== r) : [...chosen, r];
+            update(i);
+          };
+          const ranks: [string, string][] = [["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"], ["6", "6"], ["7", "7"], ["8", "8"], ["9", "9"], ["T", "10"], ["J", "J"], ["Q", "Q"], ["K", "K"], ["A", "A"], ["X", "Jokers"]];
+          kids.push(row(...ranks.map(([r, label]) => button(label, pick(r), { pressed: chosen.includes(r) }))));
+          kids.push(row(button("Set the chosen aside", () => {
+            send({ t: "setAsideRanks", ranks: chosen });
+            chosen = [];
+            update(i);
+          }, { disabled: !chosen.length })));
+        }
         if (allows(game, "offer")) {
           if (o?.from === mine) kids.push(row(button(labels.withdraw(t.seats[o.to]?.name ?? ""), () => send({ t: "offer", to: null }))));
           else if (t.hands[mine]?.length) {
