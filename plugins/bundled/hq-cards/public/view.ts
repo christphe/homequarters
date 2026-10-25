@@ -76,7 +76,11 @@ logList.setAttribute("aria-label", "Table log");
 const live = document.createElement("div");
 live.className = "sr";
 live.setAttribute("aria-live", "polite");
-document.body.append(canvas, bar, logList, live);
+// one landmark around everything, so every part of the view belongs to a region
+const main = document.createElement("main");
+main.style.cssText = "display: contents";
+main.append(canvas, bar, logList, live);
+document.body.append(main);
 const ctx = canvas.getContext("2d")!;
 
 function say(text: string): void {
