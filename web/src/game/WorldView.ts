@@ -13,6 +13,7 @@ import { bakeMapCanvas } from "./art/tiles";
 import { depthAtlas } from "./art/objects";
 import { PluginLayer } from "./pluginLayer";
 import { areaTitle, deskTitle, type NameOf } from "./places";
+import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Grid, type Remote } from "./motion";
 import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
 
 const T = 16;
@@ -40,19 +41,6 @@ const PLUGIN_NOTE_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 18, fill: 
 const BANNER_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 30, fill: 0x383858 });
 /** For tests: how many bitmap fonts Pixi holds (it keeps them in its asset cache under keys holding "-bitmap"). */
 export const bitmapFonts = () => [...(Cache as unknown as { _cache: Map<unknown, unknown> })._cache.keys()].filter((k) => typeof k === "string" && k.includes("-bitmap")).length;
-const BOX_HW = 5;
-const BOX_HH = 3;
-// Movement rules shared with the server (world.move): sub-steps of at most SUB_STEP_PX so no wall
-// is skipped, and a blocked axis moves to the point of contact, so the result does not depend on
-// how time was split into frames or ticks.
-const SUB_STEP_PX = 4;
-const MAX_ADVANCE = 1; // seconds integrated at most in one go (a backgrounded tab)
-const OFFSET_TAU = 0.08; // seconds over which a remote correction blends in
-const SELF_TAU = 0.12; // seconds over which a correction of my own position blends in
-// ...but on each axis never faster than this fraction of the slowest per-axis walking speed (a diagonal
-// walk), so a held key never draws a step back in any direction
-const SELF_BLEND_FRAC = 0.6;
-const SNAP_PX = 128; // larger corrections are not network jitter: no blending (teleports reset the offset anyway)
 // Render on demand: a frame is drawn only when something on screen changed, plus this slow
 // heartbeat as a safety net. An office is mostly people standing still; redrawing an unchanged
 // scene 60 times a second kept the GPU awake for nothing.
@@ -65,12 +53,8 @@ const extraHeight = (f: AvatarFrames) => Math.max(0, f.tall - 22);
 
 const DEFAULT_AV: AvatarSpec = { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 };
 
-/** Where a box of half size `half` moving in direction v touches the tile edge it crosses reaching c (server: contact). */
-function contact(c: number, v: number, half: number) {
-  return v > 0 ? Math.floor((c + half - 0.001) / T) * T - half : (Math.floor((c - half) / T) + 1) * T + half;
-}
-
-interface Ent {
+/** A person on the map: where they are (Remote, dead-reckoned when they are not me) and what draws them. */
+interface Ent extends Remote {
   id: number;
   key: string;
   frames: AvatarFrames;
@@ -81,17 +65,6 @@ interface Ent {
   ring: Graphics | null;
   hand: Text | null;
   danceUntil: number;
-  // Remote entities are dead-reckoned: the server sends state changes (position + direction),
-  // the client keeps walking the entity with the same collision rules. (tx,ty) is the extrapolated
-  // truth, (ox,oy) a short-lived offset that hides corrections.
-  tx: number;
-  ty: number;
-  ox: number;
-  oy: number;
-  dx: number;
-  dy: number;
-  x: number;
-  y: number;
   dir: number;
   moving: boolean;
   run: boolean;
@@ -155,7 +128,7 @@ export class WorldView {
       const fast = e.id === this.meId ? this.fast : e.run;
       return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible };
     },
-    canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
+    canStand: (x, y) => !!this.map && canStandStatic(this.grid, x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
     me: () => this.meId,
     headPoint: (id, out) => {
@@ -173,14 +146,12 @@ export class WorldView {
   private owners = new Map<number, string>();
   private nameOf: NameOf = (id) => this.owners.get(id) ?? this.people.get(id)?.n;
   private map: MapData | null = null;
-  private solid = new Uint8Array(0);
-  /** The map's tiles: which area each is in. */
-  private grid = { w: 0, h: 0, areaAt: new Int16Array(0) };
+  /** The map as movement sees it: walls, the area of each tile, and the rooms I may not enter. */
+  private grid: Grid = { w: 0, h: 0, solid: new Uint8Array(0), areaAt: new Int16Array(0), deny: new Set() };
   // the area named to the player for each area: itself, or for a desk room the area it sits in
   private shownOf = new Int16Array(0);
   /** My area (room access) and the area named for it (the signboard). */
   private where = new Whereabouts();
-  private deny = new Set<number>();
   private speed = 72;
   private runMul = 2;
   private runHeld = false; // Shift
@@ -216,19 +187,12 @@ export class WorldView {
   // local player
   meId = 0;
   private meEnt: Ent | null = null;
-  private mx = 0;
-  private my = 0;
+  /** My position, predicted and reconciled with the server (motion.ts); drawn at x+ox, y+oy. */
+  private self = new LocalMotion();
   private dx = 0;
   private dy = 0;
   private mdir = 0;
-  private seq = 0;
-  private hist = new Map<number, { x: number; y: number }>();
-  private lastAck = 0; // newest acknowledgement sequence applied
   private lastBeat = 0;
-  private lastLocal = 0; // performance.now() the local position was integrated to
-  // visual offset that hides reconciliation: the avatar is drawn at (mx+vox, my+voy)
-  private vox = 0;
-  private voy = 0;
 
   // stats
   private nFrames = 0;
@@ -339,8 +303,8 @@ export class WorldView {
         const { width: W, height: H } = app.screen;
         d.x = e.clientX;
         d.y = e.clientY;
-        d.camX = W / 2 - (this.mx + this.vox + this.panX) * this.S;
-        d.camY = H / 2 - (this.my + this.voy + this.panY) * this.S;
+        d.camX = W / 2 - (this.self.x + this.self.ox + this.panX) * this.S;
+        d.camY = H / 2 - (this.self.y + this.self.oy + this.panY) * this.S;
       }
     };
     app.canvas.addEventListener("wheel", wheel, { passive: false });
@@ -506,10 +470,7 @@ export class WorldView {
 
   private sendDir() {
     this.advanceLocal(performance.now());
-    this.seq++;
-    this.hist.set(this.seq, { x: this.mx, y: this.my });
-    if (this.hist.size > 64) this.hist.delete(this.hist.keys().next().value!);
-    this.hooks.sendInput(this.seq, this.dx, this.dy, this.running);
+    this.hooks.sendInput(this.self.record(), this.dx, this.dy, this.running);
     this.lastBeat = performance.now();
   }
 
@@ -551,10 +512,7 @@ export class WorldView {
   setMap(map: MapData, deny: number[]) {
     this.dirty = true;
     this.map = map;
-    this.deny = new Set(deny);
-    this.solid = new Uint8Array(map.w * map.h);
-    for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) this.solid[y * map.w + x] = map.solid[y][x] === "1" ? 1 : 0;
-    this.grid = { w: map.w, h: map.h, areaAt: areaGrid(map) };
+    this.grid = { w: map.w, h: map.h, solid: solidGrid(map), areaAt: areaGrid(map), deny: new Set(deny) };
     this.mapSprite?.destroy({ texture: true, textureSource: true }); // do not leak a GPU texture per edit
     const tex = bakeMap(this.app.renderer, map);
     this.baked = tex.source.resource as HTMLCanvasElement;
@@ -592,7 +550,7 @@ export class WorldView {
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
     if (this.meEnt) {
-      this.where.area = this.areaIndex(this.mx, this.my);
+      this.where.area = this.areaIndex(this.self.x, this.self.y);
       this.hooks.onArea(this.areaName(this.where.area), this.where.area);
       this.where.shown = shownArea(this.shownOf, this.where.area);
     }
@@ -602,11 +560,7 @@ export class WorldView {
   setMe(id: number, x: number, y: number, speed: number, runMul = 2) {
     this.meId = id;
     this.panX = this.panY = 0;
-    this.mx = x;
-    this.my = y;
-    this.vox = this.voy = 0;
-    this.hist.clear();
-    this.lastAck = 0;
+    this.self.reset(x, y);
     this.speed = speed;
     this.runMul = runMul;
     this.where.area = this.areaIndex(x, y);
@@ -660,7 +614,7 @@ export class WorldView {
   }
   /** Re-render/re-collide with an unsaved draft (deny rules are kept). */
   previewMap(map: MapData) {
-    this.setMap(map, [...this.deny]);
+    this.setMap(map, [...this.grid.deny]);
   }
   /** Shows the label of the plugin sprite under the mouse (and its owner's name), or hides it; true when it changed. */
   private placeHoverTag(): boolean {
@@ -702,12 +656,8 @@ export class WorldView {
   }
   teleport(x: number, y: number) {
     this.panX = this.panY = 0;
-    this.mx = x;
-    this.my = y;
-    this.vox = this.voy = 0;
+    this.self.reset(x, y);
     this.dx = this.dy = 0;
-    this.lastAck = 0;
-    this.hist.clear();
     this.keys.clear();
     this.where.area = this.areaIndex(x, y);
     this.hooks.onArea(this.areaName(this.where.area), this.where.area);
@@ -747,23 +697,14 @@ export class WorldView {
   applySelf(m: SelfPosition) {
     this.mdir = m.d;
     if (m.tp) {
-      this.mx = m.x;
-      this.my = m.y;
-      this.lastLocal = performance.now();
+      this.self.restart(performance.now());
       this.teleport(m.x, m.y);
     } else {
       // a server-steered walk: my avatar runs on between these 15 Hz positions (advanceLocal), and the
       // gap to each one fades in instead of jumping there, so it moves smoothly and its followers too
       this.advanceLocal(performance.now());
       if (this.guided) this.guidedRun = m.r; // a follower runs while the person it follows runs
-      const ex = m.x - this.mx, ey = m.y - this.my;
-      this.mx = m.x;
-      this.my = m.y;
-      if (Math.hypot(ex, ey) > SNAP_PX) this.vox = this.voy = 0;
-      else {
-        this.vox -= ex;
-        this.voy -= ey;
-      }
+      this.self.correct(m.x, m.y);
       this.dx = m.dx;
       this.dy = m.dy;
       this.where.area = this.areaIndex(m.x, m.y);
@@ -773,7 +714,7 @@ export class WorldView {
 
   setDeny(deny: number[]) {
     this.dirty = true;
-    this.deny = new Set(deny);
+    this.grid.deny = new Set(deny);
     this.relabel();
   }
 
@@ -789,11 +730,11 @@ export class WorldView {
   }
 
   private areaLabel(ai: number) {
-    return areaTitle(this.map!.areas[ai], this.nameOf) + (this.deny.has(ai) ? " 🔒" : "");
+    return areaTitle(this.map!.areas[ai], this.nameOf) + (this.grid.deny.has(ai) ? " 🔒" : "");
   }
 
   private deskLabel(p: Prop, ai: number) {
-    return deskTitle(p, this.nameOf) + (this.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
+    return deskTitle(p, this.nameOf) + (this.grid.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
   }
 
   private relabel() {
@@ -832,7 +773,7 @@ export class WorldView {
   }
 
   private updateNearby() {
-    const best = nearestUsable(this.map?.props ?? [], this.objSpecs, this.mx, this.my, 20);
+    const best = nearestUsable(this.map?.props ?? [], this.objSpecs, this.self.x, this.self.y, 20);
     if (best !== this.nearby) { this.nearby = best; this.hooks.onNearby?.(best); }
   }
 
@@ -918,18 +859,7 @@ export class WorldView {
           e.ty = e.y = y;
           this.ents.set(id, e);
         } else {
-          // keep the picture continuous: the difference to the new truth fades out
-          const ox = e.tx + e.ox - x;
-          const oy = e.ty + e.oy - y;
-          if (Math.hypot(ox, oy) > 24) {
-            e.ox = 0;
-            e.oy = 0;
-          } else {
-            e.ox = ox;
-            e.oy = oy;
-          }
-          e.tx = x;
-          e.ty = y;
+          retarget(e, x, y); // keep the picture continuous: the difference to the new truth fades out
         }
         e.dir = d & 3;
         e.dx = dx;
@@ -941,39 +871,9 @@ export class WorldView {
     if (m.l) for (const id of m.l) if (id !== this.meId) this.removeEnt(id);
   }
 
-  /**
-   * Server reconciliation: compare with where we were when that input was sent. The whole error
-   * is applied, to the position and to every input still in flight (whose recorded positions
-   * share the same error; leaving them alone applied it again on each later ack and overshot).
-   * The avatar is drawn where it was and the offset fades, so jitter never shows as a step back.
-   */
+  /** Server reconciliation (motion.ts, LocalMotion.ack). */
   applyAck(a: Ack) {
-    let h = this.hist.get(a.s);
-    if (!h) {
-      // No record of this input: its acknowledgement arrived after newer ones already
-      // cleared it (a delayed message after a stall). The effects of every input up to this
-      // one are already in the live position, so compare against that — but only for acks
-      // newer than anything applied so far.
-      if (a.s <= this.lastAck) return;
-      h = { x: this.mx, y: this.my };
-    }
-    this.lastAck = Math.max(this.lastAck, a.s);
-    for (const k of this.hist.keys()) if (k <= a.s) this.hist.delete(k);
-    const ex = a.x - h.x;
-    const ey = a.y - h.y;
-    if (Math.abs(ex) <= 0.1 && Math.abs(ey) <= 0.1) return; // the server rounds to 0.1 px
-    this.mx += ex;
-    this.my += ey;
-    for (const p of this.hist.values()) {
-      p.x += ex;
-      p.y += ey;
-    }
-    if (Math.hypot(ex, ey) > SNAP_PX) this.vox = this.voy = 0;
-    else {
-      this.vox -= ex;
-      this.voy -= ey;
-    }
-    this.syncArea();
+    if (this.self.ack(a.s, a.x, a.y)) this.syncArea();
   }
 
   clearRemote() {
@@ -981,12 +881,17 @@ export class WorldView {
   }
 
   position() {
-    return { x: this.mx, y: this.my };
+    return { x: this.self.x, y: this.self.y };
   }
 
   /** Tests: the area index I am in (room access). */
   get mArea() {
     return this.where.area;
+  }
+
+  /** Tests: the areas I may not enter. */
+  get deny() {
+    return this.grid.deny;
   }
 
   /** Rebuilt with the bake, never touched per frame: the sort they join already runs as avatars move. */
@@ -1138,85 +1043,10 @@ export class WorldView {
     return this.map ? areaIndex(this.grid, x, y) : -1;
   }
 
-  private canStand(x: number, y: number) {
-    const m = this.map!;
-    const x0 = Math.floor((x - BOX_HW) / T), x1 = Math.floor((x + BOX_HW - 0.001) / T);
-    const y0 = Math.floor((y - BOX_HH) / T), y1 = Math.floor((y + BOX_HH - 0.001) / T);
-    for (let ty = y0; ty <= y1; ty++) {
-      for (let tx = x0; tx <= x1; tx++) {
-        if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h || this.solid[ty * m.w + tx]) return false;
-        const ai = this.grid.areaAt[ty * m.w + tx];
-        if (ai !== this.where.area && this.deny.has(ai)) return false;
-      }
-    }
-    return true;
-  }
-
-  private canStandStatic(x: number, y: number) {
-    const m = this.map!;
-    const x0 = Math.floor((x - BOX_HW) / T), x1 = Math.floor((x + BOX_HW - 0.001) / T);
-    const y0 = Math.floor((y - BOX_HH) / T), y1 = Math.floor((y + BOX_HH - 0.001) / T);
-    for (let ty = y0; ty <= y1; ty++)
-      for (let tx = x0; tx <= x1; tx++) if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h || this.solid[ty * m.w + tx]) return false;
-    return true;
-  }
-
-  /** Walks a remote entity along its last known direction (same rule as the server's shadow). */
-  private extrapolate(e: Ent, dt: number) {
-    const p = this.body;
-    p.x = e.tx;
-    p.y = e.ty;
-    this.moveBody(p, e.dx, e.dy, this.speed * (e.run ? this.runMul : 1) * dt, true);
-    e.tx = p.x;
-    e.ty = p.y;
-  }
-
-  private body = { x: 0, y: 0 };
-  /** world.move on the server: the same sub-steps and contact rule (see SUB_STEP_PX). */
-  private moveBody(p: { x: number; y: number }, dx: number, dy: number, dist: number, isStatic: boolean) {
-    let vx = dx, vy = dy;
-    if (vx && vy) { vx *= 0.70710678; vy *= 0.70710678; }
-    const n = Math.max(1, Math.ceil(dist / SUB_STEP_PX));
-    const step = dist / n;
-    for (let i = 0; i < n; i++) {
-      if (vx) {
-        const nx = p.x + vx * step;
-        if (this.stand(nx, p.y, isStatic)) p.x = nx;
-        else {
-          const c = contact(nx, vx, BOX_HW);
-          if ((vx > 0 ? c > p.x : c < p.x) && this.stand(c, p.y, isStatic)) p.x = c;
-        }
-      }
-      if (vy) {
-        const ny = p.y + vy * step;
-        if (this.stand(p.x, ny, isStatic)) p.y = ny;
-        else {
-          const c = contact(ny, vy, BOX_HH);
-          if ((vy > 0 ? c > p.y : c < p.y) && this.stand(p.x, c, isStatic)) p.y = c;
-        }
-      }
-      if (!isStatic) this.where.area = this.areaIndex(p.x, p.y); // room access follows the walk, as on the server
-    }
-  }
-
-  private stand(x: number, y: number, isStatic: boolean) {
-    return isStatic ? this.canStandStatic(x, y) : this.canStand(x, y);
-  }
-
   /** Integrates my own movement up to now (frames, and every input at the moment it is sent). */
   private advanceLocal(now: number) {
-    const dt = Math.min(Math.max(now - this.lastLocal, 0) / 1000, MAX_ADVANCE);
-    this.lastLocal = now;
-    if (!this.map || (!this.dx && !this.dy) || dt === 0) return;
-    const p = this.body;
-    p.x = this.mx;
-    p.y = this.my;
-    const was = this.where.area;
-    this.moveBody(p, this.dx, this.dy, this.speed * (this.fast ? this.runMul : 1) * dt, false);
-    this.mx = p.x;
-    this.my = p.y;
-    this.where.area = was;
-    this.syncArea();
+    const v = this.speed * (this.fast ? this.runMul : 1);
+    if (this.self.advance(now, this.map ? this.grid : null, this.dx, this.dy, v, this.where.area)) this.syncArea();
   }
 
   private areaName(ai: number) {
@@ -1226,7 +1056,7 @@ export class WorldView {
 
   private syncArea() {
     if (!this.map) return;
-    const ai = this.areaIndex(this.mx, this.my);
+    const ai = this.areaIndex(this.self.x, this.self.y);
     const change = this.where.enter(ai, this.shownOf);
     if (change === SAME) return;
     this.hooks.onArea(this.areaName(ai), ai);
@@ -1259,8 +1089,8 @@ export class WorldView {
   /** Puts the camera at this screen offset (the frame keeps it on the map and within reach). */
   private panTo(camX: number, camY: number) {
     const { width: W, height: H } = this.app.screen;
-    this.panX = (W / 2 - camX) / this.S - (this.mx + this.vox);
-    this.panY = (H / 2 - camY) / this.S - (this.my + this.voy);
+    this.panX = (W / 2 - camX) / this.S - (this.self.x + this.self.ox);
+    this.panY = (H / 2 - camY) / this.S - (this.self.y + this.self.oy);
     this.dirty = true;
   }
 
@@ -1338,19 +1168,8 @@ export class WorldView {
 
     this.advanceLocal(now);
     if (!this.guided && (this.dx || this.dy) && now - this.lastBeat > HEARTBEAT_MS) this.sendDir();
-    if (this.vox || this.voy) {
-      const k = 1 - Math.exp(-dt / SELF_TAU);
-      // fading the offset moves the drawn avatar by -b; only where that would go against the held
-      // direction is it capped, below walking speed, so the avatar slows but never steps back
-      const lim = SELF_BLEND_FRAC * this.speed * Math.SQRT1_2 * dt;
-      let bx = this.vox * k, by = this.voy * k;
-      if (this.dx && Math.sign(bx) === this.dx) bx = Math.sign(bx) * Math.min(Math.abs(bx), lim);
-      if (this.dy && Math.sign(by) === this.dy) by = Math.sign(by) * Math.min(Math.abs(by), lim);
-      this.vox -= bx;
-      this.voy -= by;
-      if (Math.hypot(this.vox, this.voy) < 0.02 || Math.hypot(this.vox, this.voy) > SNAP_PX) this.vox = this.voy = 0;
-    }
-    const rx = this.mx + this.vox, ry = this.my + this.voy; // where my avatar is drawn
+    this.self.blend(dt, this.dx, this.dy, this.speed);
+    const rx = this.self.x + this.self.ox, ry = this.self.y + this.self.oy; // where my avatar is drawn
     if (now - this.nearbyAt > 150) { this.nearbyAt = now; this.updateNearby(); }
 
     if ((this.dx || this.dy || this.guided) && (this.panX || this.panY || this.drag)) {
@@ -1390,12 +1209,7 @@ export class WorldView {
       if (isMe) {
         e.x = rx; e.y = ry; e.dir = this.mdir; e.moving = !!(this.dx || this.dy);
       } else {
-        if (e.dx || e.dy) this.extrapolate(e, dt);
-        const k = Math.exp(-dt / OFFSET_TAU);
-        e.ox *= k;
-        e.oy *= k;
-        e.x = e.tx + e.ox;
-        e.y = e.ty + e.oy;
+        stepRemote(e, this.grid, dt, this.speed * (e.run ? this.runMul : 1));
       }
       const sx = Math.round(e.x * S + this.camX);
       const sy = Math.round(e.y * S + this.camY);
