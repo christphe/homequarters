@@ -151,7 +151,7 @@ Automatic animations: `walk-<facing>` or `walk` while moving, `idle-<facing>` or
 | `hq.ui.slot(id, anchor, { label, icon, pressed, onClick })` | A button at `topbar`, `topright`, `bottombar`, `sidebar` or `minimap`. `label` 1-40 characters (default: the plugin's title); `icon` a PNG of `public/` shown instead of the label (the label stays its accessible name); `pressed` marks a toggle as on. Same `id` again: redrawn. |
 | `hq.ui.slot(id, "screen", { corner, dx, dy, content })` | A box on the map at `top-left`, `top-right`, `bottom-left` or `bottom-right`, `dx`/`dy` 0-200 px from it, at most 240 x 160 px, under Home Quarters' own bars and dialogs. |
 | `hq.ui.unslot(id)` | Removes a button or box. |
-| `hq.ui.modal({ title, size, place, onClose }, content)` | Opens the plugin's modal or redraws it. `size`: `small`, `medium` (default), `large`. `place`: `center` (default), `right`. One plugin modal at a time on a page. |
+| `hq.ui.modal({ title, size, place, onClose }, content)` | Opens the plugin's modal or redraws it. `size`: `small`, `medium` (default), `large`, `full` (the screen less 12 px each side; the modal's content fills its height). `place`: `center` (default), `right`. One plugin modal at a time on a page. |
 | `hq.ui.close()` | Closes it. `onClose` runs whenever it closes, whoever closed it. |
 
 Content elements (a `content` array, at most 64 elements, nested at most 4 deep):
@@ -168,14 +168,14 @@ Content elements (a `content` array, at most 64 elements, nested at most 4 deep)
 | `hq.ui.color({ label, value, onChange })` | A colour picker; `value` is `"#rrggbb"`. `onChange(colour)` gets the colour (lower case) while it is being chosen, at most every 250 ms, and the final one at once. `hideLabel: true` keeps the label for screen readers only (also on `field`). |
 | `hq.ui.field({ label, value, maxLength, placeholder, onChange })` | One line of text; `maxLength` 1-200 (default 200), `placeholder` up to 40 characters. `onChange(text)` runs on Enter or when the field loses focus, only if it changed. |
 | `hq.ui.number({ label, value, min, max, onChange })` | A whole number, `min` <= `value` <= `max` (integers within ±1,000,000). `onChange(value)` runs on Enter or when the field loses focus, clamped to the range, and only if it changed. |
-| `hq.ui.view({ view, label, height, onMessage })` | A manifest view in a sandboxed iframe; at most one per modal. `view` names a `views` entry; `label` 1-40 characters, the iframe's title; `height` `small`, `medium` (default) or `large`; `onMessage(msg)` gets what the view sends. Redrawing the modal with the same view keeps the iframe. |
+| `hq.ui.view({ view, label, height, onMessage })` | A manifest view in a sandboxed iframe; at most one per modal. `view` names a `views` entry; `label` 1-40 characters, the iframe's title; `height` `small`, `medium` (default), `large`, or `full` (the height a `full` modal has left; in another modal it falls back to a fixed height); `onMessage(msg)` gets what the view sends. Redrawing the modal with the same view keeps the iframe. |
 | `hq.ui.post(msg)` | Sends to the open view; JSON of at most 4096 bytes. |
 
 At most 8 slots per plugin and 256 live callbacks; texts are plain text.
 
 ### Views
 
-The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, forms, popups or top navigation) with the hidden iframe's Content Security Policy: the plugin's folder and its `externalHosts`, nothing else. Its one global is `hqView`; it cannot call `hq`. Types: [`plugins/sdk/view.d.ts`](../plugins/sdk/view.d.ts).
+The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, forms, popups or top navigation) with the hidden iframe's Content Security Policy: the plugin's folder and its `externalHosts`, nothing else, plus images (`img-src`) from `/plugins/<name>/assets/shared/` of each plugin running when the view starts. Its one global is `hqView`; it cannot call `hq`. Types: [`plugins/sdk/view.d.ts`](../plugins/sdk/view.d.ts).
 
 | Function | Meaning |
 | --- | --- |

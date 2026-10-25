@@ -24,8 +24,9 @@ export default defineConfig({
       "/privacy": "http://127.0.0.1:8080",
       "/plugins": "http://127.0.0.1:8080",
       "/ws": { target: "ws://127.0.0.1:8080", ws: true },
-      // the dev LiveKit, for pages served over https (dev.sh --lan gives them wss://<address>:5173/livekit)
-      "/livekit": { target: "http://127.0.0.1:7880", ws: true, rewrite: (p) => p.replace(/^\/livekit/, "") },
+      // the dev LiveKit's signalling (/rtc only: not its admin API), for pages served over https
+      // (dev.sh --lan gives them wss://<address>:5173/livekit)
+      "/livekit/rtc": { target: "http://127.0.0.1:7880", ws: true, rewrite: (p) => p.replace(/^\/livekit/, "") },
     },
   },
   build: { target: "es2022", sourcemap: false, chunkSizeWarningLimit: 900 },

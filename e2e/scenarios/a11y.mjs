@@ -198,6 +198,52 @@ export async function run(ctx) {
     await chessOn(false);
     await setChessboard(false);
 
+    // the Cards window (bundled hq-cards): a deck in the same place, a free table chosen, the admin seated
+    // and dealt 7 cards; the page and the table view's own document are audited
+    const cardsOn = (enabled) => fetch(API + "/api/admin/plugins/hq-cards", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
+    const setDeck = async (on) => {
+      const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
+      m.props = m.props.filter((x) => x.t !== "hq-cards/deck");
+      if (on) m.props.push({ t: "hq-cards/deck", x: 13, y: 22, w: 1, h: 1 });
+      await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
+    };
+    await cardsOn(true);
+    await setDeck(true);
+    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "hq-cards/deck"), { what: "nearby deck" });
+    const CARDS = '.modal.plugin-modal[aria-label="Cards"]';
+    // the plugin has just been turned on: its page code may still be starting, so X is pressed until the window opens
+    let tries = 0;
+    await waitFor(async () => {
+      if (await p.$(CARDS)) return true;
+      if (tries++ % 20 === 0) await p.keyboard.press("x");
+      return false;
+    }, { what: "cards window" });
+    // a control of the window, or (with a game) of the table view's panel
+    const cardsButton = async (text) => {
+      if (await p.evaluate((sel, text) => { const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text)) return true;
+      const f = await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame();
+      return !!f && f.evaluate((text) => { const b = [...document.querySelectorAll(".controls button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, text);
+    };
+    // a table left over by an earlier scenario on the same tile keeps its game: start it afresh
+    await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
+    // on a failure, say what the window showed (a CI runner cannot be watched)
+    const cardsWindow = async () => ({
+      window: await p.evaluate((sel) => ({ buttons: [...document.querySelectorAll(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS),
+      panel: await (await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame())?.evaluate(() => [...document.querySelectorAll(".controls button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : ""))).catch(() => null),
+    });
+    await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
+    await waitFor(() => cardsButton("Deal"), { what: "Deal" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
+    const cardsView = await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" });
+    await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
+    await audit(p, "the Cards window with a dealt free table");
+    await cardsView.evaluate(AXE);
+    const inCards = await cardsView.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
+    check("axe: no WCAG A/AA or best-practice violations inside the card table view", inCards.length === 0, inCards.join(","));
+    await p.keyboard.press("Escape");
+    await waitFor(async () => !(await p.$(".modal")), { what: "cards closed" });
+    await cardsOn(false);
+    await setDeck(false);
+
     // a free desk: its Take button and the confirmation (Escape leaves the desk free)
     // earlier scenarios may have assigned some desks: take the first free one in the desk area
     const free = await p.evaluate(() => window.__hq.view.map.props.find((d) => d.t === "desk" && !d.assign && d.y < 14));

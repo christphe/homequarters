@@ -1,0 +1,8 @@
+{
+  "name": "hq-card-pouilleux",
+  "title": "Old Maid",
+  "version": "1.0.0",
+  "description": "Old Maid, the French way, at the Cards table.",
+  "longDescription": "Adds Old Maid to the game list of the Cards table: it needs the Cards plugin turned on. The deck is the standard one without the jacks of clubs, diamonds and hearts. At a card deck, choose Old Maid, take a seat and deal all the cards. Players discard their pairs on the Pairs pile themselves, then in turn offer their hand to the next player, who draws one card from it. Nothing is checked. The one left with the jack of spades loses: Count says who keeps it.",
+  "server": "main.ts"
+}

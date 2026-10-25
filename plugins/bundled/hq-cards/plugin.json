@@ -1,0 +1,11 @@
+{
+  "name": "hq-cards",
+  "title": "Cards",
+  "version": "1.0.0",
+  "description": "A card table members play any card game on while others watch.",
+  "longDescription": "Place a card deck from the map editor (on a table, for instance), walk up to it and press X. Choose a game, or the free table where anything goes: take a seat, deal, shuffle, put cards anywhere on the felt or on piles, give a card, offer your hand to draw from, look through a pile. Everything a player does is written in the table's log, as at a real table. Games such as Old Maid and Last Card are plugins of their own that add to the table. Each deck keeps its game and its players until somebody resets it: a seated player who has the table open, or anybody when no seated player has it open.",
+  "server": "main.ts",
+  "client": "client.ts",
+  "objects": [{ "kind": "deck", "label": "Card deck", "size": [1, 1], "sprite": "deck.png" }],
+  "views": { "table": "view.ts" }
+}

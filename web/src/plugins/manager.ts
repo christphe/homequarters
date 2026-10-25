@@ -25,6 +25,7 @@ export class PluginManager {
   /** The plugin whose modal is open: one plugin modal at a time on the page. */
   private modalOwner = "";
   private gen = 0;
+  private all: string[] = []; // every running plugin's name, browser code or not
   /** Why each plugin last stopped on this page (tests and diagnostics). */
   readonly stopReasons = new Map<string, string>();
 
@@ -98,6 +99,7 @@ export class PluginManager {
       return; // offline: the next hello or plgs tries again
     }
     if (gen !== this.gen) return; // a newer refresh won
+    this.all = list.map((e) => e.name);
     this.setObjects(list);
     const want = new Map(list.filter((e) => e.client).map((e) => [e.name, e]));
     for (const [name, h] of this.hosts) {
@@ -119,6 +121,7 @@ export class PluginManager {
           if (this.hosts.get(name) === h) this.hosts.delete(name);
           this.layer.providerStopped(name);
         },
+        running: () => this.all,
       }, e.views ?? []);
       this.hosts.set(e.name, h);
       h.start();
