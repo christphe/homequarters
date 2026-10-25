@@ -1,7 +1,7 @@
 // Messages between hq-chess's server code, its page code and its board view. Types only, plus small constants.
-import type { Seat, Side } from "./game";
+import type { Last, Seat, Side } from "./game";
 
-export type { Seat, Side };
+export type { Last, Seat, Side };
 
 export type ToServer =
   | { t: "hello" }
@@ -10,12 +10,15 @@ export type ToServer =
   | { t: "place"; x: number; y: number; piece: string; to: number }
   | { t: "stash"; x: number; y: number; from: number }
   | { t: "reset"; x: number; y: number }
+  | { t: "undo"; x: number; y: number } // the last action, by a present seated player
   | { t: "close"; x: number; y: number }
   | { t: "opened"; x: number; y: number }; // the window of an open was drawn
 
 export type SeatState = Seat & { here: boolean };
 // r: the reserve (captured pieces, in capture order); at most 30 letters, so a state stays far under 4 KB.
-export interface BoardState { p: string; w: SeatState | null; b: SeatState | null; r: string }
+// u: an undo is available; m: the last action's squares (the highlight), null when none;
+// undone: the side whose player undid the last action, until the next action (the view announces it).
+export interface BoardState { p: string; w: SeatState | null; b: SeatState | null; r: string; u: boolean; m: Last | null; undone: Side | null }
 
 export type ToClient =
   | { t: "open" | "state"; x: number; y: number; s: BoardState }

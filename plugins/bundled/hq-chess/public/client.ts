@@ -1,5 +1,5 @@
 // Chess plugin, browser side (the hidden iframe). It draws the Chess window when the server opens a board
-// (X next to a chessboard): the seat buttons, Reset and the board view (public/board.ts), and relays
+// (X next to a chessboard), full screen: the seat buttons, Undo, Reset and the board view (public/board.ts), and relays
 // between the view and the server. It also pins the playing badge over the head of every present seated
 // player (public/badges.png, white or black).
 import { canReset, PROMOTIONS, type Board, type Side } from "./game";
@@ -45,15 +45,20 @@ function draw(): void {
   // who has the board open, as the server says it: the seated players marked here, and me (my window is open)
   const present = new Set<number>([me]);
   for (const seat of [s.w, s.b]) if (seat?.here) present.add(seat.id);
-  // medium view: the whole window (seats, Reset, the board at 2x with its strips, Close) fits a 1280x720 screen
-  hq.ui.modal({ title: "Chess", size: "medium", onClose: closed }, [
+  // the whole screen: the buttons on top, then the view, which takes the height left and scales the board
+  // to it (public/board.ts); on a short screen the board keeps 2x and the view scrolls
+  hq.ui.modal({ title: "Chess", size: "full", onClose: closed }, [
+    // one row of buttons (the seats, then Undo and Reset) and the seat holders' line: at 1280x720 the
+    // height left lets the board take 3x
     hq.ui.row([
       seatButton(s, "w", mine),
       seatButton(s, "b", mine),
+      // the last action, whoever made it: for a seated player whose window is open (mine is)
+      hq.ui.button({ label: "Undo", disabled: !(s.u && mine !== null), onClick: () => send({ t: "undo", x, y }) }),
+      hq.ui.button({ label: "Reset", disabled: !canReset(board, me, present), onClick: () => send({ t: "reset", x, y }) }),
     ]),
     hq.ui.text(holders(s), { muted: true }),
-    hq.ui.row([hq.ui.button({ label: "Reset", disabled: !canReset(board, me, present), onClick: () => send({ t: "reset", x, y }) })]),
-    hq.ui.view({ view: "board", label: "Chessboard", height: "medium", onMessage: fromView }),
+    hq.ui.view({ view: "board", label: "Chessboard", height: "full", onMessage: fromView }),
   ]);
   const toView: ViewIn = { s, me, id: `${x},${y}` };
   hq.ui.post(toView);

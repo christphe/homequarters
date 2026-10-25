@@ -4,18 +4,20 @@
 // on its last rank may be promoted. Each board's position, reserve and players are saved in hq.kv under
 // "board:<x>,<y>" (its tile), loaded on first use and written on every change. Who has a board's window
 // open (its viewers) lives in memory only: a seated player is "here" while they are a viewer. The rules of
-// seats, moves, the reserve and reset are in public/game.ts;
+// seats, moves, the reserve, the undo (the last action, one level: "u" and "m" in the saved board) and reset
+// are in public/game.ts;
 // the browser side is public/client.ts (the window) and public/board.ts (the board view).
 //
 // Every change is collected and sent in update(), to the board's viewers (state) and to every member on
 // their own (the list of present seated players, for the badge over their heads); a send refused by the budget is kept
 // for the next update.
 
-import { canReset, move, parseBoard, place, reset, seatOf, take, toReserve, type Board, type Side } from "./public/game";
+import { canReset, move, parseBoard, place, reset, seatOf, take, toReserve, undo, type Board, type Side } from "./public/game";
 import type { BoardState, SeatState, ToClient, ToServer } from "./public/messages";
 
 const boards = new Map<string, Board>(); // loaded on first use
 const viewers = new Map<string, Set<number>>(); // board key -> members with its window open
+const undone = new Map<string, Side>(); // board key -> the side that undid its last action, until its next change
 const toSend = new Map<number, Set<string>>(); // member -> boards whose state they must be sent
 const toOpen = new Map<number, string>(); // member -> the board their window must open on (a refused send)
 // member -> the board an open was sent for, until their page confirms it drew the window ("opened"). A page
@@ -45,7 +47,7 @@ const seen = (k: string) => viewers.get(k) ?? new Set<number>();
 function stateOf(k: string): BoardState {
   const b = board(k), here = seen(k);
   const seat = (s: Board["w"]): SeatState | null => (s ? { id: s.id, name: s.name, here: here.has(s.id) } : null);
-  return { p: b.p, w: seat(b.w), b: seat(b.b), r: b.r };
+  return { p: b.p, w: seat(b.w), b: seat(b.b), r: b.r, u: !!b.u, m: b.m ?? null, undone: undone.get(k) ?? null };
 }
 
 function coords(k: string): { x: number; y: number } {
@@ -66,7 +68,9 @@ function changed(k: string): void {
   playingDirty = true;
 }
 
-function save(k: string): void {
+function save(k: string, undoneBy: Side | null = null): void {
+  if (undoneBy) undone.set(k, undoneBy);
+  else undone.delete(k);
   try {
     hq.kv.set(k, JSON.stringify(board(k)));
   } catch {
@@ -182,6 +186,12 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
       if (ok) save(k);
       // refused: the player's view already shows the action (optimistic), so it gets the real position again
       else if (seatOf(b, p.id) !== null) queue(p.id, k);
+      return;
+    }
+    case "undo": {
+      const side = seatOf(b, p.id);
+      if (side !== null && undo(b, p.id, seen(k))) save(k, side);
+      else queue(p.id, k); // refused: the sender's window gets the real state again
       return;
     }
     case "reset":

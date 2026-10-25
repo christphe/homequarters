@@ -10,8 +10,10 @@
 // strip (outside the canvas it goes back), or click it, then click where it goes. A pawn of yours dropped
 // on its last rank opens a choice of queen, rook, bishop or knight (Escape or a click elsewhere keeps the
 // pawn). Keyboard: the arrows move a cursor over the squares and into the strips, Enter or Space picks up
-// and drops, Escape cancels; a live region says what is under the cursor and every change.
-import { START, changeBetween, move, place, seatOf, sideOf, squareName, toReserve, PIECE_NAMES, PROMOTIONS, type Board, type Position, type Side } from "./game";
+// and drops, Escape cancels; a live region says what is under the cursor and every change. The last
+// action's squares are tinted (a move: where it started and where it went; a place: where it went; a stash:
+// where it started). The canvas takes the largest whole scale its view allows (the window is full screen).
+import { START, changeBetween, move, place, seatOf, sideOf, squareName, toReserve, PIECE_NAMES, PROMOTIONS, type Board, type Last, type Position, type Side } from "./game";
 import type { Promotion, ViewIn, ViewOut } from "./messages";
 import { SMALL_H, SMALL_W, paintPiece } from "./pieces";
 
@@ -29,12 +31,16 @@ const COLOURS = {
   bg: "#3a2a24",
   strip: "#4a3830",
   choice: "#f1e2c0",
+  lastLight: "#cbd88a", // the last action's squares, on a light and on a dark square
+  lastDark: "#8f9a48",
 };
 
 let boardId = ""; // which board the window shows: the same view is reused for another one
 let synced = false; // a first state of this board came: later changes are announced
 let shown: Position = { p: START, r: "" }; // what the canvas draws: the server's position, or mine until it confirms it
 let server: Position = { p: START, r: "" }; // the last position the server sent
+let last: Last | null = null; // the squares tinted: the last action, the server's or my own until it confirms it
+let serverLast: Last | null = null;
 let unconfirmed = 0; // timer: my action was not answered by a state yet
 const CONFIRM_MS = 1000; // an action lost on the way (a budget, a full queue) is undone after this
 let me = 0;
@@ -218,6 +224,7 @@ function draw(): void {
     for (let col = 0; col < 8; col++) {
       const sq = squareAt(col, row);
       ctx.fillStyle = (row + col) % 2 === 0 ? COLOURS.light : COLOURS.dark;
+      if (last && (sq === last.from || sq === last.to)) ctx.fillStyle = (row + col) % 2 === 0 ? COLOURS.lastLight : COLOURS.lastDark;
       if (held && held.src.k === "sq" && sq === held.src.sq) ctx.fillStyle = COLOURS.from;
       ctx.fillRect(col * SQ, by + row * SQ, SQ, SQ);
     }
@@ -297,12 +304,14 @@ function act(out: ViewOut): void {
   if (!ok) return;
   const before = shown;
   shown = { p: b.p, r: b.r };
+  last = b.m ?? null;
   hqView.send(out);
   // the server answers every action of mine with a state, applied or refused; without one, it was lost
   clearTimeout(unconfirmed);
   unconfirmed = setTimeout(() => {
     if (shown.p === server.p && shown.r === server.r) return;
     shown = server;
+    last = serverLast;
     say("Move not received: the board shows the last position again");
     draw();
   }, CONFIRM_MS);
@@ -500,6 +509,12 @@ canvas.addEventListener("blur", () => {
 
 const validPos = (s: { p?: unknown; r?: unknown }) =>
   typeof s.p === "string" && s.p.length === 64 && typeof s.r === "string" && s.r.length <= 30;
+const squareOrNone = (v: unknown) => v === undefined || (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 63);
+const lastOf = (m: unknown): Last | null => {
+  if (typeof m !== "object" || m === null) return null;
+  const { from, to } = m as Last;
+  return squareOrNone(from) && squareOrNone(to) ? { from, to } : null;
+};
 
 hqView.onMessage<ViewIn>((m) => {
   if (!m || typeof m !== "object" || !m.s || !validPos(m.s) || typeof m.id !== "string") return;
@@ -510,6 +525,7 @@ hqView.onMessage<ViewIn>((m) => {
     held = null;
     drag = null;
     chooser = null;
+    last = serverLast = null;
     clearTimeout(unconfirmed);
   }
   const before = shown;
@@ -524,8 +540,11 @@ hqView.onMessage<ViewIn>((m) => {
   }
   clearTimeout(unconfirmed);
   shown = server = { p: s.p, r: s.r };
-  // somebody else's action (mine was said when I made it, and the server's copy matches what I show)
-  if (synced) {
+  last = serverLast = lastOf(s.m);
+  // somebody else's action (mine was said when I made it, and the server's copy matches what I show), or an undo
+  const moved = before.p !== shown.p || before.r !== shown.r;
+  if (synced && moved && (s.undone === "w" || s.undone === "b")) say(`${sideName(s.undone)} undid the last move`);
+  else if (synced) {
     const text = changeBetween(before, shown);
     if (text) say(text);
   }
