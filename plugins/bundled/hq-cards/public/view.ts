@@ -47,6 +47,10 @@ let held: { src: Src; c: number; up: boolean; by: "drag" | "key"; x: number; y: 
 let look: { pile: string; cards: number[]; changed: boolean; grab: number | null } | null = null;
 let picking = false;
 let cursor = 0; // the keyboard's target, an index in targets()
+let version = 0; // counts the states received: the buttons under the canvas are rebuilt for each
+// a card just dropped: drawn where it was dropped (not back where it came from) until the server's state comes
+let dropped: { src: Src; c: number; up: boolean; x: number; y: number } | null = null;
+let droppedTimer = 0;
 let cursorShown = false;
 
 const style = document.createElement("style");
@@ -58,7 +62,7 @@ style.textContent = `
   .bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: 28px; }
   .bar button { font: inherit; padding: 3px 10px; border-radius: 4px; border: 1px solid #1a1526; background: #f4efe2; color: #1a1526; cursor: pointer; }
   .bar button:focus-visible { outline: 3px solid #3b7dd8; outline-offset: 1px; }
-  .log { width: min(100%, 640px); max-height: 120px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; border-radius: 4px; }
+  .log { box-sizing: border-box; width: min(100%, 640px); max-height: 120px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; border-radius: 4px; }
   .log li { margin: 1px 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
@@ -212,8 +216,14 @@ function send(m: Act): void {
 function drop(dest: Dest | null): void {
   const h = held;
   held = null;
+  if (h?.by === "drag") selected = null; // the card was moved: nothing stays selected (another would slide into its place)
   if (!h || !dest || !st || mySeat === null) return draw();
   const { src } = h;
+  if (h.by === "drag" && h.moved && dest.k !== "hand") {
+    dropped = { src, c: h.c, up: h.up, x: h.x, y: h.y };
+    clearTimeout(droppedTimer);
+    droppedTimer = setTimeout(() => ((dropped = null), draw()), 1500); // a refused move goes back
+  }
   if (dest.k === "hand" && dest.seat === mySeat) {
     if (src.k === "pile") {
       if (allowed("draw")) send({ t: "draw", pile: src.id });
@@ -285,7 +295,7 @@ function draw(): void {
   }
   const targets = targetList();
   const cur = cursorShown ? targets[cursor] ?? null : null;
-  const hide = held && held.by === "drag" && held.moved ? held.src : null;
+  const hide = held && held.by === "drag" && held.moved ? held.src : dropped?.src ?? null;
 
   // piles: their slot, their top card, their name and count
   for (const p of t.piles) {
@@ -330,12 +340,16 @@ function draw(): void {
       const away = !st!.here.includes(seat.id);
       text(short(seat.name, sp.side === "top" ? 14 : 8) + (away ? " (away)" : ""), sp.x, y0 + 5, away ? C.muted : C.text);
       const n = t.hands[sp.seat].length;
-      const shown = Math.min(n, 6);
+      // the side columns are narrow: there the count goes under the backs and the tags are short
+      const side = sp.side !== "top";
+      const shown = Math.min(n, side ? 5 : 6);
       for (let i = 0; i < shown; i++) drawCard(0, false, sp.x - (shown * 5) / 2 + i * 5 - 2, y0 + 10, 10);
-      text(String(n), sp.x + (shown * 5) / 2 + 8, y0 + 17, C.muted);
-      const tags: string[] = [];
-      if (t.offer?.from === sp.seat) tags.push(t.offer.to === mySeat ? "offers you a pick" : `offers ${short(seatName(t.offer.to), 8)}`);
-      if (tags.length) text(tags.join(" · "), sp.x, y0 + SEAT_H, C.select);
+      if (side) text(String(n), sp.x, y0 + 28, C.muted);
+      else text(String(n), sp.x + (shown * 5) / 2 + 8, y0 + 17, C.muted);
+      if (t.offer?.from === sp.seat) {
+        const tag = t.offer.to === mySeat ? (side ? "offers you" : "offers you a pick") : side ? "offering" : `offers ${short(seatName(t.offer.to), 8)}`;
+        text(tag, sp.x, side ? y0 - 2 : y0 + SEAT_H, C.select);
+      }
     }
     if (same(selected, s)) outline(x0, y0, SEAT_W, SEAT_H - 2, C.select);
     if (same(cur, s)) outline(x0 - 1, y0 - 1, SEAT_W + 2, SEAT_H, C.cursor);
@@ -357,8 +371,9 @@ function draw(): void {
   // overlays: looking through a pile, picking from an offered hand
   if (look) drawRow(look.cards.map((c) => ({ c: c & ~UP, up: true })), "look", look.grab);
   else if (picking && t.offer && t.offer.to === mySeat) drawRow(t.hands[t.offer.from].map((c) => ({ c, up: false })), "pick", null);
-  // the card being dragged
+  // the card being dragged, or just dropped
   if (held && held.by === "drag" && held.moved) drawCard(held.c, held.up, held.x - CARD_W / 2, held.y - CARD_H / 2);
+  else if (dropped) drawCard(dropped.c, dropped.up, dropped.x - CARD_W / 2, dropped.y - CARD_H / 2);
   publish();
 }
 
@@ -403,6 +418,14 @@ function publish(): void {
 
 // ---- the buttons under the canvas, for what is selected
 
+/** Runs fn on the loose card selected now; clear: it leaves the felt, so nothing stays selected. */
+function onLoose(fn: (c: number) => void, clear: boolean): void {
+  if (selected?.k !== "loose") return;
+  fn(selected.c);
+  if (clear) selected = null;
+  draw();
+}
+
 function button(label: string, fn: () => void): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
@@ -432,24 +455,30 @@ function toolbar(): void {
         if (allowed("createPile") && p.mine && !p.cards.length) out.push(button(`Remove ${short(p.name, 12)}`, () => send({ t: "delPile", pile: id })));
       }
     } else if (selected.k === "loose") {
-      const c = selected.c;
       if (allowed("place")) {
-        out.push(button("Turn it over", () => send({ t: "flip", from: { k: "loose", c } })));
-        out.push(button("Take it back", () => send({ t: "place", from: { k: "loose", c }, to: { k: "hand", seat: mySeat! }, up: false })));
+        // each button reads the selection and the table when pressed, never as they were when it was made
+        out.push(button("Turn it over", () => onLoose((c) => send({ t: "flip", from: { k: "loose", c } }), false)));
+        out.push(button("Take it back", () => onLoose((c) => send({ t: "place", from: { k: "loose", c }, to: { k: "hand", seat: mySeat! }, up: false }), true)));
       }
     } else if (selected.k === "hand") {
-      const i = selected.i;
       if (allowed("place")) {
-        out.push(button("Put it on the table face up", () => send({ t: "place", from: { k: "hand", i }, to: { k: "felt", at: freeSpot(t) }, up: true })));
-        out.push(button("Put it on the table face down", () => send({ t: "place", from: { k: "hand", i }, to: { k: "felt", at: freeSpot(t) }, up: false })));
+        const put = (up: boolean) => () => {
+          if (selected?.k !== "hand" || !st || mySeat === null) return;
+          send({ t: "place", from: { k: "hand", i: selected.i }, to: { k: "felt", at: freeSpot(st.t) }, up });
+          selected = null; // the card left the hand
+          draw();
+        };
+        out.push(button("Put it on the table face up", put(true)));
+        out.push(button("Put it on the table face down", put(false)));
       }
     } else if (selected.k === "seat") {
       const s = selected.seat;
       if (t.offer?.from === s && t.offer.to === mySeat) out.push(button(`Draw a card from ${short(seatName(s), 12)}`, () => ((picking = true), draw())));
     }
   }
-  const key = out.map((b) => b.textContent).join("|");
-  if (key === barKey) return; // keep the focus on a button that stays
+  // rebuilt when what it acts on may have changed; kept otherwise, so the focus stays on its button
+  const key = `${version}|${JSON.stringify(selected)}|${out.map((b) => b.textContent).join("|")}`;
+  if (key === barKey) return;
   barKey = key;
   bar.replaceChildren(...out);
 }
@@ -704,8 +733,9 @@ canvas.addEventListener("keydown", (e) => {
 // ---- size
 
 function fit(): void {
+  // the table and the buttons under it fit the view: its width, and its height less the bar (the log scrolls below)
   const w = window.innerWidth - 12;
-  const k = w / VIEW_W;
+  const k = Math.min(w / VIEW_W, (window.innerHeight - 48) / VIEW_H);
   // whole and half steps: at 1x a 20 x 28 card is too small to read in a large window (about 700 px wide)
   const next = k >= 1 ? Math.max(1, Math.min(4, Math.floor(k * 2) / 2)) : Math.max(0.5, k);
   if (next !== scale) {
@@ -744,6 +774,8 @@ hqView.onMessage<ViewIn>((m) => {
     loadSheet();
   } else if (m.t === "state") {
     st = m.s;
+    version++;
+    dropped = null;
     me = m.me;
     const i = st.t.seats.findIndex((s) => s?.id === me);
     mySeat = i < 0 ? null : i;

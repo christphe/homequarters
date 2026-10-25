@@ -4,7 +4,8 @@
 //   table-*.png       the deck on the table at the office's zoom
 //   free.png          the Cards window: a free table dealt to three, a card on the felt, a pile made
 //   look.png          looking through the Stock (its cards in a row)
-//   pick.png          Bo picking from the hand Ann offers him
+//   free-view.png     the table view alone, as a player sees it while playing
+//   pick.png          Bo picking from the hand Ann offers him (the view)
 //   oldmaid.png       an Old Maid table after the deal
 //   lastcard.png      a Last Card table after the deal and a card played
 //   sheet.png         the window frames, tiled (with ffmpeg)
@@ -27,6 +28,13 @@ export async function run(ctx) {
   const window = async (u, name) => {
     const box = await (await u.page.$(MODAL)).boundingBox();
     await u.page.screenshot({ path: path.join(dir, name + ".png"), clip: box });
+  };
+  // the table view alone, scrolled into sight (what a player looks at while playing)
+  const view = async (u, name) => {
+    const el = await u.page.$(MODAL + " iframe.plugin-view");
+    await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await sleep(200);
+    await el.screenshot({ path: path.join(dir, name + ".png") });
   };
   const viewClick = async (u, p) => {
     const f = await viewFrame(u);
@@ -75,6 +83,7 @@ export async function run(ctx) {
     await drag(ann, await handAt(ann, 2), feltAt(110, 120));
     await sleep(500);
     await window(ann, "free");
+    await view(ann, "free-view");
     // looking through the Stock
     await viewClick(ann, pileAt([160, 90]));
     await viewButton(ann, "Look through Stock");
@@ -87,7 +96,7 @@ export async function run(ctx) {
     const spot = seatSpots(8, 1).find((s) => s.seat === 0);
     await viewClick(bo, spot);
     await sleep(600);
-    await window(bo, "pick");
+    await view(bo, "pick");
     await viewButton(bo, "Cancel");
 
     // Old Maid after the deal
@@ -106,7 +115,8 @@ export async function run(ctx) {
     await sleep(600);
     await window(ann, "lastcard");
 
-    // the deck on the table, from the administrator's page, windows hidden
+    // the deck on the table, from the administrator's page, windows hidden, nobody in front of it
+    await Promise.all([walkTo(ann, 176, feet + 40), walkTo(bo, 240, feet + 40), walkTo(adm, 208, feet + 56)]);
     for (const u of [ann, bo, adm]) {
       await u.page.setViewport({ width: 960, height: 600 });
       await u.page.addStyleTag({ content: HUD + NO_MODAL });

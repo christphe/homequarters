@@ -214,7 +214,7 @@ export async function run(ctx) {
     // the plugin has just been turned on: its page code may still be starting, so X is pressed until the window opens
     let tries = 0;
     await waitFor(async () => {
-      if (await p.$(CARDS + " iframe.plugin-view")) return true;
+      if (await p.$(CARDS)) return true;
       if (tries++ % 20 === 0) await p.keyboard.press("x");
       return false;
     }, { what: "cards window" });
@@ -223,7 +223,7 @@ export async function run(ctx) {
     await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
     await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" });
     await waitFor(() => cardsButton("Deal 7 each"), { what: "Deal 7 each" });
-    const cardsView = await (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]')).contentFrame();
+    const cardsView = await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" });
     await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" });
     await audit(p, "the Cards window with a dealt free table");
     await cardsView.evaluate(AXE);

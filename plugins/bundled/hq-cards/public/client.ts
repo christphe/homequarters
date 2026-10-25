@@ -3,6 +3,7 @@
 // actions (shuffle, deal, gather, count, a new pile, offering my hand) and Reset, above the table view
 // (public/view.ts). It relays between the view and the server, adding the table's tile to each action.
 import { allows, type ClientGame } from "./games.ts";
+import { labels } from "./labels.ts";
 import { canReset, DEAL_MAX } from "./table.ts";
 import type { Act, LogEntry, TableState, ToClient, ToServer, ViewIn } from "./messages.ts";
 
@@ -24,6 +25,7 @@ const toView = { game: false, state: false, log: false };
 let viewFor = "";
 let renewing = false;
 let renewals = 0; // fresh views asked by a view that could not load a game's sheet, for this window
+let viewShown = false; // the last draw had the view (a new one must be sent everything)
 
 const send = (m: ToServer) => hq.send(m);
 const short = (name: string) => {
@@ -55,25 +57,30 @@ function seatButtons(s: TableState, mine: number | null): HQ.UINode[] {
   return s.t.seats.map((seat, i) => {
     if (seat) {
       const away = !s.here.includes(seat.id);
-      return hq.ui.button({ label: `Seat ${i + 1}: ${short(seat.name)}${away ? " (away)" : ""}`, pressed: seat.id === me, disabled: true });
+      return hq.ui.button({ label: labels.seat(i, seat.name, away), pressed: seat.id === me, disabled: true });
     }
-    return hq.ui.button({ label: `Seat ${i + 1}`, disabled: mine !== null, onClick: () => act({ t: "seat", seat: i }) });
+    return hq.ui.button({ label: labels.freeSeat(i), disabled: mine !== null, onClick: () => act({ t: "seat", seat: i }) });
   });
 }
 
 /** Who holds each seat, as a line of text: disabled seat buttons are out of the Tab order, this line is not. */
 function holders(s: TableState): string {
-  const taken = s.t.seats.flatMap((seat, i) => (seat ? [`${i + 1}: ${short(seat.name)} (${s.here.includes(seat.id) ? "here" : "away"})`] : []));
+  const taken = s.t.seats.flatMap((seat, i) => (seat ? [`${i + 1} ${short(seat.name)} (${s.here.includes(seat.id) ? "here" : "away"})`] : []));
   const free = s.t.seats.filter((x) => !x).length;
-  return `Seats ${taken.join(" · ") || "none taken"}${free ? ` · ${free} free` : ""}`;
+  const freeText = free === 1 ? "1 seat free" : `${free} seats free`;
+  if (!taken.length) return `No seat taken yet · ${freeText}`;
+  return `Seats: ${taken.join(" · ")}${free ? ` · ${freeText}` : ""}`;
 }
 
 function actions(s: TableState, g: ClientGame, mine: number | null): HQ.UINode[] {
-  if (mine === null) return [hq.ui.text("Take a seat to play; anybody else with the window open watches.", { muted: true })];
+  if (mine === null) {
+    const full = s.t.seats.every((x) => x);
+    return [hq.ui.text(full ? "Every seat is taken: you watch the game." : "Take a seat to play; anybody else with the window open watches.", { muted: true })];
+  }
   const out: HQ.UINode[] = [];
   const stock = s.t.piles[0]?.id;
   const row: HQ.UINode[] = [];
-  if (stock && allows(g, "shuffle")) row.push(hq.ui.button({ label: `Shuffle ${short(s.t.piles[0].name)}`, onClick: () => act({ t: "shuffle", pile: stock }) }));
+  if (stock && allows(g, "shuffle")) row.push(hq.ui.button({ label: labels.shuffle(s.t.piles[0].name), onClick: () => act({ t: "shuffle", pile: stock }) }));
   if (stock && allows(g, "dealAll")) row.push(hq.ui.button({ label: "Deal all", onClick: () => act({ t: "dealAll", pile: stock }) }));
   if (allows(g, "gather")) row.push(hq.ui.button({ label: "Gather all", onClick: () => act({ t: "gather" }) }));
   if (allows(g, "count")) row.push(hq.ui.button({ label: "Count", onClick: () => act({ t: "count" }) }));
@@ -81,7 +88,7 @@ function actions(s: TableState, g: ClientGame, mine: number | null): HQ.UINode[]
   if (stock && allows(g, "deal")) {
     out.push(hq.ui.row([
       hq.ui.number({ label: "Cards each", value: dealN, min: 1, max: DEAL_MAX, onChange: (n) => (dealN = n) }),
-      hq.ui.button({ label: `Deal ${dealN} each`, onClick: () => act({ t: "deal", pile: stock, n: dealN }) }),
+      hq.ui.button({ label: labels.deal(dealN), onClick: () => act({ t: "deal", pile: stock, n: dealN }) }),
     ]));
   }
   if (allows(g, "createPile")) {
@@ -94,9 +101,9 @@ function actions(s: TableState, g: ClientGame, mine: number | null): HQ.UINode[]
   }
   if (allows(g, "offer")) {
     const o = s.t.offer;
-    if (o?.from === mine) out.push(hq.ui.row([hq.ui.button({ label: `Withdraw the offer to ${short(s.t.seats[o.to]?.name ?? "")}`, onClick: () => act({ t: "offer", to: null }) })]));
+    if (o?.from === mine) out.push(hq.ui.row([hq.ui.button({ label: labels.withdraw(s.t.seats[o.to]?.name ?? ""), onClick: () => act({ t: "offer", to: null }) })]));
     else if (s.t.hands[mine].length) {
-      const to = s.t.seats.flatMap((seat, i) => (seat && i !== mine ? [hq.ui.button({ label: `Offer my hand to ${short(seat.name)}`, onClick: () => act({ t: "offer", to: i }) })] : []));
+      const to = s.t.seats.flatMap((seat, i) => (seat && i !== mine ? [hq.ui.button({ label: labels.offer(seat.name), onClick: () => act({ t: "offer", to: i }) })] : []));
       if (to.length) out.push(hq.ui.row(to));
     }
   }
@@ -110,6 +117,7 @@ function draw(): void {
     // drawn once without the view, which removes its iframe; the next draw starts a new one
     renewing = false;
     hq.ui.modal({ title: "Cards", size: "large", onClose: closed }, [hq.ui.text("Loading the cards…", { muted: true })]);
+    viewShown = false;
     setTimeout(() => {
       toView.game = toView.state = toView.log = true;
       draw();
@@ -126,6 +134,8 @@ function draw(): void {
   } else {
     const mine = mySeat();
     content.push(hq.ui.text(game.title));
+    const o = s.t.offer;
+    if (o && o.to === mine && mine !== null) content.push(hq.ui.text(`${short(s.t.seats[o.from]?.name ?? "")} offers you their hand: click their name on the table to draw a card.`));
     content.push(hq.ui.row(seatButtons(s, mine)));
     content.push(hq.ui.text(holders(s), { muted: true }));
     content.push(...actions(s, game, mine));
@@ -133,9 +143,13 @@ function draw(): void {
     const present = new Set<number>([me, ...s.here]);
     content.push(hq.ui.row([hq.ui.button({ label: "Reset", disabled: !canReset(s.t, me, present), onClick: () => act({ t: "reset" }) })]));
   }
-  content.push(hq.ui.view({ view: "table", label: "Card table", height: "large", onMessage: fromView }));
+  // the table's view only once a game is chosen: the choice alone stays short enough to show whole
+  const withView = !!s && s.t.game !== null;
+  if (withView) content.push(hq.ui.view({ view: "table", label: "Card table", height: "large", onMessage: fromView }));
+  if (withView && !viewShown) toView.game = toView.state = toView.log = true;
+  viewShown = withView;
   hq.ui.modal({ title: "Cards", size: "large", onClose: closed }, content);
-  post();
+  if (withView) post();
 }
 
 /** Sends the view what changed, each part in its own message. */
@@ -166,6 +180,7 @@ function closed(): void {
   open = null;
   viewFor = "";
   renewals = 0;
+  viewShown = false;
 }
 
 hq.onLoad(() => {

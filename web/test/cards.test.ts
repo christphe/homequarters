@@ -621,3 +621,18 @@ test("a deck whose wide names would not fit a page's message is refused", () => 
   const r = validateDefinition(custom(100, 40, () => "漢".repeat(24)));
   assert.equal(r.ok, false);
 });
+
+// ---- labels.ts: the window's labels stay within the 40 characters of a button, whatever the names
+import { labels, LABEL_MAX } from "../../plugins/bundled/hq-cards/public/labels.ts";
+
+test("every window label fits 40 characters with the longest names", () => {
+  const name = "Bartholomew Featherstone"; // 24, the longest display name
+  const pile = "x".repeat(16);
+  const all = [
+    labels.seat(7, name, true), labels.seat(7, name, false), labels.freeSeat(7),
+    labels.offer(name), labels.withdraw(name), labels.shuffle(pile), labels.deal(52),
+  ];
+  for (const l of all) assert.ok(l.length >= 1 && l.length <= LABEL_MAX, `${l.length}: ${l}`);
+  assert.equal(labels.offer("Bo"), "Offer my hand to Bo");
+  assert.ok(labels.withdraw(name).endsWith("…"));
+});

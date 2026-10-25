@@ -141,11 +141,12 @@ async function openWithX(u) {
   // X does nothing while a dialog's scrim is still on the page (a window closing): pressed until it opens
   let tries = 0;
   await waitFor(async () => {
-    if (await viewFrame(u)) return true;
+    if (await u.page.$(MODAL)) return true;
     if (tries++ % 20 === 0) await u.page.keyboard.press("x");
     return false;
   }, { what: u.name + "'s Cards window" });
-  await waitFor(async () => (await drawn(u)) !== null, { what: u.name + "'s table drawn" });
+  // the table's view shows once a game is chosen; the choice of a game has none
+  await waitFor(async () => (await modal(u))?.buttons.some((b) => b.text === "Free table") || ((await viewFrame(u)) && (await drawn(u)) !== null), { what: u.name + "'s table drawn" });
 }
 
 export async function run(ctx) {
@@ -160,7 +161,8 @@ export async function run(ctx) {
     check("a deck is placed on a table through the map API", await setDecks(ctx, [DECK]));
     const ann = await joinAs(browser, "Ann" + t, { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } });
     const bo = await joinAs(browser, "Bo" + t, { avatar: { sk: 3, hs: 3, hc: 1, sh: 5, pa: 0 } });
-    const cy = await joinAs(browser, "Cy" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } });
+    // Cy has a name of 24 characters, the longest a member can have
+    const cy = await joinAs(browser, "Cyrillia Featherston" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } });
     users.push(ann, bo, cy);
     for (const u of users) await countFrames(u);
     const feet = 23 * T + 8;
@@ -176,7 +178,15 @@ export async function run(ctx) {
     check("1: standing beside it, the X hint names it", hint.includes("Card deck") && hint.includes("X"), JSON.stringify(hint));
 
     // ---- criterion 2: the choice of a game follows the game plugins
+    await bo.page.setViewport({ width: 800, height: 450 }); // Bo plays at the CI size
     for (const u of users) await openWithX(u);
+    const choiceSeen = await waitFor(() => read(bo, (sel) => {
+      const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === "Free table");
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, H: innerHeight };
+    }, MODAL), { what: "Bo's choice" });
+    check("UX: at 800x450 the game choice shows when the window opens", choiceSeen.top >= 0 && choiceSeen.bottom <= choiceSeen.H, JSON.stringify(choiceSeen));
     const only = await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table") && (await modal(ann)), { what: "the game choice" });
     check("2: a new table offers Free table, and no game while none runs", only.buttons.some((b) => b.text === "Free table") && !only.buttons.some((b) => b.text === "Old Maid"), JSON.stringify(only.buttons));
     await setPlugin(ctx, "hq-card-pouilleux", true);
@@ -207,6 +217,13 @@ export async function run(ctx) {
     // ---- criterion 5: deal, then drags to the felt, a pile and a player
     await press(ann, "Deal 7 each");
     await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7 && (await handOf(cy)).length === 7, { what: "7 cards each" });
+    const alive = await Promise.all(users.map((u) => read(u, () => Object.keys(window.__hq.session.plugins?.stopReasons ?? {}).length === 0 || !("hq-cards" in (window.__hq.session.plugins?.stopReasons ?? {})))));
+    check("UX: with a 24-character name at the table, the Cards plugin keeps running on every page after the deal", alive.every(Boolean) && (await Promise.all(users.map((u) => viewFrame(u)))).every(Boolean), JSON.stringify(alive));
+    const fits = await (await viewFrame(bo)).evaluate(() => {
+      const c = document.querySelector("canvas").getBoundingClientRect(), b = document.querySelector(".bar").getBoundingClientRect();
+      return { canvasTop: c.top, canvasBottom: c.bottom, barBottom: b.bottom, H: innerHeight, scroll: scrollY };
+    });
+    check("UX: at 800x450 the whole table, my hand included, and the buttons under it fit Bo's view without scrolling", fits.canvasTop >= 0 && fits.barBottom <= fits.H + 1, JSON.stringify(fits));
     check("5: Deal 7 each gives every seated player 7 cards, shown face up in their own hand only",
       (await handOf(ann)).every((c) => c.up) && ((await drawn(ann)).cards.filter((c) => c.where === "loose")).length === 0);
     const first = (await handOf(ann))[0];
@@ -225,6 +242,23 @@ export async function run(ctx) {
     d = await drag(ann, await handAt(ann, 0), boSpot);
     const gave = await within(async () => (await handOf(bo)).length === 8, 1000);
     check("5: a card dragged onto Bo's name goes into Bo's hand", gave >= 0 && (await handOf(ann)).length === 4, `${gave} ms`);
+    const barOf = async (u) => (await viewFrame(u)).evaluate(() => [...document.querySelectorAll(".bar button")].map((b) => b.textContent));
+    const lifted = (await handOf(ann)).some((c, i, a) => c.y !== a[0].y);
+    check("UX: after a drag nothing is left selected: no card lifted, no buttons under the table", !lifted && (await barOf(ann)).length === 0, JSON.stringify(await barOf(ann)));
+    // select card 0, then card 2, then the button: card 2 is played; twice: two places on the felt
+    const before = await handOf(ann);
+    await click(ann, await handAt(ann, 0));
+    await click(ann, await handAt(ann, 2));
+    await pressInView(ann, "Put it on the table face up");
+    await waitFor(async () => (await handOf(ann)).length === 3, { what: "a card put from the bar" });
+    const now1 = await handOf(ann);
+    const left1 = before.find((c) => !now1.some((x) => x.c === c.c));
+    await click(ann, await handAt(ann, 0));
+    await pressInView(ann, "Put it on the table face up");
+    await waitFor(async () => (await handOf(ann)).length === 2, { what: "a second card put from the bar" });
+    const loose = await looseOf(bo);
+    const spots = new Set(loose.map((c) => c.x + "," + c.y));
+    check("UX: the button under the table plays the card selected last, and two cards put that way land in two places", left1?.c === before[2].c && spots.size === loose.length, JSON.stringify({ played: left1?.c, selected: before[2].c, loose: loose.map((c) => [c.c, c.x, c.y]) }));
 
     // ---- criterion 5: a spectator cannot move a card
     const di = await joinAs(browser, "Di" + t, { avatar: { sk: 2, hs: 0, hc: 4, sh: 3, pa: 1 } });
