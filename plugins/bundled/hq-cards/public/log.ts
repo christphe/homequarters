@@ -2,6 +2,7 @@
 // a real table where looking through the discard pile is seen by all. An entry names a card only when it
 // ended face up (seen by everybody); a card one player saw alone is never named. Bounded in bytes: the
 // oldest entries go first. Types and pure functions only.
+import { utf8Bytes } from "./games.ts";
 
 export type Verb =
   | "chose" | "took" | "placed" | "gave" | "took back" | "flipped" | "offered" | "withdrew" | "picked" | "dealt" | "shuffled"
@@ -14,12 +15,12 @@ const VERBS: readonly string[] = [
 /** s: the seat that acted; c: a card, named because it ended face up; p: a pile's name; to: another seat; n: a number; text: a count or a game's title. */
 export interface LogEntry { s: number; v: Verb; c?: number; p?: string; to?: number; n?: number; text?: string }
 
-export const LOG_MAX = 2000; // bytes of JSON for the whole log, so it travels in one message beside the table
+export const LOG_MAX = 2000; // UTF-8 bytes of JSON for the whole log, so it travels in one message
 
 export function append(log: LogEntry[], e: LogEntry): LogEntry[] {
   const out = [...log, e];
-  let size = JSON.stringify(out).length;
-  while (out.length > 1 && size > LOG_MAX) size -= JSON.stringify(out.shift()).length + 1;
+  let size = utf8Bytes(JSON.stringify(out));
+  while (out.length > 1 && size > LOG_MAX) size -= utf8Bytes(JSON.stringify(out.shift())) + 1;
   return out;
 }
 

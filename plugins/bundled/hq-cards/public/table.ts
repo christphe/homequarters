@@ -4,11 +4,11 @@
 // see, its log entry; a refused action changes nothing. A card is a number, its index in the game's deck;
 // on the felt or in a pile, UP is added while it lies face up. Shared by the server code, the page code and
 // the tests. Pure functions only (shuffling takes the random source as an argument).
-import { allows, deckSize, FELT_H, FELT_W, FREE, MAX_PILES, PILE_NAME_MAX, type Action, type Game, type StartPile } from "./games.ts";
+import { allows, deckSize, FELT_H, FELT_W, FREE, MAX_PILES, PILE_NAME_MAX, utf8Bytes, type Action, type Game, type StartPile } from "./games.ts";
 import type { LogEntry } from "./log.ts";
 
 export const UP = 128; // card numbers are below MAX_CARDS (128)
-export const TABLE_MAX = 3650; // bytes of JSON: a table is saved in one hq.kv value and sent, with who is here and looking, in one 4 KB message
+export const TABLE_MAX = 3650; // UTF-8 bytes of JSON: a table is saved in one hq.kv value and sent, with who is here and looking, in one 4 KB message
 export const DEAL_MAX = 52;
 export const COUNT_MAX = 200;
 
@@ -60,8 +60,9 @@ export function parseTable(s: string | null): Table {
   }
 }
 
+/** The table's JSON in UTF-8 bytes. */
 export function encodedSize(t: Table): number {
-  return JSON.stringify(t).length;
+  return utf8Bytes(JSON.stringify(t));
 }
 
 function shuffled(cards: number[], rnd: () => number): void {
@@ -117,6 +118,10 @@ function pile(t: Table, id: unknown): Pile | undefined {
 export function take(t: Table, seat: number, who: { id: number; name: string }): Done {
   if (t.game === null || !isInt(seat) || seat < 0 || seat >= t.seats.length || t.seats[seat] || seatOf(t, who.id) !== null) return NO;
   t.seats[seat] = { id: who.id, name: who.name };
+  if (encodedSize(t) > TABLE_MAX) {
+    t.seats[seat] = null; // a long name on a full table: it would no longer fit a message
+    return NO;
+  }
   return { ok: true, log: { s: seat, v: "took" } };
 }
 

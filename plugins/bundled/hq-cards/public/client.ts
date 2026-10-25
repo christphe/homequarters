@@ -23,6 +23,7 @@ const toView = { game: false, state: false, log: false };
 // then): when a game with its own cards arrives, the view is started afresh once for that game's plugin.
 let viewFor = "";
 let renewing = false;
+let renewals = 0; // fresh views asked by a view that could not load a game's sheet, for this window
 
 const send = (m: ToServer) => hq.send(m);
 const short = (name: string) => {
@@ -149,7 +150,13 @@ function post(): void {
 
 // The view's message: an act, checked for its type only (the server checks the rest), sent with the tile.
 function fromView(m: unknown): void {
-  if (!open || typeof m !== "object" || m === null || !ACTS.has((m as Act).t)) return;
+  if (!open || typeof m !== "object" || m === null) return;
+  if ((m as { t?: unknown }).t === "renew") {
+    // the page may learn of the game's plugin a moment after the game itself: try again, a few times
+    if (renewals++ < 3) setTimeout(() => ((renewing = true), draw()), 1000);
+    return;
+  }
+  if (!ACTS.has((m as Act).t)) return;
   act(m as Act);
 }
 
@@ -158,6 +165,7 @@ function closed(): void {
   send({ t: "close", x: open.x, y: open.y });
   open = null;
   viewFor = "";
+  renewals = 0;
 }
 
 hq.onLoad(() => {

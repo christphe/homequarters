@@ -572,3 +572,52 @@ test("parseTable survives broken storage", () => {
   const t = free3();
   assert.deepEqual(parseTable(JSON.stringify(t)), t);
 });
+
+// ---- sizes are UTF-8 bytes (the 4 KB limits of messages and hq.kv are bytes)
+import { utf8Bytes } from "../../plugins/bundled/hq-cards/public/games.ts";
+
+test("utf8Bytes counts what JSON sends", () => {
+  assert.equal(utf8Bytes("abc"), 3);
+  assert.equal(utf8Bytes("é"), 2);
+  assert.equal(utf8Bytes("牌"), 3);
+  assert.equal(utf8Bytes("😀"), 4);
+  assert.equal(utf8Bytes(JSON.stringify({ n: "牌牌" })), Buffer.byteLength(JSON.stringify({ n: "牌牌" })));
+});
+
+test("a table of wide names is measured in bytes: seats and piles that would not fit are refused", () => {
+  const t = newTable();
+  choose(t, FREE, lcg());
+  for (let i = 0; i < 8; i++) take(t, i, { id: 100 + i, name: "牌".repeat(24) });
+  let piles = 0;
+  for (let i = 1; i < 16; i++) if (createPile(t, 0, "牌".repeat(16), "up", [300, 170], FREE).ok) piles++;
+  for (let i = 0; i < 54; i++) place(t, i % 8, { k: "pile", id: "p0" }, { k: "felt", at: [100 + i, 100 + (i % 50)] }, true, FREE);
+  assert.ok(encodedSize(t) <= TABLE_MAX, "bytes " + encodedSize(t));
+  assert.equal(encodedSize(t), Buffer.byteLength(JSON.stringify(t)));
+});
+
+test("take is refused when the seat's name would not fit", () => {
+  const t = newTable();
+  choose(t, FREE, lcg());
+  for (let i = 1; i < 16; i++) createPile(t, 0, "牌".repeat(16), "up", [300, 170], FREE); // no seat yet: refused, nobody seated
+  for (let i = 0; i < 8; i++) take(t, i, { id: 100 + i, name: "牌".repeat(24) });
+  for (let i = 1; i < 16; i++) createPile(t, 0, "牌".repeat(16), "up", [300, 170], FREE);
+  for (let i = 0; i < 54; i++) if (!place(t, i % 8, { k: "pile", id: "p0" }, { k: "felt", at: [100 + i, 100] }, true, FREE).ok) break;
+  const t2 = parseTable(JSON.stringify(t));
+  t2.seats[7] = null;
+  t2.hands[7] = [];
+  const room = TABLE_MAX - encodedSize(t2);
+  const name = "牌".repeat(Math.ceil(room / 3) + 30).slice(0, 24); // 72 bytes: over when the table is that full
+  if (room < 80) assert.equal(take(t2, 7, { id: 999, name }).ok, false);
+  assert.ok(encodedSize(t2) <= TABLE_MAX);
+});
+
+test("the log is bounded in bytes", () => {
+  let log: LogEntry[] = [];
+  for (let i = 0; i < 300; i++) log = append(log, { s: 0, v: "counted", text: "牌".repeat(60) });
+  assert.ok(Buffer.byteLength(JSON.stringify(log)) <= LOG_MAX, String(Buffer.byteLength(JSON.stringify(log))));
+});
+
+test("a deck whose wide names would not fit a page's message is refused", () => {
+  const r = validateDefinition(custom(100, 40, () => "漢".repeat(24)));
+  assert.equal(r.ok, false);
+});

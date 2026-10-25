@@ -42,5 +42,5 @@ export type ViewIn =
   | { t: "state"; s: TableState; me: number; id: string }
   | { t: "game"; g: ClientGame | null; id: string }
   | { t: "log"; log: LogEntry[]; id: string };
-/** View to page: an act; the page adds the tile. */
-export type ViewOut = Act;
+/** View to page: an act (the page adds the tile), or a request to be started afresh (a game's sheet it could not load). */
+export type ViewOut = Act | { t: "renew" };

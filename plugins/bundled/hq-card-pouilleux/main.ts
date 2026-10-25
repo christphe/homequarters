@@ -49,8 +49,13 @@ function countArgs(v: unknown): CountArgs {
 
 export function load(): void {
   hq.expose("count", (caller: HQ.Caller, args: unknown) => {
-    if (caller.plugin !== CARDS) throw new Error("count is for hq-cards");
-    return count(countArgs(args));
+    // a refusal is an answer, not an error: errors thrown here would count against this plugin and stop it
+    if (caller.plugin !== CARDS) return null;
+    try {
+      return count(countArgs(args));
+    } catch {
+      return null; // hq-cards shows "Count unavailable"
+    }
   });
 }
 

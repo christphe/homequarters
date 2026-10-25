@@ -22,7 +22,7 @@ export const MAX_PILES = 16;
 export const NAME_MAX = 24; // a card's name
 export const PILE_NAME_MAX = 16;
 export const TITLE_MAX = 40;
-export const CLIENT_GAME_MAX = 3800; // bytes of a page's game message, under the 4 KB of a message
+export const CLIENT_GAME_MAX = 3800; // UTF-8 bytes of a page's game message, under the 4 KB of a message
 
 export interface StartPile { name: string; face: "up" | "down"; at: [number, number] }
 export interface CustomCard { frame?: number; name: string }
@@ -56,6 +56,21 @@ const fail = (err: string): { ok: false; err: string } => ({ ok: false, err });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const int = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
 const text = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max;
+
+/** The UTF-8 size of a string: what a message or an hq.kv value weighs (their 4 KB limits are bytes). */
+export function utf8Bytes(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+      n += 4; // a surrogate pair: one character of 4 bytes
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
 
 export function deckSize(d: Deck): number {
   return "standard" in d ? d.standard.length : d.total;
@@ -149,7 +164,7 @@ export function validateDefinition(d: unknown): Result<{ def: GameDefinition }> 
   return { ok: true, def };
 }
 
-const clientSize = (def: GameDefinition) => JSON.stringify(clientGame({ ...def, name: "x".repeat(32), complete: true })).length;
+const clientSize = (def: GameDefinition) => utf8Bytes(JSON.stringify(clientGame({ ...def, name: "x".repeat(32), complete: true })));
 
 export function clientGame(g: Game): ClientGame {
   const d = g.deck;

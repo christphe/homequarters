@@ -11,7 +11,7 @@
 // which opens the window), the game (or the list of games while none is chosen), the log, in that order; a
 // send refused by the budget is kept for the next update.
 
-import { allows, clientGame, CLIENT_GAME_MAX, FREE, validateCards, validateDefinition, type Game } from "./public/games.ts";
+import { allows, clientGame, CLIENT_GAME_MAX, FREE, utf8Bytes, validateCards, validateDefinition, type Game } from "./public/games.ts";
 import { append, parseLog, type LogEntry } from "./public/log.ts";
 import {
   canReset, choose, counted, createPile, deal, dealAll, defaultCount, draw, flip, gather, offer, order, parseTable, pick, place,
@@ -81,8 +81,15 @@ function changed(k: string, what: { h?: boolean; s?: boolean; l?: boolean }): vo
 }
 
 function save(k: string): void {
+  const t = table(k);
   try {
-    hq.kv.set("table:" + k, JSON.stringify(table(k)));
+    if (t.game === null) {
+      // a table back to new keeps nothing: its keys are freed (an office holds 1000 per plugin)
+      hq.kv.delete("table:" + k);
+      hq.kv.delete("log:" + k);
+      return;
+    }
+    hq.kv.set("table:" + k, JSON.stringify(t));
     hq.kv.set("log:" + k, JSON.stringify(logOf(k)));
   } catch {
     hq.log("table not saved: storage full"); // the game goes on in memory
@@ -121,6 +128,7 @@ function gamesChanged(): void {
 
 export function load(): void {
   hq.expose("register", (caller: HQ.Caller, def: unknown) => {
+    if (caller.plugin === FREE.name) return { ok: false, err: "a game cannot be named free" };
     const r = validateDefinition(def);
     if (!r.ok) return { ok: false, err: r.err };
     const d = r.def.deck;
@@ -139,7 +147,7 @@ export function load(): void {
     if (!r.ok) return { ok: false, err: r.err };
     const next: Game = { ...g, deck: { ...d, cards: [...d.cards, ...r.cards] } };
     next.complete = "cards" in next.deck && next.deck.cards.length === d.total;
-    if (next.complete && JSON.stringify(clientGame(next)).length > CLIENT_GAME_MAX) {
+    if (next.complete && utf8Bytes(JSON.stringify(clientGame(next))) > CLIENT_GAME_MAX) {
       pending.delete(caller.plugin);
       return { ok: false, err: "deck: the card names are too big for a page's message" };
     }
@@ -215,7 +223,7 @@ function count(k: string, p: HQ.Player, t: Table, g: Game): void {
 function act(p: HQ.Player, k: string, m: Act): void {
   const t = table(k);
   if (m.t === "choose") {
-    const g = m.game === "free" ? FREE : games.get(String(m.game));
+    const g = m.game === "free" ? FREE : typeof m.game === "string" ? games.get(m.game) : undefined;
     if (t.game !== null || !g?.complete) return queue(p.id, k, { h: true, s: true });
     choose(t, g);
     logs.set(k, []);
@@ -259,6 +267,7 @@ function act(p: HQ.Player, k: string, m: Act): void {
       if (seat === null || !pile || !allows(g, "viewPile")) return done(k, p.id, { ok: false });
       let l = lookers.get(k);
       if (!l) lookers.set(k, (l = new Map()));
+      if (l.get(p.id) === pile.id) return; // already looking: nothing new for the log
       l.set(p.id, pile.id);
       return done(k, p.id, { ok: true, log: { s: seat, v: "looked", p: pile.name } });
     }
@@ -295,6 +304,18 @@ function headOf(k: string): ToClient {
   return g ? { t: "game", ...at, g: clientGame(g) } : { t: "games", ...at, list: [] };
 }
 
+/** Sends, or false when the budget is spent; a message the host refuses outright (over 4 KB) is dropped. */
+function sendTo(id: number, msg: ToClient): boolean {
+  try {
+    return hq.send(id, msg);
+  } catch {
+    if (!warnedSize) hq.log("a table message was too big to send; dropped");
+    warnedSize = true;
+    return true; // dropped: retrying would throw on every update and stop the plugin
+  }
+}
+let warnedSize = false;
+
 export function update(): void {
   for (const [id, m] of toSend) {
     for (const [k, q] of m) {
@@ -303,15 +324,15 @@ export function update(): void {
         continue;
       }
       if (q.s) {
-        if (!hq.send(id, { t: q.o ? "open" : "state", ...coords(k), s: stateOf(k) } satisfies ToClient)) break; // this member's budget is spent
+        if (!sendTo(id, { t: q.o ? "open" : "state", ...coords(k), s: stateOf(k) })) break; // this member's budget is spent
         q.s = q.o = false;
       }
       if (q.h) {
-        if (!hq.send(id, headOf(k))) break;
+        if (!sendTo(id, headOf(k))) break;
         q.h = false;
       }
       if (q.l) {
-        if (!hq.send(id, { t: "log", ...coords(k), log: logOf(k) } satisfies ToClient)) break;
+        if (!sendTo(id, { t: "log", ...coords(k), log: logOf(k) })) break;
         q.l = false;
       }
       m.delete(k);

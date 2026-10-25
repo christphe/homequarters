@@ -122,6 +122,11 @@ function loadSheet(): void {
       draw();
     }
   };
+  // refused by this view's security policy (it started before the game's plugin was known to the page):
+  // the window starts a fresh view
+  img.onerror = () => {
+    if (sheetFor === url) hqView.send({ t: "renew" });
+  };
   img.src = url;
 }
 

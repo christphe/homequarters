@@ -138,8 +138,13 @@ async function goTo(u, x, y) {
 async function openWithX(u) {
   if (!(await nearDeck(u)) && u.spot) await goTo(u, u.spot.x, u.spot.y);
   await waitFor(() => nearDeck(u), { what: u.name + " next to the deck" });
-  await u.page.keyboard.press("x");
-  await waitFor(() => viewFrame(u), { what: u.name + "'s Cards window" });
+  // X does nothing while a dialog's scrim is still on the page (a window closing): pressed until it opens
+  let tries = 0;
+  await waitFor(async () => {
+    if (await viewFrame(u)) return true;
+    if (tries++ % 20 === 0) await u.page.keyboard.press("x");
+    return false;
+  }, { what: u.name + "'s Cards window" });
   await waitFor(async () => (await drawn(u)) !== null, { what: u.name + "'s table drawn" });
 }
 
@@ -378,6 +383,16 @@ export async function run(ctx) {
       await press(ann, "Count");
       const lcCount = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "Last Card's count" });
       check("10b: Count gives each hand's points", new RegExp(`^Count: ${ann.name} \\d+, ${bo.name} \\d+`).test(lcCount), lcCount);
+      // turned off and on with the window open: the page learns of the plugin after the game is back, and the
+      // view must still end up drawing the game's own sheet
+      await setPlugin(ctx, "hq-card-lastcard", false);
+      await waitFor(async () => (await modal(ann))?.texts.some((x) => x.startsWith("This game is not available")), { timeout: 5000, what: "Last Card off" });
+      // the window opened again while the game is off: its view starts without the game's images allowed
+      await press(ann, "Close");
+      await openWithX(ann);
+      await setPlugin(ctx, "hq-card-lastcard", true);
+      const again = await within(async () => (await drawn(ann))?.sheet === "loaded" && (await handOf(ann)).length === 6, 10000);
+      check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
     } else check("10b: Last Card (hq-card-lastcard is not in this tree yet)", false, "not installed");
 
     const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));

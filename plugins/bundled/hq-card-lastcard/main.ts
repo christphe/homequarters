@@ -51,7 +51,8 @@ function register(): void {
 
 export function load(): void {
   hq.expose("count", (caller: HQ.Caller, args: CountArgs) => {
-    if (caller.plugin !== "hq-cards") throw new Error("only the card table counts");
+    // a refusal is an answer, not an error: errors thrown here would count against this plugin and stop it
+    if (caller.plugin !== "hq-cards") return null;
     return count(args);
   });
 }

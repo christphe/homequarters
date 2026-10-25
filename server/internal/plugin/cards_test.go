@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // The bundled card table (plugins/bundled/hq-cards) through the real host: Use is X next to a deck,
@@ -286,38 +288,7 @@ export function onMessage(p, m) {
 `
 
 func TestCardsReRegisterKeepsTables(t *testing.T) {
-	root := t.TempDir()
-	files := map[string]string{
-		"installed/partgame/plugin.json": `{"name":"partgame","title":"Part game","version":"1.0.0","description":"d","server":"main.js"}`,
-		"installed/partgame/main.js":     partGame,
-	}
-	src := filepath.Join("..", "..", "..", "plugins", "bundled", "hq-cards")
-	if err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		rel, _ := filepath.Rel(src, path)
-		b, err := os.ReadFile(path)
-		files["bundled/hq-cards/"+filepath.ToSlash(rel)] = string(b)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	write(t, root, files)
-	cat, err := Scan(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sink := &fakeSink{}
-	h := NewHost(cat, sink, newMemKV(), slog.New(&errCounter{}))
-	t.Cleanup(h.Close)
-	h.Presence(alice, true)
-	h.Presence(bob, true)
-	for _, n := range []string{cards, "partgame"} {
-		if err := h.Start(n); err != nil {
-			t.Fatal(err)
-		}
-	}
+	h, sink, _ := cardsHostWith(t, map[string]string{"partgame": partGame}, alice, bob)
 	part := func(n int) {
 		t.Helper()
 		typ := fmt.Sprintf("r%d", n)
@@ -365,4 +336,229 @@ func TestCardsReRegisterKeepsTables(t *testing.T) {
 		t.Fatalf("the table went unavailable while its game registered again: %v", s)
 	}
 	part(2)
+}
+
+// Wide characters: the 4 KB limits are bytes, and a name of 24 CJK characters is 72 of them. Nothing a
+// member can do stops the plugin: every frame stays under 4096 bytes and no error is thrown.
+func TestCardsWideNamesStayUnderTheLimits(t *testing.T) {
+	players := []Player{}
+	for i := 1; i <= 8; i++ {
+		players = append(players, Player{ID: uint32(i), Name: strings.Repeat("牌", 23) + string(rune('A'+i)), Role: "member"})
+	}
+	kv := newMemKV()
+	h, sink, errs := cardsHost(t, kv, []string{cards}, players...)
+	freeTable(t, h, sink, 9, 9, players...)
+	for i := 1; i < 16; i++ {
+		cardSend(h, players[0], `{"t":"newPile","x":9,"y":9,"name":"%s","face":"up","at":[300,170]}`, strings.Repeat("牌", 15)+string(rune('a'+i)))
+	}
+	for i := 0; i < 54; i++ {
+		cardSend(h, players[i%8], `{"t":"place","x":9,"y":9,"from":{"k":"pile","id":"p0"},"to":{"k":"felt","at":[%d,%d]},"up":true}`, 100+i, 100+i)
+		if i%8 == 7 {
+			time.Sleep(150 * time.Millisecond) // let update() send what is queued
+		}
+	}
+	for i := 0; i < 12; i++ {
+		cardSend(h, players[1], `{"t":"count","x":9,"y":9}`)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if st, msg := state(h, cards); st != "running" || errs.n.Load() != 0 {
+		t.Fatalf("hq-cards is %s (%s) with %d errors", st, msg, errs.n.Load())
+	}
+	sink.mu.Lock()
+	for _, s := range sink.sends {
+		if len(s.frame) > 4096+64 {
+			sink.mu.Unlock()
+			t.Fatalf("a frame of %d bytes: %.120s", len(s.frame), s.frame)
+		}
+	}
+	sink.mu.Unlock()
+	for k, v := range kv.m[cards] {
+		if len(v) > 4096 {
+			t.Fatalf("%s is %d bytes", k, len(v))
+		}
+	}
+}
+
+// A malformed choice is ignored, never thrown: eleven of them would stop the plugin.
+func TestCardsMalformedChoiceIsIgnored(t *testing.T) {
+	h, sink, errs := cardsHost(t, newMemKV(), []string{cards}, alice)
+	h.Use(alice, cards, "deck", 4, 4)
+	eventually(t, "the game list", func() bool { return lastOf(sink, alice.ID, "games", 4, 4) != nil })
+	for i := 0; i < 12; i++ {
+		cardSend(h, alice, `{"t":"choose","x":4,"y":4,"game":{"toString":1}}`)
+		cardSend(h, alice, `{"t":"choose","x":4,"y":4,"game":["free"]}`)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if st, msg := state(h, cards); st != "running" || errs.n.Load() != 0 {
+		t.Fatalf("hq-cards is %s (%s) with %d errors", st, msg, errs.n.Load())
+	}
+}
+
+// cardsHostWith runs hq-cards and test plugins (name -> server code, started after hq-cards) on a fresh store.
+func cardsHostWith(t *testing.T, extra map[string]string, online ...Player) (*Host, *fakeSink, *errCounter) {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{}
+	for name, src := range extra {
+		files["installed/"+name+"/plugin.json"] = `{"name":"` + name + `","title":"T","version":"1.0.0","description":"d","server":"main.js"}`
+		files["installed/"+name+"/main.js"] = src
+	}
+	for _, b := range []string{"hq-cards", "hq-card-pouilleux", "hq-card-lastcard"} {
+		src := filepath.Join("..", "..", "..", "plugins", "bundled", b)
+		if err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			rel, _ := filepath.Rel(src, path)
+			data, err := os.ReadFile(path)
+			files["bundled/"+b+"/"+filepath.ToSlash(rel)] = string(data)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, root, files)
+	cat, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink, errs := &fakeSink{}, &errCounter{}
+	h := NewHost(cat, sink, newMemKV(), slog.New(errs))
+	t.Cleanup(h.Close)
+	for _, p := range online {
+		h.Presence(p, true)
+	}
+	names := []string{cards}
+	for name := range extra {
+		names = append(names, name)
+	}
+	for _, n := range names {
+		if err := h.Start(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return h, sink, errs
+}
+
+// answer sends {t: typ} to a test plugin and waits for its reply {t: "r"+typ, r}.
+func answer(t *testing.T, h *Host, sink *fakeSink, p Player, plugin, typ string) map[string]any {
+	t.Helper()
+	before := 0
+	for _, d := range sink.data(p.ID) {
+		if d["t"] == "r"+typ {
+			before++
+		}
+	}
+	h.Message(p, plugin, []byte(`{"t":"`+typ+`"}`))
+	var got map[string]any
+	eventually(t, typ+" answered", func() bool {
+		n := 0
+		for _, d := range sink.data(p.ID) {
+			if d["t"] == "r"+typ {
+				n, got = n+1, d
+			}
+		}
+		return n > before
+	})
+	return got
+}
+
+// A deck whose wide names pass in parts is refused at its last part: chosen, it would not fit a message.
+const wideGame = `
+const names = (n) => Array.from({ length: n }, () => ({ name: "漢".repeat(24) }));
+const reply = (p, t) => (r) => hq.send(p.id, { t, r });
+export function onMessage(p, m) {
+  if (m.t === "a") hq.plugins.call("hq-cards", "register", { title: "Wide", seats: [2, 4], deck: { sheet: "shared/c.png", cell: [20, 28], back: 0, total: 100, cards: names(40) } }).then(reply(p, "ra"), reply(p, "ra"));
+  if (m.t === "b") hq.plugins.call("hq-cards", "registerCards", { from: 40, cards: names(40) }).then(reply(p, "rb"), reply(p, "rb"));
+  if (m.t === "c") hq.plugins.call("hq-cards", "registerCards", { from: 80, cards: names(20) }).then(reply(p, "rc"), reply(p, "rc"));
+}
+`
+
+func TestCardsWideDeckRefused(t *testing.T) {
+	h, sink, errs := cardsHostWith(t, map[string]string{"widegame": wideGame}, alice)
+	ok := func(d map[string]any) bool { r, _ := d["r"].(map[string]any); return r != nil && r["ok"] == true }
+	a := answer(t, h, sink, alice, "widegame", "a")
+	b, c := map[string]any{}, map[string]any{}
+	if ok(a) {
+		if b = answer(t, h, sink, alice, "widegame", "b"); ok(b) {
+			c = answer(t, h, sink, alice, "widegame", "c")
+		}
+	}
+	if ok(a) && ok(b) && ok(c) {
+		t.Fatal("a deck of 100 names of 72 bytes was accepted")
+	}
+	h.Use(alice, cards, "deck", 5, 5)
+	eventually(t, "the list", func() bool { return lastOf(sink, alice.ID, "games", 5, 5) != nil })
+	if l := lastOf(sink, alice.ID, "games", 5, 5)["list"].([]any); len(l) != 1 {
+		t.Fatalf("only the free table is offered: %v", l)
+	}
+	if errs.n.Load() != 0 {
+		t.Fatalf("%d plugin errors", errs.n.Load())
+	}
+}
+
+// Only hq-cards plays a game: a plugin named "free" cannot register, and a game's count hook refuses other
+// callers without throwing (thrown errors would stop the game).
+const freeImpostor = `
+export function onMessage(p, m) {
+  if (m.t === "a") hq.plugins.call("hq-cards", "register", { title: "Free table", seats: [2, 8], deck: { standard: ["AS", "KS"] } }).then((r) => hq.send(p.id, { t: "ra", r }), (e) => hq.send(p.id, { t: "ra", r: { err: String(e) } }));
+  if (m.t === "b") for (const g of ["hq-card-pouilleux", "hq-card-lastcard"]) hq.plugins.call(g, "count", { seats: [], hands: [], piles: [], loose: [] }).then(() => {}, () => {});
+}
+`
+
+func TestCardsOthersCannotPose(t *testing.T) {
+	h, sink, errs := cardsHostWith(t, map[string]string{"free": freeImpostor}, alice)
+	for _, g := range []string{"hq-card-pouilleux", "hq-card-lastcard"} {
+		if err := h.Start(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r := answer(t, h, sink, alice, "free", "a")["r"].(map[string]any); r["ok"] == true {
+		t.Fatalf("a plugin named free registered: %v", r)
+	}
+	for i := 0; i < 12; i++ {
+		h.Message(alice, "free", []byte(`{"t":"b"}`))
+	}
+	time.Sleep(500 * time.Millisecond)
+	for _, g := range []string{"hq-card-pouilleux", "hq-card-lastcard", cards} {
+		if st, msg := state(h, g); st != "running" {
+			t.Fatalf("%s is %s: %s", g, st, msg)
+		}
+	}
+	_ = errs
+}
+
+// A table reset frees its keys; looking again at the pile one already looks at writes nothing new.
+func TestCardsResetFreesKeysAndLookOnce(t *testing.T) {
+	kv := newMemKV()
+	h, sink, _ := cardsHost(t, kv, []string{cards}, alice, bob)
+	freeTable(t, h, sink, 8, 8, alice, bob)
+	for i := 0; i < 5; i++ {
+		cardSend(h, alice, `{"t":"look","x":8,"y":8,"pile":"p0"}`)
+	}
+	cardSend(h, alice, `{"t":"draw","x":8,"y":8,"pile":"p0"}`)
+	eventually(t, "the draw logged", func() bool { return has(logVerbs(sink, bob.ID, 8, 8), "drew") })
+	n := 0
+	for _, v := range logVerbs(sink, bob.ID, 8, 8) {
+		if v == "looked" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("five looks at the same pile log %d lines", n)
+	}
+	kv.mu.Lock()
+	_, saved := kv.m[cards]["table:8,8"]
+	kv.mu.Unlock()
+	if !saved {
+		t.Fatal("the table is saved while it plays")
+	}
+	cardSend(h, alice, `{"t":"reset","x":8,"y":8}`)
+	eventually(t, "the keys freed", func() bool {
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		_, a := kv.m[cards]["table:8,8"]
+		_, b := kv.m[cards]["log:8,8"]
+		return !a && !b
+	})
 }
