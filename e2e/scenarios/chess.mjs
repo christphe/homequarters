@@ -4,6 +4,10 @@
 // buttons, real mouse drags and the keyboard on the board view. What a page shows is read from the view's
 // canvas pixels (each piece's drawing is matched against public/pieces.ts) and its live region.
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-objects-chess-design.md it proves.
+// Rules and logic are unit-tested, not here: the rules in web/test/chess.test.ts; what the view lets a member
+// pick up, sends, says and undoes, and the window's buttons, in web/test/chessView.test.ts; the server side
+// (seats, presence, hello, reset, the playing list, restarts) in server/internal/plugin/chess_test.go. This
+// scenario keeps what needs the browser: real controls, pixels, the live region, sync between pages, badges.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.mjs";
 import { paintPiece, TONES, PIECE_W, PIECE_H, SMALL_W, SMALL_H } from "../../plugins/bundled/hq-chess/public/pieces.ts";
 import { START, move as playMove, place as playPlace } from "../../plugins/bundled/hq-chess/public/game.ts";
@@ -11,7 +15,6 @@ import { START, move as playMove, place as playPlace } from "../../plugins/bundl
 const PLUGIN = "hq-chess";
 const T = 16;
 const BOARD = { x: 13, y: 22 }; // bottom row of the social area's 4x2 table at (12, 21)
-const BOARD2 = { x: 14, y: 22 }; // a second board on the same table, for the board switch
 const sq = (name) => (8 - Number(name[1])) * 8 + "abcdefgh".indexOf(name[0]);
 
 // ---- reading a board view: each square's 11x13 drawing (and each reserve cell's 7x8) matched against the pieces' art
@@ -221,12 +224,12 @@ export async function run(ctx) {
     const t = String(Date.now() % 10000);
     // ---- set up: the plugin on, a board (and a second one beside it) on the social area's table
     check("an administrator turns hq-chess on (admin API)", (await setPlugin(ctx, true)).ok);
-    check("a chessboard is placed on the bottom row of a table through the map API", await setBoards(ctx, [BOARD, BOARD2]));
+    check("a chessboard is placed on the bottom row of a table through the map API", await setBoards(ctx, [BOARD]));
     ann = await joinAs(browser, "Ann" + t, { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } });
     bo = await joinAs(browser, "Bo" + t, { avatar: { sk: 3, hs: 3, hc: 1, sh: 5, pa: 0 } });
     cy = await joinAs(browser, "Cy" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } });
     for (const u of [ann, bo, cy]) { u.flip = false; await countFrames(u); }
-    // south of the board, within reach of it (20 px) and nearer to it than to the second board
+    // south of the board, within reach of it (20 px)
     const feet = 23 * T + 8;
     await Promise.all([walkTo(ann, 204, feet), walkTo(bo, 212, feet), walkTo(cy, 220, feet)]);
 
@@ -292,11 +295,10 @@ export async function run(ctx) {
     await press(bo, "Black");
     bo.flip = true;
     await waitFor(async () => (await button(cy, "Black"))?.text === "Black: " + bo.name, { what: "Bo seated, on Cy's page" });
-    const annSeats = await modalState(ann), cySeats = await modalState(cy);
+    const cySeats = await modalState(cy);
     const b = (s, text) => s.buttons.find((x) => x.text === text || x.text.startsWith(text + ":"));
     check("5: Ann takes White and Bo Black; every page names them", b(cySeats, "White").text === "White: " + ann.name && b(cySeats, "Black").text === "Black: " + bo.name && cySeats.holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, JSON.stringify(cySeats));
-    check("5: Cy, without a seat, just watches (neither White nor Black pressed; both seats taken)", !b(cySeats, "White").pressed && !b(cySeats, "Black").pressed && b(cySeats, "White").disabled && b(cySeats, "Black").disabled, JSON.stringify(cySeats.buttons));
-    check("7: a seated player cannot change side (Ann's White pressed and disabled, Black disabled)", b(annSeats, "White").pressed && b(annSeats, "White").disabled && b(annSeats, "Black").disabled, JSON.stringify(annSeats.buttons));
+    // (which seat buttons a spectator or a seated player may press: chessView.test.ts)
     await waitFor(async () => (await board(bo))?.p === START, { what: "Bo's board turned for Black" });
 
     // ---- criterion 13: the playing badges on Cy's page
@@ -305,18 +307,9 @@ export async function run(ctx) {
       return badgeAbove(a, "w") && badgeAbove(o, "b") ? { a, o } : null;
     }, { timeout: 5000, what: "badges on Cy's page" }).catch(() => null);
     check("13: Cy's page shows a white badge above Ann and a black one above Bo", !!badgesUp, JSON.stringify([await badgeOf(cy, ann.id), await badgeOf(cy, bo.id)]));
-    const spectatorBadge = [];
-    for (let i = 0; i < 5; i++) { spectatorBadge.push(!!(await badgeOf(ann, cy.id)).badge); await sleep(100); }
-    check("13: no badge over a spectator (sampled for 500 ms)", spectatorBadge.every((x) => !x), JSON.stringify(spectatorBadge));
-
-    // ---- criterion 5: a spectator cannot move, White cannot move a black piece
+    // (no badge over a spectator: the playing list, chess_test.go; a spectator, or White picking up a black
+    // piece, sends nothing: chessView.test.ts)
     let expected = { p: START, r: "", w: { id: ann.id, name: "" }, b: { id: bo.id, name: "" } };
-    const cyTry = await dragSq(cy, "e2", "e4");
-    await sleep(600);
-    check("5: Cy (spectator) cannot pick a piece up: his press reaches the board, nothing sent, every board unchanged", cyTry.reached && cyTry.total === 0 && (await board(cy)).p === START && (await board(ann)).p === START, JSON.stringify(cyTry));
-    const annBlack = await dragSq(ann, "e7", "e5");
-    await sleep(600);
-    check("5: Ann (White) cannot move a black piece: her press reaches the board, nothing sent, every board unchanged", annBlack.reached && annBlack.total === 0 && (await board(ann)).p === START && (await board(bo)).p === START, JSON.stringify(annBlack));
 
     // ---- criteria 6 and 10: e2-e4 dragged by Ann, seen by Bo and Cy within 1 s; one frame per drop
     playMove(expected, ann.id, sq("e2"), sq("e4"));
@@ -336,33 +329,9 @@ export async function run(ctx) {
     check("10: none sent while dragging (20 pointer moves), exactly one plg frame for the drop", whileDragging === 0 && sentDrop.length === 1 && sentDrop[0].t === "move" && sentDrop[0].from === sq("e2") && sentDrop[0].to === sq("e4"), JSON.stringify({ whileDragging, sentDrop }));
     check("6: Ann's own board shows the move", (await board(ann)).p === expected.p);
 
-    // ---- the board switch: Cy opens the second board in the same window; a fresh board one move away
-    // from the first must not be announced as a move (e4 back to e2)
-    const cySaid0 = (await said(cy)).length;
-    await walkTo(cy, BOARD2.x * T + 24, feet);
-    await waitFor(() => read(cy, (x) => window.__hq.state.nearby?.x === x, BOARD2.x), { what: "Cy next to the second board" });
-    // X is ignored while a window is open and the hint button is under the dialog's scrim: a player cannot
-    // reach this path through the UI; the page's interact() (what X calls) stands in for it
-    await read(cy, () => window.__hq.view.interact());
-    await waitFor(async () => (await board(cy))?.p === START, { what: "Cy's window on the second board" });
-    await sleep(1200);
-    const switchSaid = (await said(cy)).slice(cySaid0);
-    check("a viewer who opens a second board in the same window hears no false move", !switchSaid.some((s) => /pawn|to reserve|from reserve/.test(s)), JSON.stringify(switchSaid));
-    await walkTo(cy, 220, feet);
-    await waitFor(() => read(cy, (x) => window.__hq.state.nearby?.x === x, BOARD.x), { what: "Cy back at the first board" });
-    await read(cy, () => window.__hq.view.interact());
-    await waitFor(async () => (await board(cy))?.p === expected.p, { what: "Cy's window back on the first board" });
-    await sleep(800);
-    const backSaid = (await said(cy)).slice(cySaid0);
-    check("and back on the first board, nothing is announced either", !backSaid.some((s) => /pawn|to reserve|from reserve/.test(s)), JSON.stringify(backSaid));
-    check("back on the first board, the window shows its players again", (await modalState(cy)).holders.startsWith("White: " + ann.name), (await modalState(cy)).holders);
-    await setBoards(ctx, [BOARD]); // the second board's job is done
-    await waitFor(() => read(ann, () => window.__hq.view.objSprites.filter((x) => !x.destroyed).length === 1), { what: "second board removed" });
+    // (a second board opened in the same window announces no move: chessView.test.ts)
 
-    // ---- criterion 6: a drop outside the board puts the piece back; click-then-click
-    const outside = await squareAt(ann, sq("d2"));
-    const out = await drag(ann, outside, { cx: -30, cy: outside.cy }); // left of the canvas
-    check("6: a drop outside the board puts the piece back (pressed on the board, nothing sent, board unchanged)", out.reached && out.total === 0 && (await board(ann)).p === expected.p, JSON.stringify(out));
+    // ---- criterion 6: click-then-click (a drop outside the board sends nothing: chessView.test.ts)
     const nClick = ann.sent.length;
     const [g1, f3] = await onPage(ann, await squareAt(ann, sq("g1")), await squareAt(ann, sq("f3")));
     await ann.page.mouse.click(g1.x, g1.y);
@@ -377,20 +346,17 @@ export async function run(ctx) {
     const g1f3 = [sq("f3"), sq("g1")].sort((a, z) => a - z).join();
     const lit = await Promise.all([ann, bo, cy].map((u) => until(async () => (await board(u))?.last.join() === g1f3, 2000)));
     check("the last move's two squares (g1, f3) are tinted on every page, Black's turned board included", lit.every(Boolean), JSON.stringify(await Promise.all([ann, bo, cy].map(async (u) => (await board(u))?.last))));
-    const undoable = await until(async () => (await button(bo, "Undo"))?.disabled === false && (await button(ann, "Undo"))?.disabled === false && (await button(cy, "Undo"))?.disabled === true);
-    check("Undo is enabled for both seated players and disabled for the spectator", undoable, JSON.stringify([await button(ann, "Undo"), await button(bo, "Undo"), await button(cy, "Undo")]));
+    // who may press Undo, and one level only: chessView.test.ts, chess.test.ts
+    const undoable = await until(async () => (await button(bo, "Undo"))?.disabled === false);
+    check("Undo is enabled for Bo once Ann moved", undoable, JSON.stringify(await button(bo, "Undo")));
     if (undoable) {
-      const annSaidU = (await said(ann)).length, nUndo = bo.sent.length;
+      const nUndo = bo.sent.length;
       const beforeUndo = expected.p;
       expected.p = expected.p.slice(0, sq("f3")) + "." + expected.p.slice(sq("f3") + 1, sq("g1")) + "N" + expected.p.slice(sq("g1") + 1);
       await press(bo, "Undo"); // Bo undoes Ann's move
       const undoSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => { const s = await board(u); return s?.p === expected.p && s.last.length === 0; }, 1000)));
       check("Bo presses Undo: Ann's Ng1-f3 is undone on all three pages within 1 s, no square tinted", expected.p !== beforeUndo && undoSeen.every((ms) => ms >= 0), JSON.stringify(undoSeen));
       check("one frame for the undo ({t: undo})", bo.sent.length - nUndo === 1 && bo.sent[nUndo]?.t === "undo", JSON.stringify(bo.sent.slice(nUndo)));
-      const undoHeard = await waitFor(async () => (await said(ann)).slice(annSaidU).find((s) => s === "Black undid the last move"), { timeout: 2000, what: "the undo announced" }).catch(() => null);
-      check("Ann's live region announces it: Black undid the last move", !!undoHeard, JSON.stringify((await said(ann)).slice(annSaidU)));
-      const oneLevel = await until(async () => (await button(bo, "Undo"))?.disabled === true && (await button(ann, "Undo"))?.disabled === true);
-      check("one level only: after the undo, Undo is disabled for both players", oneLevel, JSON.stringify([await button(ann, "Undo"), await button(bo, "Undo")]));
     }
 
     // ---- criterion 11: a keyboard-only move by Bo reaches Ann and is announced there
@@ -415,22 +381,7 @@ export async function run(ctx) {
     const annHeard = await waitFor(async () => (await said(ann)).slice(annSaid0).find((s) => s === "Black: pawn e7 to e5"), { timeout: 2000, what: "the announcement" }).catch(() => null);
     check("11: Ann's live region announces it", !!annHeard, JSON.stringify((await said(ann)).slice(annSaid0)));
 
-    // ---- a move lost on the way is undone after 1 s. The page drops the plugin's next message to the server
-    // as a spent send budget does (test hook: deterministic, where flooding the budget raced its refill)
-    await read(ann, (pl) => window.__hq.session.plugins.dropNext(pl, 1), PLUGIN);
-    const nLost = ann.sent.length;
-    const lostSaid0 = (await said(ann)).length;
-    await dragSq(ann, "d2", "d4");
-    const optimistic = (await board(ann)).p;
-    const revertMs = await within(async () => (await board(ann))?.p === expected.p, 2500);
-    await read(ann, (pl) => window.__hq.session.plugins.dropNext(pl, 0), PLUGIN); // nothing left to drop
-    const lostSent = ann.sent.slice(nLost);
-    check("a move dropped at the page (over the send budget) never left it", lostSent.length === 0, JSON.stringify(lostSent));
-    // the live region is filled on the next animation frame
-    const told = await waitFor(async () => (await said(ann)).slice(lostSaid0).some((s) => s.startsWith("Move not received")), { timeout: 1000, what: "the lost move announced" }).catch(() => false);
-    // revertMs counts from after the drop's own 250 ms pause (drag()): the view's timer is 1 s from the drop
-    check("the view showed it at once, then went back to the server's position about 1 s after the drop, and says so", optimistic[sq("d4")] === "P" && revertMs >= 500 && revertMs <= 1500 && told, `${revertMs} ms after the drop's pause, ${JSON.stringify((await said(ann)).slice(lostSaid0))}`);
-    check("nobody else saw the lost move", (await board(bo)).p === expected.p && (await board(cy)).p === expected.p);
+    // (a move lost on the way is undone after 1 s and said so: chessView.test.ts)
 
     // ---- criteria 6 and 14: captures go to the reserve on every page; a reserve piece back on the board; promotion
     await dragSq(bo, "d7", "d5");
@@ -462,7 +413,6 @@ export async function run(ctx) {
     const promoSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => (await board(u))?.p === expected.p, 1000)));
     const queens = [...(await board(cy)).p].filter((c) => c === "Q").length;
     check("14: a white pawn dropped on e8 opens the choice; Queen makes a second white queen on every page", choiceOpen && queens === 2 && promoSeen.every((ms) => ms >= 0) && ann.sent.length - nPromo === 1 && ann.sent[nPromo]?.promote === "q", JSON.stringify({ choiceOpen, queens, promoSeen, sent: ann.sent.slice(nPromo) }));
-    check("14: the black king it landed on went to the reserve", (await board(bo)).b === "pk", (await board(bo)).b);
 
     // ---- criterion 13: the badge follows Ann as she walks (Cy's page), drawn over her name tag every frame
     const follow = ann.page.evaluate(async () => {
@@ -488,61 +438,29 @@ export async function run(ctx) {
     const near = await waitFor(async () => { const a = await badgeOf(di, ann.id); return badgeAbove(a, "w") ? a : null; }, { timeout: 5000, what: "Ann's badge on Di's screen" }).catch(() => null);
     check("13: once Ann is on Di's screen, her badge shows above her", !!near, JSON.stringify(await badgeOf(di, ann.id)));
 
-    // ---- criterion 7: away, back in the seat, reset
-    // Bo reloads. The server keeps a member through a reload (reconnect grace), so the plugin learns of it
-    // when the reloaded page starts the plugin and says hello: that is when "away" can start, and the 1 s is
-    // measured from there. The time from the reload itself is reported (it includes loading the page).
-    const firstTrue = async (fn) => { for (const t0 = Date.now(); Date.now() - t0 < 15000; await sleep(40)) { try { if (await fn()) return Date.now(); } catch { /* reloading */ } } return NaN; };
-    // the clocks below start only once the precondition holds: Bo here on Ann's page, his badge on Cy's
-    const preReload = await until(async () => (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (here)`) && badgeAbove(await badgeOf(cy, bo.id), "b"));
-    check("before Bo reloads: Ann sees him here and Cy's page shows his badge", preReload);
-    const nBo = bo.sent.length, reloadAt = Date.now();
-    const awayAt = firstTrue(async () => (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (away)`);
-    const badgeAt = firstTrue(async () => !(await badgeOf(cy, bo.id)).badge);
-    await bo.page.reload({ waitUntil: "domcontentloaded" });
-    const helloAt = await waitFor(() => { const i = bo.sent.findIndex((d, j) => j >= nBo && d.t === "hello"); return i >= 0 ? bo.sentAt[i] : null; }, { timeout: 15000, what: "the reloaded page's hello" });
-    const [away, badgeGone] = await Promise.all([awayAt, badgeAt]);
-    const timing = `hello ${helloAt - reloadAt} ms after the reload began; away ${away - reloadAt} ms, badge gone ${badgeGone - reloadAt} ms after it`;
-    check("7: Bo reloads: Ann sees him away within 1 s of his reloaded page starting the plugin", away - helloAt <= 1000, `${away - helloAt} ms; ${timing}`);
-    check("13: and his badge disappears from Cy's page within 1 s of it", badgeGone - helloAt <= 1000, `${badgeGone - helloAt} ms; ${timing}`);
-    await waitFor(() => read(bo, () => window.__hq?.state?.conn === "open"), { timeout: 30000, what: "Bo back" });
-    await walkTo(bo, 212, feet);
-    await openWithX(bo);
-    const boBackOk = await until(async () => {
-      const x = await button(bo, "Black");
-      return x?.text === "Black: " + bo.name && x.pressed && (await board(bo))?.p === expected.p && (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (here)`);
-    });
-    check("7: reopening, Bo is back in his seat (Black: his name, pressed) with the game as it was", boBackOk, JSON.stringify(await button(bo, "Black")));
+    // ---- criterion 7: away and reset (a reloaded page's hello makes its member away, the seat kept:
+    // chess_test.go; the hello itself is sent below, by the page that loads the plugin late)
     // Bo closes his window: away within 1 s
     await press(bo, "Close");
     const closeMs = await within(async () => (await modalState(ann)).holders.endsWith(`Black: ${bo.name} (away)`), 1000);
     check("7: Bo closes the window: Ann sees him away within 1 s", closeMs >= 0, `${closeMs} ms`);
-    check("7: while Ann (seated) is present, the spectator's Reset is disabled", (await button(cy, "Reset")).disabled === true);
-    check("7: the present seated player's Reset is enabled", (await button(ann, "Reset")).disabled === false);
     // Ann closes: her badge goes from Cy's page within 1 s; now nobody seated is present, Cy may reset
     const preClose = await until(async () => badgeAbove(await badgeOf(cy, ann.id), "w"));
     check("before Ann closes: Cy's page shows her badge", preClose);
     await press(ann, "Close");
     const annBadgeMs = await within(async () => !(await badgeOf(cy, ann.id)).badge, 1000);
     check("13: Ann closes the window: her badge disappears from Cy's page within 1 s", annBadgeMs >= 0, `${annBadgeMs} ms`);
-    const cyMayReset = await until(async () => (await button(cy, "Reset"))?.disabled === false);
-    check("7: with neither seated player present, the spectator's Reset is enabled", cyMayReset, (await modalState(cy)).holders);
+    // who may reset when: chessView.test.ts; here Cy's Reset is enabled once neither seated player is here
+    await waitFor(async () => (await button(cy, "Reset"))?.disabled === false, { what: "Cy's Reset enabled" });
     await press(cy, "Reset");
     const resetOk = await until(async () => {
       const m = await modalState(cy), c = await board(cy);
       return c?.p === START && c.w === "" && c.b === "" && m.holders === "White: free · Black: free" && !b(m, "White").disabled && !b(m, "Black").disabled;
     });
     check("7: Reset puts the start position back, empties the reserve and frees both seats", resetOk, JSON.stringify({ afterReset: await modalState(cy), cyBoard: await board(cy) }));
-    check("a reset clears the highlight and the undo", (await board(cy)).last.length === 0 && (await button(cy, "Undo"))?.disabled === true, JSON.stringify({ last: (await board(cy)).last, undo: await button(cy, "Undo") }));
-    await press(cy, "White");
-    const cySeated = await until(async () => { const x = await button(cy, "White"); return x?.text === "White: " + cy.name && x.pressed; });
-    check("7: anyone can then take a seat (Cy takes White)", cySeated, JSON.stringify(await button(cy, "White")));
-    await press(cy, "Reset"); // a present seated player resets: seats free again
-    const freed = await until(async () => (await modalState(cy)).holders === "White: free · Black: free");
-    check("7: a present seated player can reset (Cy frees the seats again)", freed, (await modalState(cy)).holders);
     await press(cy, "Close");
 
-    // ---- criterion 8: a server restart keeps the position and the seats
+    // ---- a game for the plugin's off and on below (a server restart keeps it: chess_test.go)
     await openWithX(ann);
     await openWithX(bo);
     await press(ann, "White");
@@ -552,24 +470,7 @@ export async function run(ctx) {
     expected = { p: START, r: "", w: { id: ann.id, name: "" }, b: { id: bo.id, name: "" } };
     await dragSq(ann, "e2", "e4");
     playMove(expected, ann.id, sq("e2"), sq("e4"));
-    await waitFor(async () => (await board(bo))?.p === expected.p, { timeout: 3000, what: "e4 before the restart" });
-    if (ctx.server) {
-      await ctx.stopServer();
-      await ctx.startServer();
-      for (const u of [ann, bo, cy, di]) {
-        await u.page.reload({ waitUntil: "domcontentloaded" });
-        await waitFor(() => read(u, () => window.__hq?.state?.conn === "open"), { timeout: 30000, what: u.name + " reconnected" });
-      }
-      await walkTo(ann, 204, feet);
-      await walkTo(bo, 212, feet);
-      await openWithX(ann);
-      await openWithX(bo);
-      const restored = await until(async () => {
-        const r = await modalState(ann);
-        return (await board(ann))?.p === expected.p && (await board(bo))?.p === expected.p && b(r, "White").text === "White: " + ann.name && b(r, "White").pressed && r.holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`;
-      });
-      check("8: after a server restart the board has its position and both players their seats", restored, JSON.stringify(await modalState(ann)));
-    } else check("8: server restart (skipped against an external stack)", true);
+    await waitFor(async () => (await board(bo))?.p === expected.p, { timeout: 3000, what: "e4 on Bo's board" });
 
     // ---- criteria 4 and 8: plugin off: the sprite goes and X does nothing; on: back with its game
     await press(ann, "Close");
@@ -598,12 +499,8 @@ export async function run(ctx) {
     const backOn = await waitFor(async () => (await board(ann))?.p === expected.p && (await modalState(ann)).holders === bothHere, { timeout: 5000, what: "seats after off/on" }).catch(() => false);
     check("4, 8: plugin on again: the board is back, X opens it, with its game and its players", backOn === true, (await modalState(ann)).holders);
     check("a window opened before the plugin ran on that page stays open (the page's late hello does not close it)", xFirst && backOn === true, JSON.stringify({ xFirst, holders: (await modalState(ann)).holders }));
-    // criterion 13, the reset half: both badges are up on Cy's page, and a reset takes them down within 1 s
-    const upBeforeReset = await waitFor(async () => badgeAbove(await badgeOf(cy, ann.id), "w") && badgeAbove(await badgeOf(cy, bo.id), "b"), { timeout: 5000, what: "badges before the reset" }).catch(() => false);
-    check("13: with Ann and Bo seated and present, Cy's page shows both badges", upBeforeReset === true, JSON.stringify([await badgeOf(cy, ann.id), await badgeOf(cy, bo.id)]));
-    await press(ann, "Reset"); // also leaves the board as new
-    const resetGoneMs = await within(async () => !(await badgeOf(cy, ann.id)).badge && !(await badgeOf(cy, bo.id)).badge, 1000);
-    check("13: a reset takes both badges down on Cy's page within 1 s", resetGoneMs >= 0, `${resetGoneMs} ms`);
+    // (a reset empties the playing list: chess_test.go; a badge leaving a page is checked above)
+    await press(ann, "Reset"); // leaves the board as new
     await waitFor(async () => (await board(ann))?.p === START, { timeout: 3000, what: "final reset" }).catch(() => {});
 
     // The plugin is turned off on purpose above, while a page may still be loading its code or pictures
