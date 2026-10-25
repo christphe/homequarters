@@ -1,0 +1,8 @@
+{
+  "name": "hq-card-lastcard",
+  "title": "Last Card",
+  "version": "1.0.0",
+  "description": "Last Card, a shedding game for the card table, with its own 108 cards. Needs the Cards plugin turned on.",
+  "longDescription": "Adds Last Card to the games of the Cards plugin, which must be turned on too: open a card deck, choose Last Card, deal seven cards each and play your cards on the Discard pile by matching its colour or its number, drawing from the Draw pile when you cannot. 108 cards in four colours, with Skip, Reverse, Draw Two, Wild and Wild Draw Four. Nothing is automated: say the colour after a Wild and \"last card\" out loud, and apply Skip, Reverse and Draw Two yourselves. Count adds up the points left in each hand (numbers their value, Skip, Reverse and Draw Two 20, Wilds 50).",
+  "server": "main.ts"
+}
