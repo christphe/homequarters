@@ -57,6 +57,8 @@ jobs:
         run: node scripts/lint-web.mjs
       - name: Web unit tests (pure game logic)
         run: node --test 'web/test/*.test.ts'
+      - name: E2E shard assignment
+        run: node --test e2e/shards.test.mjs
       - name: Type-check the web unit tests
         run: pnpm exec tsc -p tsconfig.test.json --noEmit
         working-directory: web
@@ -69,11 +71,17 @@ jobs:
       - run: pnpm exec vite build
         working-directory: web
 
-  # Real-browser end-to-end suite: Chrome with fake devices against a real LiveKit server.
+  # Real-browser end-to-end suite: Chrome with fake devices against a real LiveKit server, split into
+  # shards balanced by measured scenario durations (e2e/shards.mjs); each job runs one on its own runner.
   e2e:
+    name: e2e (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     needs: [server, web]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -102,4 +110,4 @@ jobs:
         working-directory: e2e
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
-        run: node run.mjs
+        run: node run.mjs --shard ${{ matrix.shard }}/4

@@ -59,6 +59,7 @@ scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, race tests, ts
 node scripts/lint-web.mjs                # static web rules (effects return a cleanup or nothing, i18n)
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
 cd e2e && node run.mjs                    # real Chrome + real LiveKit; builds, starts its own server with a fresh database
+cd e2e && node run.mjs --shard 2/4         # one of 4 duration-balanced shards (e2e/shards.mjs); CI runs one job per shard
 cd e2e && HQ_EXTERNAL_URL=http://127.0.0.1:8080 node run.mjs   # same scenarios against a running stack (e.g. Docker Compose)
 cd site && pnpm install && node build.mjs && node check.mjs # builds site/dist, then checks links, SEO metadata, sitemap, llms.txt and README links
 ~~~

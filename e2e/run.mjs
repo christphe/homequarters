@@ -1,11 +1,13 @@
 // Self-contained acceptance runner: fresh SQLite DB, production-style static serving,
-// real Chrome (fake camera/mic) and a real LiveKit server. Usage: node run.mjs [scenario ...]
+// real Chrome (fake camera/mic) and a real LiveKit server. Usage: node run.mjs [--shard i/n] [scenario ...]
+// --shard i/n runs only shard i of n (see shards.mjs).
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
+import { ALL, shard, parseShard } from "./shards.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // HQ_EXTERNAL_URL=http://127.0.0.1:8080 runs the scenarios against an already running stack (for example
@@ -18,8 +20,13 @@ const LK_PORT = Number(process.env.HQ_TEST_LK_PORT ?? "7880");
 process.env.HQ_LK_HTTP ??= `http://127.0.0.1:${LK_PORT}`;
 process.env.HQ_TEST_LK_URL = `ws://127.0.0.1:${LK_PORT}`;
 
-const all = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates"];
-const wanted = process.argv.slice(2).length ? process.argv.slice(2) : EXTERNAL ? ["proximity", "consent", "rooms"] : all;
+const args = process.argv.slice(2);
+const shardAt = args.findIndex((a) => a === "--shard" || a.startsWith("--shard="));
+const shardSpec = shardAt < 0 ? null : args[shardAt].includes("=") ? args[shardAt].slice(8) : args[shardAt + 1];
+const names = shardAt < 0 ? args : args.filter((_, k) => k !== shardAt && (args[shardAt].includes("=") || k !== shardAt + 1));
+const listed = names.length ? names : EXTERNAL ? ["proximity", "consent", "rooms"] : ALL;
+let wanted = listed;
+if (shardSpec) { const { i, n } = parseShard(shardSpec); wanted = shard(listed, i, n); console.log(`# shard ${i}/${n}: ${wanted.join(", ") || "(empty)"}`); }
 
 // Windows: go build names the binary as given, while spawning "bin/homequarters" runs a stale homequarters.exe;
 // pnpm is a .cmd that only a shell finds; and a signal from Node is a hard kill (see stopServer).
