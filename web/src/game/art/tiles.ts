@@ -181,16 +181,27 @@ function deskBody(ctx: Ctx, x: number, y: number, w: number) {
 }
 // The desks of an island mirror each other across the line where they meet: 2 px from the user's edge
 // to the keyboard, 2 px from the keyboard to the screen's foot. Seat below: the screen faces us.
-function desk(ctx: Ctx, x: number, y: number, w: number) {
+// A desk without a pc prop on it (a map saved before PCs existed) still draws its own.
+function desk(ctx: Ctx, x: number, y: number, w: number, withPC: boolean) {
   deskBody(ctx, x, y, w);
-  const cx = x + w / 2;
   if (hash(x, y, 70) < 0.5) {
     const mx = hash(x, y, 71) < 0.5 ? x + 3 : x + w - 6; // a mug
     px(ctx, mx, y - 3, 3, 4, OUT);
     px(ctx, mx + 1, y - 2, 1, 2, hash(x, y, 72) < 0.5 ? "#e8685a" : "#f6f2e6");
   }
-  screenFront(ctx, cx, y - 11); // foot at y - 1..y
-  keyboard(ctx, cx, y + 4, "right"); // the edge's line is at y + 10
+  if (!withPC) pcFront(ctx, x + w / 2, y);
+}
+// A computer on a desk whose top is at y, centred on cx. Facing us: its screen, foot at y - 1..y, then
+// its keyboard (the edge's line is at y + 10).
+function pcFront(ctx: Ctx, cx: number, y: number) {
+  screenFront(ctx, cx, y - 11);
+  keyboard(ctx, cx, y + 4, "right");
+}
+// The same on a turned desk: the keyboard on the far side, the back of the screen rising over it (foot
+// at y + 5..y + 6).
+function pcBack(ctx: Ctx, cx: number, y: number) {
+  keyboard(ctx, cx, y - 3, "left");
+  screenBack(ctx, cx, y - 5);
 }
 function chair(ctx: Ctx, x: number, y: number) {
   px(ctx, x + 4, y + 13, 8, 2, "rgba(40,24,80,0.2)");
@@ -360,13 +371,11 @@ function rug(ctx: Ctx, x: number, y: number, w: number, h: number) {
 
 // A desk whose seat is above it (back to back in an island): its keyboard is on the far side and we see
 // the back of its screen, standing on the near edge.
-function deskUp(ctx: Ctx, x: number, y: number, w: number) {
+function deskUp(ctx: Ctx, x: number, y: number, w: number, withPC: boolean) {
   // the same desk, seat above, mirrored: 2 px from its far edge (the outline at y - 6) to the keyboard,
   // 2 px to the screen's foot; the screen's back rises over the keyboard
   deskBody(ctx, x, y, w);
-  const cx = x + w / 2;
-  keyboard(ctx, cx, y - 3, "left");
-  screenBack(ctx, cx, y - 5); // foot at y + 5..y + 6
+  if (!withPC) pcBack(ctx, x + w / 2, y);
 }
 function armchair(ctx: Ctx, x: number, y: number) {
   px(ctx, x + 2, y + 14, 12, 2, "rgba(40,24,80,0.22)");
@@ -544,8 +553,34 @@ const DIMS: Record<string, [number, number]> = {
   desk: [2, 1], chair: [1, 1], plant: [1, 1], couch: [3, 1], table: [3, 2], reception_desk: [6, 1],
   bookshelf: [2, 1], coffee: [1, 1], whiteboard: [3, 1], rug: [4, 3], lamp: [1, 1],
   armchair: [1, 1], bleachers: [4, 2], court: [6, 4], stairs: [2, 2], banner: [1, 1], scoreboard: [4, 1],
-  note: [1, 1], image: [1, 1], embed: [2, 1], portal: [1, 1], spotlight: [1, 1],
+  note: [1, 1], image: [1, 1], embed: [2, 1], portal: [1, 1], spotlight: [1, 1], pc: [1, 1],
 };
+/** The props drawn again as sprites over the bake, sorted in depth with the avatars. */
+export const DEPTH_OBJECTS = new Set(["desk", "pc"]);
+
+/** The desk whose footprint holds p's tile (where a pc stands). */
+export function deskOf(props: Prop[], p: Prop): Prop | undefined {
+  return props.find((q) => {
+    if (q.t !== "desk") return false;
+    const r = propRect(q);
+    return p.x * T >= r.x && p.x * T < r.x + r.w && p.y * T >= r.y && p.y * T < r.y + r.h;
+  });
+}
+
+/** Draws a desk or a pc at its map pixels (in the bake, and as the depth sprites drawn over it). A pc
+ * faces the way its desk does, shifted by its dx, dy. */
+export function drawObject(ctx: Ctx, p: Prop, props: Prop[]) {
+  const { x, y, w } = propRect(p);
+  if (p.t === "desk") {
+    const withPC = props.some((q) => q.t === "pc" && deskOf([p], q));
+    return p.up ? deskUp(ctx, x, y, w, withPC) : desk(ctx, x, y, w, withPC);
+  }
+  if (p.t !== "pc") return;
+  const cx = x + T / 2 + (p.dx ?? 0), top = y + (p.dy ?? 0);
+  if (deskOf(props, p)?.up) pcBack(ctx, cx, top);
+  else pcFront(ctx, cx, top);
+}
+
 export function propRect(p: Prop) {
   const d = DIMS[p.t] ?? [1, 1];
   return { x: p.x * T, y: p.y * T, w: (p.w ?? d[0]) * T, h: (p.h ?? d[1]) * T };
@@ -598,7 +633,7 @@ function drawProp(ctx: Ctx, p: Prop, props: Prop[] = []) {
       if (tableBeside(props, p, "right")) return armchairSide(ctx, x, y);
       if (tableBeside(props, p, "left")) return turned(ctx, x, y, w, h, "mirror", (x0, y0) => armchairSide(ctx, x0, y0));
       return armchair(ctx, x, y);
-    case "desk": return p.up ? deskUp(ctx, x, y, w) : desk(ctx, x, y, w);
+    case "desk": case "pc": return drawObject(ctx, p, props);
     case "chair":
       // a chair is pulled up to its desk or table, off the tile grid: under one it shows its back
       if (tableBeside(props, p, "above")) return chairBack(ctx, x, y - 4);
@@ -760,6 +795,11 @@ export function bakeMapCanvas(map: MapData): HTMLCanvasElement {
       if (ty === 0 && tx % 8 === 3) windowDeco(ctx, tx, ty);
       else if (ty > 0 && tx % 6 === 2 && hash(tx, ty, 60) < 0.7) posterDeco(ctx, tx, ty);
     }
-  for (const p of props) if (p.t !== "rug" && p.t !== "court") drawProp(ctx, p, props);
+  for (const p of props) {
+    if (p.t === "rug" || p.t === "court" || p.t === "pc") continue;
+    drawProp(ctx, p, props);
+    // a desk's pcs right after it, where its built-in screen used to be drawn
+    if (p.t === "desk") for (const q of props) if (q.t === "pc" && deskOf([p], q)) drawObject(ctx, q, props);
+  }
   return canvas;
 }

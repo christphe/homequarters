@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { session } from "../session";
 import { cloneMap, computeSolid, propSize, PROP_TYPES, toWire } from "../game/mapModel";
-import { isPluginProp } from "../game/props";
+import { eraseAt, isPluginProp, pcOn } from "../game/props";
 import type { MapData, PluginObjectSpec } from "../net/protocol";
 import { toast, useStore } from "../store";
 import { t } from "../i18n";
@@ -83,6 +83,15 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
       setWall(x, y, on);
     } else if (tool === "prop") {
       if (isPluginProp(propType) && !chosenSpec) return; // its plugin stopped meanwhile
+      if (propType === "pc") { // it stands on a desk, centred on it
+        const desk = d.props.findLast((q) => q.t === "desk" && x >= q.x && x < q.x + propSize(q)[0] && y >= q.y && y < q.y + propSize(q)[1]);
+        const pc = desk && pcOn(desk);
+        if (pc && !d.props.some((q) => q.t === "pc" && q.x === pc.x && q.y === pc.y && q.dx === pc.dx && q.dy === pc.dy)) {
+          d.props.push(pc);
+          apply();
+        }
+        return;
+      }
       if (!d.props.some((p) => p.t === propType && p.x === x && p.y === y)) {
         // a plugin object's size is written in the map, from its manifest
         const size = chosenSpec ? { w: chosenSpec.size[0], h: chosenSpec.size[1] } : {};
@@ -90,15 +99,7 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
         apply();
       }
     } else if (tool === "erase") {
-      for (let i = d.props.length - 1; i >= 0; i--) {
-        const p = d.props[i];
-        const [w, h] = propSize(p);
-        if (x >= p.x && x < p.x + w && y >= p.y && y < p.y + h) {
-          d.props.splice(i, 1);
-          apply();
-          break;
-        }
-      }
+      if (eraseAt(d.props, x, y)) apply(); // a desk's pcs go before it
     } else if (tool === "room") {
       drag.current = { x, y };
       setPending({ x, y, w: 1, h: 1 });

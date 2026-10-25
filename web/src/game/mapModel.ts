@@ -27,6 +27,7 @@ const LABELS: Record<string, string> = {
   image: t("prop.image"),
   portal: t("prop.portal"),
   spotlight: t("prop.spotlight"),
+  pc: t("prop.pc"),
 };
 
 export const PROP_TYPES: { t: string; w: number; h: number; solid: boolean; label: string }[] = PROP_DEFS.map((p) => ({ ...p, label: LABELS[p.t] ?? p.t }));
