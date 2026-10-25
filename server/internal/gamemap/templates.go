@@ -20,6 +20,16 @@ var Templates = []Template{
 	{ID: "manor", Name: "Manor", Build: Manor},
 }
 
+// withPCs puts a pc centred on every desk, after the other props.
+func withPCs(props []Prop) []Prop {
+	for _, p := range props {
+		if p.T == "desk" {
+			props = append(props, PCOn(p))
+		}
+	}
+	return props
+}
+
 // TemplateByID finds a template.
 func TemplateByID(id string) (Template, bool) {
 	for _, t := range Templates {
@@ -373,5 +383,5 @@ func wideOffice(l wideLayout) *Map {
 	}
 
 	sort.SliceStable(props, func(i, j int) bool { return props[i].T == "rug" && props[j].T != "rug" })
-	return &Map{Version: 1, W: W, H: H, Walls: walls, Props: props, Areas: areas, Spawn: Point{X: cx0 + (l.welcomeW-1)/2, Y: 7}}
+	return &Map{Version: 1, W: W, H: H, Walls: walls, Props: withPCs(props), Areas: areas, Spawn: Point{X: cx0 + (l.welcomeW-1)/2, Y: 7}}
 }
