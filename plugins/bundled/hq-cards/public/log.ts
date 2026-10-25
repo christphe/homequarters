@@ -38,7 +38,7 @@ export function parseLog(s: string | null): LogEntry[] {
 
 export function sentence(e: LogEntry, seat: (s: number) => string, card: (c: number) => string): string {
   const who = seat(e.s);
-  const it = e.c !== undefined ? card(e.c) : "a card";
+  const it = e.c !== undefined ? "the " + card(e.c) : "a card";
   switch (e.v) {
     case "chose": return `${who} chose ${e.text ?? "a game"}`;
     case "took": return `${who} took seat ${e.s + 1}`;

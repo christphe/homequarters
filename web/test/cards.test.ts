@@ -110,7 +110,7 @@ test("FREE is the free table: a 54-card stock, 2 to 8 seats, everything allowed"
 import { append, parseLog, sentence, LOG_MAX, type LogEntry } from "../../plugins/bundled/hq-cards/public/log.ts";
 
 const names = ["Ann", "Bo", "Cy"];
-const say = (e: LogEntry) => sentence(e, (s) => names[s] ?? "Seat " + (s + 1), (c) => (c === 7 ? "the 8 of spades" : "card " + c));
+const say = (e: LogEntry) => sentence(e, (s) => names[s] ?? "Seat " + (s + 1), (c) => (c === 7 ? "8 of spades" : "card " + c)); // cardName gives "8 of spades", "Red 7"
 
 test("sentence says each action", () => {
   const cases: [LogEntry, string][] = [

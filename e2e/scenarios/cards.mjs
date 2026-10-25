@@ -195,16 +195,17 @@ export async function run(ctx) {
     check("5: Deal 7 each gives every seated player 7 cards, shown face up in their own hand only",
       (await handOf(ann)).every((c) => c.up) && ((await drawn(ann)).cards.filter((c) => c.where === "loose")).length === 0);
     const first = (await handOf(ann))[0];
+    const handAfter = async (n) => waitFor(async () => (await handOf(ann)).length === n, { what: "Ann's hand of " + n });
     let d = await drag(ann, await handAt(ann, 0), feltAt(60, 120));
     const seen = await Promise.all([bo, cy].map((u) => within(async () => (await looseOf(u)).some((c) => c.c === first.c && c.up), 1000)));
     check("5: Ann drags her first card onto the felt: Bo and Cy see it face up within 1 s", seen.every((ms) => ms >= 0), JSON.stringify(seen));
     check("12: nothing sent while dragging, one plg frame for the drop", d.during === 0 && d.total === 1 && d.msgs[0].t === "place", JSON.stringify(d));
-    const stockBefore = (await drawn(bo)).cards.find((c) => c.where === "pile") ? null : null;
-    void stockBefore;
+    await handAfter(6);
     const stock = { at: [160, 90] };
     d = await drag(ann, await handAt(ann, 0), pileAt(stock.at));
     const onStock = await within(async () => (await logOf(bo)).some((l) => l === `${ann.name} put a card on Stock`), 1000);
-    check("5: a card dragged onto the Stock pile goes on it (face down, as the pile) and is logged", onStock >= 0 && d.total === 1, `${onStock} ms`);
+    check("5: a card dragged onto the Stock pile goes on it (face down, as the pile) and is logged", onStock >= 0 && d.total === 1, `${onStock} ms ` + JSON.stringify({ d, hand: (await handOf(ann)).length, log: (await logOf(bo)).slice(-3), annLog: (await logOf(ann)).slice(-2) }));
+    await handAfter(5);
     const boSpot = seatAt(8, 0, 1);
     d = await drag(ann, await handAt(ann, 0), boSpot);
     const gave = await within(async () => (await handOf(bo)).length === 8, 1000);
@@ -350,15 +351,17 @@ export async function run(ctx) {
       await press(ann, "Reset");
       await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Last Card"), { timeout: 5000, what: "Last Card offered" });
       await press(ann, "Last Card");
-      await waitFor(() => hasButton(ann, "Seat 1"), { what: "Last Card's seats" });
+      // a game with its own cards starts each window's view afresh (its security policy then admits the game's images)
+      const renewed = await Promise.all([ann, bo].map((u) => within(async () => (await drawn(u))?.sheet === "loaded" && (await hasButton(u, "Seat 1")), 5000)));
+      check("10b: on choosing Last Card, every open window's view renews and loads the game's own sheet (shared/cards.png)", renewed.every((ms) => ms >= 0), JSON.stringify(renewed));
       await press(ann, "Seat 1");
       await waitFor(() => hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" });
       await press(bo, "Seat 2");
-      await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" });
+      await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
+        throw new Error(e.message + " " + JSON.stringify({ modal: await modal(bo), drawn: await drawn(bo).then((d) => d && { seat: d.seat, sheet: d.sheet }) }));
+      });
       await press(ann, "Deal 7 each");
       await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7, { what: "Last Card dealt" });
-      const sheet = await (await viewFrame(ann)).evaluate(() => window.__drawn.sheet);
-      check("10b: Last Card's cards are drawn from its own sheet (shared/cards.png loaded by the view)", sheet === "loaded", String(sheet));
       await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
       const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });
       check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog), lcLog);

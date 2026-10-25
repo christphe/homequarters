@@ -19,6 +19,10 @@ let dealN = 7;
 let pileName = "";
 // what the view must be sent again (each in its own message)
 const toView = { game: false, state: false, log: false };
+// A view may draw the shared/ images of the plugins running when it starts (its security policy is fixed
+// then): when a game with its own cards arrives, the view is started afresh once for that game's plugin.
+let viewFor = "";
+let renewing = false;
 
 const send = (m: ToServer) => hq.send(m);
 const short = (name: string) => {
@@ -101,6 +105,16 @@ function actions(s: TableState, g: ClientGame, mine: number | null): HQ.UINode[]
 function draw(): void {
   if (!open) return;
   const s = state;
+  if (renewing) {
+    // drawn once without the view, which removes its iframe; the next draw starts a new one
+    renewing = false;
+    hq.ui.modal({ title: "Cards", size: "large", onClose: closed }, [hq.ui.text("Loading the cards…", { muted: true })]);
+    setTimeout(() => {
+      toView.game = toView.state = toView.log = true;
+      draw();
+    }, 150);
+    return;
+  }
   const content: HQ.UINode[] = [];
   if (!s || s.t.game === null) {
     content.push(hq.ui.text("Choose what to play at this table."));
@@ -143,6 +157,7 @@ function closed(): void {
   if (!open) return;
   send({ t: "close", x: open.x, y: open.y });
   open = null;
+  viewFor = "";
 }
 
 hq.onLoad(() => {
@@ -176,6 +191,11 @@ hq.onMessage<ToClient>((m) => {
   } else if (m.t === "game") {
     game = m.g;
     toView.game = true;
+    const plugin = "plugin" in m.g.deck ? m.g.deck.plugin : "";
+    if (plugin && plugin !== viewFor) {
+      viewFor = plugin;
+      renewing = true;
+    }
   } else if (m.t === "log") {
     log = m.log;
     toView.log = true;
