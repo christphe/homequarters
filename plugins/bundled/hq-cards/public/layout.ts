@@ -86,6 +86,60 @@ export function handSpots(n: number, L: Layout = WIDE): { x: number; y: number }
 
 const inside = (x: number, y: number, x0: number, y0: number, w: number, h: number) => x >= x0 && x < x0 + w && y >= y0 && y < y0 + h;
 
+// ---- snapping (a setting of the table) and groups of loose cards
+
+/** The grid's step on the felt: a card and a gap. Card centres sit at GRID/2 + k * GRID. */
+export const GRID: [number, number] = [24, 32];
+/** How much lower a card dropped on another's lower half lands: the index (rank and suit) above it shows. */
+export const CASCADE = 13;
+const clampX = (x: number) => Math.max(CARD_W / 2, Math.min(FELT_W - CARD_W / 2, x));
+const clampY = (y: number) => Math.max(CARD_H / 2, Math.min(FELT_H - CARD_H / 2, y));
+
+function gridAt(v: number, step: number, max: number): number {
+  const half = step / 2;
+  let k = Math.round((v - half) / step);
+  while (k > 0 && half + k * step > max) k--;
+  return half + Math.max(0, k) * step;
+}
+
+/**
+ * Where a card dropped with its centre at `at` lands. Off: there (on the felt). On: over a loose card not
+ * being moved (the topmost), on its lower half CASCADE lower, on its upper half exactly on it; elsewhere
+ * on the nearest grid point whose card stays on the felt.
+ */
+export function snapAt(t: Table, at: [number, number], moving: number[], on: boolean): [number, number] {
+  if (!on) return [clampX(Math.round(at[0])), clampY(Math.round(at[1]))];
+  for (let i = t.loose.length - 1; i >= 0; i--) {
+    const l = t.loose[i];
+    if (moving.includes(l.c & ~UP)) continue;
+    const dx = at[0] - l.at[0], dy = at[1] - l.at[1];
+    if (Math.abs(dx) < CARD_W / 2 && Math.abs(dy) < CARD_H / 2) return dy > 0 ? [l.at[0], clampY(l.at[1] + CASCADE)] : [l.at[0], l.at[1]];
+  }
+  return [gridAt(at[0], GRID[0], FELT_W - CARD_W / 2), gridAt(at[1], GRID[1], FELT_H - CARD_H / 2)];
+}
+
+const overlap = (a: [number, number], b: [number, number]) => Math.abs(a[0] - b[0]) < CARD_W && Math.abs(a[1] - b[1]) < CARD_H;
+
+/** Card c and the loose cards put after it that overlap it or one of them (a stack or cascade above c), in order. */
+export function groupFrom(t: Table, c: number): number[] {
+  const i = t.loose.findIndex((l) => (l.c & ~UP) === c);
+  if (i < 0) return [];
+  const chain = [t.loose[i]];
+  for (let j = i + 1; j < t.loose.length; j++) if (chain.some((x) => overlap(x.at, t.loose[j].at))) chain.push(t.loose[j]);
+  return chain.map((l) => l.c & ~UP);
+}
+
+/** The bottom card of every group of two cards or more (where its handle goes): it overlaps no card put before it. */
+export function groups(t: Table): { c: number; at: [number, number]; size: number }[] {
+  const out: { c: number; at: [number, number]; size: number }[] = [];
+  t.loose.forEach((l, i) => {
+    if (t.loose.slice(0, i).some((x) => overlap(x.at, l.at))) return;
+    const size = groupFrom(t, l.c & ~UP).length;
+    if (size > 1) out.push({ c: l.c & ~UP, at: l.at, size });
+  });
+  return out;
+}
+
 /** The topmost thing under view pixel (x, y): a card of my hand, a loose card, a pile, a seat, or the felt. me: my seat. */
 export function hit(t: Table, me: number | null, x: number, y: number, L: Layout = WIDE): Spot | null {
   if (me !== null) {

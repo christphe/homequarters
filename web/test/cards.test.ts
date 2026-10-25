@@ -746,3 +746,41 @@ test("setAside takes a card out of the game until a reset; gather leaves it out"
   assert.equal(sentence({ s: 0, v: "moved", n: 3 }, (s) => names[s], String), "Ann moved 3 cards");
   assert.equal(sentence({ s: 0, v: "moved pile", p: "Discard" }, (s) => names[s], String), "Ann moved the pile Discard");
 });
+
+// ---- round 2: snapping and groups (layout.ts)
+import { snapAt, groupFrom, groups, GRID, CASCADE } from "../../plugins/bundled/hq-cards/public/layout.ts";
+
+function feltOf(at: [number, number][]): Table {
+  const t = free3();
+  deal(t, 0, "p0", at.length, FREE);
+  for (const p of at) place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: p }, true, FREE);
+  return t;
+}
+
+test("snapAt: off, where dropped; on, the nearest grid point inside the felt", () => {
+  const t = feltOf([]);
+  assert.deepEqual(snapAt(t, [101, 77], [], false), [101, 77]);
+  assert.deepEqual(GRID, [24, 32]);
+  assert.deepEqual(snapAt(t, [101, 77], [], true), [108, 80]); // centres at 12 + 24k, 16 + 32k
+  assert.deepEqual(snapAt(t, [1, 1], [], true), [12, 16]);
+  assert.deepEqual(snapAt(t, [319, 219], [], true), [300, 176], "the last row whose card stays on the felt");
+});
+
+test("snapAt over a card: its lower half cascades CASCADE lower, its upper half stacks on it", () => {
+  const t = feltOf([[60, 48]]);
+  assert.equal(CASCADE, 13);
+  assert.deepEqual(snapAt(t, [62, 55], [], true), [60, 61], "lower half: the card under shows its index");
+  assert.deepEqual(snapAt(t, [58, 42], [], true), [60, 48], "upper half: exactly on it");
+  const c = t.loose[0].c & ~UP;
+  assert.deepEqual(snapAt(t, [62, 55], [c], true), [60, 48], "never on a card being moved: the grid");
+});
+
+test("groupFrom: a card and the cards put on it; groups: the bottom of each", () => {
+  const t = feltOf([[60, 48], [60, 61], [60, 74], [150, 48], [60, 160]]); // a cascade of 3, a lone card, a lone card far below
+  const [a, b, c, d, e] = t.loose.map((l) => l.c & ~UP);
+  assert.deepEqual(groupFrom(t, a), [a, b, c]);
+  assert.deepEqual(groupFrom(t, b), [b, c], "a middle card takes those put on it");
+  assert.deepEqual(groupFrom(t, d), [d]);
+  assert.deepEqual(groups(t).map((g) => g.c), [a], "only the cascade has a handle");
+  void e;
+});

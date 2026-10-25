@@ -7,7 +7,7 @@ export const ACTIONS: readonly Action[] = ["place", "offer", "dealAll", "deal", 
 
 // The felt, in felt units (the view draws it at a whole-number scale); positions are within it.
 export const FELT_W = 320;
-export const FELT_H = 180;
+export const FELT_H = 220; // room for a solitaire column of about 12 cards in cascade (layout.ts CASCADE)
 
 const SUITS = "SHDC";
 const RANKS = "A23456789TJQK";
