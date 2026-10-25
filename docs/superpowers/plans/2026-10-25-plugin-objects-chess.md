@@ -180,6 +180,20 @@
 - [ ] **Step 8: Run** `cd web && pnpm exec tsc -p ../plugins/bundled/hq-chess && pnpm exec tsc -p ../plugins/bundled/hq-chess/public && cd ../server && go test -race ./internal/plugin` → PASS.
 - [ ] **Step 9: Commit** `git commit -m "hq-chess: a chessboard two members play on, without rules"`
 
+### Task 8c: hq-chess reserve of captured pieces and promotion
+
+Spec §4 "Captured pieces and promotion". Runs right after Task 8's review.
+
+**Files:**
+- Modify: `plugins/bundled/hq-chess/public/game.ts` (`Board.r: string`, captured pieces in capture order; `move` puts a taken piece in `r`; `place(b, who, piece, to)` from the reserve; `toReserve(b, who, from)`; `move(b, who, from, to, promote?)` with `promote` in `"q"|"r"|"b"|"n"` only for a pawn landing on its last rank; `parseBoard` reads `r` (only piece letters, at most 30), missing `r` → `""`; `reset` empties it), `public/messages.ts` (`ToServer` gains `{t:"place",x,y,piece,to}`, `{t:"stash",x,y,from}`, `move.promote?`; state `s.r`; `ViewOut` gains `place`, `stash`, `promote`), `main.ts`, `public/board.ts` (reserve strips, drag from and to them, promotion chooser, keyboard reach, announcements "White: queen from reserve to d1", "White: pawn e7 to e8, queen"), `public/pieces.ts` (half-size piece bitmaps, drawn, not scaled), `tools/sprite.mjs` if pieces are generated there
+- Test: `web/test/chess.test.ts`, `server/internal/plugin/chess_test.go`
+
+- [ ] **Step 1: Write the failing tests**: capture → taken piece in `r`; `place` by White of a white piece from `r` (removed from `r`, square's previous piece goes to `r`), of a black piece refused, by a spectator refused, of a piece not in `r` refused; `toReserve` own piece ok, other colour refused; promotion e7→e8 with `"q"` gives `Q` even with a queen already on board; `promote` on a non-pawn or not on the last rank refused; `parseBoard` without `r` → `""`, with a bad `r` → new board; reset empties `r`. Go: place/stash/promote messages through the real plugin, reserve survives restart.
+- [ ] **Step 2: Run** `node --test web/test/chess.test.ts` and `cd server && go test ./internal/plugin -run Chess` → FAIL.
+- [ ] **Step 3: Implement** game rules, server messages, the view (reserve strips beside the board with half-size sprites, promotion chooser, keyboard and click-click to and from the reserve, one message per action).
+- [ ] **Step 4: Run** the unit and Go tests, both hq-chess tsconfigs, `node --test 'web/test/*.test.ts'` → PASS. Look at the half-size sprites with the Read tool and describe them.
+- [ ] **Step 5: Commit** `git commit -m "hq-chess: captured pieces in a reserve, and promotion"`
+
 ### Task 8b: Object callbacks, dynamic objects, objects drawn by the plugin
 
 Spec §3b. Runs after Task 8 (same SDK files).
@@ -204,7 +218,7 @@ Spec §3b. Runs after Task 8 (same SDK files).
 - Create: `e2e/scenarios/chess.mjs`, `e2e/scenarios/capture-chess.mjs` (copy of `capture-plugin-pet.mjs`, not in the default suite)
 - Modify: `e2e/run.mjs` (`all` gains `"chess"`), `e2e/scenarios/a11y.mjs` (axe with the chess window open)
 
-- [ ] **Step 1: Write `chess.mjs`** (admin enables `hq-chess` with `PUT /api/admin/plugins/hq-chess`, puts a `hq-chess/chessboard` 1x1 on the bottom row of a table of the map through `PUT /api/map`, then three members A, B, C walk next to it). Checks, each through the real controls with the modal open: board sprite drawn and X hint shown (criterion 4); X opens `Chess`; A White, B Black, C Spectate, C cannot pick a piece, A cannot pick a black piece (5); real mouse drag e2→e4 by A seen by B and C within 1 s, capture on an occupied square, drop outside returns, click-click works (6); exactly one `plg` frame per drop (count on A's socket) (10); keyboard-only move by B reaches A and the live region announces it (11); B closes → A sees "away"; C Reset disabled; A closes → C resets → seats free (7); server restart → board, seats back (8); plugin off → sprite gone and X does nothing; on → back with its game (4); while A and B have the window open, C's page shows a white badge above A and a black badge above B, the badge follows A when A walks, and disappears within 1 s after A closes the window (13).
+- [ ] **Step 1: Write `chess.mjs`** (admin enables `hq-chess` with `PUT /api/admin/plugins/hq-chess`, puts a `hq-chess/chessboard` 1x1 on the bottom row of a table of the map through `PUT /api/map`, then three members A, B, C walk next to it). Checks, each through the real controls with the modal open: board sprite drawn and X hint shown (criterion 4); X opens `Chess`; A White, B Black, C Spectate, C cannot pick a piece, A cannot pick a black piece (5); real mouse drag e2→e4 by A seen by B and C within 1 s, capture on an occupied square, drop outside returns, click-click works (6); exactly one `plg` frame per drop (count on A's socket) (10); keyboard-only move by B reaches A and the live region announces it (11); B closes → A sees "away"; C Reset disabled; A closes → C resets → seats free (7); server restart → board, seats back (8); plugin off → sprite gone and X does nothing; on → back with its game (4); while A and B have the window open, C's page shows a white badge above A and a black badge above B, the badge follows A when A walks, and disappears within 1 s after A closes the window (13); a captured piece shows in the reserve on all three pages, A drags it back onto the board, and a white pawn dropped on e8 with "queen" chosen becomes a second white queen (14).
 - [ ] **Step 2: Run** `cd e2e && node run.mjs chess` → every check passes. Sanity: make `canReset` always return `true`, rerun, check 7 fails; revert.
 - [ ] **Step 3: Run** `cd e2e && node run.mjs capture-chess` and look at the frames: board readable on the table at the default zoom, avatars north of the table behind it, pieces readable in the window (12).
 - [ ] **Step 4: Run** `scripts/gauntlet.sh chess a11y plugins` → `GATES GREEN`.
