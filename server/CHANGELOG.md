@@ -11,6 +11,7 @@
 - Administrators can switch the office to a ready-made layout from Admin > Office: Loft (today's starter office), Lodge (36 desks) or Manor (48 desks in islands of back-to-back desks, meeting rooms, mini meeting rooms, a break room whose duo and couch corners each have their own call, an arena); the whole map is replaced, desk assignments carry over by desk number and everybody online reconnects into the new office at its entrance (#35)
 
 ### Changed
+- Chess: the window takes the full screen with larger pieces, the last move's squares are highlighted, and either player can take the last move back with Undo (#N)
 - A plugin's view can draw the images other running plugins put in their shared folder (#38)
 - A plugin's window can take the whole screen, with a view that fills it (#38)
 - People behind a desk are hidden by the desk and its screen instead of being drawn over them (#37)
