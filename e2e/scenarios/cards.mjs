@@ -9,6 +9,7 @@ import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, AP
 import { CARD_W, CARD_H } from "../../plugins/bundled/hq-cards/public/art.ts";
 import { FX, FY, NARROW, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 import { CODES as OLD_MAID } from "../../plugins/bundled/hq-card-pouilleux/rules.ts";
+import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
 
 const PLUGIN = "hq-cards";
 const T = 16;
@@ -40,18 +41,34 @@ const handOf = async (u) => ((await drawn(u))?.cards ?? []).filter((c) => c.wher
 const looseOf = async (u) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "loose");
 const logOf = async (u) => (await drawn(u))?.log ?? [];
 
-/** The window's buttons (text, disabled, pressed) and its texts. */
-const modal = (u) => read(u, (sel) => {
-  const m = document.querySelector(sel);
-  if (!m) return null;
-  return {
-    buttons: [...m.querySelectorAll(".plugin-body button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-    texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent.trim()),
-  };
-}, MODAL);
+/** The window's controls, wherever they are: its own buttons and texts (the choice of a game, Close) and,
+ * with a game, the controls of the table view's panel. */
+const modal = async (u) => {
+  const own = await read(u, (sel) => {
+    const m = document.querySelector(sel);
+    if (!m) return null;
+    return {
+      buttons: [...m.querySelectorAll(".plugin-body button, .modal-actions button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+      texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent.trim()),
+    };
+  }, MODAL);
+  if (!own) return null;
+  const f = await viewFrame(u);
+  const inView = f ? await f.evaluate(() => ({
+    buttons: [...document.querySelectorAll(".controls button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+    texts: [...document.querySelectorAll(".controls p")].map((p) => p.textContent.trim()),
+  })).catch(() => null) : null;
+  return { buttons: [...own.buttons, ...(inView?.buttons ?? [])], texts: [...own.texts, ...(inView?.texts ?? [])] };
+};
 const hasButton = async (u, text) => !!(await modal(u))?.buttons.find((b) => b.text === text && !b.disabled);
+/** Clicks a control by its text with the real mouse: in the window, or in the table view's panel. */
 async function press(u, text) {
   for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
+  const f = await viewFrame(u);
+  if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) {
+    await h.evaluate((b) => b.scrollIntoView({ block: "center" }));
+    return h.click();
+  }
   throw new Error("no button " + text + " for " + u.name);
 }
 async function pressInView(u, text) {
@@ -59,11 +76,12 @@ async function pressInView(u, text) {
   for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
   throw new Error("no view button " + text + " for " + u.name);
 }
+/** Types into a field of the table view's panel, found by its label. */
 async function type(u, label, value) {
-  const input = await u.page.evaluateHandle((sel, label) => [...document.querySelectorAll(sel + " label.plugin-field")].find((l) => l.textContent.trim().startsWith(label))?.querySelector("input"), MODAL, label);
+  const f = await viewFrame(u);
+  const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent.trim().startsWith(label))?.querySelector("input"), label);
   await input.click({ clickCount: 3 });
   await input.type(value);
-  await input.press("Enter");
 }
 
 /** Page coordinates of view points (view units), the view scrolled into sight. */
@@ -146,7 +164,11 @@ async function openWithX(u) {
     return false;
   }, { what: u.name + "'s Cards window" });
   // the table's view shows once a game is chosen; the choice of a game has none
-  await waitFor(async () => (await modal(u))?.buttons.some((b) => b.text === "Free table") || ((await viewFrame(u)) && (await drawn(u)) !== null), { what: u.name + "'s table drawn" });
+  // the choice of a game and the "not available" window have no view; a game has the table's view
+  await waitFor(async () => {
+    const m = await modal(u);
+    return m?.buttons.some((b) => b.text === "Free table") || m?.texts.some((x) => x.startsWith("This game is not available")) || ((await viewFrame(u)) && (await drawn(u)) !== null);
+  }, { what: u.name + "'s table drawn" });
 }
 
 export async function run(ctx) {
@@ -215,7 +237,7 @@ export async function run(ctx) {
     check("4: Cy opens it again and is back in the seat", back >= 0, `${back} ms`);
 
     // ---- criterion 5: deal, then drags to the felt, a pile and a player
-    await press(ann, "Deal 7 each");
+    await press(ann, "Deal");
     await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7 && (await handOf(cy)).length === 7, { what: "7 cards each" });
     const alive = await Promise.all(users.map((u) => read(u, () => Object.keys(window.__hq.session.plugins?.stopReasons ?? {}).length === 0 || !("hq-cards" in (window.__hq.session.plugins?.stopReasons ?? {})))));
     check("UX: with a 24-character name at the table, the Cards plugin keeps running on every page after the deal", alive.every(Boolean) && (await Promise.all(users.map((u) => viewFrame(u)))).every(Boolean), JSON.stringify(alive));
@@ -233,7 +255,7 @@ export async function run(ctx) {
     check("5: Ann drags her first card onto the felt: Bo and Cy see it face up within 1 s", seen.every((ms) => ms >= 0), JSON.stringify(seen));
     check("12: nothing sent while dragging, one plg frame for the drop", d.during === 0 && d.total === 1 && d.msgs[0].t === "place", JSON.stringify(d));
     await handAfter(6);
-    const stock = { at: [160, 90] };
+    const stock = { at: FREE.piles[0].at }; // the free table's stock, in the middle of the felt
     d = await drag(ann, await handAt(ann, 0), pileAt(stock.at));
     const onStock = await within(async () => (await logOf(bo)).some((l) => l === `${ann.name} put a card on Stock`), 1000);
     check("5: a card dragged onto the Stock pile goes on it (face down, as the pile) and is logged", onStock >= 0 && d.total === 1, `${onStock} ms ` + JSON.stringify({ d, hand: (await handOf(ann)).length, log: (await logOf(bo)).slice(-3), annLog: (await logOf(ann)).slice(-2) }));
@@ -293,9 +315,9 @@ export async function run(ctx) {
     check("5: Di drags the card on the felt: nothing is sent, it stays", d.total === 0 && (await looseOf(ann)).some((c) => c.c === first.c), JSON.stringify(d));
 
     // ---- criterion 6: a pile created, shuffled, drawn from, looked through and reordered, all logged
-    await type(ann, "New pile's name", "Discard");
-    await waitFor(() => hasButton(ann, "New pile face up"), { what: "New pile enabled" });
-    await press(ann, "New pile face up");
+    await type(ann, "New pile", "Discard");
+    await waitFor(() => hasButton(ann, "Face up"), { what: "New pile enabled" });
+    await press(ann, "Face up");
     await waitFor(async () => (await logOf(bo)).includes(`${ann.name} created the pile Discard`), { what: "Discard created" });
     await click(ann, pileAt(stock.at));
     await pressInView(ann, "Shuffle Stock");
@@ -366,7 +388,8 @@ export async function run(ctx) {
     // ---- criteria 8 and 9: Old Maid, with its narrowed actions and its count
     await setPlugin(ctx, "hq-card-pouilleux", true);
     await press(ann, "Reset");
-    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), { timeout: 5000, what: "Old Maid offered after the reset" });
+    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), { timeout: 5000, what: "Old Maid offered after the reset" })
+      .catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await modal(ann))); });
     await press(ann, "Old Maid");
     await waitFor(() => hasButton(ann, "Seat 1"), { what: "Old Maid's seats" });
     await press(ann, "Seat 1");
@@ -430,7 +453,7 @@ export async function run(ctx) {
       await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
         throw new Error(e.message + " " + JSON.stringify({ modal: await modal(bo), drawn: await drawn(bo).then((d) => d && { seat: d.seat, sheet: d.sheet }) }));
       });
-      await press(ann, "Deal 7 each");
+      await press(ann, "Deal");
       await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7, { what: "Last Card dealt" });
       await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
       const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });

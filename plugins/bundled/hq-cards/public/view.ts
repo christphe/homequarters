@@ -7,16 +7,20 @@
 // other seats around it (their names and the backs of their cards), my hand fanned under it. What a member
 // should not see is hidden here: other hands and face-down cards show their backs, a pile only its top,
 // unless I look through it. Pointer: drag a card (from my hand, the felt or the top of a pile) and drop it
-// on the felt, a pile, a player's name (to give it) or my hand; a double click turns a card over. A row of
-// buttons under the canvas acts on the selected pile, card or seat. Keyboard: the arrows move a cursor over
+// on the felt, a pile, a player's name (to give it) or my hand; a double click turns a card over. When the
+// table snaps (a setting of the table), a card lands on a grid, on another card, or just below it so its
+// index shows (a cascade); a card taken from a stack or cascade takes the cards put on it, and a handle
+// above a group or a pile moves it whole. A row of buttons under the canvas acts on the selected pile, card
+// or seat; the table's controls and the log are in a panel (public/panel.ts). Keyboard: the arrows move a cursor over
 // my hand, the felt's cards and piles and the seats; Enter picks up and drops; F turns over, L looks, D
 // draws, T puts the held card on the table; Escape cancels. A live region says what is under the cursor
 // and every new line of the log, which is also listed under the canvas.
 import { CARD_H, CARD_W, paintBack, paintCard } from "./art.ts";
 import { cardName, type ClientGame } from "./games.ts";
-import { cardAt, FELT_H, FELT_W, handSpots, hit, layoutFor, seatSpots, WIDE, type Layout, type Spot } from "./layout.ts";
+import { cardAt, FELT_H, FELT_W, GRID, groupFrom, groups, handSpots, hit, layoutFor, seatSpots, snapAt, WIDE, type Layout, type Spot } from "./layout.ts";
 import { sentence, type LogEntry } from "./log.ts";
 import type { Act, TableState, ViewIn } from "./messages.ts";
+import { createPanel } from "./panel.ts";
 import { UP, type Dest, type Src, type Table } from "./table.ts";
 
 const C = {
@@ -43,27 +47,48 @@ let scale = 2;
 let L: Layout = WIDE; // WIDE, or NARROW on a phone (layout.ts)
 
 // a card picked up: from where, which card, and (while dragging) where the pointer is, in view pixels
-let held: { src: Src; c: number; up: boolean; by: "drag" | "key"; x: number; y: number; moved: boolean } | null = null;
+// gx, gy: where the pointer took the card, from its centre; group: the loose cards moving with it (a stack or
+// cascade taken from this card, or the whole group by its handle); pile: a pile moved by its handle
+let held: { src: Src; c: number; up: boolean; by: "drag" | "key"; x: number; y: number; moved: boolean; gx: number; gy: number; group: number[]; pile: string | null } | null = null;
 // looking through a pile: its cards in my order; picking from a hand offered to me
 let look: { pile: string; cards: number[]; changed: boolean; grab: number | null } | null = null;
 let picking = false;
 let cursor = 0; // the keyboard's target, an index in targets()
 let version = 0; // counts the states received: the buttons under the canvas are rebuilt for each
 // a card just dropped: drawn where it was dropped (not back where it came from) until the server's state comes
-let dropped: { src: Src; c: number; up: boolean; x: number; y: number } | null = null;
+let dropped: { src: Src | null; hide: number[]; pile: string | null; cards: { c: number; up: boolean; x: number; y: number }[] } | null = null;
 let droppedTimer = 0;
 let cursorShown = false;
 
 const style = document.createElement("style");
 style.textContent = `
-  html, body { margin: 0; background: transparent; color: ${C.text}; font: 13px system-ui, sans-serif; }
-  body { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px; }
+  html, body { margin: 0; height: 100%; background: transparent; color: ${C.text}; font: 13px system-ui, sans-serif; }
+  /* wide: the table on the left, the panel on the right, each scrolling on its own; narrow: one column that scrolls */
+  main.cards { box-sizing: border-box; height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 10px; padding: 4px; }
+  main.cards.narrow { display: block; height: auto; }
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: 0; overflow: auto; }
   canvas { image-rendering: pixelated; touch-action: none; outline: none; flex-shrink: 0; }
   canvas:focus-visible { box-shadow: 0 0 0 3px #3b7dd8; }
   .bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: 28px; }
-  .bar button { font: inherit; padding: 3px 10px; border-radius: 4px; border: 1px solid #1a1526; background: #f4efe2; color: #1a1526; cursor: pointer; }
-  .bar button:focus-visible { outline: 3px solid #3b7dd8; outline-offset: 1px; }
-  .log { box-sizing: border-box; width: min(100%, 640px); max-height: 120px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; border-radius: 4px; }
+  button { font: inherit; padding: 3px 10px; border-radius: 4px; border: 1px solid #1a1526; background: #f4efe2; color: #1a1526; cursor: pointer; }
+  button[aria-pressed="true"] { background: #e8c35a; }
+  button:disabled { opacity: .55; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #3b7dd8; outline-offset: 1px; }
+  /* the panel sits on the window's light background: dark text there; the log keeps its dark box */
+  .panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: hidden; color: #1a1526; }
+  .panel .bar { justify-content: flex-start; }
+  main.narrow .panel { margin-top: 10px; overflow: visible; }
+  .controls { display: grid; gap: 6px; align-content: start; overflow: auto; flex: 1 1 auto; min-height: 0; }
+  .controls h2 { margin: 0; font-size: 15px; }
+  .controls p { margin: 0; }
+  .controls .muted { color: #5a5470; }
+  .controls .notice { color: #8a4b00; font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .field { display: inline-flex; gap: 6px; align-items: center; }
+  .field input { box-sizing: border-box; width: 9em; padding: 3px 6px; border-radius: 4px; border: 1px solid #1a1526; font: inherit; }
+  .field input[type="number"] { width: 4.5em; }
+  .log { box-sizing: border-box; flex: 0 1 30%; min-height: 80px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; color: ${C.text}; border-radius: 4px; }
+  main.narrow .log { max-height: 160px; }
   .log li { margin: 1px 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
@@ -75,16 +100,17 @@ canvas.setAttribute("role", "application");
 canvas.setAttribute("aria-label", "Card table: arrow keys move, Enter picks up and drops a card, F turns it over, L looks through a pile, D draws, T puts the held card on the table, Escape cancels");
 const bar = document.createElement("div");
 bar.className = "bar";
-const logList = document.createElement("ol");
-logList.className = "log";
-logList.setAttribute("aria-label", "Table log");
 const live = document.createElement("div");
 live.className = "sr";
 live.setAttribute("aria-live", "polite");
+const panel = createPanel((m) => send(m), () => newPileAt());
+const stage = document.createElement("div");
+stage.className = "stage";
+stage.append(canvas, bar);
 // one landmark around everything, so every part of the view belongs to a region
 const main = document.createElement("main");
-main.style.cssText = "display: contents";
-main.append(canvas, bar, logList, live);
+main.className = "cards";
+main.append(stage, panel.root, live);
 document.body.append(main);
 const ctx = canvas.getContext("2d")!;
 
@@ -179,6 +205,23 @@ function freeSpot(t: Table): [number, number] {
   return [FELT_W / 2, FELT_H / 2];
 }
 
+/** Where a new pile goes: the first free place of a row along the top of the felt. */
+function newPileAt(): [number, number] {
+  const taken = st?.t.piles.map((p) => p.at) ?? [];
+  for (let i = 0; i < 12; i++) {
+    const at: [number, number] = [GRID[0] / 2 + i * GRID[0], GRID[1] / 2];
+    if (!taken.some((a) => Math.abs(a[0] - at[0]) < CARD_W && Math.abs(a[1] - at[1]) < CARD_H)) return at;
+  }
+  return [FELT_W / 2, GRID[1] / 2];
+}
+
+function refreshPanel(): void {
+  if (st && game && st.t.game !== null) panel.update({ st, game, me, log, card: nameOf });
+}
+
+/** The felt position (a card's centre) under view pixel (x, y), on the felt. */
+const feltAt = (x: number, y: number): [number, number] => [Math.max(CARD_W / 2, Math.min(FELT_W - CARD_W / 2, Math.round(x - L.fx))), Math.max(CARD_H / 2, Math.min(FELT_H - CARD_H / 2, Math.round(y - L.fy)))];
+
 /** What a drop at view pixel (x, y) lands on. */
 function dropAt(x: number, y: number): Dest | null {
   if (mySeat !== null && y >= L.fy + FELT_H && x >= L.fx && x < L.fx + FELT_W) return { k: "hand", seat: mySeat };
@@ -187,8 +230,7 @@ function dropAt(x: number, y: number): Dest | null {
   if (s.k === "pile") return { k: "pile", id: s.id };
   if (s.k === "seat") return { k: "hand", seat: s.seat };
   if (s.k === "hand" && mySeat !== null) return { k: "hand", seat: mySeat };
-  const at: [number, number] = [Math.max(CARD_W / 2, Math.min(FELT_W - CARD_W / 2, Math.round(x - L.fx))), Math.max(CARD_H / 2, Math.min(FELT_H - CARD_H / 2, Math.round(y - L.fy)))];
-  return { k: "felt", at };
+  return { k: "felt", at: feltAt(x, y) };
 }
 
 function cardOf(src: Src): { c: number; up: boolean } | null {
@@ -213,17 +255,56 @@ function send(m: Act): void {
   hqView.send(m);
 }
 
-/** The action of dropping the held card on dest, one message, or nothing when it would not change anything. */
+/** Keeps what was just dropped drawn where it landed until the server's state comes (or 1.5 s: refused). */
+function ghost(g: NonNullable<typeof dropped>): void {
+  dropped = g;
+  clearTimeout(droppedTimer);
+  droppedTimer = setTimeout(() => ((dropped = null), draw()), 1500);
+}
+
+/** The action of dropping what is held on dest, one message, or nothing when it would not change anything. */
 function drop(dest: Dest | null): void {
   const h = held;
   held = null;
   if (h?.by === "drag") selected = null; // the card was moved: nothing stays selected (another would slide into its place)
   if (!h || !dest || !st || mySeat === null) return draw();
+  const t = st.t;
   const { src } = h;
+  // where the card's centre lands on the felt: under the pointer, less where the card was taken; then snapped
+  const centre = feltAt(h.x - h.gx, h.y - h.gy);
+  const landing = (moving: number[]) => snapAt(t, centre, moving, t.snap);
+  // a pile by its handle: only onto the felt, on the grid when the table snaps
+  if (h.pile) {
+    const p = pileById(h.pile);
+    if (p && dest.k === "felt" && allowed("place")) {
+      const at = t.snap ? snapAt({ ...t, loose: [] }, centre, [], true) : centre;
+      if (at[0] !== p.at[0] || at[1] !== p.at[1]) {
+        send({ t: "movePile", pile: p.id, at });
+        ghost({ src: null, hide: [], pile: p.id, cards: [] });
+      }
+    }
+    return draw();
+  }
+  // a stack or cascade: moved together, only onto the felt
+  if (h.group.length > 1) {
+    if (dest.k === "felt" && allowed("place")) {
+      const first = t.loose.find((l) => (l.c & ~UP) === h.c);
+      if (first) {
+        const at = landing(h.group);
+        const dx = at[0] - first.at[0], dy = at[1] - first.at[1];
+        if (dx || dy) {
+          send({ t: "moveCards", cards: h.group, dx, dy });
+          const moved = t.loose.filter((l) => h.group.includes(l.c & ~UP)).map((l) => ({ c: l.c & ~UP, up: !!(l.c & UP), ...cardAt([l.at[0] + dx, l.at[1] + dy], L) }));
+          ghost({ src: null, hide: h.group, pile: null, cards: moved });
+        }
+      }
+    }
+    return draw();
+  }
+  if (dest.k === "felt") dest = { k: "felt", at: landing(src.k === "loose" ? [h.c] : []) };
   if (h.by === "drag" && h.moved && dest.k !== "hand") {
-    dropped = { src, c: h.c, up: h.up, x: h.x, y: h.y };
-    clearTimeout(droppedTimer);
-    droppedTimer = setTimeout(() => ((dropped = null), draw()), 1500); // a refused move goes back
+    const at = dest.k === "felt" ? cardAt(dest.at, L) : { x: h.x - CARD_W / 2, y: h.y - CARD_H / 2 };
+    ghost({ src, hide: [], pile: null, cards: [{ c: h.c, up: h.up, ...at }] });
   }
   if (dest.k === "hand" && dest.seat === mySeat) {
     if (src.k === "pile") {
@@ -231,13 +312,13 @@ function drop(dest: Dest | null): void {
     } else if (src.k === "loose") send({ t: "place", from: src, to: dest, up: false });
     else if (src.k === "hand" && h.by === "drag") {
       // rearranging my hand: the card goes where it was dropped
-      const hand = [...st.t.hands[mySeat]];
+      const hand = [...t.hands[mySeat]];
       const [c] = hand.splice(src.i, 1);
       const spots = handSpots(hand.length + 1, L);
       let at = spots.findIndex((p) => h.x < p.x + (CARD_W * L.handK) / 2);
       if (at < 0) at = hand.length;
       hand.splice(at, 0, c);
-      if (hand.some((v, i) => v !== st!.t.hands[mySeat!][i])) send({ t: "order", hand });
+      if (hand.some((v, i) => v !== t.hands[mySeat!][i])) send({ t: "order", hand });
     }
     return draw();
   }
@@ -269,6 +350,26 @@ function outline(x: number, y: number, w: number, h: number, colour: string): vo
   ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
 }
 
+/** A handle: three short lines just above a card (a pile, or a stack's or cascade's bottom card). */
+const GRIP_H = 7;
+function grip(x: number, y: number): void {
+  ctx.fillStyle = C.slot;
+  for (let k = 0; k < 3; k++) ctx.fillRect(x + 5, y - GRIP_H + k * 2, CARD_W - 10, 1);
+}
+
+/** The handle under view pixel (x, y): a group's (by its bottom card) or a pile's. */
+function handleAt(x: number, y: number): { c: number; pile: string | null } | null {
+  const t = st?.t;
+  if (!t) return null;
+  const on = (at: [number, number]) => {
+    const p = cardAt(at, L);
+    return x >= p.x && x < p.x + CARD_W && y >= p.y - GRIP_H - 1 && y < p.y;
+  };
+  for (const g of [...groups(t)].reverse()) if (on(g.at)) return { c: g.c, pile: null };
+  for (const p of [...t.piles].reverse()) if (on(p.at)) return { c: -1, pile: p.id };
+  return null;
+}
+
 function same(a: Spot | null, b: Spot | null): boolean {
   return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
 }
@@ -296,11 +397,22 @@ function draw(): void {
   }
   const targets = targetList();
   const cur = cursorShown ? targets[cursor] ?? null : null;
-  const hide = held && held.by === "drag" && held.moved ? held.src : dropped?.src ?? null;
+  const dragging = held && held.by === "drag" && held.moved ? held : null;
+  const hide = dragging ? dragging.src : dropped?.src ?? null;
+  const hideLoose = new Set<number>([...(dragging?.group ?? []), ...(dropped?.hide ?? [])]);
+  const seated = mySeat !== null && allowed("place");
+  // where the grabbed card's centre is while dragging (felt units), and how far it moved from where it was
+  const dragCentre = dragging ? feltAt(dragging.x - dragging.gx, dragging.y - dragging.gy) : null;
+  // the grid, while dragging on a table that snaps
+  if (dragging && t.snap) {
+    ctx.fillStyle = C.feltHi;
+    for (let gx = GRID[0] / 2; gx <= FELT_W - CARD_W / 2; gx += GRID[0]) for (let gy = GRID[1] / 2; gy <= FELT_H - CARD_H / 2; gy += GRID[1]) ctx.fillRect(L.fx + gx - 1, L.fy + gy - 1, 2, 2);
+  }
 
   // piles: their slot, their top card, their name and count
   for (const p of t.piles) {
-    const { x, y } = cardAt(p.at, L);
+    const moving = dragging?.pile === p.id && dragCentre;
+    const { x, y } = cardAt(moving ? dragCentre : p.at, L);
     ctx.setLineDash([2, 2]);
     outline(x, y, CARD_W, CARD_H, C.slot);
     ctx.setLineDash([]);
@@ -314,7 +426,8 @@ function draw(): void {
     }
     text(`${short(p.name, 10)} ${p.cards.length}`, x + CARD_W / 2, y + CARD_H + 6, C.muted);
     const lookers = st!.looking.filter((l) => l.pile === p.id).map((l) => short(seatName(l.seat), 8));
-    if (lookers.length) text(`${lookers.join(", ")} looking`, x + CARD_W / 2, y - 5, C.select);
+    if (lookers.length) text(`${lookers.join(", ")} looking`, x + CARD_W / 2, y + CARD_H + 14, C.select);
+    if (seated) grip(x, y); // the pile's handle
     const s: Spot = { k: "pile", id: p.id };
     if (same(selected, s)) outline(x, y, CARD_W, CARD_H, C.select);
     if (same(cur, s)) outline(x - 1, y - 1, CARD_W + 2, CARD_H + 2, C.cursor);
@@ -322,7 +435,7 @@ function draw(): void {
   // loose cards, in the order they were put down
   for (const l of t.loose) {
     const c = l.c & ~UP;
-    if (hide?.k === "loose" && hide.c === c) continue;
+    if ((hide?.k === "loose" && hide.c === c) || hideLoose.has(c)) continue;
     const { x, y } = cardAt(l.at, L);
     drawCard(c, !!(l.c & UP), x, y);
     drawn.push({ c, up: !!(l.c & UP), x, y, where: "loose" });
@@ -330,6 +443,8 @@ function draw(): void {
     if (same(selected, s)) outline(x, y, CARD_W, CARD_H, C.select);
     if (same(cur, s)) outline(x - 1, y - 1, CARD_W + 2, CARD_H + 2, C.cursor);
   }
+  // the handle of each stack or cascade, above its bottom card
+  if (seated) for (const g of groups(t)) if (!hideLoose.has(g.c)) grip(cardAt(g.at, L).x, cardAt(g.at, L).y);
   // the other seats: name (away when their window is closed), their cards' backs, what they are doing
   for (const sp of seatSpots(t.seats.length, mySeat, L)) {
     const seat = t.seats[sp.seat];
@@ -374,9 +489,14 @@ function draw(): void {
   // overlays: looking through a pile, picking from an offered hand
   if (look) drawRow(look.cards.map((c) => ({ c: c & ~UP, up: true })), "look", look.grab);
   else if (picking && t.offer && t.offer.to === mySeat) drawRow(t.hands[t.offer.from].map((c) => ({ c, up: false })), "pick", null);
-  // the card being dragged, or just dropped
-  if (held && held.by === "drag" && held.moved) drawCard(held.c, held.up, held.x - CARD_W / 2, held.y - CARD_H / 2);
-  else if (dropped) drawCard(dropped.c, dropped.up, dropped.x - CARD_W / 2, dropped.y - CARD_H / 2);
+  // what is being dragged (a card, or a stack or cascade moving together), or was just dropped
+  if (dragging && dragCentre && !dragging.pile) {
+    if (dragging.group.length > 1) {
+      const first = t.loose.find((l) => (l.c & ~UP) === dragging.c);
+      const dx = first ? dragCentre[0] - first.at[0] : 0, dy = first ? dragCentre[1] - first.at[1] : 0;
+      for (const l of t.loose) if (dragging.group.includes(l.c & ~UP)) drawCard(l.c & ~UP, !!(l.c & UP), cardAt([l.at[0] + dx, l.at[1] + dy], L).x, cardAt([l.at[0] + dx, l.at[1] + dy], L).y);
+    } else drawCard(dragging.c, dragging.up, dragging.x - dragging.gx - CARD_W / 2, dragging.y - dragging.gy - CARD_H / 2);
+  } else if (dropped) for (const k of dropped.cards) drawCard(k.c, k.up, k.x, k.y);
   publish();
 }
 
@@ -416,7 +536,7 @@ function publish(): void {
     font: L.font * scale, // CSS px of the canvas text
     seat: mySeat,
     sheet: !game || "standard" in game.deck ? null : sheet ? "loaded" : "loading",
-    log: [...logList.children].map((li) => li.textContent),
+    log: panel.logLines(),
   };
   toolbar();
 }
@@ -457,7 +577,9 @@ function toolbar(): void {
         if (allowed("viewPile") && p.cards.length) out.push(button(`Look through ${short(p.name, 12)}`, () => startLook(id)));
         if (allowed("shuffle") && p.cards.length > 1) out.push(button(`Shuffle ${short(p.name, 12)}`, () => send({ t: "shuffle", pile: id })));
         if (allowed("place") && p.cards.length) out.push(button("Turn the top over", () => send({ t: "flip", from: { k: "pile", id } })));
-        if (allowed("createPile") && p.mine && !p.cards.length) out.push(button(`Remove ${short(p.name, 12)}`, () => send({ t: "delPile", pile: id })));
+        if (allowed("remove") && p.cards.length) out.push(button("Set the top aside", () => send({ t: "setAside", from: { k: "pile", id } })));
+        // any pile but the stock: its cards go back to the stock
+        if (allowed("createPile") && p !== t.piles[0]) out.push(button(`Remove the pile ${short(p.name, 12)}`, () => ((selected = null), send({ t: "delPile", pile: id }))));
       }
     } else if (selected.k === "loose") {
       if (allowed("place")) {
@@ -465,6 +587,7 @@ function toolbar(): void {
         out.push(button("Turn it over", () => onLoose((c) => send({ t: "flip", from: { k: "loose", c } }), false)));
         out.push(button("Take it back", () => onLoose((c) => send({ t: "place", from: { k: "loose", c }, to: { k: "hand", seat: mySeat! }, up: false }), true)));
       }
+      if (allowed("remove")) out.push(button("Set it aside", () => onLoose((c) => send({ t: "setAside", from: { k: "loose", c } }), true)));
     } else if (selected.k === "hand") {
       if (allowed("place")) {
         const put = (up: boolean) => () => {
@@ -475,6 +598,14 @@ function toolbar(): void {
         };
         out.push(button("Put it on the table face up", put(true)));
         out.push(button("Put it on the table face down", put(false)));
+      }
+      if (allowed("remove")) {
+        out.push(button("Set it aside", () => {
+          if (selected?.k !== "hand") return;
+          send({ t: "setAside", from: { k: "hand", i: selected.i } });
+          selected = null;
+          draw();
+        }));
       }
     } else if (selected.k === "seat") {
       const s = selected.seat;
@@ -556,13 +687,36 @@ canvas.addEventListener("pointerdown", (e) => {
     }
     return draw();
   }
-  const s = hit(st.t, mySeat, p.x, p.y, L);
+  const t = st.t;
+  // a handle first: a whole stack or cascade, or a pile
+  const handle = mySeat !== null && allowed("place") ? handleAt(p.x, p.y) : null;
+  if (handle) {
+    const at = handle.pile ? pileById(handle.pile)!.at : t.loose.find((l) => (l.c & ~UP) === handle.c)!.at;
+    const centre = cardAt(at, L);
+    held = {
+      src: handle.pile ? { k: "pile", id: handle.pile } : { k: "loose", c: handle.c }, c: handle.c, up: false, by: "drag", x: p.x, y: p.y, moved: false,
+      gx: p.x - (centre.x + CARD_W / 2), gy: p.y - (centre.y + CARD_H / 2), group: handle.pile ? [] : groupFrom(t, handle.c), pile: handle.pile,
+    };
+    selected = null;
+    canvas.setPointerCapture(e.pointerId);
+    return draw();
+  }
+  const s = hit(t, mySeat, p.x, p.y, L);
   selected = s && s.k !== "felt" ? s : null;
-  if (s?.k === "seat" && st.t.offer?.from === s.seat && st.t.offer.to === mySeat) picking = true;
+  if (s?.k === "seat" && t.offer?.from === s.seat && t.offer.to === mySeat) picking = true;
   const src = srcOf(s);
   const card = src && cardOf(src);
   if (src && card && mySeat !== null) {
-    held = { src, ...card, by: "drag", x: p.x, y: p.y, moved: false };
+    // where the pointer took it, from the card's centre (a hand card is drawn larger in the narrow layout)
+    let cx = p.x, cy = p.y;
+    if (src.k === "loose" || src.k === "pile") {
+      const at = src.k === "pile" ? pileById(src.id)!.at : t.loose.find((l) => (l.c & ~UP) === src.c)!.at;
+      cx = cardAt(at, L).x + CARD_W / 2;
+      cy = cardAt(at, L).y + CARD_H / 2;
+    }
+    // a card taken from a stack or cascade takes the cards put on it
+    const group = src.k === "loose" ? groupFrom(t, src.c) : [];
+    held = { src, ...card, by: "drag", x: p.x, y: p.y, moved: false, gx: p.x - cx, gy: p.y - cy, group, pile: null };
     canvas.setPointerCapture(e.pointerId);
   }
   draw();
@@ -720,7 +874,7 @@ canvas.addEventListener("keydown", (e) => {
     const src = srcOf(cur);
     const card = src && cardOf(src);
     if (src && card && mySeat !== null) {
-      held = { src, ...card, by: "key", x: 0, y: 0, moved: false };
+      held = { src, ...card, by: "key", x: 0, y: 0, moved: false, gx: 0, gy: 0, group: [], pile: null };
       selected = cur;
       draw();
       return say(`picked up ${card.up ? nameOf(card.c) : "a card"}: move to where it goes and press Enter, or T for the table`);
@@ -738,12 +892,20 @@ canvas.addEventListener("keydown", (e) => {
 // ---- size
 
 function fit(): void {
-  // the table and the buttons under it fit the view: its width, and its height less the bar (the log scrolls below)
-  const w = window.innerWidth - 12;
-  const layout = layoutFor(w); // a phone: the narrow layout, rather than the wide one drawn too small
-  const k = Math.min(w / layout.w, (window.innerHeight - 48) / layout.h);
-  // whole and half steps: at 1x a 20 x 28 card is too small to read in a large window (about 700 px wide)
-  const next = k >= 1 ? Math.max(1, Math.min(4, Math.floor(k * 2) / 2)) : Math.max(0.5, k);
+  // wide: the table beside the panel, as large as the stage allows (its width, and the window's height less
+  // the bar); narrow (a phone): one column, the table as wide as the window, the panel under it
+  const wide = window.innerWidth >= WIDE.w + 240 + 30; // the table at 1x or more beside a panel of 240 px
+  main.classList.toggle("narrow", !wide);
+  // the buttons for the selected card: at the top of the panel beside the table (the table keeps the
+  // height), under the table in one column
+  if (wide && bar.parentElement !== panel.root) panel.root.prepend(bar);
+  if (!wide && bar.parentElement !== stage) stage.append(bar);
+  const w = (wide ? stage.clientWidth : window.innerWidth) - 12;
+  const layout = wide ? WIDE : layoutFor(w);
+  const k = wide ? Math.min(w / layout.w, (window.innerHeight - 12) / layout.h) : w / layout.w;
+  // quarter steps from 1x: as large as the space allows (a card reads well from about 1.75x) with pixels
+  // that stay nearly even
+  const next = k >= 1 ? Math.max(1, Math.min(4, Math.floor(k * 4) / 4)) : Math.max(0.5, k);
   if (next !== scale || layout !== L) {
     scale = next;
     L = layout;
@@ -755,13 +917,11 @@ window.addEventListener("resize", fit);
 // ---- messages from the page
 
 function setLog(entries: LogEntry[]): void {
-  const before = logList.children.length;
-  const lines = entries.map((e) => sentence(e, seatName, nameOf));
-  logList.replaceChildren(...lines.map((s) => Object.assign(document.createElement("li"), { textContent: s })));
-  logList.scrollTop = logList.scrollHeight;
-  const last = lines[lines.length - 1];
-  if (last && (lines.length !== before || entries !== log)) say(last);
+  const before = log.length;
   log = entries;
+  refreshPanel();
+  const last = entries[entries.length - 1];
+  if (last && entries.length !== before) say(sentence(last, seatName, nameOf));
 }
 
 hqView.onMessage<ViewIn>((m) => {
@@ -774,7 +934,7 @@ hqView.onMessage<ViewIn>((m) => {
     look = null;
     picking = false;
     cursor = 0;
-    logList.replaceChildren();
+    log = [];
   }
   if (m.t === "game") {
     game = m.g;
@@ -795,11 +955,14 @@ hqView.onMessage<ViewIn>((m) => {
     if (look && !pileById(look.pile)) look = null;
     if (picking && st.t.offer?.to !== mySeat) picking = false;
     cursor = Math.min(cursor, Math.max(0, targetList().length - 1));
+    refreshPanel();
   } else if (m.t === "log") {
     setLog(m.log);
   }
+  if (m.t === "game") refreshPanel();
   draw();
 });
 
+new ResizeObserver(fit).observe(stage); // the stage's width changes with the window and the panel
 fit();
 draw();

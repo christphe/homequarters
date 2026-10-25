@@ -14,7 +14,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { launch, joinAs, walkTo, sleep, waitFor } from "../lib.mjs";
-import { setPlugin, setDecks, viewFrame, drawn, handOf, press, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK } from "./cards.mjs";
+import { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK } from "./cards.mjs";
+import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
 import { seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 
 const HUD = ".topbar,.side,.social-controls,.bar,.minimap,.toast,.dock{display:none!important}";
@@ -50,10 +51,10 @@ export async function run(ctx) {
   };
   const choose = async (title, ...us) => {
     await press(us[0], "Reset");
-    await waitFor(() => us[0].page.evaluate((sel, t) => [...document.querySelectorAll(sel + " button")].some((b) => b.textContent.trim() === t), MODAL, title), { what: title + " offered" });
+    await waitFor(async () => (await modal(us[0]))?.buttons.some((b) => b.text === title), { what: title + " offered" });
     await press(us[0], title);
     for (const [i, u] of us.entries()) {
-      await waitFor(async () => (await u.page.evaluate((sel, t) => [...document.querySelectorAll(sel + " button")].some((b) => b.textContent.trim() === t && !b.disabled), MODAL, "Seat " + (i + 1))), { timeout: 8000, what: u.name + " seat" });
+      await waitFor(async () => (await modal(u))?.buttons.some((b) => b.text === "Seat " + (i + 1) && !b.disabled), { timeout: 8000, what: u.name + " seat" });
       await press(u, "Seat " + (i + 1));
       await waitFor(async () => (await drawn(u))?.seat === i, { what: u.name + " seated" });
     }
@@ -70,14 +71,14 @@ export async function run(ctx) {
     for (const u of [ann, bo, adm]) await openWithX(u);
 
     // the free table: dealt to three, a card on the felt, a pile made
-    await waitFor(async () => (await ann.page.$$(MODAL + " button")).length > 1, { what: "the choice" });
+    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table"), { what: "the choice" });
     await press(ann, "Free table");
     for (const [i, u] of [ann, bo, adm].entries()) {
-      await waitFor(async () => (await u.page.evaluate((sel, t) => [...document.querySelectorAll(sel + " button")].some((b) => b.textContent.trim() === t && !b.disabled), MODAL, "Seat " + (i + 1))), { what: u.name + " seat" });
+      await waitFor(async () => (await modal(u))?.buttons.some((b) => b.text === "Seat " + (i + 1) && !b.disabled), { what: u.name + " seat" });
       await press(u, "Seat " + (i + 1));
       await waitFor(async () => (await drawn(u))?.seat === i, { what: u.name + " seated" });
     }
-    await press(ann, "Deal 7 each");
+    await press(ann, "Deal");
     await waitFor(async () => (await handOf(ann)).length === 7, { what: "dealt" });
     await drag(ann, await handAt(ann, 0), feltAt(70, 120));
     await waitFor(async () => (await handOf(ann)).length === 6, { what: "a card on the felt" });
@@ -97,7 +98,7 @@ export async function run(ctx) {
     await sleep(600);
     if (!(await adm.page.$(MODAL))) await openWithX(adm);
     // looking through the Stock
-    await viewClick(ann, pileAt([160, 90]));
+    await viewClick(ann, pileAt(FREE.piles[0].at));
     await viewButton(ann, "Look through Stock");
     await sleep(600);
     await window(ann, "look");
@@ -121,7 +122,7 @@ export async function run(ctx) {
     // Last Card after the deal and a card played
     await choose("Last Card", ann, bo, adm);
     await waitFor(async () => (await drawn(ann))?.sheet === "loaded", { what: "Last Card's sheet" });
-    await press(ann, "Deal 7 each");
+    await press(ann, "Deal");
     await waitFor(async () => (await handOf(ann)).length === 7, { what: "Last Card dealt" });
     await drag(ann, await handAt(ann, 3), pileAt([190, 90]));
     await sleep(600);
