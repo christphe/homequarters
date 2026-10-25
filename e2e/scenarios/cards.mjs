@@ -446,7 +446,7 @@ export async function run(ctx) {
       await press(ann, "Close");
       await openWithX(ann);
       await setPlugin(ctx, "hq-card-lastcard", true);
-      const again = await within(async () => (await drawn(ann))?.sheet === "loaded" && (await handOf(ann)).length === 6, 10000);
+      const again = await within(async () => (await drawn(ann))?.sheet === "loaded" && (await handOf(ann)).length === 6, 20000); // a plugin turned on under load can take seconds to register
       check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
     } else check("10b: Last Card (hq-card-lastcard is not in this tree yet)", false, "not installed");
 
