@@ -1,10 +1,11 @@
-import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
+import { Application, BitmapText, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { isBusyKey, isHomeKey } from "./home";
 import { isPluginProp, propSize } from "./props";
 import { nearestUsable, objectsFor } from "./pluginObjects";
+import { ObjectPictures } from "./objectPictures";
 import { t } from "../i18n";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { bakeMap } from "./mapArt";
@@ -221,7 +222,7 @@ export class WorldView {
   /** Map objects of the running plugins, the sprites drawn for them and their pictures (by URL). */
   private objSpecs: PluginObjectSpec[] = [];
   private objSprites: Sprite[] = [];
-  private objPictures = new Map<string, { plugin: string; tex: Promise<Texture | null> }>();
+  private objPictures = new ObjectPictures();
   /** The map editor is open: objects of plugins not running show as dashed placeholders. */
   private editing = false;
   private placeholderG = new Graphics();
@@ -819,42 +820,15 @@ export class WorldView {
   /** The map objects of the running plugins (PluginManager): drawn on the map, and X uses them. */
   setPluginObjects(specs: PluginObjectSpec[]) {
     this.objSpecs = specs;
-    const running = new Set(specs.map((s) => s.plugin));
-    for (const [url, pic] of this.objPictures) {
-      if (running.has(pic.plugin)) continue;
-      this.objPictures.delete(url);
-      void pic.tex.then((tex) => tex?.source.destroy()); // its sprites go in drawObjects below
-    }
     this.drawObjects();
+    this.objPictures.keepOnly(new Set(specs.map((s) => s.plugin))); // after their sprites are gone
     this.updateNearby();
-  }
-
-  /** A plugin's picture, decoded once (nearest scaling, like all the pixel art); null if it fails. */
-  private objPicture(plugin: string, sprite: string): Promise<Texture | null> {
-    const url = new URL(`/plugins/${plugin}/assets/${sprite}`, location.href).href;
-    let pic = this.objPictures.get(url);
-    if (!pic) {
-      const tex = fetch(url)
-        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-        .then((b) => createImageBitmap(b))
-        .then((bmp) => {
-          const tex = Texture.from(bmp);
-          tex.source.scaleMode = "nearest";
-          return tex;
-        })
-        .catch(() => {
-          console.warn(`[plugin ${plugin}] object picture ${sprite} could not be loaded`);
-          return null;
-        });
-      this.objPictures.set(url, (pic = { plugin, tex }));
-    }
-    return pic.tex;
   }
 
   /** Redraws plugin objects (and, in the editor, placeholders for those of plugins not running). */
   private drawObjects() {
     this.dirty = true;
-    for (const s of this.objSprites) s.destroy();
+    for (const s of this.objSprites) s.destroy(); // their textures are shared (objPictures)
     this.objSprites = [];
     this.placeholderG.clear();
     for (const l of this.placeholderLabels) l.text.destroy();
@@ -871,12 +845,9 @@ export class WorldView {
       spr.zIndex = (prop.y + h) * T;
       this.entLayer.addChild(spr);
       this.objSprites.push(spr);
-      void this.objPicture(spec.plugin, spec.sprite).then((tex) => {
+      void this.objPictures.frame(spec.plugin, spec.sprite, spec.frame).then((tex) => {
         if (!tex || spr.destroyed) return;
-        const src = tex.source;
-        const [fx, fy, fw, fh] = spec.frame ?? [0, 0, src.width, src.height];
-        if (fx < 0 || fy < 0 || fw <= 0 || fh <= 0 || fx + fw > src.width || fy + fh > src.height) return; // outside the picture
-        spr.texture = new Texture({ source: src, frame: new Rectangle(fx, fy, fw, fh) });
+        spr.texture = tex;
         this.dirty = true;
       });
     }
