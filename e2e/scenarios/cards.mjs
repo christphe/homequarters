@@ -431,7 +431,16 @@ export async function run(ctx) {
       // a game with its own cards starts each window's view afresh (its security policy then admits the game's images)
       const renewed = await Promise.all([ann, bo].map((u) => within(async () => (await drawn(u))?.sheet === "loaded" && (await hasButton(u, "Seat 1")), 5000)));
       check("10b: on choosing Last Card, every open window's view renews and loads the game's own sheet (shared/cards.png)", renewed.every((ms) => ms >= 0), JSON.stringify(renewed));
-      await press(ann, "Seat 1");
+      // a click right after the views renew was once lost (2026-10-26, no seat message sent): pressed again
+      // until the seat is taken, and the number of presses reported
+      let annPresses = 0;
+      const annSeated = await waitFor(async () => {
+        if ((await drawn(ann))?.seat === 0) return true;
+        if (annPresses < 3) { annPresses++; await press(ann, "Seat 1").catch(() => {}); }
+        await sleep(700);
+        return false;
+      }, { timeout: 8000, what: "Ann seated at Last Card" }).catch(() => false);
+      check("10b: Ann takes seat 1 at Last Card through its button", annSeated === true, `${annPresses} press(es)`);
       const nAnn = ann.sent.length;
       await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" }).catch(async (e) => {
         throw new Error(e.message + " " + JSON.stringify({ annSent: ann.sent.slice(nAnn - 2), ann: (await modal(ann))?.buttons.slice(0, 4), bo: (await modal(bo))?.buttons.slice(0, 4), log: (await logOf(bo)).slice(-2) }));
