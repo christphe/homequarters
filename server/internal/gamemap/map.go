@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -95,7 +96,29 @@ const (
 func (p Prop) IsContent() bool { return p.T == PropNote || p.T == PropEmbed || p.T == PropImage }
 
 // Interactive reports whether pressing X next to the prop does something.
-func (p Prop) Interactive() bool { return p.IsContent() || p.T == PropWhiteboard }
+func (p Prop) Interactive() bool {
+	if _, _, ok := p.PluginKind(); ok {
+		return true
+	}
+	return p.IsContent() || p.T == PropWhiteboard
+}
+
+// pluginNameRE matches a plugin name and an object kind (same shape as the plugin catalog's names;
+// gamemap does not import the plugin package).
+var pluginNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// MaxPluginPropSide is the largest footprint side of a plugin object, in tiles.
+const MaxPluginPropSide = 4
+
+// PluginKind splits a plugin object's type "<plugin>/<kind>". Whether the plugin is installed is
+// not the map's business: the prop stays valid and simply does nothing without it.
+func (p Prop) PluginKind() (plugin, kind string, ok bool) {
+	plugin, kind, found := strings.Cut(p.T, "/")
+	if !found || !pluginNameRE.MatchString(plugin) || !pluginNameRE.MatchString(kind) {
+		return "", "", false
+	}
+	return plugin, kind, true
+}
 
 // ValidHTTPS accepts only absolute https URLs without credentials.
 func ValidHTTPS(s string) bool {
@@ -160,6 +183,9 @@ var propDefaults = map[string]struct {
 }
 
 func (p Prop) Size() (int, int) {
+	if _, _, ok := p.PluginKind(); ok {
+		return p.W, p.H
+	}
 	d := propDefaults[p.T]
 	w, h := p.W, p.H
 	if w <= 0 {
@@ -218,6 +244,21 @@ func Validate(m *Map) error {
 		return errors.New("too many props")
 	}
 	for i, p := range m.Props {
+		if _, _, ok := p.PluginKind(); ok {
+			if p.W < 1 || p.H < 1 || p.W > MaxPluginPropSide || p.H > MaxPluginPropSide {
+				return fmt.Errorf("prop %d: a plugin object is 1 to %d tiles wide and high", i, MaxPluginPropSide)
+			}
+			if p.X < 0 || p.Y < 0 || p.X+p.W > m.W || p.Y+p.H > m.H {
+				return fmt.Errorf("prop %d out of bounds", i)
+			}
+			if len(p.Label) > 40 {
+				return fmt.Errorf("prop %d: label too long", i)
+			}
+			if p.Data != "" || p.To != nil {
+				return fmt.Errorf("prop %d: %s takes no data", i, p.T)
+			}
+			continue
+		}
 		if _, ok := propDefaults[p.T]; !ok {
 			return fmt.Errorf("prop %d: unknown type %q", i, p.T)
 		}
