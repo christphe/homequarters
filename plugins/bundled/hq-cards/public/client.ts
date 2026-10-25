@@ -8,7 +8,7 @@ import type { Act, LogEntry, TableState, ToClient, ToServer, ViewIn } from "./me
 const ACTS = new Set(["choose", "seat", "place", "flip", "order", "offer", "pick", "dealAll", "deal", "shuffle", "gather", "count", "reset", "unlook", "newPile", "delPile", "look", "draw", "reorder", "snap", "moveCards", "movePile", "setAside", "setAsideRanks", "turnPile"]);
 
 let me = 0;
-let open: { x: number; y: number } | null = null;
+let open: { x: number; y: number; n: number } | null = null;
 let games: { name: string; title: string }[] = [];
 let game: ClientGame | null = null;
 let state: TableState | null = null;
@@ -90,7 +90,7 @@ function fromView(m: unknown): void {
 
 function closed(): void {
   if (!open) return;
-  send({ t: "close", x: open.x, y: open.y });
+  send({ t: "close", x: open.x, y: open.y, n: open.n });
   open = null;
   viewFor = "";
   renewals = 0;
@@ -119,9 +119,9 @@ hq.onMessage<ToClient>((m) => {
   if (heard.length > 12) heard.shift();
   if (m.t === "open") {
     // another table's window was open: that one is closed now
-    if (open && (open.x !== m.x || open.y !== m.y)) send({ t: "close", x: open.x, y: open.y });
+    if (open && (open.x !== m.x || open.y !== m.y)) send({ t: "close", x: open.x, y: open.y, n: open.n });
     if (!open || open.x !== m.x || open.y !== m.y) toView.game = toView.log = true;
-    open = { x: m.x, y: m.y };
+    open = { x: m.x, y: m.y, n: m.n };
   }
   if (!open || open.x !== m.x || open.y !== m.y) return;
   if (m.t === "open" || m.t === "state") {

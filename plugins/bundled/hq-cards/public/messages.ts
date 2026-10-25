@@ -31,14 +31,16 @@ export type Act =
   | { t: "setAsideRanks"; ranks: string[] }
   | { t: "turnPile"; pile: string };
 
-export type ToServer = { t: "hello" } | (At & { t: "close" }) | (At & Act);
+/** close: n is the number of the window closed (from its "open"). */
+export type ToServer = { t: "hello" } | (At & { t: "close"; n?: number }) | (At & Act);
 
 export interface Looking { seat: number; pile: string }
 /** here: the ids of the seated members who have the table open; unavailable: its game is not running. */
 export interface TableState { t: Table; here: number[]; looking: Looking[]; unavailable: boolean }
 
 export type ToClient =
-  | (At & { t: "open" | "state"; s: TableState })
+  | (At & { t: "open"; s: TableState; n: number }) // n: this window's number, named by its close
+  | (At & { t: "state"; s: TableState })
   | (At & { t: "games"; list: { name: string; title: string }[] }) // the choice, while no game is chosen
   | (At & { t: "game"; g: ClientGame })
   | (At & { t: "log"; log: LogEntry[] });

@@ -760,10 +760,10 @@ function feltOf(at: [number, number][]): Table {
 test("snapAt: off, where dropped; on, the nearest grid point inside the felt", () => {
   const t = feltOf([]);
   assert.deepEqual(snapAt(t, [101, 77], [], false), [101, 77]);
-  assert.deepEqual(GRID, [24, 32]);
-  assert.deepEqual(snapAt(t, [101, 77], [], true), [108, 80]); // centres at 12 + 24k, 16 + 32k
-  assert.deepEqual(snapAt(t, [1, 1], [], true), [12, 16]);
-  assert.deepEqual(snapAt(t, [319, 219], [], true), [300, 176], "the last row whose card stays on the felt");
+  assert.deepEqual(GRID, [24, 44]); // a row: a card, its pile's label under it, the next row's handle above it
+  assert.deepEqual(snapAt(t, [101, 77], [], true), [108, 66]); // centres at 12 + 24k, 22 + 44k
+  assert.deepEqual(snapAt(t, [1, 1], [], true), [12, 22]);
+  assert.deepEqual(snapAt(t, [319, 219], [], true), [300, 198], "the last row whose card stays on the felt");
 });
 
 test("snapAt over a card: its lower half cascades CASCADE lower, its upper half stacks on it", () => {
@@ -772,7 +772,7 @@ test("snapAt over a card: its lower half cascades CASCADE lower, its upper half 
   assert.deepEqual(snapAt(t, [62, 55], [], true), [60, 61], "lower half: the card under shows its index");
   assert.deepEqual(snapAt(t, [58, 42], [], true), [60, 48], "upper half: exactly on it");
   const c = t.loose[0].c & ~UP;
-  assert.deepEqual(snapAt(t, [62, 55], [c], true), [60, 48], "never on a card being moved: the grid");
+  assert.deepEqual(snapAt(t, [62, 55], [c], true), [60, 66], "never on a card being moved: the grid");
 });
 
 test("groupFrom: a card and the cards put on it; groups: the bottom of each", () => {
@@ -826,4 +826,20 @@ test("turnPile turns a whole pile over: its order reversed, every card the other
   assert.equal(turnPile(t, null, "p1", FREE).ok, false);
   assert.equal(turnPile(t, 1, "nope", FREE).ok, false);
   assert.equal(turnPile(t, 1, "p1", { ...FREE, allow: ["draw"] }).ok, false);
+});
+
+test("grid rows leave room: a handle and a pile's label never overlap the card of the next or previous row", () => {
+  const gap = GRID[1] - CARD_H;
+  assert.ok(gap >= 7 + 8, "handle (7) above a card and the label (8) under the card above fit between two rows: gap " + gap);
+  assert.ok(GRID[1] / 2 - CARD_H / 2 >= 7, "the top row's handle is on the felt");
+});
+
+test("setSnap keeps the table under TABLE_MAX", () => {
+  const t = free3();
+  t.snap = true;
+  t.count = "";
+  t.count = "x".repeat(TABLE_MAX - encodedSize(t)); // exactly full
+  assert.equal(encodedSize(t), TABLE_MAX);
+  assert.equal(setSnap(t, 0, false).ok, false, '"snap":false is one byte longer: refused');
+  assert.ok(encodedSize(t) <= TABLE_MAX);
 });

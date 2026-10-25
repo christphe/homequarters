@@ -402,12 +402,27 @@ export async function run(ctx) {
     await setPlugin(ctx, "hq-card-pouilleux", true);
     await press(ann, "Reset");
     await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), { timeout: 5000, what: "Old Maid offered after the reset" })
-      .catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await modal(ann))); });
+      .catch(async (e) => { throw new Error(e.message + " " + JSON.stringify({ sent: ann.sent.slice(-4), log: (await logOf(ann)).slice(-3), cards: await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => globalThis.__cards?.()).catch(() => "?"), m: await modal(ann) })); });
     await press(ann, "Old Maid");
     await waitFor(() => hasButton(ann, "Seat 1"), { what: "Old Maid's seats" });
     await press(ann, "Seat 1");
-    await waitFor(() => hasButton(bo, "Seat 2"), { what: "seat 2 free for Bo" });
-    await press(bo, "Seat 2");
+    // Bo looks before he clicks: Ann's name in seat 1 widens it and moves seat 2
+    await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 free for Bo" });
+    // Bo's click straddles a rebuild of his controls (Ann counts between his press and his release): it still lands
+    {
+      const f = await viewFrame(bo);
+      const seat2 = await f.evaluateHandle(() => [...document.querySelectorAll(".controls button")].find((b) => b.textContent.trim() === "Seat 2"));
+      await seat2.evaluate((b) => b.scrollIntoView({ block: "center" }));
+      const box = await seat2.boundingBox();
+      await bo.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await bo.page.mouse.down();
+      await press(ann, "Count");
+      await waitFor(async () => (await (await viewFrame(bo)).evaluate(() => [...document.querySelectorAll(".controls p")].some((p) => p.textContent.startsWith("Count: ")))), { timeout: 3000, what: "Bo's controls rebuilt by the count" });
+      await bo.page.mouse.up();
+    }
+    const straddled = await within(async () => (await drawn(bo))?.seat === 1, 3000);
+    check("a click pressed while the controls are rebuilt by somebody else's move still lands (Bo takes seat 2)", straddled >= 0, `${straddled} ms`);
+    if (straddled < 0) await press(bo, "Seat 2");
     await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e) => {
       throw new Error(e.message + " " + JSON.stringify({ controls: (await modal(bo))?.buttons.slice(0, 10), log: (await logOf(bo)).slice(-3), sent: bo.sent.slice(-3), vp: bo.page.viewport() }));
     });
@@ -440,7 +455,7 @@ export async function run(ctx) {
     await click(bo, { x: omRow[0].x / kb2 + 4, y: omRow[0].y / kb2 + 10 });
     await waitFor(async () => (await logOf(ann)).includes(`${bo.name} drew a card from ${ann.name}'s hand`), { what: "Bo's pick at Old Maid" });
     await press(ann, "Count");
-    const counted = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "Old Maid's count" });
+    const counted = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ") && /cards left/.test(x)) ?? null, { timeout: 5000, what: "Old Maid's count" });
     const nAnn = (await handOf(ann)).length, nBo = (await handOf(bo)).length;
     check("9: Count shows Old Maid's own count (from its hook) to everybody", counted === `Count: ${nAnn + nBo} cards left: ${ann.name} ${nAnn}, ${bo.name} ${nBo}`, counted);
 
@@ -463,7 +478,7 @@ export async function run(ctx) {
       const renewed = await Promise.all([ann, bo].map((u) => within(async () => (await drawn(u))?.sheet === "loaded" && (await hasButton(u, "Seat 1")), 5000)));
       check("10b: on choosing Last Card, every open window's view renews and loads the game's own sheet (shared/cards.png)", renewed.every((ms) => ms >= 0), JSON.stringify(renewed));
       await press(ann, "Seat 1");
-      await waitFor(() => hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" });
+      await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" });
       const nSeat = bo.sent.length;
       await press(bo, "Seat 2");
       await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
@@ -558,10 +573,19 @@ export async function run(ctx) {
     await waitFor(async () => (await logOf(bo)).includes(`${ann.name} created the pile Waste`), { what: "Waste created" });
     const wasteAt = [GRID[0] / 2, GRID[1] / 2]; // the first free place along the top of the felt
     await drag(ann, stockAt, pileAt(wasteAt));
-    const wasteTo = [GRID[0] / 2 + 12 * GRID[0], GRID[1] / 2 + 5 * GRID[1]];
+    const wasteTo = [GRID[0] / 2 + 12 * GRID[0], GRID[1] / 2]; // along the top row: the card lands there, its handle near the felt's edge
     await drag(ann, feltAt(wasteAt[0], wasteAt[1] - CARD_H / 2 - 3), feltAt(wasteTo[0], wasteTo[1] - CARD_H / 2 - 3));
     const pileMoved = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} moved the pile Waste`, 3000);
-    check("R5: a pile moves by its handle, for everybody", pileMoved >= 0, `${pileMoved} ms`);
+    check("R5: a pile moves by its handle to the felt's top row, for everybody", pileMoved >= 0, `${pileMoved} ms`);
+    // the latest line of the log shows for the seated player, a pile selected (the selection bar above it)
+    await click(ann, pileAt(wasteTo));
+    const logSeen = await (await viewFrame(ann)).evaluate(() => {
+      const last = [...document.querySelectorAll(".log li")].at(-1), log = document.querySelector(".log"), panel = document.querySelector(".panel");
+      if (!last) return null;
+      const r = last.getBoundingClientRect(), l = log.getBoundingClientRect(), p = panel.getBoundingClientRect();
+      return { inLog: r.bottom <= l.bottom + 1 && r.top >= l.top - 1, inPanel: r.bottom <= p.bottom + 1, last: last.textContent };
+    });
+    check("UX: at 1280x720, seated, a pile selected, the log's latest line is in sight", !!logSeen?.inLog && !!logSeen?.inPanel, JSON.stringify(logSeen));
     await click(ann, pileAt(wasteTo));
     await pressInView(ann, "Remove the pile Waste");
     const removed = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} removed the pile Waste`, 3000);
@@ -583,7 +607,7 @@ export async function run(ctx) {
     await click(ann, stockAt);
     await pressInView(ann, "Turn the pile over"); // back face down
     // a 32-card game: the jokers, then the 2s to 6s chosen one by one, set aside from the panel
-    await press(ann, "52 cards");
+    await press(ann, "Play with 52 cards");
     await waitFor(async () => /set aside the jokers$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "the jokers set aside" }).catch(() => {});
     for (const r of ["2", "3", "4", "5", "6"]) await press(ann, r);
     await press(ann, "Set the chosen aside");

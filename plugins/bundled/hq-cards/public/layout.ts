@@ -88,8 +88,9 @@ const inside = (x: number, y: number, x0: number, y0: number, w: number, h: numb
 
 // ---- snapping (a setting of the table) and groups of loose cards
 
-/** The grid's step on the felt: a card and a gap. Card centres sit at GRID/2 + k * GRID. */
-export const GRID: [number, number] = [24, 32];
+/** The grid's step on the felt: a card and a gap; a row also leaves room for a pile's name under its card and
+ * for the handle above the card of the next row. Card centres sit at GRID/2 + k * GRID. */
+export const GRID: [number, number] = [24, 44];
 /** How much lower a card dropped on another's lower half lands: the index (rank and suit) above it shows. */
 export const CASCADE = 13;
 const clampX = (x: number) => Math.max(CARD_W / 2, Math.min(FELT_W - CARD_W / 2, x));

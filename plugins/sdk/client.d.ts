@@ -96,7 +96,7 @@ declare global {
       /** A sandboxed iframe in a modal (at most one per modal) running the manifest view `view` ("views" in plugin.json);
        * label is its accessible title, height a preset (default "medium"), the width the modal's. onMessage gets what the
        * view sends with hqView.send. Redrawing the modal with the same view keeps the iframe and its state. */
-      view(opts: { view: string; label: string; height?: "small" | "medium" | "large" | "full"; onMessage?: (msg: any) => void }): UINode;
+      view(opts: { view: string; label: string; height?: "small" | "medium" | "large" | "full" /* full: in a modal of size full */; onMessage?: (msg: any) => void }): UINode;
       /** Sends to the open view's hqView.onMessage (anything JSON, at most 4096 bytes; 30 a second). */
       post(msg: unknown): void;
       /** A button at an anchor. The label (1-40 characters) defaults to the plugin's title. */

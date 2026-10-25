@@ -295,7 +295,12 @@ export function removePile(t: Table, seat: number | null, id: string, g: Game): 
 /** Snapping on or off, for everybody at the table. */
 export function setSnap(t: Table, seat: number | null, on: boolean): Done {
   if (!seated(t, seat) || typeof on !== "boolean") return NO;
+  const was = t.snap;
   t.snap = on;
+  if (encodedSize(t) > TABLE_MAX) {
+    t.snap = was; // "false" is one byte longer than "true"
+    return NO;
+  }
   return { ok: true, log: { s: seat, v: "snap", n: on ? 1 : 0 } };
 }
 

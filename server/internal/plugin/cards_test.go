@@ -680,3 +680,48 @@ func TestCardsSetAsideRanks(t *testing.T) {
 		t.Fatalf("%d plugin errors", n)
 	}
 }
+
+// A pile removed while somebody looks through it: nobody is shown looking at it any more.
+func TestCardsRemovedPileNotLooked(t *testing.T) {
+	h, sink, _ := cardsHost(t, newMemKV(), []string{cards}, alice, bob)
+	freeTable(t, h, sink, 6, 3, alice, bob)
+	cardSend(h, alice, `{"t":"newPile","x":6,"y":3,"name":"Waste","face":"up","at":[40,40]}`)
+	waitTable(t, sink, bob.ID, 6, 3, "Waste made", func(tb, _ map[string]any) bool { return len(tb["piles"].([]any)) == 2 })
+	cardSend(h, alice, `{"t":"look","x":6,"y":3,"pile":"p1"}`)
+	waitTable(t, sink, bob.ID, 6, 3, "Alice looking", func(_, s map[string]any) bool { l, _ := s["looking"].([]any); return len(l) == 1 })
+	cardSend(h, bob, `{"t":"delPile","x":6,"y":3,"pile":"p1"}`)
+	waitTable(t, sink, bob.ID, 6, 3, "the pile gone, nobody looking", func(tb, s map[string]any) bool {
+		l, _ := s["looking"].([]any)
+		return len(tb["piles"].([]any)) == 1 && len(l) == 0
+	})
+}
+
+// A window closed and opened again at once: the page's close (posted by the window) may reach the server after
+// the reopen (sent by the game session). That stale close must not drop the member from the window they have open.
+func TestCardsStaleCloseAfterReopen(t *testing.T) {
+	h, sink, _ := cardsHost(t, newMemKV(), []string{cards}, alice)
+	freeTable(t, h, sink, 1, 1, alice)
+	opens := func() []map[string]any {
+		var o []map[string]any
+		for _, d := range sink.data(alice.ID) {
+			if d["t"] == "open" {
+				o = append(o, d)
+			}
+		}
+		return o
+	}
+	first, _ := opens()[0]["n"].(float64)
+	h.Use(alice, cards, "deck", 1, 1)
+	eventually(t, "the second open", func() bool { return len(opens()) == 2 })
+	cardSend(h, alice, `{"t":"close","x":1,"y":1,"n":%d}`, int(first)) // the first window's close, late
+	cardSend(h, alice, `{"t":"draw","x":1,"y":1,"pile":"p0"}`)
+	waitTable(t, sink, alice.ID, 1, 1, "Alice still at her open window draws", func(tb, _ map[string]any) bool { return handSizes(tb)[0] == 1 })
+	// the close of the window she has open still closes it
+	last, _ := opens()[1]["n"].(float64)
+	cardSend(h, alice, `{"t":"close","x":1,"y":1,"n":%d}`, int(last))
+	cardSend(h, alice, `{"t":"draw","x":1,"y":1,"pile":"p0"}`)
+	time.Sleep(300 * time.Millisecond)
+	if tb, _ := tableOf(sink, alice.ID, 1, 1); handSizes(tb)[0] != 1 {
+		t.Fatalf("after closing the window she had open, Alice no longer acts: hand %d", handSizes(tb)[0])
+	}
+}

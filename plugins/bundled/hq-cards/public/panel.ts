@@ -12,6 +12,34 @@ import { canReset, DEAL_MAX } from "./table.ts";
 export interface PanelInput { st: TableState; game: ClientGame; me: number; log: LogEntry[]; card: (n: number) => string }
 
 const NAME_MAX = 24;
+
+/** Makes `into`'s children look like `kids`, keeping every element that stays the same kind at the same place
+ * (a button also keeps its label: another label is another button). */
+function morph(into: Element, kids: Node[]): void {
+  kids.forEach((n, k) => {
+    const o = into.childNodes[k];
+    if (!o) into.append(n);
+    else if (o instanceof Text && n instanceof Text) {
+      if (o.data !== n.data) o.data = n.data;
+    } else if (o instanceof Element && n instanceof Element && o.tagName === n.tagName && o.className === n.className
+      && (!(o instanceof HTMLButtonElement) || o.textContent === n.textContent)
+      && (!(o instanceof HTMLInputElement) || o.type === (n as HTMLInputElement).type)) patch(o, n);
+    else into.replaceChild(n, o);
+  });
+  while (into.childNodes.length > kids.length) into.lastChild!.remove();
+}
+function patch(o: Element, n: Element): void {
+  if (o instanceof HTMLButtonElement && n instanceof HTMLButtonElement) {
+    o.onclick = n.onclick;
+    o.disabled = n.disabled;
+  } else if (o instanceof HTMLInputElement && n instanceof HTMLInputElement) {
+    o.oninput = n.oninput;
+    if (o.value !== n.value) o.value = n.value;
+    return;
+  } else morph(o, [...n.childNodes]);
+  if (n.hasAttribute("aria-pressed")) o.setAttribute("aria-pressed", n.getAttribute("aria-pressed")!);
+  else o.removeAttribute("aria-pressed");
+}
 const short = (s: string) => ([...s].length > NAME_MAX ? [...s].slice(0, NAME_MAX - 1).join("") + "…" : s);
 
 export function createPanel(send: (m: Act) => void, newPileAt: () => [number, number]) {
@@ -67,7 +95,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
       return k < 0 ? null : k;
     })();
     const present = new Set<number>([me, ...st.here]);
-    const sig = JSON.stringify([t.seats, st.here, t.offer, t.count, t.snap, t.piles[0]?.name, game.allow, game.title, mine, canReset(t, me, present), pileName.trim() !== "", t.hands[mine ?? 0]?.length > 0, chosen]);
+    const sig = JSON.stringify([t.seats, st.here, t.offer, t.count, t.snap, t.out.length, t.piles[0]?.name, game.allow, game.title, mine, canReset(t, me, present), pileName.trim() !== "", t.hands[mine ?? 0]?.length > 0, chosen]);
     if (sig !== key) {
       key = sig;
       const kids: HTMLElement[] = [];
@@ -101,8 +129,8 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
           n.min = "1";
           n.max = String(DEAL_MAX);
           n.value = String(dealN);
-          n.oninput = () => {
-            const v = Math.round(Number(n.value));
+          n.oninput = (e) => {
+            const v = Math.round(Number((e.currentTarget as HTMLInputElement).value)); // the input on the page (a rebuild patches it)
             if (v >= 1 && v <= DEAL_MAX) dealN = v;
           };
           kids.push(row(field("Cards each", n), button("Deal", () => send({ t: "deal", pile: stock.id, n: dealN }))));
@@ -112,9 +140,9 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
           f.type = "text";
           f.maxLength = 16;
           f.value = pileName;
-          f.oninput = () => {
+          f.oninput = (e) => {
             const was = pileName.trim() !== "";
-            pileName = f.value;
+            pileName = (e.currentTarget as HTMLInputElement).value;
             if (was !== (pileName.trim() !== "")) update(i); // the two buttons enable or disable
           };
           const make = (face: "up" | "down") => () => {
@@ -130,7 +158,8 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
         // a smaller deck from the standard one: whole ranks out of the game until a reset
         if (allows(game, "remove") && "standard" in game.deck) {
           const aside = (ranks: string[]) => () => send({ t: "setAsideRanks", ranks });
-          kids.push(row(text("Set aside:"), button("32 cards", aside(["2", "3", "4", "5", "6", "X"])), button("52 cards", aside(["X"]))));
+          kids.push(row(button("Play with 32 cards", aside(["2", "3", "4", "5", "6", "X"])), button("Play with 52 cards", aside(["X"]))));
+          kids.push(text("Or set aside every card of these ranks:", "muted"));
           const pick = (r: string) => () => {
             chosen = chosen.includes(r) ? chosen.filter((x) => x !== r) : [...chosen, r];
             update(i);
@@ -151,14 +180,13 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
           }
         }
       }
+      if (t.out.length) kids.push(text(`${t.out.length} card${t.out.length === 1 ? "" : "s"} set aside until a reset`, "muted"));
       if (t.count) kids.push(text(`Count: ${t.count}`, "count"));
       kids.push(row(button("Reset", () => send({ t: "reset" }), { disabled: !canReset(t, me, present) })));
-      // keep the focus on the same button when the controls are rebuilt
-      const focused = document.activeElement instanceof HTMLButtonElement && top.contains(document.activeElement) ? document.activeElement.textContent : null;
-      const typing = document.activeElement instanceof HTMLInputElement && top.contains(document.activeElement) ? document.activeElement.type : null;
-      top.replaceChildren(...kids);
-      if (focused) [...top.querySelectorAll("button")].find((b) => b.textContent === focused)?.focus();
-      if (typing) (top.querySelector(`input[type="${typing}"]`) as HTMLInputElement | null)?.focus();
+      // patched in place, not replaced: a click pressed while somebody else's move rebuilds the controls still
+      // lands on its button (an element taken out of the page between press and release gets no click), and the
+      // focus and what a field holds stay
+      morph(top, kids);
     }
     const lines = i.log.map((e) => sentence(e, (s) => t.seats[s]?.name ?? `Seat ${s + 1}`, i.card));
     const lk = lines.join("\n");

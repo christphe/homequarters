@@ -22,6 +22,10 @@ import type { Act, Looking, TableState, ToClient, ToServer } from "./public/mess
 const tables = new Map<string, Table>(); // "x,y" -> table, loaded on first use
 const logs = new Map<string, LogEntry[]>();
 const viewers = new Map<string, Set<number>>(); // table -> members with its window open
+// "table|member" -> the number of the window they have open there: a window's close names its number, and a close
+// that arrives after the window was opened again (the page posts it, the game session sends the reopen) is ignored
+const opened = new Map<string, number>();
+let opens = 0;
 const lookers = new Map<string, Map<number, string>>(); // table -> member -> the pile they look through
 const games = new Map<string, Game>(); // plugin name -> its registered game, complete
 const pending = new Map<string, Game>(); // plugin name -> a definition whose cards are still arriving
@@ -112,6 +116,7 @@ function leaveTable(k: string, id: number): void {
   const v = viewers.get(k);
   if (!v || !v.delete(id)) return;
   if (!v.size) viewers.delete(k);
+  opened.delete(`${k}|${id}`);
   const looked = lookers.get(k)?.delete(id);
   toSend.get(id)?.delete(k);
   if (looked || seatOf(table(k), id) !== null) changed(k, { s: true });
@@ -162,6 +167,7 @@ function settle(g: Game): void {
   pending.delete(g.name);
   const before = games.get(g.name);
   games.set(g.name, g);
+  if (!before) hq.log("game registered:", g.name);
   if (!before || JSON.stringify(before) !== JSON.stringify(g)) gamesChanged();
 }
 
@@ -170,7 +176,10 @@ export function onPlugins(): void {
   for (const name of [...games.keys(), ...pending.keys()]) {
     if (!hq.plugins.running(name)) {
       pending.delete(name);
-      if (games.delete(name)) gone = true;
+      if (games.delete(name)) {
+        gone = true;
+        hq.log("game gone:", name);
+      }
     }
   }
   if (gone) gamesChanged();
@@ -183,6 +192,7 @@ export function onUse(p: HQ.Player, o: { kind: string; x: number; y: number }): 
   if (!v) viewers.set(k, (v = new Set()));
   const wasHere = v.has(p.id);
   v.add(p.id);
+  opened.set(`${k}|${p.id}`, ++opens);
   queue(p.id, k, { h: true, s: true, l: true, o: true });
   if (!wasHere && seatOf(table(k), p.id) !== null) changed(k, { s: true });
 }
@@ -259,7 +269,11 @@ function act(p: HQ.Player, k: string, m: Act): void {
     }
     case "count": return count(k, p, t, g);
     case "newPile": return done(k, p.id, createPile(t, seat, m.name, m.face, m.at, g));
-    case "delPile": return done(k, p.id, removePile(t, seat, m.pile, g));
+    case "delPile": {
+      const r = removePile(t, seat, m.pile, g);
+      if (r.ok) for (const [id, pile] of lookers.get(k) ?? []) if (pile === m.pile) lookers.get(k)!.delete(id);
+      return done(k, p.id, r);
+    }
     case "reorder": return done(k, p.id, reorderPile(t, seat, m.pile, m.cards, g));
     case "draw": return done(k, p.id, draw(t, seat, m.pile, g));
     case "snap": return done(k, p.id, setSnap(t, seat, m.on));
@@ -294,7 +308,10 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
   if (!("x" in m) || !tile(m.x) || !tile(m.y)) return;
   const k = `${m.x},${m.y}`;
   if (!viewers.get(k)?.has(p.id)) return; // only from somebody who has this table open
-  if (m.t === "close") return leaveTable(k, p.id);
+  if (m.t === "close") {
+    if (typeof m.n === "number" && m.n !== opened.get(`${k}|${p.id}`)) return; // a window closed before this one opened
+    return leaveTable(k, p.id);
+  }
   if (typeof m.t !== "string") return;
   act(p, k, m as Act);
 }
@@ -330,7 +347,8 @@ export function update(): void {
         continue;
       }
       if (q.s) {
-        if (!sendTo(id, { t: q.o ? "open" : "state", ...coords(k), s: stateOf(k) })) break; // this member's budget is spent
+        const msg: ToClient = q.o ? { t: "open", ...coords(k), s: stateOf(k), n: opened.get(`${k}|${id}`) ?? 0 } : { t: "state", ...coords(k), s: stateOf(k) };
+        if (!sendTo(id, msg)) break; // this member's budget is spent
         q.s = q.o = false;
       }
       if (q.h) {

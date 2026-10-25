@@ -75,12 +75,13 @@ style.textContent = `
   button:disabled { opacity: .55; cursor: default; }
   button:focus-visible, input:focus-visible { outline: 3px solid #3b7dd8; outline-offset: 1px; }
   /* the panel sits on the window's light background: dark text there; the log keeps its dark box */
-  .panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; color: #1a1526; }
+  /* the selection bar, the controls (they scroll) and the log (it keeps its share): three rows that never overlap */
+  .panel { display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(90px, 35%); gap: 8px; min-height: 0; overflow: hidden; color: #1a1526; }
+  .panel:not(:has(> .bar)) { grid-template-rows: minmax(0, 1fr) minmax(90px, 35%); }
   .panel .bar { justify-content: flex-start; }
-  .panel > * { flex-shrink: 0; } /* in a column that scrolls, nothing is squeezed under another */
-  main.narrow .panel { margin-top: 10px; overflow: visible; }
-  /* the whole panel scrolls: its controls never shrink to nothing on a short screen */
-  .controls { display: grid; gap: 6px; align-content: start; flex: none; }
+  main.narrow .panel { display: flex; flex-direction: column; margin-top: 10px; overflow: visible; }
+  .controls { display: grid; gap: 6px; align-content: start; overflow: auto; min-height: 0; }
+  main.narrow .controls { overflow: visible; }
   .controls h2 { margin: 0; font-size: 15px; }
   .controls p { margin: 0; }
   .controls .muted { color: #5a5470; }
@@ -89,7 +90,7 @@ style.textContent = `
   .field { display: inline-flex; gap: 6px; align-items: center; }
   .field input { box-sizing: border-box; width: 9em; padding: 3px 6px; border-radius: 4px; border: 1px solid #1a1526; font: inherit; }
   .field input[type="number"] { width: 4.5em; }
-  .log { box-sizing: border-box; flex: none; max-height: max(80px, 30vh); min-height: 60px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; color: ${C.text}; border-radius: 4px; }
+  .log { box-sizing: border-box; min-height: 0; overflow: auto; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; color: ${C.text}; border-radius: 4px; }
   main.narrow .log { max-height: 160px; }
   .log li { margin: 1px 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -269,16 +270,17 @@ function drop(dest: Dest | null): void {
   const h = held;
   held = null;
   if (h?.by === "drag") selected = null; // the card was moved: nothing stays selected (another would slide into its place)
-  if (!h || !dest || !st || mySeat === null) return draw();
+  if (!h || !st || mySeat === null) return draw();
   const t = st.t;
   const { src } = h;
   // where the card's centre lands on the felt: under the pointer, less where the card was taken; then snapped
   const centre = feltAt(h.x - h.gx, h.y - h.gy);
   const landing = (moving: number[]) => snapAt(t, centre, moving, t.snap);
-  // a pile by its handle: only onto the felt, on the grid when the table snaps
+  // a pile by its handle, or a stack or cascade: they land where their card is (the handle is held above it,
+  // so the pointer may be off the felt when the card is on its top row), on the grid when the table snaps
   if (h.pile) {
     const p = pileById(h.pile);
-    if (p && dest.k === "felt" && allowed("place")) {
+    if (p && allowed("place")) {
       const at = t.snap ? snapAt({ ...t, loose: [] }, centre, [], true) : centre;
       if (at[0] !== p.at[0] || at[1] !== p.at[1]) {
         send({ t: "movePile", pile: p.id, at });
@@ -289,7 +291,7 @@ function drop(dest: Dest | null): void {
   }
   // a stack or cascade: moved together, only onto the felt
   if (h.group.length > 1) {
-    if (dest.k === "felt" && allowed("place")) {
+    if (allowed("place")) {
       const first = t.loose.find((l) => (l.c & ~UP) === h.c);
       if (first) {
         const at = landing(h.group);
@@ -303,6 +305,7 @@ function drop(dest: Dest | null): void {
     }
     return draw();
   }
+  if (!dest) return draw();
   if (dest.k === "felt") dest = { k: "felt", at: landing(src.k === "loose" ? [h.c] : []) };
   if (h.by === "drag" && h.moved && dest.k !== "hand") {
     const at = dest.k === "felt" ? cardAt(dest.at, L) : { x: h.x - CARD_W / 2, y: h.y - CARD_H / 2 };
@@ -487,7 +490,7 @@ function draw(): void {
     });
     if (!hand.length) text("Your hand is empty", L.fx + FELT_W / 2, L.fy + FELT_H + 22, C.muted);
     if (t.offer?.from === mySeat) text(`You offer your hand to ${short(seatName(t.offer.to), 10)}`, L.fx + FELT_W / 2, L.h - 3, C.select);
-  } else text("Watching: take a seat in the window to play", L.fx + FELT_W / 2, L.fy + FELT_H + 22, C.muted);
+  } else text("Watching: take a free seat beside the table to play", L.fx + FELT_W / 2, L.fy + FELT_H + 22, C.muted);
   // overlays: looking through a pile, picking from an offered hand
   if (look) drawRow(look.cards.map((c) => ({ c: c & ~UP, up: true })), "look", look.grab);
   else if (picking && t.offer && t.offer.to === mySeat) drawRow(t.hands[t.offer.from].map((c) => ({ c, up: false })), "pick", null);

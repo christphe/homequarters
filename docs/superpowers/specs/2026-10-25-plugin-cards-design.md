@@ -174,7 +174,7 @@ The user played the first version: on a computer screen the table is too small t
 ### 9. A full-screen plugin window (plugin API)
 
 - `hq.ui.modal({ size: "full" })`: the window takes the screen, less a margin (the user: "on doit pouvoir faire un plein écran"). `hq.ui.view({ height: "full" })` fills the window's height left after the elements above it. Validated like the other sizes; documented in `docs/plugins.md`, `docs/plugin-api.md` and `plugins/sdk/client.d.ts`; recorded in ADR 0032 *(builder's call: one ADR for the whole change)*.
-- The Cards window uses it, and holds only its title and the view: the seats, the table actions and the log move into the view, as HTML controls above and beside the canvas *(builder's call: the controls above the view took the height the table needs)*. Target: at 1280 x 720 the table is drawn at 2x or more; on a larger screen, larger (whole and half steps as now). On a phone the narrow layout stays.
+- The Cards window uses it, and holds only its title and the view: the seats, the table actions and the log move into the view, as HTML controls above and beside the canvas *(builder's call: the controls above the view took the height the table needs)*. Target: at 1280 x 720 the table is drawn at 1.75x (the window's title and Close take about 160 px; ruled with the builder's measurements), on a larger screen 2x and more (whole and half steps as now). On a phone the narrow layout stays.
 
 ### 10. Snapping, overlapping, cascades
 
@@ -201,7 +201,7 @@ The user played the first version: on a computer screen the table is too small t
 | # | Criterion | Seam |
 | --- | --- | --- |
 | R1 | A plugin window of size `full` with a `full` view fills the screen less its margin at 1280 x 720 and 800 x 450; a malformed size still stops the plugin as before | `pluginCommands` tests + browser scenario `plugins` |
-| R2 | At 1280 x 720 the Cards table is drawn at 2x or more, with the seats, actions and log usable; the `a11y` scenario stays at zero violations | browser scenarios `cards` and `a11y` + frames looked at |
+| R2 | At 1280 x 720 the Cards table is drawn at 1.75x or more, with the seats, actions and log usable; the `a11y` scenario stays at zero violations | browser scenarios `cards` and `a11y` + frames looked at |
 | R3 | Snapping on: a card dropped near a grid point lands on it; dropped on a card's lower half it lands 13 units lower, its index visible; on its upper half, exactly on it; snapping off: where dropped. A seated player turns it off: every page shows it off and the log says so | web unit tests of the snapping function + browser scenario `cards` |
 | R4 | Dragging a cascade's handle moves all its cards by the same offset; picking a middle card of a cascade moves it and the cards above it; one message per drop | web unit tests + browser scenario `cards` |
 | R5 | A pile moves by its handle; any pile but the stock can be removed and its cards go back to the stock | unit and Go tests + browser scenario `cards` |
