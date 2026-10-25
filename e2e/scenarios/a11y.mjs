@@ -224,9 +224,9 @@ export async function run(ctx) {
     // on a failure, say what the window showed (a CI runner cannot be watched)
     const cardsWindow = () => p.evaluate((sel) => ({ buttons: [...document.querySelectorAll(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), texts: [...document.querySelectorAll(sel + " p")].map((x) => x.textContent), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS);
     await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
-    await waitFor(() => cardsButton("Deal 7 each"), { what: "Deal 7 each" });
+    await waitFor(() => cardsButton("Deal 7 each"), { what: "Deal 7 each" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     const cardsView = await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" });
-    await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" });
+    await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     await audit(p, "the Cards window with a dealt free table");
     await cardsView.evaluate(AXE);
     const inCards = await cardsView.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
