@@ -52,9 +52,9 @@ declare global {
       tint?: string;
     }
 
-    /** An element of a modal or a box on the map, made by hq.ui.text, button, copy, image, row, appToken, color, number, field or sprite. */
+    /** An element of a modal or a box on the map, made by hq.ui.text, button, copy, image, row, appToken, color, number, field, sprite or view. */
     interface UINode {
-      readonly type: "text" | "button" | "copy" | "image" | "row" | "appToken" | "color" | "number" | "field" | "sprite";
+      readonly type: "text" | "button" | "copy" | "image" | "row" | "appToken" | "color" | "number" | "field" | "sprite" | "view";
     }
 
     type ButtonAnchor = "topbar" | "topright" | "bottombar" | "sidebar" | "minimap";
@@ -79,6 +79,12 @@ declare global {
       field(opts: { label: string; value?: string; maxLength?: number; placeholder?: string; hideLabel?: boolean; onChange?: (text: string) => void }): UINode;
       /** A whole number in min..max; onChange runs once it is entered (Enter or leaving the field), clamped to the range. */
       number(opts: { label: string; value: number; min: number; max: number; onChange?: (value: number) => void }): UINode;
+      /** A sandboxed iframe in a modal (at most one per modal) running the manifest view `view` ("views" in plugin.json);
+       * label is its accessible title, height a preset (default "medium"), the width the modal's. onMessage gets what the
+       * view sends with hqView.send. Redrawing the modal with the same view keeps the iframe and its state. */
+      view(opts: { view: string; label: string; height?: "small" | "medium" | "large"; onMessage?: (msg: any) => void }): UINode;
+      /** Sends to the open view's hqView.onMessage (anything JSON, at most 4096 bytes; 30 a second). */
+      post(msg: unknown): void;
       /** A button at an anchor. The label (1-40 characters) defaults to the plugin's title. */
       slot(id: string, anchor: ButtonAnchor, opts?: { label?: string; icon?: string; pressed?: boolean; onClick?: () => void }): void;
       /** A box on the map, at most 240 x 160 px, dx/dy 0-200 px from the corner. */

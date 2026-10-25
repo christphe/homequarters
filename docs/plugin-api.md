@@ -18,6 +18,8 @@ Everything here was built and tested on 2026-10-17. Limits are enforced: breakin
 | `longDescription` | string | no | At most 2000 characters, shown by the About button of the plugin's row in Administration > Plugins; blank lines separate paragraphs. |
 | `settings` | array | no | At most 16 `{ key, label, type: "number", min, max, default, help }`: whole numbers within ±1,000,000, `min <= default <= max`, key `^[a-z][a-zA-Z0-9]{0,31}$`, label 1-40 characters, `help` (optional) up to 200, shown under the field. Drawn behind the plugin's gear button in Administration > Plugins. |
 | `externalHosts` | string array | no | At most 8 host names (lower case, no scheme or port, like `raw.githubusercontent.com`) the plugin's browser code may fetch from, over https. Shown to administrators in Administration > Plugins and enforced: the iframe's Content Security Policy allows its own folder and these hosts, nothing else. |
+| `objects` | array | no | At most 8 `{ kind, label, size, sprite, frame }` map objects: `kind` `^[a-z][a-z0-9-]{0,31}$` and unique, `label` 1-40 characters, `size` `[w, h]` tiles each 1-4, `sprite` an existing `.png` of `public/`, `frame` optional `[x, y, w, h]` (`x`, `y` >= 0, `w`, `h` 1-128). Drawn anchored at the bottom-left of the object's tiles. See Objects on the map. |
+| `views` | object | no | At most 4 `{ name: file }`: name `^[a-z][a-z0-9-]{0,31}$`, file a `.ts` or `.js` inside `public/`, compiled like `client` (256 KB each) and served at `/plugins/<name>/views/<view>.js`. See Views. |
 
 A plugin whose manifest or files are invalid is listed as `broken` with the reason. Turning it on reads it again, so fixing the files is enough.
 
@@ -36,6 +38,7 @@ All optional; any other export stops the plugin from starting. Each call has a 5
 | `onJoin(player)` | A member becomes visible-online: they joined, or came back from invisible. Replayed for every member online right after `load()`. |
 | `onLeave(player)` | The member left (after the 10 s reconnect grace), was removed, or went invisible. |
 | `onMessage(player, msg)` | That member's page sent `hq.send(msg)`. `msg` is the parsed JSON (`unknown`: check it). |
+| `onUse(player, { kind, x, y })` | The member pressed X next to one of the plugin's map objects (reach and area rules as for built-in objects). `x`, `y` is the object's top-left tile. At most 4 a second per member (burst 8), the rest dropped silently; never for an invisible member, for a kind the manifest does not declare, or a stopped plugin. Home Quarters sends nothing to the browser. |
 | `onSettings()` | An administrator changed a setting; `hq.settings()` has the new values. |
 | `unload()` | Before the plugin stops (turned off, server stopping). |
 
@@ -95,6 +98,10 @@ A hook is `fn(caller, args)`, maybe async, returning JSON of at most 4 KB. `call
 | A member's connection half backed up | The frame is dropped and counted (`hq_plugin_frames_dropped_total`); nobody is ever disconnected for plugin traffic. |
 | Inbox of 256 events | Further browser messages and route calls are dropped (routes answer 503). Presence changes are never dropped: they are coalesced per member. |
 | Compiled code | 256 KB per side; imports only of `.ts`, `.tsx`, `.js`, `.mjs`, `.json` files inside the plugin's folder (checked on the files actually read, after links and `package.json` fields); server code never in `public/`; at most 2000 files per plugin, `node_modules` and dot folders ignored. |
+
+## Objects on the map
+
+A placed object is a map prop with `t = "<plugin>/<kind>"`, `w` and `h` (required, 1-4), no `Data`, no `To`, never solid. A map with such a prop is valid whether or not the plugin is installed. Pages draw the objects of running plugins only; the editor palette lists them under the plugin's title and shows those of a plugin that is off as a dashed placeholder. Invalid `objects` in the manifest make the plugin `broken`.
 
 ## Browser (TypeScript)
 
@@ -158,7 +165,21 @@ Content elements (a `content` array, at most 64 elements, nested at most 4 deep)
 | `hq.ui.field({ label, value, maxLength, placeholder, onChange })` | One line of text; `maxLength` 1-200 (default 200), `placeholder` up to 40 characters. `onChange(text)` runs on Enter or when the field loses focus, only if it changed. |
 | `hq.ui.number({ label, value, min, max, onChange })` | A whole number, `min` <= `value` <= `max` (integers within ±1,000,000). `onChange(value)` runs on Enter or when the field loses focus, clamped to the range, and only if it changed. |
 
+| `hq.ui.view({ view, label, height, onMessage })` | A manifest view in a sandboxed iframe; at most one per modal. `view` names a `views` entry; `label` 1-40 characters, the iframe's title; `height` `small`, `medium` (default) or `large`; `onMessage(msg)` gets what the view sends. Redrawing the modal with the same view keeps the iframe. |
+| `hq.ui.post(msg)` | Sends to the open view; JSON of at most 4096 bytes. |
+
 At most 8 slots per plugin and 256 live callbacks; texts are plain text.
+
+### Views
+
+The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, forms, popups or top navigation) with the hidden iframe's Content Security Policy: the plugin's folder and its `externalHosts`, nothing else. Its one global is `hqView`; it cannot call `hq`. Types: [`plugins/sdk/view.d.ts`](../plugins/sdk/view.d.ts).
+
+| Function | Meaning |
+| --- | --- |
+| `hqView.send(msg)` | To the `onMessage` of the view element. |
+| `hqView.onMessage(fn)` | `fn(msg)` for each `hq.ui.post` of the plugin's client code. |
+
+Messages are JSON of at most 4096 bytes, 30 a second each way per view; beyond that they are dropped with a console warning. The page relays over MessageChannels and never interprets the content. The iframe is removed when the modal closes, another plugin's modal replaces it, or the plugin stops on that page; a view that breaks a limit is removed with a console warning and the modal stays.
 
 ### Page limits
 
@@ -172,6 +193,7 @@ A plugin breaking one of these is stopped on that page only (iframe, sprites and
 | Sprites | 256 |
 | Slots | 8 |
 | Start (handshake) | 10 s |
+| View messages | 4096 bytes, 30 a second each way per view |
 
 An invalid command (an unknown operation, a wrong type, a value out of range, a path outside `public/`) stops the plugin the same way, with the reason in the console.
 
@@ -179,7 +201,7 @@ An invalid command (an unknown operation, a wrong type, a value out of range, a 
 
 | Endpoint | Who | Answer |
 | --- | --- | --- |
-| `GET /api/plugins` | member | `[{ name, title, client }]`, the running plugins (`client`: URL of the browser code or `null`). |
+| `GET /api/plugins` | member | `[{ name, title, client, objects, views }]`, the running plugins (`client`: URL of the browser code or `null`; `objects`: the declared map objects; `views`: the view names). |
 | `GET /api/admin/plugins` | admin | `[{ name, title, version, description, state, error }]`, `state` = `disabled`, `running`, `crashed`, `broken`. |
 | `PUT /api/admin/plugins/{name}` | admin | `{ enabled }` → `{ state }`; 404 unknown, 409 broken or failing to start. Audited. |
 | `PUT /api/admin/plugins/{name}/settings` | admin | `{ key, value }`: one declared setting for the office, checked against the manifest (400 otherwise), stored, audited (`plugin.settings`, `key=value`), passed to the running plugin (`onSettings`). |
@@ -187,6 +209,7 @@ An invalid command (an unknown operation, a wrong type, a value out of range, a 
 | `GET, POST /plugins/{name}/api/{path}` | member, or app token on `{ token: true }` routes | The plugin's routes (see Routes). |
 | `GET /plugins/{name}/assets/{path}` | anybody | A file of the running plugin's `public/` (png, js, json, css, at most 1 MB). Never the server code. |
 | `GET /plugins/{name}/client.js` | anybody | The running plugin's compiled browser code. |
+| `GET /plugins/{name}/views/{view}.js` | anybody | The compiled script of one of the running plugin's declared views. |
 
 ## WebSocket
 
