@@ -38,7 +38,7 @@ function morph(into: Element, kids: Node[]): void {
     } else patch(o as Element, n as Element);
     return o;
   });
-  for (const list of left.values()) for (const o of list) o.remove(); // gone
+  for (const list of left.values()) for (const o of list) into.removeChild(o); // gone
   keep.forEach((n, k) => {
     if (into.childNodes[k] !== n) into.insertBefore(n, into.childNodes[k] ?? null); // new, or moved
   });

@@ -484,7 +484,10 @@ export async function run(ctx) {
       const renewed = await Promise.all([ann, bo].map((u) => within(async () => (await drawn(u))?.sheet === "loaded" && (await hasButton(u, "Seat 1")), 5000)));
       check("10b: on choosing Last Card, every open window's view renews and loads the game's own sheet (shared/cards.png)", renewed.every((ms) => ms >= 0), JSON.stringify(renewed));
       await press(ann, "Seat 1");
-      await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" });
+      const nAnn = ann.sent.length;
+      await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" }).catch(async (e) => {
+        throw new Error(e.message + " " + JSON.stringify({ annSent: ann.sent.slice(nAnn - 2), ann: (await modal(ann))?.buttons.slice(0, 4), bo: (await modal(bo))?.buttons.slice(0, 4), log: (await logOf(bo)).slice(-2) }));
+      });
       const nSeat = bo.sent.length;
       await press(bo, "Seat 2");
       await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
