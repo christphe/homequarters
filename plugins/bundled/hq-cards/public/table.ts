@@ -8,7 +8,7 @@ import { allows, deckSize, FELT_H, FELT_W, FREE, MAX_PILES, PILE_NAME_MAX, type 
 import type { LogEntry } from "./log.ts";
 
 export const UP = 128; // card numbers are below MAX_CARDS (128)
-export const TABLE_MAX = 3900; // bytes of JSON: a table is saved in one hq.kv value and sent in one message
+export const TABLE_MAX = 3650; // bytes of JSON: a table is saved in one hq.kv value and sent, with who is here and looking, in one 4 KB message
 export const DEAL_MAX = 52;
 export const COUNT_MAX = 200;
 
@@ -35,6 +35,9 @@ const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInt
 const onFelt = (at: unknown): at is [number, number] =>
   Array.isArray(at) && at.length === 2 && isInt(at[0]) && isInt(at[1]) && at[0] >= 0 && at[0] <= FELT_W && at[1] >= 0 && at[1] <= FELT_H;
 const card = (c: number) => c & ~UP;
+// what a page sends is checked for shape before anything is taken out of a hand or a pile
+const isSrc = (s: unknown): s is Src => typeof s === "object" && s !== null && ["hand", "loose", "pile"].includes((s as Src).k);
+const isDest = (d: unknown): d is Dest => typeof d === "object" && d !== null && ["felt", "pile", "hand"].includes((d as Dest).k);
 const sameCards = (a: number[], b: number[]) => {
   if (a.length !== b.length || !b.every(isInt)) return false;
   const x = [...a].sort((p, q) => p - q), y = [...b].sort((p, q) => p - q);
@@ -137,7 +140,7 @@ function lift(t: Table, seat: number, from: Src): number | null {
 
 export function place(t: Table, seat: number | null, from: Src, to: Dest, up: boolean, g: Game): Done {
   return act(t, seat, g, "place", (me) => {
-    if (!from || !to) return null;
+    if (!isSrc(from) || !isDest(to)) return null;
     if (to.k === "hand" && (!seated(t, to.seat) || (to.seat === me && from.k !== "loose"))) return null; // pile to my hand: draw
     if (to.k === "felt" && !onFelt(to.at)) return null;
     const dest = to.k === "pile" ? pile(t, to.id) : undefined;

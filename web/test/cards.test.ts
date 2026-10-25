@@ -462,6 +462,33 @@ test("the worst case stays under TABLE_MAX, and an action that would not fit is 
   }
 });
 
+test("malformed sources and destinations are refused without throwing", () => {
+  const t = free3();
+  deal(t, 0, "p0", 2, FREE);
+  const snapshot = JSON.stringify(t);
+  const bad: [unknown, unknown][] = [
+    [{ k: "hand", i: 0 }, { k: "zzz" }],
+    [{ k: "zzz" }, { k: "felt", at: [1, 1] }],
+    [{ k: "hand", i: 0 }, null],
+    [null, { k: "felt", at: [1, 1] }],
+    [{ k: "hand", i: "0" }, { k: "felt", at: [1, 1] }],
+    [{ k: "hand", i: 0 }, { k: "felt", at: "1,1" }],
+    [{ k: "hand", i: 0 }, { k: "pile", id: 5 }],
+    [{ k: "hand", i: 0 }, { k: "hand", seat: "1" }],
+  ];
+  for (const [from, to] of bad) assert.equal(place(t, 0, from as never, to as never, true, FREE).ok, false, JSON.stringify([from, to]));
+  assert.equal(flip(t, 0, { k: "zzz" } as never, FREE).ok, false);
+  assert.equal(flip(t, 0, null as never, FREE).ok, false);
+  assert.equal(order(t, 0, "x" as never).ok, false);
+  assert.equal(JSON.stringify(t), snapshot);
+});
+
+test("a table at TABLE_MAX still fits a 4 KB state message with 8 seats here and looking", () => {
+  const room = 4096 - TABLE_MAX;
+  const extra = JSON.stringify({ t: "state", x: 99999, y: 99999, s: { t: null, here: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => 2 ** 31 + i), looking: Array.from({ length: 8 }, (_, i) => ({ seat: i, pile: "p15" })), unavailable: false } });
+  assert.ok(extra.length < room, `the wrapping takes ${extra.length} bytes, TABLE_MAX leaves ${room}`);
+});
+
 test("canReset mirrors chess, and reset clears the table", () => {
   const t = free3();
   assert.equal(canReset(t, 1, new Set([1, 9])), true, "a present seated player");
