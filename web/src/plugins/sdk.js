@@ -66,7 +66,7 @@
   };
   const ser = (owner, nodes) =>
     (nodes || []).map((n) => {
-      if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed, sprite: n.sprite };
+      if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed, disabled: n.disabled, sprite: n.sprite };
       if (n && n.type === "row") return { type: "row", children: ser(owner, n.children) };
       if (n && (n.type === "color" || n.type === "number" || n.type === "field")) {
         const { onChange, ...rest } = n;
@@ -79,7 +79,7 @@
 
   const ui = Object.freeze({
     text: (text, opts = {}) => ({ type: "text", text: String(text), muted: opts.muted ? true : undefined }),
-    button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, sprite: opts.sprite }),
+    button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, disabled: opts.disabled, sprite: opts.sprite }),
     /** One cell of a PNG of public/: { src, frame: [x, y, w, h], scale, tint, alt }. */
     sprite: (opts) => ({ type: "sprite", sprite: { src: opts.src, sheet: opts.sheet, frame: opts.frame, scale: opts.scale, tint: opts.tint }, alt: opts.alt }),
     copy: (opts) => ({ type: "copy", label: opts.label, value: String(opts.value) }),

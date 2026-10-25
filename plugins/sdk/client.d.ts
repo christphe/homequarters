@@ -62,8 +62,8 @@ declare global {
 
     interface UI {
       text(text: string, opts?: { muted?: boolean }): UINode;
-      /** A button; sprite shows a picture before its label. */
-      button(opts: { label: string; onClick?: () => void; primary?: boolean; pressed?: boolean; sprite?: SpriteCell }): UINode;
+      /** A button; sprite shows a picture before its label. disabled shows it greyed out and not pressable. */
+      button(opts: { label: string; onClick?: () => void; primary?: boolean; pressed?: boolean; disabled?: boolean; sprite?: SpriteCell }): UINode;
       /** One cell of a sheet, for a preview; alt names it for screen readers. */
       sprite(opts: SpriteCell & { alt: string }): UINode;
       copy(opts: { label: string; value: string }): UINode;

@@ -81,7 +81,7 @@ function Nodes({ nodes, plugin, base }: { nodes: UINode[]; plugin: string; base:
             return <p key={i} className={n.muted ? "muted" : undefined}>{n.text}</p>;
           case "button":
             return (
-              <button key={i} className={"btn" + (n.primary ? " primary" : "") + (n.pressed ? " on" : "") + (n.sprite ? " with-sprite" : "")} aria-pressed={n.pressed} onClick={() => run(plugin, n.click)}>
+              <button key={i} className={"btn" + (n.primary ? " primary" : "") + (n.pressed ? " on" : "") + (n.sprite ? " with-sprite" : "")} aria-pressed={n.pressed} disabled={n.disabled} onClick={() => run(plugin, n.click)}>
                 {n.sprite && <SpriteView spec={n.sprite} base={base} plugin={plugin} />}
                 {n.label}
               </button>

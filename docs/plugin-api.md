@@ -156,7 +156,7 @@ Content elements (a `content` array, at most 64 elements, nested at most 4 deep)
 | Element | Meaning |
 | --- | --- |
 | `hq.ui.text(text, { muted })` | A paragraph, up to 500 characters. |
-| `hq.ui.button({ label, onClick, primary, pressed })` | A button, label 1-40 characters. |
+| `hq.ui.button({ label, onClick, primary, pressed, disabled })` | A button, label 1-40 characters; `disabled` shows it greyed out and not pressable. |
 | `hq.ui.copy({ label, value })` | A read-only field with a Copy button, value up to 2000 characters. |
 | `hq.ui.image({ src, alt })` | A PNG of `public/`, shown at most 128 px. |
 | `hq.ui.row(children)` | Its children side by side. |

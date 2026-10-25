@@ -41,7 +41,7 @@ export interface SpriteSpec { src?: string; sheet?: string; frame: [number, numb
 
 export type UINode =
   | { type: "text"; text: string; muted?: boolean }
-  | { type: "button"; label: string; click?: string; primary?: boolean; pressed?: boolean; sprite?: SpriteSpec }
+  | { type: "button"; label: string; click?: string; primary?: boolean; pressed?: boolean; disabled?: boolean; sprite?: SpriteSpec }
   | { type: "sprite"; sprite: SpriteSpec; alt: string }
   | { type: "copy"; label: string; value: string }
   | { type: "image"; src: string; alt: string }
@@ -173,7 +173,7 @@ function tree(v: unknown, views = false): UINode[] {
       const o = (n ?? {}) as Record<string, unknown>;
       switch (o.type) {
         case "text": return { type: "text", text: str(o.text, "text", LIMITS.text), muted: opt(o.muted, (x) => bool(x, "muted")) };
-        case "button": return { type: "button", label: label(o.label), click: opt(o.click, cb), primary: opt(o.primary, (x) => bool(x, "primary")), pressed: opt(o.pressed, (x) => bool(x, "pressed")), sprite: opt(o.sprite, sprite) };
+        case "button": return { type: "button", label: label(o.label), click: opt(o.click, cb), primary: opt(o.primary, (x) => bool(x, "primary")), pressed: opt(o.pressed, (x) => bool(x, "pressed")), disabled: opt(o.disabled, (x) => bool(x, "disabled")), sprite: opt(o.sprite, sprite) };
         case "sprite": return { type: "sprite", sprite: sprite(o.sprite), alt: str(o.alt, "alt", LIMITS.label) };
         case "copy": return { type: "copy", label: label(o.label), value: str(o.value, "value", LIMITS.copy) };
         case "image": return { type: "image", src: url(o.src), alt: str(o.alt, "alt", LIMITS.label) };

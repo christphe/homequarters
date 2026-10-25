@@ -132,6 +132,14 @@ test("a blank button label is refused (it would have no accessible name)", () =>
   assert.ok(Array.isArray(ok) && ok[0].op === "slot" && ok[0].label === "Go");
 });
 
+test("a button may be disabled: shown, named, not pressable (hq-chess's taken seats)", () => {
+  const ok = parseBatch([{ op: "modal", title: "t", content: [{ type: "button", label: "White: Ann (away)", click: "c1", disabled: true }] }]);
+  assert.ok(Array.isArray(ok) && ok[0].op === "modal", String(ok));
+  const b = ok[0].op === "modal" ? ok[0].content[0] : null;
+  assert.ok(b?.type === "button" && b.disabled === true);
+  assert.equal(typeof parseBatch([{ op: "modal", title: "t", content: [{ type: "button", label: "b", disabled: "yes" }] }]), "string");
+});
+
 test("screen offsets are clamped", () => {
   const ok = parseBatch([{ op: "slot", id: "w", anchor: "screen", corner: "top-right", dx: 5000, dy: -3, content: [] }]);
   assert.ok(Array.isArray(ok) && ok[0].op === "slot" && ok[0].dx === 200 && ok[0].dy === 0);
