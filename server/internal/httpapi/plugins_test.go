@@ -174,7 +174,7 @@ func TestEnablePluginEndToEnd(t *testing.T) {
 	if code, h, body := anon.raw("GET", "/plugins/echo/client.js", nil); code != 200 || !strings.HasPrefix(h.Get("Content-Type"), "text/javascript") || h.Get("Access-Control-Allow-Origin") != "*" || !strings.Contains(body, "hq.onLoad") {
 		t.Fatalf("compiled client: %d %v %s", code, h, body)
 	}
-	if _, _, body := bia.raw("GET", "/api/plugins", nil); !strings.Contains(body, `"objects":[{"kind":"box","label":"Box","size":[1,2],"sprite":"box.png"}]`) || !strings.Contains(body, `"views":["board"]`) {
+	if _, _, body := bia.raw("GET", "/api/plugins", nil); !strings.Contains(body, `"objects":[{"kind":"box","label":"Box","size":[1,2],"sprite":"box.png","dynamic":false},{"kind":"orb","label":"Orb","size":[1,1],"dynamic":true}]`) || !strings.Contains(body, `"views":["board"]`) {
 		t.Fatalf("/api/plugins objects and views: %s", body)
 	}
 	if code, h, body := anon.raw("GET", "/plugins/echo/views/board.js", nil); code != 200 || !strings.HasPrefix(h.Get("Content-Type"), "text/javascript") || h.Get("Access-Control-Allow-Origin") != "*" || h.Get("ETag") == "" || !strings.Contains(body, "__view") {

@@ -404,6 +404,7 @@ const en = {
   "editor.group.builtin": "Office",
   "editor.group.plugin": "{title} (plugin)",
   "editor.pluginMissing": "{type}\n(plugin not running)",
+  "editor.pluginDraws": "{label}\n(drawn by its plugin)",
   "editor.assign": "Person",
   "editor.roomHint": "Drag on the map to draw the room.",
   "editor.roomName": "Room name",

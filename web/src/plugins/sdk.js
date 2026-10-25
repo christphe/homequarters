@@ -9,7 +9,7 @@
   /** @type {object[]} */
   let queue = [];
   let scheduled = false;
-  const on = { load: [], update: [], message: [] };
+  const on = { load: [], update: [], message: [], objectInit: [], objectDestroy: [], objectUpdate: [] };
   /** hq.provideSheet: draws a sheet another plugin asked for by metadata (a guest pet of hq-pets) */
   let provider = null;
 
@@ -140,6 +140,13 @@
     onUpdate: handler(on.update),
     /** fn(msg): a message from this plugin's server code (hq.send / hq.broadcast) */
     onMessage: handler(on.message),
+    /** fn(obj): an object of this plugin placed on the map, once per object when the plugin starts on the
+     *  page and when one is added; obj = { kind, x, y, w, h, px, py } (tiles, top-left in world px) */
+    onObjectInit: handler(on.objectInit),
+    /** fn(obj): that object left the map (removed or moved, or its kind no longer declared) */
+    onObjectDestroy: handler(on.objectDestroy),
+    /** fn(dt, obj): with onUpdate, for each placed object of a kind declared "dynamic": true (at most 64) */
+    onObjectUpdate: handler(on.objectUpdate),
     ui,
     /** Sends msg (JSON, at most 1500 bytes) to this plugin's server onMessage. */
     send(msg) {
@@ -219,7 +226,13 @@
     port.onmessage = (m) => {
       const d = m.data;
       if (d.t === "load") call(on.load);
-      else if (d.t === "update") call(on.update, d.dt, d.world);
+      else if (d.t === "update") {
+        call(on.update, d.dt, d.world);
+        for (const o of d.objects || []) call(on.objectUpdate, d.dt, o);
+      } else if (d.t === "objs") {
+        for (const o of d.destroy) call(on.objectDestroy, o);
+        for (const o of d.init) call(on.objectInit, o);
+      }
       else if (d.t === "msg") call(on.message, d.d);
       else if (d.t === "sheet") {
         // the page asks for a sheet by metadata: answer it (or say why not), whenever it is drawn

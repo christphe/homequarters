@@ -63,6 +63,7 @@ class Session {
     }
     this.view = view;
     this.plugins = new PluginManager(view.plugins, (pl, d) => this.socket?.send({ t: "plg", pl, d }), (specs) => view.setPluginObjects(specs));
+    view.onProps = (props) => this.plugins?.setProps(props);
     media.onSpeaking = (ids) => view.setSpeaking(ids);
     media.onSharing = (ids) => view.setSharing(ids);
     media.onNeedToken = () => this.socket?.send({ t: "tok" });

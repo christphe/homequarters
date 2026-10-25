@@ -154,7 +154,24 @@ A plugin can ship objects an administrator places in the map editor, like the bu
 
 `kind` matches `^[a-z][a-z0-9-]{0,31}$` and is unique in the plugin, with at most 8 objects. `label` (1-40 characters) names it in the editor. `size` is `[w, h]` in tiles, 1-4 each way. `sprite` is a PNG of `public/` that must exist; `frame` (optional, `[x, y, w, h]` with `w` and `h` 1-128, `x` and `y` not negative) picks one cell of it, the whole image by default. The picture is drawn anchored at the bottom-left of the object's tiles, so it may rise above them (a tall object). A manifest that breaks one of these rules makes the plugin *Cannot run*, with the rule in Administration > Plugins.
 
-On the map, a placed object is a prop of type `<plugin>/<kind>` (`hq-chess/chessboard`) with its `w` and `h` (1-4), no `Data` and no `To`. It is never solid, so it can stand on a table, which blocks on its own. The map stays valid when the plugin is uninstalled. Pages draw the objects of running plugins only: with the plugin off, they are not drawn and nobody can use them. The editor's palette lists the objects of running plugins under the plugin's title; those of a plugin that is off show as a dashed placeholder, so an administrator can still delete them.
+Two choices per object, independent of each other:
+
+- **Who draws it.** With a `sprite`, the page draws it. Without one (no `sprite`, or `"sprite": null`), the page draws nothing and your browser code draws it, as for pets: `hq.spawn` with any sheet, a PNG or image data drawn in code, placed from `onObjectInit`. X, the hint, the reach and the editor work the same either way; in the editor such an object shows as a labelled box of its size.
+- **Whether it gets updates.** With `"dynamic": true`, `hq.onObjectUpdate(fn(dt, obj))` runs for it in the update tick (about 10 a second, in the same message as `onUpdate`). Without it, it gets only init and destroy. At most 64 dynamic objects of one plugin get updates (the first in map order).
+
+Every object, dynamic or not, gets `hq.onObjectInit(obj)` when your browser code starts on a page (one call per object already placed) and when one is added to the map, and `hq.onObjectDestroy(obj)` when it leaves the map (removed or moved in the editor, or its kind is no longer declared). `obj` is `{ kind, x, y, w, h, px, py }`: tiles, plus the top-left corner in world pixels. A moved or resized object is a destroy then an init. When the plugin stops there is no destroy: its sprites go anyway, and when it is turned on again it gets an init for each object still placed.
+
+~~~json
+"objects": [{ "kind": "orb", "label": "Orb", "size": [1, 1], "dynamic": true }]
+~~~
+
+~~~ts
+hq.onObjectInit((o) => hq.spawn(`orb@${o.x},${o.y}`, "orb", { x: o.px + o.w * 8, y: o.py + o.h * 16 }));
+hq.onObjectDestroy((o) => hq.remove(`orb@${o.x},${o.y}`));
+hq.onObjectUpdate((dt, o) => { /* animate it */ });
+~~~
+
+On the map, a placed object is a prop of type `<plugin>/<kind>` (`hq-chess/chessboard`) with its `w` and `h` (1-4), no `Data` and no `To`. It is never solid, so it can stand on a table, which blocks on its own. The map stays valid when the plugin is uninstalled. Pages draw the objects of running plugins only: with the plugin off, they are not drawn and nobody can use them. The editor's palette lists the objects of running plugins under the plugin's title; those of a plugin that is off show as a dashed placeholder, so an administrator can still delete them, and those the plugin draws itself as a labelled box.
 
 When a member presses X next to one, with the same reach and area rules as for the built-in objects, your `onUse(player, { kind, x, y })` runs. It is a normal call: 50 ms, errors counted. A member can trigger at most 4 uses a second (burst 8); the rest are dropped silently. An invisible member triggers nothing, like everything else invisible members do. A kind your manifest does not declare, or a plugin that is off, gets no call.
 

@@ -263,12 +263,14 @@ type pluginEntry struct {
 	Views   []string      `json:"views"`
 }
 
+// objectEntry: no sprite means the plugin draws the object itself
 type objectEntry struct {
-	Kind   string  `json:"kind"`
-	Label  string  `json:"label"`
-	Size   [2]int  `json:"size"`
-	Sprite string  `json:"sprite"`
-	Frame  *[4]int `json:"frame,omitempty"`
+	Kind    string  `json:"kind"`
+	Label   string  `json:"label"`
+	Size    [2]int  `json:"size"`
+	Sprite  *string `json:"sprite,omitempty"`
+	Frame   *[4]int `json:"frame,omitempty"`
+	Dynamic bool    `json:"dynamic"`
 }
 
 // listPlugins tells a member's page which plugins run and where their browser code is.

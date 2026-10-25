@@ -283,6 +283,7 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
 
 /** A plugin object's picture (its frame) beside the object list, enlarged by a whole factor to about 48 px. */
 function ObjectIcon({ spec }: { spec: PluginObjectSpec }) {
+  if (!spec.sprite) return null; // the plugin draws it on the map: no picture to show
   const url = `/plugins/${spec.plugin}/assets/${spec.sprite}`;
   if (!spec.frame) return <img className="editor-object-icon" src={url} alt="" />;
   const [x, y, w, h] = spec.frame;

@@ -182,6 +182,27 @@ func TestObjectsAndViewsLoad(t *testing.T) {
 	}
 }
 
+// An object without a sprite (absent or null) is drawn by the plugin; dynamic is kept as declared.
+func TestObjectDrawnByPluginAndDynamic(t *testing.T) {
+	for _, tail := range []string{
+		`"objects":[{"kind":"orb","label":"Orb","size":[1,1],"dynamic":true}]`,
+		`"objects":[{"kind":"orb","label":"Orb","size":[1,1],"sprite":null,"dynamic":true}]`,
+	} {
+		i := objPlugin(t, tail, nil)
+		if i.Err != "" {
+			t.Fatalf("%s: %s", tail, i.Err)
+		}
+		o, ok := i.Object("orb")
+		if !ok || o.Sprite != nil || !o.Dynamic {
+			t.Fatalf("%s: %+v %v", tail, o, ok)
+		}
+	}
+	s := objPlugin(t, `"objects":[`+goodObject+`]`, nil)
+	if o, _ := s.Object("chessboard"); s.Err != "" || o.Dynamic || o.Sprite == nil || *o.Sprite != "board.png" {
+		t.Fatalf("static object with a sprite: %+v %s", o, s.Err)
+	}
+}
+
 func TestObjectAndViewRules(t *testing.T) {
 	obj := func(kind, label, size, sprite string) string {
 		return `{"kind":"` + kind + `","label":"` + label + `","size":` + size + `,"sprite":"` + sprite + `"}`
@@ -202,6 +223,7 @@ func TestObjectAndViewRules(t *testing.T) {
 		{"nine objects", `"objects":[` + strings.Join(nine, ",") + `]`, "at most 8", nil},
 		{"missing sprite", `"objects":[` + obj("a", "L", "[1,1]", "gone.png") + `]`, "sprite", nil},
 		{"sprite not png", `"objects":[` + obj("a", "L", "[1,1]", "board.js") + `]`, "sprite", nil},
+		{"empty sprite", `"objects":[` + obj("a", "L", "[1,1]", "") + `]`, "sprite", nil},
 		{"sprite outside public", `"objects":[` + obj("a", "L", "[1,1]", "../plugin.json") + `]`, "sprite", nil},
 		{"long label", `"objects":[` + obj("a", strings.Repeat("x", 41), "[1,1]", "board.png") + `]`, "label", nil},
 		{"empty label", `"objects":[` + obj("a", "", "[1,1]", "board.png") + `]`, "label", nil},

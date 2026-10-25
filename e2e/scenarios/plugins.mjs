@@ -487,8 +487,76 @@ export async function run(ctx) {
     await fetch(API + "/api/admin/plugins/drawn-sheet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
     await waitFor(async () => !(await read(mia, () => !!document.querySelector('iframe.plugin-frame[data-plugin="drawn-sheet"]'))), { what: "drawn-sheet off" });
 
+    // ---- a map object the plugin draws itself (ui-demo's orb: no sprite, "dynamic": true), placed
+    // before the plugin starts, on open floor beside Mia
+    const adminMap = () => fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
+    const putMap = (m) => fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
+    const ORB = { x: 10, y: 31 };
+    const setOrb = async (at) => {
+      const m = await adminMap();
+      m.props = m.props.filter((p) => p.t !== "ui-demo/orb");
+      if (at) m.props.push({ t: "ui-demo/orb", x: at.x, y: at.y, w: 1, h: 1 });
+      return (await putMap(m)).ok;
+    };
+    await walkTo(mia, 9 * 16 + 8, 31 * 16 + 8);
+    check("an administrator places the plugin's orb on the map while the plugin is off (map API)", await setOrb(ORB));
+    await waitFor(() => read(mia, () => window.__hq.view.map.props.some((p) => p.t === "ui-demo/orb")), { what: "the orb in Mia's map" });
+
     // ---- every anchor, the modal widgets and app tokens, with the suite's test plugin (e2e/fixtures/plugins/installed/ui-demo)
     await setEnabled(admin, true, "UI demo", "ui-demo");
+    // what the orb's callbacks saw, read inside ui-demo's iframe; and its sprite, which the plugin spawned
+    const demoFrame = async (u) => (await u.page.$('iframe.plugin-frame[data-plugin="ui-demo"]'))?.contentFrame();
+    const objs = async (u) => (await demoFrame(u))?.evaluate(() => JSON.parse(JSON.stringify(window.__objs ?? null))).catch(() => null);
+    const orbKey = (at) => `orb@${at.x},${at.y}`;
+    const orbSprite = (u, at) => read(u, (id) => (window.__hq.session.plugins?.debug("ui-demo") ?? []).find((c) => c.id === id) ?? null, orbKey(at));
+    const placed = (at) => ({ kind: "orb", x: at.x, y: at.y, w: 1, h: 1, px: at.x * 16, py: at.y * 16 });
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    await waitFor(async () => (await objs(mia))?.init.length > 0, { timeout: 15000, what: "the orb's init" });
+    await sleep(500);
+    const o1 = await objs(mia);
+    check("on start the plugin gets one onObjectInit for the orb already placed, with tiles and world pixels", same(o1.init, [placed(ORB)]) && o1.destroy.length === 0, JSON.stringify(o1));
+    const u0 = (await objs(mia)).updates[orbKey(ORB)] ?? 0;
+    await sleep(2000);
+    const u1 = (await objs(mia)).updates[orbKey(ORB)] ?? 0;
+    check("a dynamic object gets onObjectUpdate about 10 times a second", u1 - u0 >= 12 && u1 - u0 <= 24, `${u1 - u0} in 2 s`);
+    const spr = await waitFor(() => orbSprite(mia, ORB), { what: "the orb's sprite" });
+    check("the sprite the plugin spawned for it stands on the object (bottom centre of its tile)", spr.visible && spr.x === ORB.x * 16 + 8 && spr.y === ORB.y * 16 + 16, JSON.stringify(spr));
+    const anims = await read(mia, (id) => new Promise((resolve) => {
+      const seen = new Set();
+      const t0 = performance.now();
+      const tick = () => {
+        const c = (window.__hq.session.plugins?.debug("ui-demo") ?? []).find((x) => x.id === id);
+        if (c) seen.add(c.anim);
+        if (performance.now() - t0 < 1500) setTimeout(tick, 50); else resolve([...seen].sort());
+      };
+      tick();
+    }), orbKey(ORB));
+    check("the plugin animates it from onObjectUpdate (it pulses)", same(anims, ["a", "b"]), JSON.stringify(anims));
+    check("the page draws nothing of its own for an object without a sprite", await read(mia, () => window.__hq.view.objSprites.length === 0));
+    check("standing beside it, X uses it (the nearby hint)", await waitFor(() => read(mia, () => window.__hq.state.nearby?.t === "ui-demo/orb"), { what: "orb nearby" }).catch(() => false));
+    // the editor, opened through its button, shows it as a labelled box of its size
+    await waitFor(() => click(admin, "button", "Edit office"), { what: "Edit office" });
+    await waitFor(() => admin.page.$(".editor"), { what: "editor open" });
+    const boxes = await read(admin, () => window.__hq.view.placeholderLabels.map((l) => l.text.text));
+    check("in the editor an object the plugin draws shows as a box with its label", boxes.includes("Orb\n(drawn by its plugin)"), JSON.stringify(boxes));
+    await waitFor(() => click(admin, ".editor button", "Close"), { what: "editor Close" });
+    await waitFor(async () => !(await admin.page.$(".editor")), { what: "editor closed" });
+    // removed from the map, put back, moved
+    await setOrb(null);
+    await waitFor(async () => (await objs(mia))?.destroy.length > 0, { what: "the orb's destroy" });
+    await waitFor(async () => !(await orbSprite(mia, ORB)), { what: "orb sprite removed" });
+    const o2 = await objs(mia);
+    await sleep(500);
+    check("removed from the map: one onObjectDestroy, its sprite goes and its updates stop", same(o2.destroy, [placed(ORB)]) && (await objs(mia)).updates[orbKey(ORB)] === o2.updates[orbKey(ORB)], JSON.stringify(o2.destroy));
+    await setOrb(ORB);
+    await waitFor(async () => (await objs(mia))?.init.length === 2 && (await orbSprite(mia, ORB))?.visible, { what: "the orb back" });
+    check("put back: onObjectInit again, and the plugin draws it again", true);
+    const MOVED = { x: ORB.x + 1, y: ORB.y };
+    await setOrb(MOVED);
+    await waitFor(async () => (await objs(mia))?.init.length === 3, { what: "the moved orb's init" });
+    const o3 = await objs(mia);
+    const movedSprite = await waitFor(() => orbSprite(mia, MOVED), { what: "moved orb sprite" }).catch(() => null);
+    check("moved: a destroy at the old place, then an init at the new one", same(o3.destroy, [placed(ORB), placed(ORB)]) && same(o3.init[2], placed(MOVED)) && !!movedSprite && !(await orbSprite(mia, ORB)), JSON.stringify(o3));
     const boxText = () => read(mia, () => document.querySelector('.plugin-screen[data-plugin="ui-demo"]')?.textContent ?? "");
     await waitFor(async () => (await boxText()).includes("Last click: nothing yet"), { what: "the plugin's box on the map" });
     check("a plugin can put a box on the map (screen anchor)", true);
@@ -579,6 +647,16 @@ export async function run(ctx) {
     await setEnabled(admin, false, "UI demo", "ui-demo");
     await waitFor(() => read(mia, () => !document.querySelector(".plugin-screen, .plugin-slot")), { what: "plugin UI removed" });
     check("disabling a plugin removes its buttons and boxes everywhere", true);
+    check("and the sprites it drew for its objects", (await read(mia, () => window.__hq.session.plugins?.debug("ui-demo") ?? null)) === null);
+    // on again: a fresh start gets one init per object still on the map, and no destroy
+    await setEnabled(admin, true, "UI demo", "ui-demo");
+    await waitFor(async () => (await objs(mia))?.init.length > 0, { timeout: 15000, what: "init after a restart" });
+    await waitFor(() => orbSprite(mia, MOVED), { what: "the orb drawn again" });
+    await sleep(300);
+    const o4 = await objs(mia);
+    check("turned on again, the plugin gets an onObjectInit for the object placed, no destroy, and draws it", same(o4.init, [placed(MOVED)]) && o4.destroy.length === 0, JSON.stringify(o4));
+    await setEnabled(admin, false, "UI demo", "ui-demo");
+    await setOrb(null); // leave the shared office's map as it was
     // the forged PUT above is refused (401) on purpose; Chrome logs that response as a console error
     // expected on Mia's page: a 401 the test provokes, the fetch blocked by the CSP, and the declared .invalid host not resolving
     const real = (u) => u.logs.filter((l) => !(u === mia && (/status of 401/.test(l) || /undeclared\.example\.net|images\.invalid|ERR_NAME_NOT_RESOLVED/.test(l))));

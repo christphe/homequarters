@@ -165,10 +165,13 @@ export interface PluginObjectSpec {
   label: string;
   /** footprint in tiles, [w, h] */
   size: [number, number];
-  /** path in the plugin's public/ folder, served at /plugins/<plugin>/assets/<sprite> */
-  sprite: string;
+  /** path in the plugin's public/ folder, served at /plugins/<plugin>/assets/<sprite>; absent: the
+   *  plugin's browser code draws the object itself (the page draws nothing) */
+  sprite?: string;
   /** the part of the picture to draw, [x, y, w, h] in px (the whole picture when absent) */
   frame?: [number, number, number, number];
+  /** the plugin's browser code gets onObjectUpdate for each placed object of this kind */
+  dynamic?: boolean;
 }
 
 export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | Muted | WaveResult | AreaCounts | Announcement | LayoutMoved | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

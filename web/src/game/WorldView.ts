@@ -237,6 +237,8 @@ export class WorldView {
   private placeholderG = new Graphics();
   private placeholderLabels: { text: BitmapText; x: number; y: number }[] = [];
   private nearbyAt = 0;
+  /** The props of the map shown changed (a new map or an editor draft): plugins hear of their objects. */
+  onProps: ((props: Prop[]) => void) | null = null;
   private emotes = new Map<number, { text: Text; until: number }>();
   private cleanup: (() => void)[] = [];
 
@@ -579,6 +581,7 @@ export class WorldView {
         return { text, x: (p.x + (p.w ?? 2) / 2) * T, y: back ? (p.y + 2) * T + 10 : p.y * T, p, ai };
       });
     this.drawObjects();
+    this.onProps?.(map.props);
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
     if (this.meEnt) {
@@ -845,6 +848,8 @@ export class WorldView {
     if (!this.map) return;
     const drawn = objectsFor(this.map.props, this.objSpecs);
     for (const { prop, spec } of drawn) {
+      const sprite = spec.sprite;
+      if (!sprite) continue; // the plugin's browser code draws it (hq.spawn)
       const [, h] = propSize(prop);
       // bottom-left of the footprint, sorted by its bottom edge: an avatar north of the table it
       // stands on stays behind it
@@ -854,22 +859,34 @@ export class WorldView {
       spr.zIndex = (prop.y + h) * T;
       this.entLayer.addChild(spr);
       this.objSprites.push(spr);
-      void this.objPictures.frame(spec.plugin, spec.sprite, spec.frame).then((tex) => {
+      void this.objPictures.frame(spec.plugin, sprite, spec.frame).then((tex) => {
         if (!tex || spr.destroyed) return;
         spr.texture = tex;
         this.dirty = true;
       });
     }
     if (!this.editing) return;
+    const label = (text: string, fill: number, p: Prop, w: number, h: number) => {
+      const b = new BitmapText({ text, style: { fontFamily: FONT, fontSize: 18, fill, align: "center", stroke: { color: 0x1a1526, width: 3 } } });
+      b.anchor.set(0.5, 0.5);
+      this.hud.addChild(b);
+      this.placeholderLabels.push({ text: b, x: (p.x + w / 2) * T, y: (p.y + h / 2) * T });
+    };
+    // objects the plugin draws itself: a solid labelled box of their size, so the editor can find them
+    const plugin = drawn.filter((o) => !o.spec.sprite);
+    for (const { prop: p, spec } of plugin) {
+      const [w, h] = propSize(p);
+      this.placeholderG.rect(p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
+      label(t("editor.pluginDraws", { label: spec.label }), 0x9fe0ff, p, w, h);
+    }
+    if (plugin.length > 0) this.placeholderG.fill({ color: 0x9fe0ff, alpha: 0.15 }).stroke({ color: 0x9fe0ff, width: 1 });
+    // objects of plugins that are not running: a dashed box with their type
     const shown = new Set(drawn.map((o) => o.prop));
     for (const p of this.map.props) {
       if (!isPluginProp(p.t) || shown.has(p)) continue;
       const [w, h] = propSize(p);
       dashedRect(this.placeholderG, p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
-      const text = new BitmapText({ text: t("editor.pluginMissing", { type: p.t }), style: { fontFamily: FONT, fontSize: 18, fill: 0xffe9a8, align: "center", stroke: { color: 0x1a1526, width: 3 } } });
-      text.anchor.set(0.5, 0.5);
-      this.hud.addChild(text);
-      this.placeholderLabels.push({ text, x: (p.x + w / 2) * T, y: (p.y + h / 2) * T });
+      label(t("editor.pluginMissing", { type: p.t }), 0xffe9a8, p, w, h);
     }
     this.placeholderG.stroke({ color: 0xffe9a8, width: 1 });
   }

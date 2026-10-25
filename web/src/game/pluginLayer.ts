@@ -591,6 +591,6 @@ export class PluginLayer {
   debug(plugin: string) {
     const g = this.plugins.get(plugin);
     if (!g) return null;
-    return [...g.ents.entries()].map(([id, e]) => ({ id, x: e.x, y: e.y, visible: e.spr.visible, mode: e.mode, player: e.player, key: e.key, moving: e.moving, tint: e.spr.tint, label: e.label, target: e.target }));
+    return [...g.ents.entries()].map(([id, e]) => ({ id, x: e.x, y: e.y, visible: e.spr.visible, mode: e.mode, player: e.player, key: e.key, moving: e.moving, tint: e.spr.tint, label: e.label, target: e.target, anim: e.manual }));
   }
 }

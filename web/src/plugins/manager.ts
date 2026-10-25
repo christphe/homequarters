@@ -2,7 +2,8 @@ import { PluginHost, type ProvidedSheet } from "./host";
 import { LIMITS, SendBudget } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 import { setState, type PluginSlot } from "../store";
-import type { PluginObjectSpec } from "../net/protocol";
+import type { PluginObjectSpec, Prop } from "../net/protocol";
+import { dynamicObjects, placedObjects } from "../game/pluginObjects";
 
 const EARLY_PLUGINS = 16;
 const EARLY_MESSAGES = 64;
@@ -32,6 +33,12 @@ export class PluginManager {
 
   /** Sheets drawn by a plugin for metadata, by "<plugin>|<metadata JSON>": asked once per page. */
   private provided = new Map<string, Promise<ProvidedSheet>>();
+
+  /** The props of the map the page shows, and the map objects of the running plugins. */
+  private props: Prop[] = [];
+  private specs: PluginObjectSpec[] = [];
+  /** Plugins already warned about having more dynamic objects than get updates. */
+  private warnedDynamic = new Set<string>();
 
   constructor(
     private layer: PluginLayer,
@@ -107,6 +114,27 @@ export class PluginManager {
       for (const d of this.early.get(e.name) ?? []) h.deliver(d);
       this.early.delete(e.name);
     }
+    this.tellObjects();
+  }
+
+  /** The map the page shows changed (a new map, a reload, an editor draft). */
+  setProps(props: Prop[]) {
+    this.props = props;
+    this.tellObjects();
+  }
+
+  /** Gives each running plugin its placed objects: they say what changed to its browser code. */
+  private tellObjects() {
+    for (const h of this.hosts.values()) {
+      const own = this.specs.filter((s) => s.plugin === h.name);
+      const placed = placedObjects(this.props, own, h.name);
+      const { objects, over } = dynamicObjects(placed, own);
+      if (over > 0 && !this.warnedDynamic.has(h.name)) {
+        this.warnedDynamic.add(h.name);
+        console.warn(`[plugin ${h.name}] ${objects.length + over} dynamic objects on the map: only the first ${objects.length} get onObjectUpdate`);
+      }
+      h.setObjects(placed, objects);
+    }
   }
 
   /** A message from a plugin's server code. One that arrives before this page started the plugin (its
@@ -162,6 +190,7 @@ export class PluginManager {
       titles[e.name] = e.title;
       for (const o of e.objects) specs.push({ ...o, plugin: e.name });
     }
+    this.specs = specs;
     setState({ pluginObjects: { specs, titles } });
     this.objectsChanged(specs);
   }

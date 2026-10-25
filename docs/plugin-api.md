@@ -18,7 +18,7 @@ Everything here was built and tested on 2026-10-17. Limits are enforced: breakin
 | `longDescription` | string | no | At most 2000 characters, shown by the About button of the plugin's row in Administration > Plugins; blank lines separate paragraphs. |
 | `settings` | array | no | At most 16 `{ key, label, type: "number", min, max, default, help }`: whole numbers within ±1,000,000, `min <= default <= max`, key `^[a-z][a-zA-Z0-9]{0,31}$`, label 1-40 characters, `help` (optional) up to 200, shown under the field. Drawn behind the plugin's gear button in Administration > Plugins. |
 | `externalHosts` | string array | no | At most 8 host names (lower case, no scheme or port, like `raw.githubusercontent.com`) the plugin's browser code may fetch from, over https. Shown to administrators in Administration > Plugins and enforced: the iframe's Content Security Policy allows its own folder and these hosts, nothing else. |
-| `objects` | array | no | At most 8 `{ kind, label, size, sprite, frame }` map objects: `kind` `^[a-z][a-z0-9-]{0,31}$` and unique, `label` 1-40 characters, `size` `[w, h]` tiles each 1-4, `sprite` an existing `.png` of `public/`, `frame` optional `[x, y, w, h]` (`x`, `y` >= 0, `w`, `h` 1-128). Drawn anchored at the bottom-left of the object's tiles. See Objects on the map. |
+| `objects` | array | no | At most 8 `{ kind, label, size, sprite, frame, dynamic }` map objects: `kind` `^[a-z][a-z0-9-]{0,31}$` and unique, `label` 1-40 characters, `size` `[w, h]` tiles each 1-4, `sprite` an existing `.png` of `public/` (drawn by the page, anchored at the bottom-left of the object's tiles) or absent or `null` (the plugin's browser code draws it; never an empty string), `frame` optional `[x, y, w, h]` (`x`, `y` >= 0, `w`, `h` 1-128), `dynamic` optional boolean (the object gets `hq.onObjectUpdate`). See Objects on the map. |
 | `views` | object | no | At most 4 `{ name: file }`: name `^[a-z][a-z0-9-]{0,31}$`, file a `.ts` or `.js` inside `public/`, compiled like `client` (256 KB each) and served at `/plugins/<name>/views/<view>.js`. See Views. |
 
 A plugin whose manifest or files are invalid is listed as `broken` with the reason. Turning it on reads it again, so fixing the files is enough.
@@ -101,7 +101,7 @@ A hook is `fn(caller, args)`, maybe async, returning JSON of at most 4 KB. `call
 
 ## Objects on the map
 
-A placed object is a map prop with `t = "<plugin>/<kind>"`, `w` and `h` (required, 1-4), no `Data`, no `To`, never solid. A map with such a prop is valid whether or not the plugin is installed. Pages draw the objects of running plugins only; the editor palette lists them under the plugin's title and shows those of a plugin that is off as a dashed placeholder. Invalid `objects` in the manifest make the plugin `broken`.
+A placed object is a map prop with `t = "<plugin>/<kind>"`, `w` and `h` (required, 1-4), no `Data`, no `To`, never solid. A map with such a prop is valid whether or not the plugin is installed. Pages draw the objects of running plugins only, and only those with a `sprite`; an object without one is drawn by the plugin's browser code (`hq.spawn` at its `px`, `py`). X, the hint and the reach are the same either way. The editor palette lists them under the plugin's title; in the editor an object the plugin draws shows as a labelled box of its size, and one of a plugin that is off as a dashed placeholder. Invalid `objects` in the manifest make the plugin `broken`.
 
 ## Browser (TypeScript)
 
@@ -115,6 +115,9 @@ The browser code runs in a hidden iframe with `sandbox="allow-scripts"`, after t
 | `hq.onLoad(fn)` | `fn()` once the page connected to the plugin. Also after every reconnection of the page, because the plugin is restarted then. |
 | `hq.onUpdate(fn)` | `fn(dt, world)` about every 100 ms, skipped while the previous one runs. `world = { me: id, avatars: [{ id, name, x, y, dir, moving }] }`: the avatars on screen, world pixels at the feet, `dir` 0 down, 1 left, 2 right, 3 up. |
 | `hq.onMessage(fn)` | `fn(msg)` for each `hq.send` / `hq.broadcast` of your server code. |
+| `hq.onObjectInit(fn)` | `fn(obj)` for each of your objects placed on the map: once per object when the code starts on the page (right after `onLoad`, so also when the plugin is turned on again), and when one is added. `obj = { kind, x, y, w, h, px, py }`: top-left tile and size in tiles, top-left corner in world pixels. An object is `kind` at `x, y`: moved or resized in the editor, it is destroyed, then initialised again. |
+| `hq.onObjectDestroy(fn)` | `fn(obj)` when the object leaves the map: removed or moved in the editor, or its kind is no longer declared. Not called when the plugin stops: its sprites go anyway. |
+| `hq.onObjectUpdate(fn)` | `fn(dt, obj)` for each placed object of a kind declared `"dynamic": true`, in the same tick as `onUpdate` (about every 100 ms, after it). At most 64 objects of one plugin, the first in map order; the rest get only init and destroy, with one console warning. |
 | `hq.send(msg)` | To your server code's `onMessage`. Throws if `msg` is not JSON or over 1500 bytes. The page sends at most 8 a second for all its plugins (burst 16) and drops the rest with a console warning. |
 
 ### Sprites
@@ -200,7 +203,7 @@ An invalid command (an unknown operation, a wrong type, a value out of range, a 
 
 | Endpoint | Who | Answer |
 | --- | --- | --- |
-| `GET /api/plugins` | member | `[{ name, title, client, objects, views }]`, the running plugins (`client`: URL of the browser code or `null`; `objects`: the declared map objects; `views`: the view names). |
+| `GET /api/plugins` | member | `[{ name, title, client, objects, views }]`, the running plugins (`client`: URL of the browser code or `null`; `objects`: the declared map objects, `{ kind, label, size, sprite?, frame?, dynamic }`, `sprite` absent when the plugin draws it; `views`: the view names). |
 | `GET /api/admin/plugins` | admin | `[{ name, title, version, description, state, error }]`, `state` = `disabled`, `running`, `crashed`, `broken`. |
 | `PUT /api/admin/plugins/{name}` | admin | `{ enabled }` → `{ state }`; 404 unknown, 409 broken or failing to start. Audited. |
 | `PUT /api/admin/plugins/{name}/settings` | admin | `{ key, value }`: one declared setting for the office, checked against the manifest (400 otherwise), stored, audited (`plugin.settings`, `key=value`), passed to the running plugin (`onSettings`). |

@@ -2,6 +2,7 @@ import SDK from "./sdk.js?raw";
 import VIEW_SDK from "./viewSdk.js?raw";
 import { parseBatch, viewMessage, ViewRate, LIMITS, type Cmd, type UINode } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
+import { objectChanges, type PlacedObject } from "../game/pluginObjects";
 
 // One running plugin on this page. Its JavaScript runs in a hidden iframe with sandbox="allow-scripts"
 // only: an opaque origin, so it cannot read this page, its cookies, storage or media. It talks to the
@@ -75,6 +76,11 @@ export class PluginHost {
   /** hq.ui.post made while the modal's view was still starting, delivered once it has (bounded). */
   private viewEarly: unknown[] = [];
   private viewWarnedAt = { from: 0, to: 0 };
+  /** The plugin's objects placed on the map, the ones its iframe was told about (onObjectInit), and
+   *  the dynamic ones that ride on updates (at most MAX_DYNAMIC). */
+  private placed: PlacedObject[] = [];
+  private told: PlacedObject[] = [];
+  private dynamic: PlacedObject[] = [];
 
   constructor(readonly name: string, readonly title: string, private client: string, private hosts: string[], private deps: HostDeps, private views: string[] = []) {}
 
@@ -128,6 +134,7 @@ export class PluginHost {
     this.port.onmessage = (m) => this.onPort(m.data);
     this.frame.contentWindow!.postMessage("hq-port", "*", [ch.port2]);
     this.port.postMessage({ t: "load" });
+    this.tellObjects(); // one init per object already placed
     for (const d of this.pending) this.port.postMessage({ t: "msg", d });
     this.pending = [];
     this.lastUpdate = performance.now();
@@ -140,7 +147,22 @@ export class PluginHost {
     const dt = (now - this.lastUpdate) / 1000;
     this.lastUpdate = now;
     this.waitingAck = true;
-    this.port.postMessage({ t: "update", dt, world: this.deps.layer.worldSnapshot() });
+    this.port.postMessage({ t: "update", dt, world: this.deps.layer.worldSnapshot(), objects: this.dynamic });
+  }
+
+  /** The plugin's placed objects (map order) and those of them that get updates. Its iframe hears what
+   *  changed in one message; before it started, it hears everything once it has. */
+  setObjects(placed: PlacedObject[], dynamic: PlacedObject[]) {
+    this.placed = placed;
+    this.dynamic = dynamic;
+    this.tellObjects();
+  }
+
+  private tellObjects() {
+    if (!this.port || this.stoppedWith) return;
+    const { init, destroy } = objectChanges(this.told, this.placed);
+    this.told = this.placed;
+    if (init.length > 0 || destroy.length > 0) this.port.postMessage({ t: "objs", init, destroy });
   }
 
   private onPort(m: { t?: string; c?: unknown; m?: unknown; id?: unknown; image?: unknown; frameW?: unknown; frameH?: unknown; error?: unknown }) {

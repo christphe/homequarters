@@ -60,14 +60,16 @@ type Manifest struct {
 	Views map[string]string `json:"views"`
 }
 
-// Object is one kind of map object a plugin provides: a sprite of public/ drawn on the map at the
-// given size in tiles, optionally cut from a sheet by Frame.
+// Object is one kind of map object a plugin provides, at the given size in tiles. With a Sprite (a PNG
+// of public/, optionally cut from a sheet by Frame) the page draws it; without one (absent or null)
+// the plugin's browser code draws it. Dynamic objects also get onObjectUpdate in the browser.
 type Object struct {
-	Kind   string  `json:"kind"`
-	Label  string  `json:"label"`
-	Size   [2]int  `json:"size"`
-	Sprite string  `json:"sprite"`
-	Frame  *[4]int `json:"frame,omitempty"` // x, y, w, h in the sprite, whole image when absent
+	Kind    string  `json:"kind"`
+	Label   string  `json:"label"`
+	Size    [2]int  `json:"size"`
+	Sprite  *string `json:"sprite"`
+	Frame   *[4]int `json:"frame,omitempty"` // x, y, w, h in the sprite, whole image when absent
+	Dynamic bool    `json:"dynamic"`
 }
 
 const (
@@ -106,10 +108,14 @@ func checkObjects(dir string, m Manifest) error {
 			return fmt.Errorf("object %q needs a label of 1 to 40 characters", o.Kind)
 		case o.Size[0] < 1 || o.Size[0] > 4 || o.Size[1] < 1 || o.Size[1] > 4:
 			return fmt.Errorf("object %q: size is [width, height], each 1 to 4 tiles", o.Kind)
-		case !local(o.Sprite) || strings.ToLower(filepath.Ext(o.Sprite)) != ".png":
-			return fmt.Errorf("object %q: sprite %q must be a .png file inside public/", o.Kind, o.Sprite)
-		case !regular(o.Sprite):
-			return fmt.Errorf("object %q: sprite %s: no such file in public/", o.Kind, o.Sprite)
+		}
+		if sp := o.Sprite; sp != nil {
+			switch {
+			case !local(*sp) || strings.ToLower(filepath.Ext(*sp)) != ".png":
+				return fmt.Errorf("object %q: sprite %q must be a .png file inside public/ (or null when the plugin draws it)", o.Kind, *sp)
+			case !regular(*sp):
+				return fmt.Errorf("object %q: sprite %s: no such file in public/", o.Kind, *sp)
+			}
 		}
 		if f := o.Frame; f != nil && (f[0] < 0 || f[1] < 0 || f[2] < 1 || f[2] > 128 || f[3] < 1 || f[3] > 128) {
 			return fmt.Errorf("object %q: frame is [x, y, width, height] with x, y >= 0 and width, height 1 to 128", o.Kind)

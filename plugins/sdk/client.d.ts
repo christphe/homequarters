@@ -29,6 +29,20 @@ declare global {
       avatars: Avatar[];
     }
 
+    /** An object of this plugin placed on the map (manifest "objects"). It is identified by kind, x and y:
+     * moved or resized in the editor, it is destroyed, then initialised again. */
+    interface PlacedObject {
+      kind: string;
+      /** Top-left tile and size in tiles. */
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      /** Top-left corner in world pixels (x * 16, y * 16). */
+      px: number;
+      py: number;
+    }
+
     interface Animation {
       /** Row of the sheet. */
       row: number;
@@ -102,6 +116,15 @@ declare global {
       onUpdate(fn: (dt: number, world: World) => void): void;
       /** A message from the plugin's server code (hq.send / hq.broadcast there). Name its type: onMessage<MyMessage>(...). */
       onMessage<T = unknown>(fn: (msg: T) => void): void;
+      /** Each placed object of this plugin: once per object when the code starts on the page (after onLoad), and when
+       * one is added to the map. An object whose manifest has no sprite is drawn by you (hq.spawn at px, py). */
+      onObjectInit(fn: (obj: PlacedObject) => void): void;
+      /** The object left the map: removed or moved in the editor, or its kind is no longer declared. Not called when the
+       * plugin stops (its sprites go anyway); on restart, onObjectInit runs again for each object. */
+      onObjectDestroy(fn: (obj: PlacedObject) => void): void;
+      /** With onUpdate (about every 100 ms), for each placed object of a kind declared "dynamic": true; at most 64
+       * objects (the first in map order), the rest get only init and destroy. */
+      onObjectUpdate(fn: (dt: number, obj: PlacedObject) => void): void;
       /** To the plugin's server onMessage (anything JSON.stringify accepts). Throws if over 1500 bytes. */
       send(msg: unknown): void;
       /** A PNG sheet of public/ (at most 2048 px a side), cut into frameW x frameH cells. */
