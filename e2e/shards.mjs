@@ -2,7 +2,7 @@
 // Pure: no dependency, no I/O.
 
 // The whole suite, in the order a single run executes it.
-export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates"];
+export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth"];
 
 // Seconds per scenario, measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
 // scenario grows; a scenario missing here counts as UNKNOWN seconds.
@@ -10,6 +10,7 @@ export const DURATIONS = {
   proximity: 39, consent: 43, rooms: 110, access: 1, editor: 56, social: 71, admin: 32, plugins: 76, chess: 67, a11y: 72,
   security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
   update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
+  depth: 60, // an estimate (two layout switches and an editor save) until a CI run measures it
 };
 export const UNKNOWN = 60;
 
