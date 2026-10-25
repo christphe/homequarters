@@ -1,4 +1,4 @@
 {
-  "compilerOptions": { "strict": true, "noEmit": true, "target": "ES2020", "module": "ESNext", "moduleResolution": "Bundler", "lib": ["ES2020"], "types": [] },
+  "compilerOptions": { "strict": true, "noEmit": true, "target": "ES2020", "module": "ESNext", "moduleResolution": "Bundler", "allowImportingTsExtensions": true, "lib": ["ES2020"], "types": [] },
   "include": ["main.ts", "public/game.ts", "public/messages.ts", "../../sdk/server.d.ts"]
 }

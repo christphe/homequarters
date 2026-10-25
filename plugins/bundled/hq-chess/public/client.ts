@@ -2,60 +2,38 @@
 // (X next to a chessboard), full screen: the seat buttons, Undo, Reset and the board view (public/board.ts), and relays
 // between the view and the server. It also pins the playing badge over the head of every present seated
 // player (public/badges.png, white or black).
-import { canReset, PROMOTIONS, type Board, type Side } from "./game";
-import type { BoardState, ToClient, ToServer, ViewIn, ViewOut } from "./messages";
+// What the window shows for a state (seat labels, Undo, Reset, the holders' line) is public/window.ts.
+import { PROMOTIONS, type Side } from "./game.ts";
+import type { BoardState, ToClient, ToServer, ViewIn, ViewOut } from "./messages.ts";
+import { holders, resetAllowed, seatButton, undoAllowed } from "./window.ts";
 
-const NAME_MAX = 24; // a seat's label must stay within a button's 40 characters
 let me = 0;
 let open: { x: number; y: number; s: BoardState } | null = null;
 const badges = new Map<number, Side>(); // member -> the badge pinned over their head
 
 const send = (m: ToServer) => hq.send(m);
-const short = (name: string) => {
-  const c = [...name];
-  return c.length > NAME_MAX ? c.slice(0, NAME_MAX - 1).join("") + "…" : name;
-};
-const sideName = (s: Side) => (s === "w" ? "White" : "Black");
-
-function seatButton(s: BoardState, side: Side, mine: Side | null): HQ.UINode {
-  const seat = s[side];
-  if (seat) {
-    // taken: who holds it and whether they have the board open; never pressable (leaving takes a reset)
-    const label = `${sideName(side)}: ${short(seat.name)}${seat.here ? "" : " (away)"}`;
-    return hq.ui.button({ label, pressed: seat.id === me, disabled: true });
-  }
+function seat(s: BoardState, side: Side): HQ.UINode {
+  const b = seatButton(s, side, me);
+  // taken: who holds it, pressed for its holder, never pressable (leaving takes a reset)
+  if (!b.free) return hq.ui.button({ label: b.label, pressed: b.pressed, disabled: true });
   const x = open!.x, y = open!.y;
-  return hq.ui.button({ label: sideName(side), disabled: mine !== null, onClick: () => send({ t: "seat", x, y, side }) });
-}
-
-/** Who holds each seat, as a line of text: disabled seat buttons are out of the Tab order, this line is not. */
-function holders(s: BoardState): string {
-  const one = (side: Side) => {
-    const seat = s[side];
-    return `${sideName(side)}: ${seat ? `${short(seat.name)} (${seat.here ? "here" : "away"})` : "free"}`;
-  };
-  return `${one("w")} · ${one("b")}`;
+  return hq.ui.button({ label: b.label, disabled: b.disabled, onClick: () => send({ t: "seat", x, y, side }) });
 }
 
 function draw(): void {
   if (!open) return;
   const { x, y, s } = open;
-  const mine: Side | null = s.w?.id === me ? "w" : s.b?.id === me ? "b" : null;
-  const board: Board = { p: s.p, w: s.w, b: s.b, r: s.r };
-  // who has the board open, as the server says it: the seated players marked here, and me (my window is open)
-  const present = new Set<number>([me]);
-  for (const seat of [s.w, s.b]) if (seat?.here) present.add(seat.id);
   // the whole screen: the buttons on top, then the view, which takes the height left and scales the board
   // to it (public/board.ts); on a short screen the board keeps 2x and the view scrolls
   hq.ui.modal({ title: "Chess", size: "full", onClose: closed }, [
     // one row of buttons (the seats, then Undo and Reset) and the seat holders' line: at 1280x720 the
     // height left lets the board take 3x
     hq.ui.row([
-      seatButton(s, "w", mine),
-      seatButton(s, "b", mine),
+      seat(s, "w"),
+      seat(s, "b"),
       // the last action, whoever made it: for a seated player whose window is open (mine is)
-      hq.ui.button({ label: "Undo", disabled: !(s.u && mine !== null), onClick: () => send({ t: "undo", x, y }) }),
-      hq.ui.button({ label: "Reset", disabled: !canReset(board, me, present), onClick: () => send({ t: "reset", x, y }) }),
+      hq.ui.button({ label: "Undo", disabled: !undoAllowed(s, me), onClick: () => send({ t: "undo", x, y }) }),
+      hq.ui.button({ label: "Reset", disabled: !resetAllowed(s, me), onClick: () => send({ t: "reset", x, y }) }),
     ]),
     hq.ui.text(holders(s), { muted: true }),
     hq.ui.view({ view: "board", label: "Chessboard", height: "full", onMessage: fromView }),
