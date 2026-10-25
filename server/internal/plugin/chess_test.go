@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -90,7 +91,7 @@ func seat(s map[string]any, side string) string {
 	return v["name"].(string) + " (away)"
 }
 
-// playingOf is the last playing list a member got (0 = broadcasts), as "id:side" strings.
+// playingOf is the last playing list a member got, as "id:side" strings.
 func playingOf(sink *fakeSink, id uint32) ([]string, bool) {
 	var out []string
 	seen := false
@@ -339,7 +340,7 @@ func TestChessPlayingList(t *testing.T) {
 	want := func(what string, list ...string) {
 		t.Helper()
 		eventually(t, what, func() bool {
-			got, seen := playingOf(sink, 0)
+			got, seen := playingOf(sink, alice.ID)
 			return seen && fmt.Sprint(got) == fmt.Sprint(list)
 		})
 	}
@@ -353,6 +354,42 @@ func TestChessPlayingList(t *testing.T) {
 	})
 	send(h, alice, `{"t":"reset","x":1,"y":1}`)
 	want("a reset frees both seats")
+}
+
+// The playing list goes to each member on its own: a member whose send budget is spent does not hold it
+// back from the others, and gets it once the budget allows.
+func TestChessPlayingListPerMember(t *testing.T) {
+	h, sink, _ := chessHost(t, newMemKV(), alice, bob, carol)
+	h.Use(alice, chess, "chessboard", 1, 1)
+	h.Use(bob, chess, "chessboard", 1, 1)
+	send(h, alice, `{"t":"seat","x":1,"y":1,"side":"w"}`)
+	send(h, bob, `{"t":"seat","x":1,"y":1,"side":"b"}`)
+	listIs := func(id uint32, want string) func() bool {
+		return func() bool { got, seen := playingOf(sink, id); return seen && fmt.Sprint(got) == want }
+	}
+	eventually(t, "Carol sees both players", listIs(carol.ID, "[1:w 2:b]"))
+	// Bob's budget kept spent (as a page flooded by messages would): every token he gets is taken
+	for h.spend([]uint32{bob.ID}) {
+	}
+	stop := make(chan struct{})
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				h.spend([]uint32{bob.ID})
+				runtime.Gosched()
+			}
+		}
+	}()
+	send(h, alice, `{"t":"close","x":1,"y":1}`)
+	eventually(t, "Carol gets the new list while Bob's budget is spent", listIs(carol.ID, "[2:b]"))
+	close(stop)
+	<-drained
+	eventually(t, "Bob gets it once his budget allows", listIs(bob.ID, "[2:b]"))
 }
 
 // The reserve of captured pieces and promotion, through the real plugin: place, stash and move with promote.

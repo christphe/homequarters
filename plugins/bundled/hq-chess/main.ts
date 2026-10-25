@@ -7,8 +7,8 @@
 // seats, moves, the reserve and reset are in public/game.ts;
 // the browser side is public/client.ts (the window) and public/board.ts (the board view).
 //
-// Every change is collected and sent in update(), to the board's viewers (state) and to everybody (the
-// list of present seated players, for the badge over their heads); a send refused by the budget is kept
+// Every change is collected and sent in update(), to the board's viewers (state) and to every member on
+// their own (the list of present seated players, for the badge over their heads); a send refused by the budget is kept
 // for the next update.
 
 import { canReset, move, parseBoard, place, reset, seatOf, take, toReserve, type Board, type Side } from "./public/game";
@@ -18,9 +18,11 @@ const boards = new Map<string, Board>(); // loaded on first use
 const viewers = new Map<string, Set<number>>(); // board key -> members with its window open
 const toSend = new Map<number, Set<string>>(); // member -> boards whose state they must be sent
 const toOpen = new Map<number, string>(); // member -> the board their window must open on (a refused send)
-const toTell = new Set<number>(); // members who must be sent the playing list (they joined)
-let playing = "[]"; // the playing list last broadcast, as JSON
-let playingSent = true;
+// members who must be sent the playing list (it changed, or they joined): each on their own, so a member
+// whose budget is spent never holds it back from the others
+const toTell = new Set<number>();
+let playing = "[]"; // the current playing list, as JSON
+let playingDirty = false; // something changed: the list may differ
 
 const key = (x: number, y: number) => `board:${x},${y}`;
 const tile = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 100000;
@@ -58,7 +60,7 @@ function queue(id: number, k: string): void {
 /** The board's viewers must be sent its state, and the playing list may have changed. */
 function changed(k: string): void {
   for (const id of seen(k)) queue(id, k);
-  playingSent = false;
+  playingDirty = true;
 }
 
 function save(k: string): void {
@@ -191,17 +193,16 @@ export function update(): void {
     }
     if (!ks.size) toSend.delete(id);
   }
-  if (!playingSent || toTell.size) {
-    const list = playingList();
-    const json = JSON.stringify(list);
-    if (!playingSent) {
-      if (json === playing) playingSent = true;
-      else if (hq.broadcast(playingMsg(list))) {
-        playing = json;
-        playingSent = true;
-        toTell.clear(); // everybody online just got it
-      }
+  if (playingDirty) {
+    playingDirty = false;
+    const json = JSON.stringify(playingList());
+    if (json !== playing) {
+      playing = json;
+      for (const p of hq.players()) toTell.add(p.id);
     }
-    for (const id of toTell) if (sendTo(id, playingMsg(JSON.parse(playing)))) toTell.delete(id);
+  }
+  if (toTell.size) {
+    const msg = playingMsg(JSON.parse(playing));
+    for (const id of toTell) if (sendTo(id, msg)) toTell.delete(id); // refused: that member waits for the next update
   }
 }
