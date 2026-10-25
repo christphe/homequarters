@@ -221,7 +221,9 @@ export async function run(ctx) {
     const cardsButton = (text) => p.evaluate((sel, text) => { const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text);
     // a table left over by an earlier scenario on the same tile keeps its game: start it afresh
     await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
-    await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" });
+    // on a failure, say what the window showed (a CI runner cannot be watched)
+    const cardsWindow = () => p.evaluate((sel) => ({ buttons: [...document.querySelectorAll(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), texts: [...document.querySelectorAll(sel + " p")].map((x) => x.textContent), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS);
+    await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     await waitFor(() => cardsButton("Deal 7 each"), { what: "Deal 7 each" });
     const cardsView = await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" });
     await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" });
