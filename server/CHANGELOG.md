@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - minor
+## [0.5.0] - 2026-10-25
 
 ### Added
 - Old Maid and Last Card, two card games for the Cards table, each a bundled plugin of its own; card games are plugins that register with Cards and can only narrow its actions or add a deck, piles and a count (#38)
