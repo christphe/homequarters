@@ -85,3 +85,12 @@ test("viewMessage gives the JSON copy the page relays, never the value it was ha
   assert.equal(typeof viewMessage(() => 1), "string");
   assert.equal(typeof viewMessage("x".repeat(4095)), "string");
 });
+
+test("a full-screen window with a full-height view is accepted", () => {
+  const b = parseBatch([{ op: "modal", title: "Cards", size: "full", content: [{ type: "view", view: "table", label: "Card table", height: "full" }] }]);
+  assert.ok(Array.isArray(b), String(b));
+  const m = (b as Cmd[])[0] as Extract<Cmd, { op: "modal" }>;
+  assert.equal(m.size, "full");
+  assert.equal((m.content[0] as { height: string }).height, "full");
+  assert.ok(!Array.isArray(parseBatch([{ op: "modal", title: "t", size: "fullscreen", content: [] }])));
+});

@@ -24,7 +24,7 @@ export type Cmd =
   | { op: "visible"; id: string; on: boolean }
   | { op: "slot"; id: string; anchor: Anchor; label?: string; icon?: string; click?: string; pressed?: boolean; corner?: Corner; dx?: number; dy?: number; content?: UINode[] }
   | { op: "unslot"; id: string }
-  | { op: "modal"; title: string; size: "small" | "medium" | "large"; place: "center" | "right"; close?: string; content: UINode[] }
+  | { op: "modal"; title: string; size: "small" | "medium" | "large" | "full"; place: "center" | "right"; close?: string; content: UINode[] }
   | { op: "close" }
   | { op: "send"; d: unknown }
   | { op: "post"; d: unknown };
@@ -52,7 +52,7 @@ export type UINode =
   | { type: "field"; label: string; value: string; maxLength: number; placeholder?: string; change?: string; hideLabel?: boolean }
   | { type: "view"; view: string; label: string; height: ViewHeight; message?: string };
 
-export const VIEW_HEIGHTS = ["small", "medium", "large"] as const;
+export const VIEW_HEIGHTS = ["small", "medium", "large", "full"] as const;
 export type ViewHeight = (typeof VIEW_HEIGHTS)[number];
 
 export const LIMITS = {
@@ -261,7 +261,7 @@ function parseOne(c: unknown): Cmd {
       return { op: "slot", id: str(o.id, "id"), anchor, label: opt(o.label, label), icon: opt(o.icon, url), click: opt(o.click, cb), pressed: opt(o.pressed, (x) => bool(x, "pressed")) };
     }
     case "modal":
-      return { op: "modal", title: label(o.title, "title"), size: oneOf(o.size ?? "medium", ["small", "medium", "large"] as const, "size"), place: oneOf(o.place ?? "center", ["center", "right"] as const, "place"), close: opt(o.close, cb), content: tree(o.content, true) };
+      return { op: "modal", title: label(o.title, "title"), size: oneOf(o.size ?? "medium", ["small", "medium", "large", "full"] as const, "size"), place: oneOf(o.place ?? "center", ["center", "right"] as const, "place"), close: opt(o.close, cb), content: tree(o.content, true) };
     case "close":
       return { op: "close" };
     case "moveTo":

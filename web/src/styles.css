@@ -339,6 +339,9 @@ img.editor-object-icon { height: 48px; max-width: 100%; object-fit: contain; obj
 .plugin-modal.size-small { width: min(360px, 100%); }
 .plugin-modal.size-large { width: min(720px, 100%); }
 .plugin-modal.place-right { position: fixed; top: 12px; right: 12px; bottom: 12px; max-height: none; }
+/* size full: the screen less a 12 px margin; its body (and a full view in it) takes the height left by the title and Close */
+.plugin-modal.size-full { width: calc(100vw - 24px); height: calc(100dvh - 24px); max-height: none; padding: 12px 14px; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+.plugin-modal.size-full .plugin-body { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 .scrim:has(> .plugin-modal.place-right) { place-items: stretch end; }
 .plugin-body { display: grid; gap: 10px; }
 .plugin-body p { margin: 0; }
@@ -355,6 +358,7 @@ img.editor-object-icon { height: 48px; max-width: 100%; object-fit: contain; obj
 .plugin-view.h-small { height: min(160px, 40vh); }
 .plugin-view.h-medium { height: min(320px, 55vh); }
 .plugin-view.h-large { height: min(480px, 70vh); }
+.plugin-view.h-full { height: 100%; min-height: min(240px, 40vh); flex: 1 1 auto; }
 .copy-field { display: grid; gap: 4px; }
 .copy-row { display: flex; gap: 6px; }
 .copy-row input { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; }
