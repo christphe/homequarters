@@ -5,14 +5,18 @@
 //   table-*.png     the board on the table at the office's zoom, Di north of the table, the playing badges
 //   emote-*.png     an emote bubble over the black player's badge
 //   dark-*.png      the black player on the darkest floor (the Boardroom's plum carpet) with the black badge
-//   window.png      the Chess window after two captures (the reserve strips)
+//   window.png      the Chess window (full screen, at the run's viewport) after two captures: the reserve
+//                   strips, the last move (Qxd5) tinted, Undo enabled
+//   black.png       the same from the black player's turned board
+//   undone.png      after Black pressed Undo: Qxd5 taken back, nothing tinted
+//   window-1080.png the window on a 1920x1080 screen; window-small.png at 800x450; window-phone.png at 390x844
 //   promotion.png   the promotion choice open on e8
 //   sheet.png       the world frames, tiled
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { launch, joinAs, walkTo, sleep, waitFor } from "../lib.mjs";
-import { setPlugin, setBoards, board, dragSq, press, button, openWithX, countFrames, MODAL, BOARD } from "./chess.mjs";
+import { setPlugin, setBoards, board, dragSq, press, button, openWithX, countFrames, viewFrame, sq, MODAL, BOARD } from "./chess.mjs";
 
 const HUD = ".topbar,.side,.social-controls,.bar,.minimap,.toast,.dock{display:none!important}";
 // a seated player's window stays open (they are "present", the badge shows) but is hidden from the frame
@@ -55,6 +59,22 @@ export async function run(ctx) {
     await sleep(300);
     const box = await (await ann.page.$(MODAL)).boundingBox();
     await ann.page.screenshot({ path: path.join(dir, "window.png"), clip: box });
+    await adm.page.screenshot({ path: path.join(dir, "black.png"), clip: await (await adm.page.$(MODAL)).boundingBox() });
+    const scaleOf = (u) => viewFrame(u).then((f) => f.evaluate(() => document.querySelector("canvas").getBoundingClientRect().width / 128));
+    console.log("capture: window", ann.page.viewport().width + "x" + ann.page.viewport().height, "scale", await scaleOf(ann));
+    await press(adm, "Undo");
+    await waitFor(async () => (await board(ann))?.b === "p" && (await board(ann))?.w === "" && (await board(ann))?.p[sq("d8")] === "q", { what: "Qxd5 undone" });
+    await sleep(300);
+    await ann.page.screenshot({ path: path.join(dir, "undone.png"), clip: box });
+    const original = ann.page.viewport();
+    for (const [name, w, h] of [["window-1080", 1920, 1080], ["window-small", 800, 450], ["window-phone", 390, 844]]) {
+      await ann.page.setViewport({ width: w, height: h });
+      await sleep(600);
+      await ann.page.screenshot({ path: path.join(dir, name + ".png"), clip: await (await ann.page.$(MODAL)).boundingBox() });
+      console.log("capture:", name, w + "x" + h, "scale", await scaleOf(ann));
+    }
+    await ann.page.setViewport(original);
+    await sleep(600);
     await dragSq(ann, "a2", "e8");
     await sleep(300);
     await ann.page.screenshot({ path: path.join(dir, "promotion.png"), clip: box });

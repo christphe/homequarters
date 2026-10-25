@@ -5,9 +5,13 @@ export type Side = "w" | "b";
 export interface Seat { id: number; name: string }
 // p: 64 characters, index 0 = a8 ... 63 = h1; "KQRBNP" white, "kqrbnp" black, "." empty.
 // r: the reserve, the pieces taken off the board in the order they left it, at most RESERVE_MAX.
-export interface Board { p: string; w: Seat | null; b: Seat | null; r: string }
+// u: the position before the last action (what an undo puts back), m: that action's squares (the highlight);
+// both null when there is nothing to undo (a new board, after an undo or a reset, a board saved before them).
+export interface Board { p: string; w: Seat | null; b: Seat | null; r: string; u?: Position | null; m?: Last | null }
 /** A position as the view shows it: the squares and the reserve. */
 export interface Position { p: string; r: string }
+/** The squares of the last action: a move has both, a place from the reserve only `to`, a stash only `from`. */
+export interface Last { from?: number; to?: number }
 
 export const START = "rnbqkbnrpppppppp................................PPPPPPPPRNBQKBNR";
 
@@ -16,8 +20,10 @@ export const PROMOTIONS = ["q", "r", "b", "n"] as const;
 
 export const PIECE_NAMES: Record<string, string> = { p: "pawn", r: "rook", n: "knight", b: "bishop", q: "queen", k: "king" };
 
+const isSquare = (v: number) => Number.isInteger(v) && v >= 0 && v <= 63;
+
 export function newBoard(): Board {
-  return { p: START, w: null, b: null, r: "" };
+  return { p: START, w: null, b: null, r: "", u: null, m: null };
 }
 
 function parseSeat(v: unknown): Seat | null | undefined {
@@ -28,19 +34,37 @@ function parseSeat(v: unknown): Seat | null | undefined {
   return { id: s.id, name: s.name };
 }
 
-// Anything invalid gives a fresh board.
+const validP = (v: unknown): v is string => typeof v === "string" && /^[KQRBNPkqrbnp.]{64}$/.test(v);
+const validR = (v: unknown): v is string => typeof v === "string" && v.length <= RESERVE_MAX && /^[KQRBNPkqrbnp]*$/.test(v);
+
+function parseLast(v: unknown): Last | null {
+  if (typeof v !== "object" || v === null) return null;
+  const o = v as Record<string, unknown>;
+  const out: Last = {};
+  for (const k of ["from", "to"] as const) {
+    if (o[k] === undefined) continue;
+    if (typeof o[k] !== "number" || !isSquare(o[k] as number)) return null;
+    out[k] = o[k] as number;
+  }
+  return out.from === undefined && out.to === undefined ? null : out;
+}
+
+// Anything invalid gives a fresh board; an invalid undo (u or m) only drops the undo and the highlight.
 export function parseBoard(s: string | null): Board {
   if (s === null) return newBoard();
   try {
     const o = JSON.parse(s) as Record<string, unknown> | null;
     if (typeof o !== "object" || o === null) return newBoard();
-    if (typeof o.p !== "string" || !/^[KQRBNPkqrbnp.]{64}$/.test(o.p)) return newBoard();
+    if (!validP(o.p)) return newBoard();
     const w = parseSeat(o.w);
     const b = parseSeat(o.b);
     if (w === undefined || b === undefined) return newBoard();
     const r = o.r === undefined ? "" : o.r;
-    if (typeof r !== "string" || r.length > RESERVE_MAX || !/^[KQRBNPkqrbnp]*$/.test(r)) return newBoard();
-    return { p: o.p, w, b, r };
+    if (!validR(r)) return newBoard();
+    const u = o.u as Record<string, unknown> | null | undefined;
+    const before = typeof u === "object" && u !== null && validP(u.p) && validR(u.r) ? { p: u.p, r: u.r } : null;
+    const m = before ? parseLast(o.m) : null;
+    return before && m ? { p: o.p, w, b, r, u: before, m } : { p: o.p, w, b, r, u: null, m: null };
   } catch {
     return newBoard();
   }
@@ -64,8 +88,6 @@ export function take(b: Board, side: Side, who: Seat): boolean {
   return true;
 }
 
-const isSquare = (v: number) => Number.isInteger(v) && v >= 0 && v <= 63;
-
 /** Adds a piece taken off the board to the reserve; past RESERVE_MAX the oldest one goes. */
 function stash(b: Board, piece: string): void {
   if (piece === ".") return;
@@ -76,6 +98,12 @@ function stash(b: Board, piece: string): void {
 function put(b: Board, at: number, piece: string): void {
   stash(b, b.p[at]);
   b.p = b.p.slice(0, at) + piece + b.p.slice(at + 1);
+}
+
+/** Keeps what an undo of the action about to be made needs: the position before it, and its squares. */
+function remember(b: Board, last: Last): void {
+  b.u = { p: b.p, r: b.r };
+  b.m = last;
 }
 
 /** The last rank of a side's pawns: rank 8 (squares 0-7) for White, rank 1 (56-63) for Black. */
@@ -94,6 +122,7 @@ export function move(b: Board, who: number, from: number, to: number, promote?: 
     if (!(PROMOTIONS as readonly string[]).includes(promote) || piece.toLowerCase() !== "p" || !lastRank(side, to)) return false;
     piece = side === "w" ? promote.toUpperCase() : promote;
   }
+  remember(b, { from, to });
   b.p = b.p.slice(0, from) + "." + b.p.slice(from + 1);
   put(b, to, piece);
   return true;
@@ -107,6 +136,7 @@ export function place(b: Board, who: number, piece: string, to: number): boolean
   if (side === null || sideOf(piece) !== side) return false;
   const i = b.r.lastIndexOf(piece);
   if (i < 0) return false;
+  remember(b, { to });
   b.r = b.r.slice(0, i) + b.r.slice(i + 1);
   put(b, to, piece);
   return true;
@@ -117,6 +147,7 @@ export function toReserve(b: Board, who: number, from: number): boolean {
   if (!isSquare(from)) return false;
   const side = seatOf(b, who);
   if (side === null || sideOf(b.p[from]) !== side) return false;
+  remember(b, { from });
   stash(b, b.p[from]);
   b.p = b.p.slice(0, from) + "." + b.p.slice(from + 1);
   return true;
@@ -134,6 +165,23 @@ export function reset(b: Board): void {
   b.r = "";
   b.w = null;
   b.b = null;
+  b.u = null;
+  b.m = null;
+}
+
+// The last action, whoever made it, by a seated player who has the board open; one level: the undo is gone after.
+export function canUndo(b: Board, who: number, present: ReadonlySet<number>): boolean {
+  return !!b.u && seatOf(b, who) !== null && present.has(who);
+}
+
+/** Puts back the position and the reserve before the last action (seats unchanged). */
+export function undo(b: Board, who: number, present: ReadonlySet<number>): boolean {
+  if (!canUndo(b, who, present)) return false;
+  b.p = b.u!.p;
+  b.r = b.u!.r;
+  b.u = null;
+  b.m = null;
+  return true;
 }
 
 // 0 = a8, 52 = e2, 63 = h1.

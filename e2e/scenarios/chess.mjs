@@ -27,6 +27,8 @@ function masks(small) {
   return out;
 }
 const ART = { big: masks(false), small: masks(true), colours: COLOURS };
+// the last action's tint on a light and on a dark square (public/board.ts)
+const LAST = ["#cbd88a", "#8f9a48"];
 
 const setPlugin = (ctx, enabled) => fetch(API + "/api/admin/plugins/" + PLUGIN, { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
 const adminMap = (ctx) => fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
@@ -52,7 +54,7 @@ const chessFrame = async (u) => (await u.page.$(`iframe.plugin-frame[data-plugin
 async function board(u) {
   const f = await viewFrame(u);
   if (!f) return null;
-  return f.evaluate(({ big, small, colours, flip }) => {
+  return f.evaluate(({ big, small, colours, flip, lastTint }) => {
     const c = document.querySelector("canvas");
     if (!c) return null;
     const W = c.width, H = c.height;
@@ -67,12 +69,16 @@ async function board(u) {
       return s;
     };
     const empty = (m) => /^\.+$/.test(m);
+    const hex = (x, y) => { const i = (y * W + x) * 4; return "#" + [d[i], d[i + 1], d[i + 2]].map((v) => v.toString(16).padStart(2, "0")).join(""); };
     const strip = (H - 128) / 2;
     let p = "";
+    const last = []; // the squares tinted as the last action's, a8 = 0
     for (let sq = 0; sq < 64; sq++) {
       const i = flip ? 63 - sq : sq;
       const m = mask((i % 8) * 16 + 2, strip + Math.floor(i / 8) * 16 + 2, 11, 13);
       p += empty(m) ? "." : (big[m] ?? "?");
+      // a square's pixel (1, 1): clear of the pieces (drawn from 2, 2) and of the 1 px frames on its edge
+      if (lastTint.includes(hex((i % 8) * 16 + 1, strip + Math.floor(i / 8) * 16 + 1))) last.push(sq);
     }
     const cells = (y0) => {
       let s = "";
@@ -84,8 +90,8 @@ async function board(u) {
       return s;
     };
     const top = cells(0), bottom = cells(strip + 128);
-    return { p, w: flip ? top : bottom, b: flip ? bottom : top, live: document.querySelector("[aria-live]")?.textContent ?? "" };
-  }, { ...ART, flip: u.flip });
+    return { p, last, w: flip ? top : bottom, b: flip ? bottom : top, live: document.querySelector("[aria-live]")?.textContent ?? "" };
+  }, { ...ART, flip: u.flip, lastTint: LAST });
 }
 
 const canvasSize = async (u) => (await viewFrame(u)).evaluate(() => ({ w: document.querySelector("canvas").width, h: document.querySelector("canvas").height }));
@@ -256,15 +262,17 @@ export async function run(ctx) {
         const rect = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
         const btn = (text) => [...m.querySelectorAll("button")].find((b) => b.textContent.trim() === text);
         const frame = m.querySelector("iframe.plugin-view").getBoundingClientRect();
-        const parts = { title: rect(m.querySelector("h2") ?? m), seats: rect(btn("White").parentElement), reset: rect(btn("Reset")), boardTop: Math.round(frame.top + inner.top), stripBottom: Math.round(frame.top + inner.bottom), close: rect(btn("Close")) };
+        const parts = { title: rect(m.querySelector("h2") ?? m), seats: rect(btn("White").parentElement), holders: rect(m.querySelector(".plugin-body p.muted")), undo: rect(btn("Undo") ?? m), reset: rect(btn("Reset")), boardTop: Math.round(frame.top + inner.top), stripBottom: Math.round(frame.top + inner.bottom), close: rect(btn("Close")) };
         const inside = (r) => r.top >= 0 && r.bottom <= H;
-        return { H, parts, scale: inner.width / 128, modalScrolls: m.scrollHeight > m.clientHeight, viewScrolls: inner.scroll,
-          ok: inside(parts.title) && inside(parts.seats) && inside(parts.reset) && parts.boardTop >= 0 && parts.stripBottom <= H && inside(parts.close) };
+        const body = m.querySelector(".plugin-body"), mr = m.getBoundingClientRect();
+        return { H, parts, scale: inner.width / 128, modal: { w: Math.round(mr.width), h: Math.round(mr.height) }, undo: !!btn("Undo"),
+          modalScrolls: m.scrollHeight > m.clientHeight || body.scrollHeight > body.clientHeight, viewScrolls: inner.scroll, pageScrolls: document.documentElement.scrollHeight > innerHeight || document.documentElement.scrollWidth > innerWidth,
+          ok: inside(parts.title) && inside(parts.seats) && inside(parts.holders) && inside(parts.undo) && inside(parts.reset) && parts.boardTop >= 0 && parts.stripBottom <= H && inside(parts.close) };
       }, { sel: MODAL, inner });
     };
     const fit720 = await fitAt();
-    check("at 1280x720 the whole Chess window shows without scrolling: title, seats, Reset, the board with its bottom strip, Close", fit720.ok && !fit720.modalScrolls && !fit720.viewScrolls, JSON.stringify(fit720));
-    check("at 1280x720 the pieces are drawn at a whole scale of at least 2x", fit720.scale >= 2 && Number.isInteger(fit720.scale), String(fit720.scale));
+    check("at 1280x720 the Chess window takes the screen (1256 x 696) and all of it shows without scrolling: title, seats, holders, Undo, Reset, the board with its bottom strip, Close", fit720.ok && fit720.undo && fit720.modal.w === 1256 && fit720.modal.h === 696 && !fit720.modalScrolls && !fit720.viewScrolls && !fit720.pageScrolls, JSON.stringify(fit720));
+    check("at 1280x720 the pieces are drawn at a whole scale of at least 3x (2x before the window was full screen)", fit720.scale >= 3 && Number.isInteger(fit720.scale), String(fit720.scale));
     await ann.page.setViewport(small);
     await sleep(500);
     const order = await read(ann, (sel) => {
@@ -365,6 +373,26 @@ export async function run(ctx) {
     const clickMs = await within(async () => (await board(bo))?.p === expected.p, 1000);
     check("6: click-then-click moves a piece (Ng1-f3 reaches Bo), one frame, sent on the second click", afterFirst === 0 && clickMs >= 0 && ann.sent.length - nClick === 1, `Bo ${clickMs} ms, frames ${ann.sent.length - nClick}`);
 
+    // ---- the last action highlighted, and the undo through the real Undo button
+    const g1f3 = [sq("f3"), sq("g1")].sort((a, z) => a - z).join();
+    const lit = await Promise.all([ann, bo, cy].map((u) => until(async () => (await board(u))?.last.join() === g1f3, 2000)));
+    check("the last move's two squares (g1, f3) are tinted on every page, Black's turned board included", lit.every(Boolean), JSON.stringify(await Promise.all([ann, bo, cy].map(async (u) => (await board(u))?.last))));
+    const undoable = await until(async () => (await button(bo, "Undo"))?.disabled === false && (await button(ann, "Undo"))?.disabled === false && (await button(cy, "Undo"))?.disabled === true);
+    check("Undo is enabled for both seated players and disabled for the spectator", undoable, JSON.stringify([await button(ann, "Undo"), await button(bo, "Undo"), await button(cy, "Undo")]));
+    if (undoable) {
+      const annSaidU = (await said(ann)).length, nUndo = bo.sent.length;
+      const beforeUndo = expected.p;
+      expected.p = expected.p.slice(0, sq("f3")) + "." + expected.p.slice(sq("f3") + 1, sq("g1")) + "N" + expected.p.slice(sq("g1") + 1);
+      await press(bo, "Undo"); // Bo undoes Ann's move
+      const undoSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => { const s = await board(u); return s?.p === expected.p && s.last.length === 0; }, 1000)));
+      check("Bo presses Undo: Ann's Ng1-f3 is undone on all three pages within 1 s, no square tinted", expected.p !== beforeUndo && undoSeen.every((ms) => ms >= 0), JSON.stringify(undoSeen));
+      check("one frame for the undo ({t: undo})", bo.sent.length - nUndo === 1 && bo.sent[nUndo]?.t === "undo", JSON.stringify(bo.sent.slice(nUndo)));
+      const undoHeard = await waitFor(async () => (await said(ann)).slice(annSaidU).find((s) => s === "Black undid the last move"), { timeout: 2000, what: "the undo announced" }).catch(() => null);
+      check("Ann's live region announces it: Black undid the last move", !!undoHeard, JSON.stringify((await said(ann)).slice(annSaidU)));
+      const oneLevel = await until(async () => (await button(bo, "Undo"))?.disabled === true && (await button(ann, "Undo"))?.disabled === true);
+      check("one level only: after the undo, Undo is disabled for both players", oneLevel, JSON.stringify([await button(ann, "Undo"), await button(bo, "Undo")]));
+    }
+
     // ---- criterion 11: a keyboard-only move by Bo reaches Ann and is announced there
     const annSaid0 = (await said(ann)).length;
     const boView = await viewFrame(bo);
@@ -420,6 +448,8 @@ export async function run(ctx) {
     playPlace(expected, ann.id, "P", sq("e3"));
     const placeSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => { const s = await board(u); return s.p === expected.p && s.w === "" && s.b === "p"; }, 1000)));
     check("14: Ann drags her captured pawn from the reserve back onto e3, seen on every page", place.during === 0 && place.total === 1 && place.msgs[0].t === "place" && placeSeen.every((ms) => ms >= 0), JSON.stringify({ place: place.msgs, placeSeen }));
+    const placeLit = await until(async () => (await board(bo))?.last.join() === String(sq("e3")) && (await board(ann))?.last.join() === String(sq("e3")), 2000);
+    check("a pawn placed from the reserve: only its square (e3) is tinted, on Ann's page and on Bo's turned board", placeLit, JSON.stringify([(await board(ann)).last, (await board(bo)).last]));
     // a white pawn dropped on e8: the choice opens, Queen is clicked
     const nPromo = ann.sent.length;
     const promoDrop = await dragSq(ann, "a2", "e8");
@@ -503,6 +533,7 @@ export async function run(ctx) {
       return c?.p === START && c.w === "" && c.b === "" && m.holders === "White: free · Black: free" && !b(m, "White").disabled && !b(m, "Black").disabled;
     });
     check("7: Reset puts the start position back, empties the reserve and frees both seats", resetOk, JSON.stringify({ afterReset: await modalState(cy), cyBoard: await board(cy) }));
+    check("a reset clears the highlight and the undo", (await board(cy)).last.length === 0 && (await button(cy, "Undo"))?.disabled === true, JSON.stringify({ last: (await board(cy)).last, undo: await button(cy, "Undo") }));
     await press(cy, "White");
     const cySeated = await until(async () => { const x = await button(cy, "White"); return x?.text === "White: " + cy.name && x.pressed; });
     check("7: anyone can then take a seat (Cy takes White)", cySeated, JSON.stringify(await button(cy, "White")));

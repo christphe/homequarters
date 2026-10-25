@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  START, newBoard, parseBoard, sideOf, seatOf, take, move, canReset, reset, squareName, place, toReserve, changeBetween,
+  START, newBoard, parseBoard, sideOf, seatOf, take, move, canReset, reset, squareName, place, toReserve, changeBetween, canUndo, undo,
 } from "../../plugins/bundled/hq-chess/public/game.ts";
 
 const ann = { id: 1, name: "Ann" };
@@ -246,4 +246,96 @@ test("changeBetween names what one action did", () => {
   assert.equal(changeBetween(a, at()), "The board is set up for a new game");
   assert.equal(changeBetween(at(), at()), null);
   assert.equal(changeBetween({ p: START, r: "" }, { p: withSquares([0, "."], [1, "."], [2, "."]), r: "" }), null);
+});
+
+// The undo: the last action only, one level, by either seated player who has the board open.
+
+const both = new Set([1, 2]);
+const snap = (b: { p: string; r: string }) => ({ p: b.p, r: b.r });
+
+test("undo restores the position and the reserve before a move, a capture, a promotion, a place and a stash", () => {
+  type B = ReturnType<typeof seated>;
+  const cases: [string, (b: B) => void, (b: B) => boolean, { from?: number; to?: number }][] = [
+    ["a move", () => {}, (b) => move(b, 1, 52, 36), { from: 52, to: 36 }],
+    ["a capture", () => {}, (b) => move(b, 1, 52, 12), { from: 52, to: 12 }],
+    ["a promotion with a capture", (b) => { b.p = withSquares([12, "P"]); }, (b) => move(b, 1, 12, 3, "q"), { from: 12, to: 3 }],
+    ["a place onto a piece", (b) => { b.r = "pQn"; }, (b) => place(b, 1, "Q", 12), { to: 12 }],
+    ["a stash", () => {}, (b) => toReserve(b, 2, 1), { from: 1 }],
+  ];
+  for (const [what, setUp, act, last] of cases) {
+    const b = seated();
+    b.r = "Pq";
+    setUp(b);
+    const want = snap(b);
+    assert.equal(act(b), true, what);
+    assert.notDeepEqual(snap(b), want, what + ": the action changed the board");
+    assert.deepEqual(b.u, want, what + ": u is the board before");
+    assert.deepEqual(b.m, last, what + ": m is the last action");
+    assert.equal(canUndo(b, 1, both), true, what);
+    assert.equal(undo(b, 2, both), true, what + ": the other seated player undoes it");
+    assert.deepEqual(snap(b), want, what + ": position and reserve exactly as before");
+    assert.equal(b.u, null);
+    assert.equal(b.m, null);
+    assert.equal(seatOf(b, 1), "w", "seats unchanged");
+    assert.equal(seatOf(b, 2), "b");
+  }
+});
+
+test("one level only: a second undo is refused", () => {
+  const b = seated();
+  move(b, 1, 52, 36);
+  move(b, 2, 12, 28);
+  assert.equal(undo(b, 1, both), true);
+  assert.equal(b.p[36], "P", "only the last action went back");
+  assert.equal(b.p[28], ".");
+  assert.equal(canUndo(b, 1, both), false);
+  assert.equal(undo(b, 1, both), false);
+  assert.equal(undo(b, 2, both), false);
+  assert.equal(b.p[36], "P");
+});
+
+test("undo is refused to a watcher, an absent seated player, and on a board with nothing to undo", () => {
+  const b = seated();
+  assert.equal(undo(b, 1, both), false, "nothing done yet");
+  move(b, 1, 52, 36);
+  const after = snap(b);
+  assert.equal(canUndo(b, 3, new Set([1, 2, 3])), false, "a watcher");
+  assert.equal(undo(b, 3, new Set([1, 2, 3])), false);
+  assert.equal(canUndo(b, 1, new Set([2])), false, "the mover, window closed");
+  assert.equal(undo(b, 1, new Set([2])), false);
+  assert.deepEqual(snap(b), after);
+  assert.equal(undo(b, 1, new Set([1])), true, "present, without the other player");
+});
+
+test("a refused action keeps the undo of the last good one; reset clears it", () => {
+  const b = seated();
+  move(b, 1, 52, 36);
+  assert.equal(move(b, 1, 12, 28), false);
+  assert.deepEqual(b.m, { from: 52, to: 36 });
+  reset(b);
+  assert.equal(b.u, null);
+  assert.equal(b.m, null);
+});
+
+test("parseBoard: u and m round trip; old boards and bad values load without them", () => {
+  const b = seated();
+  move(b, 1, 52, 12);
+  const back = parseBoard(JSON.stringify(b));
+  assert.deepEqual(back, b);
+  assert.deepEqual(back.u, { p: START, r: "" });
+  assert.deepEqual(back.m, { from: 52, to: 12 });
+  const old = parseBoard(JSON.stringify({ p: START, w: ann, b: null, r: "p" }));
+  assert.equal(old.u, null);
+  assert.equal(old.m, null);
+  assert.deepEqual(old.w, ann, "an old board keeps its game");
+  for (const u of [7, "x", { p: "x", r: "" }, { p: START, r: "x" }, { p: START }]) {
+    const o = parseBoard(JSON.stringify({ p: START, w: ann, b: null, r: "", u, m: { from: 1 } }));
+    assert.equal(o.u, null, `bad u ${JSON.stringify(u)}`);
+    assert.equal(o.m, null, "no highlight without its undo either");
+    assert.deepEqual(o.w, ann);
+  }
+  for (const m of [7, {}, { from: 64 }, { to: -1 }, { from: 1.5 }, { from: "1" }]) {
+    const o = parseBoard(JSON.stringify({ p: START, w: ann, b: null, r: "", u: { p: START, r: "" }, m }));
+    assert.equal(o.m, null, `bad m ${JSON.stringify(m)}`);
+  }
 });

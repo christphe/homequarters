@@ -512,3 +512,145 @@ func TestChessIgnoresMalformedReserve(t *testing.T) {
 		t.Fatalf("malformed messages are ignored, not errors: %d", n)
 	}
 }
+
+// last describes a state's last action ("52-36", "-12" for a place, "1-" for a stash, "" for none) and
+// whether an undo is available.
+func last(s map[string]any) (string, bool) {
+	u, _ := s["u"].(bool)
+	m, _ := s["m"].(map[string]any)
+	if m == nil {
+		return "", u
+	}
+	sq := func(k string) string {
+		if v, ok := m[k].(float64); ok {
+			return fmt.Sprint(int(v))
+		}
+		return ""
+	}
+	return sq("from") + "-" + sq("to"), u
+}
+
+// The undo, through the real plugin: the last action only, by either seated player who has the board open.
+func TestChessUndo(t *testing.T) {
+	h, sink, errs := chessHost(t, newMemKV(), alice, bob, carol)
+	for _, p := range []Player{alice, bob, carol} {
+		h.Use(p, chess, "chessboard", 2, 3)
+	}
+	send(h, alice, `{"t":"seat","x":2,"y":3,"side":"w"}`)
+	send(h, bob, `{"t":"seat","x":2,"y":3,"side":"b"}`)
+	s := waitBoard(t, sink, carol.ID, 2, 3, "seated", func(s map[string]any) bool { return seat(s, "b") == "Bob" })
+	if l, u := last(s); l != "" || u {
+		t.Fatalf("a new board has no last action and no undo: %v", s)
+	}
+	time.Sleep(200 * time.Millisecond)
+	_, bob0 := boardOf(sink, bob.ID, 2, 3)
+	send(h, bob, `{"t":"undo","x":2,"y":3}`) // nothing to undo: refused, Bob gets the state again
+	eventually(t, "a refused undo resends the state", func() bool { _, n := boardOf(sink, bob.ID, 2, 3); return n > bob0 })
+
+	// the mover's own undo
+	send(h, alice, `{"t":"move","x":2,"y":3,"from":52,"to":36}`)
+	s = waitBoard(t, sink, carol.ID, 2, 3, "e4", func(s map[string]any) bool { return s["p"].(string)[36] == 'P' })
+	if l, u := last(s); l != "52-36" || !u {
+		t.Fatalf("the state names the last move and an undo: %v", s)
+	}
+	send(h, alice, `{"t":"undo","x":2,"y":3}`)
+	for _, id := range []uint32{alice.ID, bob.ID, carol.ID} {
+		s = waitBoard(t, sink, id, 2, 3, "undone for everybody", func(s map[string]any) bool { return s["p"] == startPos })
+		if l, u := last(s); l != "" || u || seat(s, "w") != "Alice" || seat(s, "b") != "Bob" {
+			t.Fatalf("after an undo: no highlight, no second undo, seats kept: %v", s)
+		}
+	}
+
+	// the other player's undo, of a capture: the reserve comes back too
+	send(h, alice, `{"t":"move","x":2,"y":3,"from":52,"to":12}`)
+	waitBoard(t, sink, bob.ID, 2, 3, "exe7", func(s map[string]any) bool { return s["r"] == "p" })
+	_, carolN := boardOf(sink, carol.ID, 2, 3)
+	send(h, carol, `{"t":"undo","x":2,"y":3}`) // a watcher: refused, the state resent to him only
+	eventually(t, "the watcher gets the state again", func() bool { _, n := boardOf(sink, carol.ID, 2, 3); return n > carolN })
+	if s, _ := boardOf(sink, carol.ID, 2, 3); s["r"] != "p" {
+		t.Fatalf("a watcher cannot undo: %v", s)
+	}
+	send(h, bob, `{"t":"undo","x":2,"y":3}`)
+	s = waitBoard(t, sink, alice.ID, 2, 3, "Bob undoes White's capture", func(s map[string]any) bool { return s["p"] == startPos })
+	if s["r"] != "" {
+		t.Fatalf("the reserve is restored: %v", s)
+	}
+	_, bobN := boardOf(sink, bob.ID, 2, 3)
+	send(h, bob, `{"t":"undo","x":2,"y":3}`) // one level only
+	eventually(t, "a second undo is refused and resent", func() bool { _, n := boardOf(sink, bob.ID, 2, 3); return n > bobN })
+	if s, _ := boardOf(sink, bob.ID, 2, 3); s["p"] != startPos || s["r"] != "" {
+		t.Fatalf("a second undo changed the board: %v", s)
+	}
+
+	// an undoer whose window is closed is not present: ignored
+	send(h, bob, `{"t":"move","x":2,"y":3,"from":12,"to":28}`)
+	waitBoard(t, sink, alice.ID, 2, 3, "e5", func(s map[string]any) bool { return s["p"].(string)[28] == 'p' })
+	send(h, alice, `{"t":"close","x":2,"y":3}`)
+	waitBoard(t, sink, bob.ID, 2, 3, "Alice away", func(s map[string]any) bool { return seat(s, "w") == "Alice (away)" })
+	send(h, alice, `{"t":"undo","x":2,"y":3}`)
+	time.Sleep(300 * time.Millisecond)
+	if s, _ := boardOf(sink, bob.ID, 2, 3); s["p"].(string)[28] != 'p' {
+		t.Fatalf("an absent player cannot undo: %v", s)
+	}
+
+	// a reset clears the undo and the highlight
+	send(h, bob, `{"t":"reset","x":2,"y":3}`)
+	s = waitBoard(t, sink, carol.ID, 2, 3, "reset", func(s map[string]any) bool { return s["w"] == nil })
+	if l, u := last(s); l != "" || u {
+		t.Fatalf("a reset clears the last action and the undo: %v", s)
+	}
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("%d errors", n)
+	}
+}
+
+// A place and a stash are actions too: the highlight names their square, and the undo puts them back.
+func TestChessUndoPlaceAndStash(t *testing.T) {
+	h, sink, _ := chessHost(t, newMemKV(), alice)
+	h.Use(alice, chess, "chessboard", 1, 1)
+	send(h, alice, `{"t":"seat","x":1,"y":1,"side":"w"}`)
+	send(h, alice, `{"t":"stash","x":1,"y":1,"from":57}`)
+	s := waitBoard(t, sink, alice.ID, 1, 1, "stashed", func(s map[string]any) bool { return s["r"] == "N" })
+	if l, u := last(s); l != "57-" || !u {
+		t.Fatalf("a stash highlights its starting square: %v", s)
+	}
+	send(h, alice, `{"t":"place","x":1,"y":1,"piece":"N","to":12}`)
+	s = waitBoard(t, sink, alice.ID, 1, 1, "placed on e7", func(s map[string]any) bool { return s["p"].(string)[12] == 'N' })
+	if l, _ := last(s); l != "-12" || s["r"] != "p" {
+		t.Fatalf("a place highlights its destination: %v", s)
+	}
+	send(h, alice, `{"t":"undo","x":1,"y":1}`)
+	s = waitBoard(t, sink, alice.ID, 1, 1, "place undone", func(s map[string]any) bool { return s["r"] == "N" })
+	if p := s["p"].(string); p[12] != 'p' || p[57] != '.' {
+		t.Fatalf("the undo of a place puts the knight back in the reserve and the pawn on e7: %v", s)
+	}
+}
+
+func TestChessUndoSurvivesRestart(t *testing.T) {
+	kv := newMemKV()
+	h, sink, _ := chessHost(t, kv, alice, bob)
+	h.Use(alice, chess, "chessboard", 6, 2)
+	h.Use(bob, chess, "chessboard", 6, 2)
+	send(h, alice, `{"t":"seat","x":6,"y":2,"side":"w"}`)
+	send(h, bob, `{"t":"seat","x":6,"y":2,"side":"b"}`)
+	send(h, alice, `{"t":"move","x":6,"y":2,"from":52,"to":12}`)
+	waitBoard(t, sink, bob.ID, 6, 2, "moved", func(s map[string]any) bool { return s["r"] == "p" && seat(s, "b") == "Bob" })
+	var stored map[string]any
+	eventually(t, "stored with u and m", func() bool {
+		got, _ := kv.Load(chess)
+		return json.Unmarshal([]byte(got["board:6,2"]), &stored) == nil && stored["u"] != nil && stored["m"] != nil
+	})
+	if u := stored["u"].(map[string]any); u["p"] != startPos || u["r"] != "" {
+		t.Fatalf("u is the board before the last action: %v", stored)
+	}
+	h.Close()
+
+	h2, sink2, _ := chessHost(t, kv, alice, bob)
+	h2.Use(bob, chess, "chessboard", 6, 2)
+	s := waitBoard(t, sink2, bob.ID, 6, 2, "reopened", func(map[string]any) bool { return true })
+	if l, u := last(s); l != "52-12" || !u {
+		t.Fatalf("the last action and its undo survive a restart: %v", s)
+	}
+	send(h2, bob, `{"t":"undo","x":6,"y":2}`)
+	waitBoard(t, sink2, bob.ID, 6, 2, "undone after the restart", func(s map[string]any) bool { return s["p"] == startPos && s["r"] == "" })
+}
