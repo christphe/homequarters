@@ -553,7 +553,10 @@ export class WorldView {
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
         this.hud.addChild(text);
-        return { text, x: (p.x + 1) * T, y: p.y * T, p, ai };
+        // over the middle of the desk, whatever its width; the bottom desk of an island (another desk
+        // right above it) is labelled under its seat, where the sitter's own name tag does not reach
+        const back = map.props.some((q) => q.t === "desk" && q.up && q.y === p.y - 1 && q.x === p.x);
+        return { text, x: (p.x + (p.w ?? 2) / 2) * T, y: back ? (p.y + 2) * T + 10 : p.y * T, p, ai };
       });
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload

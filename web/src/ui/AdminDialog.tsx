@@ -31,7 +31,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
       {tab === "invites" && <Invites />}
       {tab === "activity" && <Activity />}
       {tab === "announce" && <Announce />}
-      {tab === "office" && <OfficeName />}
+      {tab === "office" && <><OfficeName /><Layouts /></>}
       {tab === "plugins" && <Plugins />}
       <div className="modal-actions"><button className="primary" onClick={onClose}>{t("settings.close")}</button></div>
     </Modal>
@@ -72,6 +72,60 @@ function OfficeName() {
       <small className="muted">{t("office.nameHint")}</small>
       <button className="btn" type="submit" disabled={!name.trim() || [...name.trim()].length > 40 || name.trim() === current}>{t("office.save")}</button>
     </form>
+  );
+}
+
+interface TemplateRow { id: string; name: string; w: number; h: number; current: boolean; summary: { desks: number; rooms: number; corners: number; offices: number }; carry: { kept: number; lost: number } }
+
+/** The office templates: switching replaces the whole map; desk assignments carry over by desk number. */
+function Layouts() {
+  const [rows, setRows] = useState<TemplateRow[] | null>(null);
+  const [pick, setPick] = useState<TemplateRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => {
+    void api<{ templates: TemplateRow[] }>("GET", "/api/admin/templates").then((r) => (r.ok ? setRows(r.json.templates) : toast(t("admin.error"))));
+  }, []);
+  useEffect(load, [load]);
+  const apply = async (row: TemplateRow) => {
+    setBusy(true);
+    const r = await api<{ carry: { kept: number; lost: number } }>("POST", "/api/admin/map/template", { template: row.id });
+    setBusy(false);
+    setPick(null);
+    if (r.ok) { toast(t("layout.applied", { name: row.name })); load(); } else toast(r.status === 429 ? t("layout.wait") : r.json.error ?? t("admin.error"));
+  };
+  const parts = (s: TemplateRow["summary"]) => [
+    t("layout.desks", { n: s.desks }), t("layout.rooms", { n: s.rooms }),
+    ...(s.corners ? [t("layout.corners", { n: s.corners })] : []), ...(s.offices ? [t("layout.offices", { n: s.offices })] : []),
+  ].join(" · ");
+  return (
+    <section className="field" aria-labelledby="layout-title">
+      <h3 id="layout-title">{t("layout.title")}</h3>
+      <small className="muted">{t("layout.hint")}</small>
+      {!rows ? <p className="muted">{t("admin.loading")}</p> : (
+        <ul className="layouts">
+          {rows.map((row) => (
+            <li key={row.id} className={"layout" + (row.current ? " current" : "")}>
+              <div>
+                <strong>{row.name}</strong>{row.current && <span className="in-use"> · {t("layout.current")}</span>}
+                <div className="muted">{parts(row.summary)} · {t("layout.size", { w: row.w, h: row.h })}</div>
+              </div>
+              {/* applying the layout in use again resets every change made to it */}
+              <button className="btn" disabled={busy} aria-label={t(row.current ? "layout.resetOf" : "layout.useOf", { name: row.name })} onClick={() => setPick(row)}>{t(row.current ? "layout.reset" : "layout.use")}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {pick && (
+        <Modal title={t(pick.current ? "layout.resetTitle" : "layout.confirmTitle", { name: pick.name })} onClose={() => setPick(null)}>
+          <p>{t("layout.confirmBody")}</p>
+          <p>{pick.carry.lost ? t("layout.carryLost", { kept: pick.carry.kept, lost: pick.carry.lost }) : pick.carry.kept ? t("layout.carry", { kept: pick.carry.kept }) : t("layout.carryNone")}</p>
+          <div className="modal-actions">
+            <button className="btn" onClick={() => setPick(null)}>{t("media.cancel")}</button>
+            <button className="btn danger" disabled={busy} onClick={() => void apply(pick)}>{t(pick.current ? "layout.resetConfirm" : "layout.confirm", { name: pick.name })}</button>
+          </div>
+        </Modal>
+      )}
+    </section>
   );
 }
 

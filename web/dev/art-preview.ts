@@ -8,6 +8,8 @@ import { BEARD_IDS, CELL_H, CELL_W, drawSheet, HAIR_STYLE_IDS, HAT_IDS, LEGACY_C
 import { drawPetSheet, PET_H, PET_KINDS, PET_W } from "../src/game/art/pets";
 import { HAIR, HAT_COLORS, PANTS, SHIRT, SKIN } from "../src/game/palette";
 import map from "./default-map.json";
+import manor from "./manor-map.json";
+import lodge from "./lodge-map.json";
 
 const params = new URLSearchParams(location.search);
 const scale = Number(params.get("s") ?? 4);
@@ -114,9 +116,16 @@ for (const c of [plug.natural, plug.tint]) {
   c.title = "plugins/bundled/hq-pets";
   host.appendChild(c);
 }
-const mc = bakeMapCanvas({ ...(map as object), tile: 16, solid: [] } as never);
-mc.style.width = mc.width * (scale / 2) + "px";
-mc.id = "map";
-document.getElementById("map")!.replaceWith(mc);
-(window as unknown as { artExport: unknown }).artExport = { sheets, pets, sprout: sc.toDataURL("image/png"), pluginPets: plug.natural.toDataURL("image/png"), pluginPetsTint: plug.tint.toDataURL("image/png"), map: mc.toDataURL("image/png") };
+// the three office templates (Loft is the starter map), baked like the game does
+const bake = (m: object, id: string) => {
+  const c = bakeMapCanvas({ ...m, tile: 16, solid: [] } as never);
+  c.style.width = c.width * (scale / 2) + "px";
+  c.id = id;
+  document.getElementById(id)!.replaceWith(c);
+  return c;
+};
+const mc = bake(map, "map");
+const manorCanvas = bake(manor, "map-manor");
+const lodgeCanvas = bake(lodge, "map-lodge");
+(window as unknown as { artExport: unknown }).artExport = { sheets, pets, sprout: sc.toDataURL("image/png"), pluginPets: plug.natural.toDataURL("image/png"), pluginPetsTint: plug.tint.toDataURL("image/png"), map: mc.toDataURL("image/png"), mapManor: manorCanvas.toDataURL("image/png"), mapLodge: lodgeCanvas.toDataURL("image/png") };
 (window as unknown as { ready: boolean }).ready = true;

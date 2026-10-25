@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -114,16 +115,16 @@ type World struct {
 	m          *gamemap.Compiled
 	// owners names, by user id, the members places of the map belong to (gamemap.Owners). The map
 	// stores ids only; clients join these names when they show a desk or an office.
-	owners     map[int64]string
-	mapW, mapH int // fixed for the life of the world (reloads keep the size); safe to read anywhere
-	media      Media
-	log        *slog.Logger
-	St         Stats
-	OnLeave    func(officeID int64, userID uint32, x, y float64)
-	OnChat     func(officeID int64, from uint32, text string, tsMillis int64) // persistence hook, must not block
-	hist       []ChatEntry
-	OnAction   func(officeID int64, actor uint32, action, target string) // metadata only, must not block
-	OnStop     func(officeID int64, last []LastPos)                      // called once by Run when it stops, before it returns
+	owners   map[int64]string
+	size     atomic.Uint64 // map width<<32 | height; only ReplaceMap changes it; safe to read anywhere
+	media    Media
+	log      *slog.Logger
+	St       Stats
+	OnLeave  func(officeID int64, userID uint32, x, y float64)
+	OnChat   func(officeID int64, from uint32, text string, tsMillis int64) // persistence hook, must not block
+	hist     []ChatEntry
+	OnAction func(officeID int64, actor uint32, action, target string) // metadata only, must not block
+	OnStop   func(officeID int64, last []LastPos)                      // called once by Run when it stops, before it returns
 	// OnPresence reports a member becoming visible-online (joined, or left invisible) or not (left,
 	// evicted, went invisible). Plugins see only this presence. Must not block.
 	OnPresence func(officeID int64, userID uint32, name, role string, online bool)
@@ -166,19 +167,23 @@ type World struct {
 }
 
 func New(cfg Config, officeID int64, name string, m *gamemap.Compiled, md Media, log *slog.Logger) *World {
-	w := &World{cfg: cfg, OfficeID: officeID, Name: name, m: m, mapW: m.W, mapH: m.H, media: md, log: log,
+	w := &World{cfg: cfg, OfficeID: officeID, Name: name, m: m, media: md, log: log,
 		players: map[uint32]*Player{}, movers: map[*Player]struct{}{}, owners: map[int64]string{},
 		followers: map[*Player]struct{}{}, locks: map[string]*lockState{}, knocks: map[uint32]knockReq{},
 		onSpotSet: map[*Player]struct{}{}, boards: map[string]*board{},
 		groups: map[uint32]*group{}, roomGrp: map[int]*group{},
 		rAdd: map[uint32]struct{}{}, rUpd: map[uint32]struct{}{},
 		inbox: make(chan ev, 8192)}
-	px := m.W * gamemap.TilePx
-	py := m.H * gamemap.TilePx
-	w.cols = (px + cfg.CellPx - 1) / cfg.CellPx
-	w.rows = (py + cfg.CellPx - 1) / cfg.CellPx
-	w.cells = make([]cell, w.cols*w.rows)
+	w.sizeGrid(m)
 	return w
+}
+
+// sizeGrid builds an empty spatial grid that covers m.
+func (w *World) sizeGrid(m *gamemap.Compiled) {
+	w.size.Store(uint64(m.W)<<32 | uint64(m.H))
+	w.cols = (m.W*gamemap.TilePx + w.cfg.CellPx - 1) / w.cfg.CellPx
+	w.rows = (m.H*gamemap.TilePx + w.cfg.CellPx - 1) / w.cfg.CellPx
+	w.cells = make([]cell, w.cols*w.rows)
 }
 
 // Run drives the simulation until ctx is cancelled.
@@ -392,12 +397,70 @@ func (w *World) ResetContent(ctx context.Context, cm *gamemap.Compiled) error {
 	}
 }
 
-// SameSize reports whether cm can replace the running map without a restart.
-func (w *World) SameSize(cm *gamemap.Compiled) bool { return cm.W == w.mapW && cm.H == w.mapH }
+// SameSize reports whether cm can replace the running map with ReloadMap (ReplaceMap takes any size).
+func (w *World) SameSize(cm *gamemap.Compiled) bool {
+	return w.size.Load() == uint64(cm.W)<<32|uint64(cm.H)
+}
+
+// ReplaceMap swaps in a whole new map (an office template), whatever its size: everybody online is
+// disconnected as by an eviction, with their position moved near the new spawn, and reconnects into it.
+// Room calls, locks and knocks of the old map end. With a layout name, everybody is first told the office
+// moved to that layout, so the reconnection does not look like a fault.
+func (w *World) ReplaceMap(ctx context.Context, cm *gamemap.Compiled, owners map[int64]string, layout string) error {
+	errc := make(chan error, 1)
+	if !w.post(ctx, ev{kind: evMap, cm: cm, names: owners, b: true, s: layout, errc: errc}) {
+		return ctx.Err()
+	}
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *World) doReplaceMap(cm *gamemap.Compiled, layout string) {
+	const T = gamemap.TilePx
+	sp := cm.Map.Spawn
+	var told []byte
+	if layout != "" {
+		told, _ = json.Marshal(map[string]string{"t": "layout", "n": layout})
+	}
+	for len(w.list) > 0 {
+		p := w.list[0]
+		if told != nil && p.out != nil {
+			w.sendShared(p, told) // queued before the close, so it goes out first
+		}
+		// saved by OnLeave as the place to come back to: a free tile around the new spawn
+		p.X, p.Y = float64(sp.X*T+T/2), float64(sp.Y*T+T/2)
+		for i := 0; i < 40; i++ {
+			x := p.X + (rand.Float64()-0.5)*float64(T*6)
+			y := p.Y + (rand.Float64()-0.5)*float64(T*4)
+			if !cm.IsSolidTile(int(x)/T, int(y)/T) {
+				p.X, p.Y = x, y
+				break
+			}
+		}
+		w.evictPlayer(p)
+	}
+	w.m = cm
+	w.sizeGrid(cm)
+	clear(w.roomGrp)
+	clear(w.locks)
+	// whiteboards are keyed by tile: strokes of the old map must not show on a board of the new one
+	// (the caller wipes the stored ones); nobody is left to view them
+	clear(w.boards)
+	w.lastCounts = w.lastCounts[:0] // head counts were per area of the old map
+	w.pruneOwners()
+}
 
 func (w *World) doResetContent(cm *gamemap.Compiled, now time.Time) error {
-	if err := w.doReloadMap(cm, now); err != nil {
-		return err
+	if w.SameSize(cm) {
+		if err := w.doReloadMap(cm, now); err != nil {
+			return err
+		}
+	} else {
+		w.doReplaceMap(cm, "") // a map of another size (an admin chose a layout): everybody reconnects into it
 	}
 	for _, b := range w.boards {
 		for p := range b.viewers {
@@ -444,6 +507,11 @@ func (w *World) handle(e ev, now time.Time) {
 			if _, known := w.owners[id]; !known {
 				w.owners[id] = n
 			}
+		}
+		if e.b {
+			w.doReplaceMap(e.cm, e.s)
+			e.errc <- nil
+			return
 		}
 		e.errc <- w.doReloadMap(e.cm, now)
 		return
@@ -633,7 +701,7 @@ func (w *World) doJoin(e ev, now time.Time) {
 
 func (w *World) doReloadMap(cm *gamemap.Compiled, now time.Time) error {
 	if cm.W != w.m.W || cm.H != w.m.H {
-		return errors.New("changing the map size requires a restart")
+		return errors.New("the office changed layout since this map was loaded: reload it")
 	}
 	// An office that changed hands (or became free or assigned) starts with a clean door: admissions
 	// and lock state from the previous arrangement do not carry over.

@@ -269,6 +269,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .admin-table th { text-align: left; font-weight: 700; padding: 4px 8px 6px 0; border-bottom: 2px solid currentColor; }
 .admin-table td { padding: 6px 8px 6px 0; border-bottom: 1px solid #0002; vertical-align: middle; }
+.layouts { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.layout { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px; border: 1px solid #0002; border-radius: 6px; font-size: 13px; }
+.layout.current { border: 2px solid currentColor; }
+.layout strong, .layout .in-use { font-weight: 700; }
 .admin-table select { max-width: 130px; }
 .admin-form { display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 8px; align-items: end; }
 .inline { display: inline-flex; gap: 6px; flex-wrap: wrap; }

@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"homequarters/internal/gamemap"
@@ -47,8 +46,8 @@ func (s *Server) demoLoop(ctx context.Context) {
 }
 
 // demoStartup runs once before the demo serves anybody. When the stored map has another size than
-// the current starter map (a deploy changed the starter office), it resets the demo now: the running
-// world cannot change size, so the scheduled reset could not install it. Otherwise content is kept.
+// the current starter map (a deploy changed the starter office), it resets the demo now, before anybody
+// joins, rather than an hour later. Otherwise content is kept.
 func (s *Server) demoStartup(ctx context.Context) error {
 	office, err := s.st.OfficeBySlug(ctx, s.cfg.OfficeSlug)
 	if err != nil {
@@ -78,9 +77,7 @@ func (s *Server) demoReset(ctx context.Context) error {
 	s.mu.Lock()
 	wd := s.worlds[office.ID]
 	s.mu.Unlock()
-	if wd != nil && !wd.SameSize(cm) { // never leave a half-done reset behind
-		return errors.New("the starter map changed size: restart the server to reset the demo")
-	}
+	resized := wd != nil && !wd.SameSize(cm) // the office had a layout of another size
 	s.mapMu.Lock()
 	defer s.mapMu.Unlock()
 	if err := s.st.ResetDemoContent(ctx, office.ID, string(raw)); err != nil {
@@ -90,6 +87,11 @@ func (s *Server) demoReset(ctx context.Context) error {
 		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		if err := wd.ResetContent(rctx, cm); err != nil {
+			return err
+		}
+	}
+	if resized { // positions on the other map mean nothing on this one
+		if err := s.st.ForgetMapState(ctx, office.ID); err != nil {
 			return err
 		}
 	}

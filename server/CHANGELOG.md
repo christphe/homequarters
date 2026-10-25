@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] - minor
+
+### Added
+- Administrators can switch the office to a ready-made layout from Admin > Office: Loft (today's starter office), Lodge (36 desks) or Manor (48 desks in islands of back-to-back desks, meeting rooms, mini meeting rooms, a break room whose duo and couch corners each have their own call, an arena); the whole map is replaced, desk assignments carry over by desk number and everybody online reconnects into the new office at its entrance
+
+### Changed
+- Couches no longer block the way: people sit on them as on chairs
+- The office looks more lived in: desks have legs, a monitor, a keyboard and a mouse, chairs that face away are seen from behind, armchairs beside a table face it, tables have legs (low ones among couches), and a doorway carries each room's floor up to a thin sill instead of a doormat
+- Maps hold up to 128 areas instead of 64, and the map format has new furniture (armchair, stands, stairs, an arena field, a banner, a scoreboard) and desks turned around (`up`) for back-to-back islands
+
 ## [0.4.0] - 2026-10-22
 
 ### Added

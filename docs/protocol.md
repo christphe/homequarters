@@ -54,6 +54,7 @@ Every connection starts with a full `hello`; the same happens on every reconnect
 | `muted` | `by` id, `n` name, `k` (`mic`, `cam`, `scr`) | somebody in your call turned that off; the SFU muted it already, the client stops the capture and says who did it. Nobody else is told |
 | `wvr` | `id`, `st` ok / busy / away / offline | what happened to your wave |
 | `ac` | `c` [count per area] | visible people per map area, in map order; sent with `hello` and then at most every 2 s when a count changes |
+| `layout` | `n` layout name | the office is moving to another layout ([decision 0029](decisions/0029-office-templates.md)); the connection closes with 4003 right after and the client reconnects into the new map |
 | `ann` | `n` sender name, `x` text | an administrator's announcement banner (one line, at most 280 characters, never stored) |
 | `office` | `n` name | an administrator renamed the office; later `hello`s carry the new name |
 | `go` | `ok`, `x`, `y`, `near` | a walk-to was accepted (the server now steers you, `self` carries the positions) or refused (`ok: false`: no path, nobody there); `near: true` means the person is behind a door you may not open and the run stops at it; its end arrives as `fol` with `id` 0 |
@@ -113,6 +114,8 @@ Avatars are `{sk, hs, hc, sh, pa, bd, ht, hk}`. The colours `sk` (skin, 12 swatc
 | `PATCH /api/admin/office` | admin | `{name}` (1-40 characters after trimming; control characters removed): renames the office, stored (it outlives restarts) and pushed to everybody online as `office`; audited as `office.rename` with the old and new name; answers `{name}` |
 | `PUT /api/map` | admin | validate, apply and save a new map |
 | `GET /api/admin/map` | admin | the saved map including hidden interactive-object content (the world map redacts it; editors must round-trip through this endpoint or they will erase object content) |
+| `GET /api/admin/templates` | admin | the office templates ([decision 0029](decisions/0029-office-templates.md)): `id`, `name`, size, `summary` (`desks`, `rooms`, `corners`, `offices`), `carry` (`kept`, `lost`: what switching now would do to desk assignments) and `current` (the office's walls are this template's) |
+| `POST /api/admin/map/template` | admin | `{template}`: replaces the whole map with that template, of any size; desk assignments carry over by desk number. Everybody online is disconnected with code 4003 and reconnects into the new map near its spawn; stored positions are forgotten. Saved, audited (`map.template`), rate limited with map edits; answers `{rev, carry}` |
 | `GET /ws` | cookie | the world WebSocket |
 | `GET /api/plugins` | cookie | running plugins `[{name, title, client}]`; `client` is the URL of the plugin's browser code or null. `[]` when plugins are off |
 | `GET /api/admin/plugins` | admin | installed plugins `[{name, title, version, description, state, error}]`, `state` = `disabled`, `running`, `crashed` or `broken` |
@@ -128,7 +131,7 @@ Avatars are `{sk, hs, hc, sh, pa, bd, ht, hk}`. The colours `sk` (skin, 12 swatc
 | --- | --- | --- |
 | 4001 | replaced by a newer connection of the same user (another tab) | stop, show "session opened in another tab" |
 | 4002 | the client could not keep up (reliable queue overflow) | reconnect with backoff |
-| 4003 | an admin removed the member or changed their role | ask `/api/me`: still a member -> reconnect at once; otherwise go to the join screen with a notice |
+| 4003 | an admin removed the member, changed their role or switched the office to another layout | ask `/api/me`: still a member -> reconnect at once; otherwise go to the join screen with a notice |
 | 1013 | server closing the connection for another reason | reconnect with backoff |
 
 The reason is recorded on the world goroutine right before the outbound channel closes, so the writer always sends the right code.

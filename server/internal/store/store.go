@@ -244,6 +244,22 @@ func (s *Store) SaveLastPos(ctx context.Context, officeID, userID int64, x, y fl
 	return err
 }
 
+// ForgetMapState drops what belongs to the office's old map before a new one replaces it: where every
+// member last stood (they come back at the spawn) and the whiteboards, which are keyed by tile.
+func (s *Store) ForgetMapState(ctx context.Context, officeID int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{`UPDATE memberships SET last_x=NULL, last_y=NULL WHERE office_id=?`, `DELETE FROM whiteboards WHERE office_id=?`} {
+		if _, err := tx.ExecContext(ctx, q, officeID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // LastPos is where a member stood when they left.
 type LastPos struct {
 	UserID int64

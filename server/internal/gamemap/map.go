@@ -16,7 +16,7 @@ const (
 	MaxW          = 200
 	MaxH          = 200
 	MaxProps      = 4000
-	MaxAreas      = 64
+	MaxAreas      = 128
 	AccessOpen    = "open"
 	AccessMembers = "members"
 	AccessAdmins  = "admins"
@@ -65,6 +65,9 @@ type Prop struct {
 	// Label is its own name ("Desk 3"), shown again once it is free.
 	Assign int64  `json:"assign,omitempty"`
 	Label  string `json:"label,omitempty"`
+	// Up turns a desk around: its seat is above it (back-to-back desks), so its desk room is the
+	// desk and the two rows above.
+	Up bool `json:"up,omitempty"`
 	// Data is the content of an interactive object: note text, or the https URL of an embedded
 	// site or image. It is NOT part of the wire map; the server sends it only to a player who is
 	// next to the object and allowed in its area (see world.doUse).
@@ -135,7 +138,7 @@ var propDefaults = map[string]struct {
 	"desk":           {2, 1, true},
 	"chair":          {1, 1, false},
 	"plant":          {1, 1, true},
-	"couch":          {3, 1, true},
+	"couch":          {3, 1, false}, // a seat, like a chair: people sit on it
 	"table":          {3, 2, true},
 	"reception_desk": {6, 1, true},
 	"bookshelf":      {2, 1, true},
@@ -143,6 +146,12 @@ var propDefaults = map[string]struct {
 	"whiteboard":     {3, 1, false},
 	"rug":            {4, 3, false},
 	"lamp":           {1, 1, true},
+	"armchair":       {1, 1, false},
+	"bleachers":      {4, 2, false},
+	"court":          {6, 4, false},
+	"stairs":         {2, 2, false},
+	"banner":         {1, 1, false},
+	"scoreboard":     {4, 1, false},
 	PropNote:         {1, 1, true},
 	PropEmbed:        {2, 1, true},
 	PropImage:        {1, 1, true},
@@ -357,8 +366,8 @@ func encodeWire(c *Compiled) []byte {
 }
 
 // withDeskRooms returns m's areas without stale desk rooms, plus one room per assigned desk: the
-// desk and the two rows in front of it (its chair and the tile behind), as wide as the desk so the
-// aisles stay open. Whoever sits there and whoever comes over share a call that the neighbouring
+// desk and the two rows in front of it (its chair and the tile behind; above it for an Up desk), as wide
+// as the desk so the aisles stay open. Whoever sits there and whoever comes over share a call that the neighbouring
 // desks do not hear. It is open to anybody; Access.Users names the owner, who alone (with admins)
 // may lock it, always walks in, and answers knocks. A desk already inside a room (a private office) gets none: that room is its call.
 func withDeskRooms(m *Map) []Area {
@@ -402,6 +411,9 @@ func withDeskRooms(m *Map) []Area {
 		ids[id] = true
 		x0, y0 := p.X, p.Y
 		x1, y1 := p.X+w, min(p.Y+h+2, m.H)
+		if p.Up {
+			y0, y1 = max(p.Y-2, 0), p.Y+h
+		}
 		areas = append(areas, Area{ID: id, Name: "Desk", Kind: KindRoom, X: x0, Y: y0, W: x1 - x0, H: y1 - y0,
 			Floor: DeskRoomFloor, Access: Access{Mode: AccessOpen, Users: []int64{p.Assign}}, Capacity: DeskRoomCapacity, Auto: true})
 	}

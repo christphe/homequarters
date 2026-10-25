@@ -54,6 +54,8 @@ export interface Prop {
   /** The desk's owner (user id); their name comes from the owner names, never from the map. */
   assign?: number;
   label?: string;
+  /** A desk turned around: its seat is above it (islands of back-to-back desks). */
+  up?: boolean;
   data?: string; // available only in the admin editor or an authorized interaction reply
   to?: { x: number; y: number };
 }
@@ -131,6 +133,8 @@ export interface Muted { t: "muted"; by: number; n: string; k: MuteKind }
 export interface WaveResult { t: "wvr"; id: number; st: "ok" | "wait" | "offline" }
 export interface AreaCounts { t: "ac"; c: number[] }
 export interface Announcement { t: "ann"; n: string; x: string }
+/** The office is moving to another layout: the connection closes (4003) and reconnects into it. */
+export interface LayoutMoved { t: "layout"; n: string }
 export interface OfficeName { t: "office"; n: string }
 export interface SelfPosition { t: "self"; x: number; y: number; dx: number; dy: number; d: number; r: boolean; tp: boolean } // r: the server moves me at run speed
 export interface LeadRequest { t: "lreq"; from: number; n: string }
@@ -154,4 +158,4 @@ export type PluginMsg = { t: "plg"; pl: string; d: unknown };
 /** The set of running plugins changed: fetch GET /api/plugins again. */
 export type PluginsChanged = { t: "plgs" };
 
-export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | Muted | WaveResult | AreaCounts | Announcement | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;
+export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | Muted | WaveResult | AreaCounts | Announcement | LayoutMoved | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;
