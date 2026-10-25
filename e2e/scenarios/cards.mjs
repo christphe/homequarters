@@ -351,8 +351,14 @@ export async function run(ctx) {
     check("6: the log names no card Ann saw alone", named.every((l) => !/ of (spades|hearts|diamonds|clubs)|joker/.test(l)), JSON.stringify(named));
 
     // ---- criterion 7: Ann offers her hand to Bo, who picks her third card
+    // Bo is typing a pile's name when the offer's notice appears above his controls: his field keeps the focus
+    await type(bo, "New pile", "Wa");
     await press(ann, `Offer my hand to ${bo.name}`);
     await waitFor(async () => (await logOf(bo)).includes(`${ann.name} offered their hand to ${bo.name}`), { what: "the offer" });
+    await waitFor(async () => (await (await viewFrame(bo)).evaluate(() => !!document.querySelector(".controls .notice"))), { timeout: 3000, what: "the offer's notice for Bo" });
+    await bo.page.keyboard.type("ste");
+    const typed = await (await viewFrame(bo)).evaluate(() => ({ value: [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent.trim().startsWith("New pile"))?.querySelector("input")?.value, focused: document.activeElement?.tagName }));
+    check("UX: a notice appearing above the controls while Bo types keeps his field and its focus", typed.value === "Waste" && typed.focused === "INPUT", JSON.stringify(typed));
     const annBefore = await handOf(ann);
     await click(bo, seatAt(8, 1, 0));
     await pressInView(bo, `Draw a card from ${ann.name}`).catch(() => {}); // the click on Ann's seat already opened the row

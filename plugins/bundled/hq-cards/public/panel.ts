@@ -13,20 +13,35 @@ export interface PanelInput { st: TableState; game: ClientGame; me: number; log:
 
 const NAME_MAX = 24;
 
-/** Makes `into`'s children look like `kids`, keeping every element that stays the same kind at the same place
- * (a button also keeps its label: another label is another button). */
+/** What makes two nodes the same control: their kind, and for a button or a field's label its text, for an
+ * input its type. */
+const kind = (n: Node): string =>
+  n instanceof Element
+    ? `${n.tagName}.${n.className}|${n instanceof HTMLButtonElement || n instanceof HTMLLabelElement ? n.textContent : n instanceof HTMLInputElement ? n.type : ""}`
+    : "#text";
+
+/** Makes `into`'s children look like `kids`, keeping every element that is still there (matched by its kind, in
+ * order, wherever it is): a line added above leaves the controls under it, and the click or the typing in them,
+ * untouched. */
 function morph(into: Element, kids: Node[]): void {
-  kids.forEach((n, k) => {
-    const o = into.childNodes[k];
-    if (!o) into.append(n);
-    else if (o instanceof Text && n instanceof Text) {
-      if (o.data !== n.data) o.data = n.data;
-    } else if (o instanceof Element && n instanceof Element && o.tagName === n.tagName && o.className === n.className
-      && (!(o instanceof HTMLButtonElement) || o.textContent === n.textContent)
-      && (!(o instanceof HTMLInputElement) || o.type === (n as HTMLInputElement).type)) patch(o, n);
-    else into.replaceChild(n, o);
+  const left = new Map<string, Node[]>();
+  for (const o of [...into.childNodes]) {
+    const list = left.get(kind(o));
+    if (list) list.push(o);
+    else left.set(kind(o), [o]);
+  }
+  const keep = kids.map((n) => {
+    const o = left.get(kind(n))?.shift();
+    if (!o) return n;
+    if (o instanceof Text) {
+      if (o.data !== (n as Text).data) o.data = (n as Text).data;
+    } else patch(o as Element, n as Element);
+    return o;
   });
-  while (into.childNodes.length > kids.length) into.lastChild!.remove();
+  for (const list of left.values()) for (const o of list) o.remove(); // gone
+  keep.forEach((n, k) => {
+    if (into.childNodes[k] !== n) into.insertBefore(n, into.childNodes[k] ?? null); // new, or moved
+  });
 }
 function patch(o: Element, n: Element): void {
   if (o instanceof HTMLButtonElement && n instanceof HTMLButtonElement) {
