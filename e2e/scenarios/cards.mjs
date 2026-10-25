@@ -7,7 +7,7 @@
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.mjs";
 import { CARD_W, CARD_H } from "../../plugins/bundled/hq-cards/public/art.ts";
-import { FX, FY, NARROW, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
+import { FX, FY, NARROW, GRID, CASCADE, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 import { CODES as OLD_MAID } from "../../plugins/bundled/hq-card-pouilleux/rules.ts";
 import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
 
@@ -61,15 +61,23 @@ const modal = async (u) => {
   return { buttons: [...own.buttons, ...(inView?.buttons ?? [])], texts: [...own.texts, ...(inView?.texts ?? [])] };
 };
 const hasButton = async (u, text) => !!(await modal(u))?.buttons.find((b) => b.text === text && !b.disabled);
-/** Clicks a control by its text with the real mouse: in the window, or in the table view's panel. */
+/** Clicks a control by its text with the real mouse: in the window, or in the table view's panel. The panel
+ * is rebuilt when the table changes: a button found just before may be gone, so it is looked for again. */
 async function press(u, text) {
-  for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
-  const f = await viewFrame(u);
-  if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) {
-    await h.evaluate((b) => b.scrollIntoView({ block: "center" }));
-    return h.click();
+  for (let tries = 0; ; tries++) {
+    try {
+      for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return await h.click();
+      const f = await viewFrame(u);
+      if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) {
+        await h.evaluate((b) => b.scrollIntoView({ block: "center" }));
+        return await h.click();
+      }
+      throw new Error("no button " + text + " for " + u.name);
+    } catch (e) {
+      if (tries >= 3 || !/detached|no button|not clickable/.test(String(e))) throw e;
+      await sleep(200);
+    }
   }
-  throw new Error("no button " + text + " for " + u.name);
 }
 async function pressInView(u, text) {
   const f = await viewFrame(u);
@@ -116,16 +124,21 @@ async function drag(u, a, b) {
   await sleep(250);
   return { during, total: u.sent.length - n0, msgs: u.sent.slice(n0) };
 }
+/** count real clicks at a view point (Puppeteer's clickCount only labels one click: a double click is two). */
 async function click(u, p, count = 1) {
   const [q] = await onPage(u, p);
-  await u.page.mouse.click(q.x, q.y, { clickCount: count });
+  for (let i = 0; i < count; i++) {
+    await u.page.mouse.click(q.x, q.y, { clickCount: i + 1 });
+    if (i + 1 < count) await sleep(60);
+  }
   await sleep(150);
 }
 
 /** Counts the plugin frames this page sends on its game socket (u.sent: their payloads). */
 async function countFrames(u) {
   u.sent = [];
-  const s = await u.page.createCDPSession();
+  if (u.cdp) return; // one listener per page: a page reloaded keeps its session (a second one would count every frame twice)
+  const s = (u.cdp = await u.page.createCDPSession());
   await s.send("Network.enable");
   s.on("Network.webSocketFrameSent", (e) => {
     try {
@@ -395,7 +408,10 @@ export async function run(ctx) {
     await press(ann, "Seat 1");
     await waitFor(() => hasButton(bo, "Seat 2"), { what: "seat 2 free for Bo" });
     await press(bo, "Seat 2");
-    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" });
+    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e) => {
+      await bo.page.screenshot({ path: "C:/Users/jorsc/AppData/Local/Temp/claude/f--projects-homequarters/4c888347-707b-446e-ae7c-833980e27b8f/scratchpad/bo-seat.png" });
+      throw new Error(e.message + " " + JSON.stringify({ log: (await logOf(bo)).slice(-2), vp: bo.page.viewport() }));
+    });
     const om = (await modal(ann)).buttons.map((b) => b.text);
     check("8: Old Maid's window offers Deal all and Count, not Deal N, a new pile or Draw", om.includes("Deal all") && om.includes("Count") && !om.some((b) => b.startsWith("Deal ") && b.endsWith("each")) && !om.includes("New pile face up"), JSON.stringify(om));
     await press(ann, "Deal all");
@@ -449,9 +465,10 @@ export async function run(ctx) {
       check("10b: on choosing Last Card, every open window's view renews and loads the game's own sheet (shared/cards.png)", renewed.every((ms) => ms >= 0), JSON.stringify(renewed));
       await press(ann, "Seat 1");
       await waitFor(() => hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" });
+      const nSeat = bo.sent.length;
       await press(bo, "Seat 2");
       await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
-        throw new Error(e.message + " " + JSON.stringify({ modal: await modal(bo), drawn: await drawn(bo).then((d) => d && { seat: d.seat, sheet: d.sheet }) }));
+        throw new Error(e.message + " " + JSON.stringify({ sent: bo.sent.slice(nSeat), frames: (await bo.page.$$("iframe.plugin-view")).length, log: (await logOf(bo)).slice(-3), seat: (await drawn(bo))?.seat }));
       });
       await press(ann, "Deal");
       await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7, { what: "Last Card dealt" });
@@ -473,12 +490,99 @@ export async function run(ctx) {
       check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
     } else check("10b: Last Card (hq-card-lastcard is not in this tree yet)", false, "not installed");
 
+    // ---- round 2 (R1-R7): a solitaire on the free table, Ann alone, through the real controls; Bo watches
+    await press(ann, "Reset");
+    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table"), { timeout: 8000, what: "the choice for the solitaire" });
+    await press(ann, "Free table");
+    await waitFor(() => hasButton(ann, "Seat 1"), { what: "the solitaire's seats" });
+    await press(ann, "Seat 1");
+    await waitFor(async () => (await drawn(ann))?.seat === 0, { what: "Ann seated alone" });
+    const box = await read(ann, (sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), W: innerWidth, H: innerHeight }; }, MODAL);
+    check("R1: with a game, the Cards window fills the screen less its margin", Math.abs(box.W - 24 - box.w) <= 2 && Math.abs(box.H - 24 - box.h) <= 2, JSON.stringify(box));
+    const sc = (await drawn(ann)).scale;
+    check("R2: at 1280x720 the table is drawn at 1.75x or more", sc >= 1.75, String(sc));
+    // R3: snapping off and on again, for everybody
+    await press(ann, "Snapping: on");
+    const snapOff = await within(async () => (await modal(bo))?.texts.includes("Snapping is off.") && (await logOf(bo)).at(-1) === `${ann.name} turned snapping off`, 2000);
+    check("R3: Ann turns snapping off: Bo's window shows it off and the log says so", snapOff >= 0, `${snapOff} ms`);
+    await press(ann, "Snapping: off");
+    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Snapping: on"), { what: "snapping on again" });
+    // R7: seven columns, column k of k + 1 cards: the first near a grid point, each next one dropped on the
+    // previous card's lower half (it cascades CASCADE lower); everything comes from the stock, face down
+    const stockAt = pileAt(FREE.piles[0].at);
+    const colX = (k) => GRID[0] / 2 + 3 * GRID[0] + k * GRID[0]; // grid columns 3..9, clear of the stock
+    const top = GRID[1] / 2;
+    for (let k = 0; k < 7; k++) {
+      for (let i = 0; i <= k; i++) {
+        const target = i === 0 ? feltAt(colX(k) + 3, top + 2) : feltAt(colX(k) + 2, top + (i - 1) * CASCADE + 9);
+        const before = (await looseOf(ann)).length;
+        await drag(ann, stockAt, target);
+        await waitFor(async () => (await looseOf(ann)).length === before + 1, { timeout: 5000, what: `card ${i + 1} of column ${k + 1}` });
+      }
+    }
+    const k1 = (await drawn(ann)).scale;
+    const column = async (x) => (await looseOf(ann)).filter((c) => Math.round(c.x / k1) === cardAt([x, 0]).x).map((c) => Math.round(c.y / k1)).sort((a, b) => a - b);
+    const cols = [];
+    for (let k = 0; k < 7; k++) cols.push(await column(colX(k)));
+    const cascades = cols.every((ys, k) => ys.length === k + 1 && ys.every((y, i) => y === cardAt([0, top + i * CASCADE]).y));
+    check("R3, R7: with snapping, 28 cards dropped by hand make 7 cascades on the grid, each card CASCADE below the last", cascades, JSON.stringify(cols));
+    // the top card of each column turned face up with a double click
+    for (let k = 0; k < 7; k++) await click(ann, feltAt(colX(k), top + k * CASCADE + 6), 2);
+    await waitFor(async () => (await looseOf(ann)).filter((c) => c.up).length === 7, { timeout: 5000, what: "7 cards face up" }).catch(() => {});
+    check("R7: a double click turns the top of each column face up", (await looseOf(ann)).filter((c) => c.up).length === 7);
+    // R4: a run: the 4th card of column 7 and the 3 on it move onto column 1's card
+    // pressed in the 4th card's visible strip (6 above its centre), dropped 2 below the top: its centre lands 8 below column 1's card
+    const dRun = await drag(ann, feltAt(colX(6), top + 3 * CASCADE - 6), feltAt(colX(0) + 1, top + 2));
+    await waitFor(async () => (await logOf(bo)).at(-1) === `${ann.name} moved 4 cards`, { timeout: 3000, what: "the run moved" }).catch(() => {});
+    const col1 = await column(colX(0));
+    check("R4: picking a card in a cascade moves it and the cards on it: column 1 gets 4 more, in cascade, in one message", col1.length === 5 && col1.every((y, i) => y === cardAt([0, top + i * CASCADE]).y) && dRun.total === 1 && dRun.msgs[0].t === "moveCards", JSON.stringify({ col1, msgs: dRun.msgs }));
+    // R4: column 2 moved whole by its handle (just above its bottom card) to an empty grid point
+    // the card follows the hand: dropping the handle 17 above a grid point puts the bottom card on it
+    const dHandle = await drag(ann, feltAt(colX(1), top - CARD_H / 2 - 3), feltAt(colX(1) + 2, top + 4 * GRID[1] - CARD_H / 2 - 2));
+    await waitFor(async () => (await logOf(bo)).at(-1) === `${ann.name} moved 2 cards`, { timeout: 3000, what: "the column moved by its handle" }).catch(() => {});
+    const moved2 = await column(colX(1));
+    check("R4: dragging a cascade's handle moves the whole column to the grid point it is dropped on", JSON.stringify(moved2) === JSON.stringify([cardAt([0, top + 4 * GRID[1]]).y, cardAt([0, top + 4 * GRID[1] + CASCADE]).y]), JSON.stringify({ moved2, d: dHandle.msgs.map((m) => m.t) }));
+    // a foundation: a card from the stock on a grid point, then the top of column 3 dropped on its upper half lands exactly on it
+    const fx = GRID[0] / 2 + 11 * GRID[0], fy = top + 4 * GRID[1];
+    await drag(ann, stockAt, feltAt(fx, fy));
+    await waitFor(async () => (await looseOf(ann)).length === 29, { timeout: 3000, what: "a foundation card" }).catch(() => {});
+    await drag(ann, feltAt(colX(2), top + 2 * CASCADE + 6), feltAt(fx + 2, fy - 7)); // pressed 6 below its centre: lands 1 above the foundation's centre
+    await sleep(600);
+    const onFound = await column(fx);
+    check("R3: a card dropped on another's upper half lands exactly on it (a foundation)", onFound.length === 2 && onFound[0] === onFound[1], JSON.stringify(onFound));
+    // R5: a pile made, moved by its handle, then removed: its card goes back to the stock
+    await type(ann, "New pile", "Waste");
+    await waitFor(() => hasButton(ann, "Face up"), { what: "New pile enabled" });
+    await press(ann, "Face up");
+    await waitFor(async () => (await logOf(bo)).includes(`${ann.name} created the pile Waste`), { what: "Waste created" });
+    const wasteAt = [GRID[0] / 2, GRID[1] / 2]; // the first free place along the top of the felt
+    await drag(ann, stockAt, pileAt(wasteAt));
+    const wasteTo = [GRID[0] / 2 + 12 * GRID[0], GRID[1] / 2 + 5 * GRID[1]];
+    await drag(ann, feltAt(wasteAt[0], wasteAt[1] - CARD_H / 2 - 3), feltAt(wasteTo[0], wasteTo[1] - CARD_H / 2 - 3));
+    const pileMoved = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} moved the pile Waste`, 3000);
+    check("R5: a pile moves by its handle, for everybody", pileMoved >= 0, `${pileMoved} ms`);
+    await click(ann, pileAt(wasteTo));
+    await pressInView(ann, "Remove the pile Waste");
+    const removed = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} removed the pile Waste`, 3000);
+    check("R5: a pile with a card in it is removed, its card back to the stock", removed >= 0, `${removed} ms`);
+    // R6: the stock's top set aside: out of the game through Gather all
+    await click(ann, stockAt);
+    await pressInView(ann, "Set the top aside");
+    await waitFor(async () => / aside$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "a card set aside" }).catch(() => {});
+    await press(ann, "Gather all");
+    await waitFor(async () => (await logOf(bo)).at(-1) === `${ann.name} gathered all the cards`, { what: "gathered" });
+    await press(ann, "Count");
+    const outCount = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "the count" }).catch(() => "");
+    check("R6: a card set aside stays out through Gather all (Count: Stock 53 and 1 set aside)", /Stock 53/.test(outCount) && /1 set aside/.test(outCount), outCount);
+
     const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     for (const u of users) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
     // leave the table as new for later scenarios that put a deck on the same tile
     await press(ann, "Reset").catch(() => {});
     await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table"), { timeout: 5000, what: "the table reset" }).catch(() => {});
   } catch (e) {
+    // what each page showed when it failed (HQ_FAIL_SHOTS: a folder)
+    if (process.env.HQ_FAIL_SHOTS) for (const u of users) await u.page.screenshot({ path: `${process.env.HQ_FAIL_SHOTS}/${u.name}.png` }).catch((x) => console.log("no shot of " + u.name + ": " + x));
     check("scenario completed", false, String((e && e.stack) || e));
   } finally {
     for (const name of ["hq-card-lastcard", "hq-card-pouilleux", PLUGIN]) await setPlugin(ctx, name, false).catch(() => {});

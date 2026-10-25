@@ -635,3 +635,31 @@ func TestCardsRoundTwo(t *testing.T) {
 		t.Fatalf("%d plugin errors", n)
 	}
 }
+
+// Last Card turned off and on while its table is open: the open window gets its table back, available.
+func TestCardsSplitGameOffAndOn(t *testing.T) {
+	h, sink, errs := cardsHost(t, newMemKV(), []string{cards, "hq-card-lastcard"}, alice)
+	const x, y = 5, 9
+	eventually(t, "Last Card listed", func() bool {
+		h.Use(alice, cards, "deck", x, y)
+		d := lastOf(sink, alice.ID, "games", x, y)
+		return d != nil && len(d["list"].([]any)) == 2
+	})
+	cardSend(h, alice, `{"t":"choose","x":%d,"y":%d,"game":"hq-card-lastcard"}`, x, y)
+	waitTable(t, sink, alice.ID, x, y, "Last Card chosen", func(tb, s map[string]any) bool { return tb["game"] == "hq-card-lastcard" && s["unavailable"] == false })
+	h.Stop("hq-card-lastcard")
+	waitTable(t, sink, alice.ID, x, y, "unavailable", func(_, s map[string]any) bool { return s["unavailable"] == true })
+	cardSend(h, alice, `{"t":"close","x":%d,"y":%d}`, x, y)
+	h.Use(alice, cards, "deck", x, y) // the window opened again while the game is off
+	if err := h.Start("hq-card-lastcard"); err != nil {
+		t.Fatal(err)
+	}
+	slowly(t, 5*time.Second, "available again in the open window", func() bool {
+		_, s := tableOf(sink, alice.ID, x, y)
+		g := lastOf(sink, alice.ID, "game", x, y)
+		return s != nil && s["unavailable"] == false && g != nil
+	})
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("%d plugin errors", n)
+	}
+}

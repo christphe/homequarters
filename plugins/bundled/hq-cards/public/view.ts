@@ -75,10 +75,12 @@ style.textContent = `
   button:disabled { opacity: .55; cursor: default; }
   button:focus-visible, input:focus-visible { outline: 3px solid #3b7dd8; outline-offset: 1px; }
   /* the panel sits on the window's light background: dark text there; the log keeps its dark box */
-  .panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: hidden; color: #1a1526; }
+  .panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; color: #1a1526; }
   .panel .bar { justify-content: flex-start; }
+  .panel > * { flex-shrink: 0; } /* in a column that scrolls, nothing is squeezed under another */
   main.narrow .panel { margin-top: 10px; overflow: visible; }
-  .controls { display: grid; gap: 6px; align-content: start; overflow: auto; flex: 1 1 auto; min-height: 0; }
+  /* the whole panel scrolls: its controls never shrink to nothing on a short screen */
+  .controls { display: grid; gap: 6px; align-content: start; flex: none; }
   .controls h2 { margin: 0; font-size: 15px; }
   .controls p { margin: 0; }
   .controls .muted { color: #5a5470; }
@@ -87,7 +89,7 @@ style.textContent = `
   .field { display: inline-flex; gap: 6px; align-items: center; }
   .field input { box-sizing: border-box; width: 9em; padding: 3px 6px; border-radius: 4px; border: 1px solid #1a1526; font: inherit; }
   .field input[type="number"] { width: 4.5em; }
-  .log { box-sizing: border-box; flex: 0 1 30%; min-height: 80px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; color: ${C.text}; border-radius: 4px; }
+  .log { box-sizing: border-box; flex: none; max-height: max(80px, 30vh); min-height: 60px; overflow: auto; margin: 0; padding: 4px 8px 4px 28px; background: #2b1f1b; color: ${C.text}; border-radius: 4px; }
   main.narrow .log { max-height: 160px; }
   .log li { margin: 1px 0; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -748,6 +750,7 @@ canvas.addEventListener("pointerup", (e) => {
   if (!held || held.by !== "drag") return;
   if (!held.moved) {
     held = null;
+    clicked(p);
     return draw(); // a click: the card stays selected
   }
   held.x = p.x;
@@ -761,13 +764,18 @@ canvas.addEventListener("pointercancel", () => {
   draw();
 });
 
-canvas.addEventListener("dblclick", (e) => {
-  if (!st || mySeat === null || !allowed("place")) return;
-  const p = toView(e);
+// a second click on the same card within 400 ms turns it over (detected here: a canvas that captures the
+// pointer on every press does not always get the browser's dblclick)
+let lastClick: { x: number; y: number; at: number } | null = null;
+function clicked(p: { x: number; y: number }): void {
+  const now = performance.now();
+  const second = lastClick && now - lastClick.at < 400 && Math.hypot(p.x - lastClick.x, p.y - lastClick.y) < 4;
+  lastClick = second ? null : { ...p, at: now };
+  if (!second || !st || mySeat === null || !allowed("place")) return;
   const s = hit(st.t, mySeat, p.x, p.y, L);
   const src = s?.k === "loose" || s?.k === "pile" ? srcOf(s) : null;
   if (src) send({ t: "flip", from: src });
-});
+}
 
 // ---- keyboard
 

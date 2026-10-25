@@ -85,6 +85,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
       kids.push(text(taken.length ? `Seats: ${taken.join(" · ")}${free ? ` · ${freeText}` : ""}` : `No seat taken yet · ${freeText}`, "muted"));
       if (mine === null) {
         kids.push(text(t.seats.every((x) => x) ? "Every seat is taken: you watch the game." : "Take a seat to play; anybody else with the window open watches.", "muted"));
+        kids.push(text(t.snap ? "Snapping is on." : "Snapping is off.", "muted"));
       } else {
         const stock = t.piles[0];
         const acts: HTMLElement[] = [];
