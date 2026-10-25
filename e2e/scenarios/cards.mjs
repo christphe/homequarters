@@ -500,8 +500,9 @@ export async function run(ctx) {
     await waitFor(async () => (await drawn(ann))?.seat === 0, { what: "Ann seated alone" });
     const box = await read(ann, (sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), W: innerWidth, H: innerHeight }; }, MODAL);
     check("R1: with a game, the Cards window fills the screen less its margin", Math.abs(box.W - 24 - box.w) <= 2 && Math.abs(box.H - 24 - box.h) <= 2, JSON.stringify(box));
-    const sc = (await drawn(ann)).scale;
-    check("R2: at 1280x720 the table is drawn at 1.75x or more", sc >= 1.75, String(sc));
+    // 1.75x and more at 1280 x 720; at the small size (800 x 450, E2E_VIEWPORT=small) the whole table still shows, under 1x
+    const sc = (await drawn(ann)).scale, wide = ann.page.viewport().width >= 1280;
+    check(wide ? "R2: at 1280x720 the table is drawn at 1.75x or more" : "R2: at 800x450 the whole table is drawn (0.75x or more)", sc >= (wide ? 1.75 : 0.75), String(sc));
     // R3: snapping off and on again, for everybody
     await press(ann, "Snapping: on");
     const snapOff = await within(async () => (await modal(bo))?.texts.includes("Snapping is off.") && (await logOf(bo)).at(-1) === `${ann.name} turned snapping off`, 2000);
