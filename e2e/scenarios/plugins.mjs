@@ -167,9 +167,12 @@ export async function run(ctx) {
     // and the pets run after them on every page: smoothly, every frame, with their walk animation (they
     // used to sit still, then hop after an owner moved only at the server's 15 Hz). A browser drawing
     // under 15 fps (CI's software renderer) sees a server move on nearly every frame even in hops, so
-    // under 20 fps the owner's pace is judged too: a smooth run covers ground in step with the time
-    // between frames (above it, frame jitter on a busy runner moves the pace more than hops would, and
-    // hops already show as still frames).
+    // there the owner's pace is judged too: a smooth run covers ground in step with the time between
+    // frames. Above it, hops show as still frames: at f fps, 15 Hz moves leave 1 - 15/f of the frames
+    // still, and the still bound (10 %) rejects that from 16.7 fps; the pace is judged only while hops
+    // would leave under 15 % still (under 17.6 fps), since frame jitter on a busy runner moves the pace
+    // more than hops would at higher rates (CI has measured 9 of 52 frames off pace at 49 fps, and
+    // 5 of 21 just under 20 fps, with no still frame).
     const runAfter = (u) => read(u, ({ plugin, owner, ms }) => new Promise((resolve) => {
       const last = new Map();
       let max = 0, frames = 0, ownerStill = 0, petStill = 0, since = 0, prev = 0, span = 0;
@@ -211,7 +214,7 @@ export async function run(ctx) {
     const arrived = await read(rem, () => { const e = window.__hq.view.ents.get(window.__hq.view.meId); return [e.x, e.y]; });
     check("a double-click on the map runs the owner there", Math.hypot(arrived[0] - (4 * 16 + 8), arrived[1] - (27 * 16 + 8)) < 12, JSON.stringify(arrived));
     const say = (r) => `${r.ownerStill} still owner frames, ${r.uneven} off its pace, ${r.petStill} still pet frames of ${r.frames} (${r.fps.toFixed(0)} fps over ${(r.span / 1000).toFixed(1)} s), largest pet step ${r.max.toFixed(1)} px`;
-    check("on a walk-to the owner's own avatar runs smoothly, moving every frame (not in 15 Hz hops)", jr.frames >= 8 && jr.span >= 600 && jr.ownerStill <= jr.frames * 0.1 && (jr.fps >= 20 || jr.uneven <= jr.frames * 0.2), say(jr));
+    check("on a walk-to the owner's own avatar runs smoothly, moving every frame (not in 15 Hz hops)", jr.frames >= 8 && jr.span >= 600 && jr.ownerStill <= jr.frames * 0.1 && (1 - 15 / jr.fps >= 0.15 || jr.uneven <= jr.frames * 0.2), say(jr));
     check("its pets run after it every frame with their walk animation, on the owner's page and on others, never jumping",
       jr.frames >= 8 && jm.frames >= 8 && jr.span >= 600 && jm.span >= 600 && jr.petStill <= jr.frames * 0.05 && jm.petStill <= jm.frames * 0.05 && jr.max < 24 && jm.max < 24, `owner's page: ${say(jr)}; other page: ${say(jm)}`);
 
