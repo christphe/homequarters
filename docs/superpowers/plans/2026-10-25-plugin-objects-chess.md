@@ -224,6 +224,17 @@ Spec §3b. Runs after Task 8 (same SDK files).
 - [ ] **Step 4: Run** `scripts/gauntlet.sh chess a11y plugins` → `GATES GREEN`.
 - [ ] **Step 5: Commit** `git commit -m "Browser checks for the chess plugin"`
 
+### Task 9b: No Spectate button *(user, 2026-10-25)*
+
+Everybody with the window open sees the board, so Spectate does nothing useful. Runs after Task 10's whole-suite run.
+
+**Files:**
+- Modify: `plugins/bundled/hq-chess/public/client.ts` (the seat row has White and Black only; a member without a seat simply watches), `e2e/scenarios/chess.mjs` and `e2e/scenarios/capture-chess.mjs` (no Spectate clicks; the watcher's checks stay: cannot pick pieces up, Reset rules), docs that still mention Spectate (`docs/plugins.md`, `docs/plugin-api.md` if any)
+
+- [ ] **Step 1:** `grep -rni spectate plugins/bundled/hq-chess e2e docs` lists every use; remove the button and the clicks, keep the watcher checks.
+- [ ] **Step 2: Run** `cd web && pnpm exec tsc -p ../plugins/bundled/hq-chess/public && cd .. && CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe" HQ_TEST_PORT=18180 bash scripts/gauntlet.sh chess a11y` → `GATES GREEN`.
+- [ ] **Step 3: Commit** `git commit -m "hq-chess: no Spectate button; anybody with the window open watches"`
+
 ### Task 10: Decision record, status, changelog
 
 **Files:**
