@@ -3,7 +3,7 @@ import VIEW_SDK from "./viewSdk.js?raw";
 import { parseBatch, viewMessage, ViewRate, LIMITS, type Cmd, type UINode } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 import { objectChanges, type PlacedObject } from "../game/pluginObjects";
-import { frameHead } from "./frameDoc";
+import { frameHead, framePolicy } from "./frameDoc";
 
 // One running plugin on this page. Its JavaScript runs in a hidden iframe with sandbox="allow-scripts"
 // only: an opaque origin, so it cannot read this page, its cookies, storage or media. It talks to the
@@ -49,6 +49,8 @@ export interface HostDeps {
   /** The plugin's slots or modal changed. */
   uiChanged(plugin: string): void;
   stopped(plugin: string, reason: string): void;
+  /** The plugins running in the office now, browser code or not (a view may draw their shared/ images). */
+  running?(): string[];
 }
 
 const HANDSHAKE_MS = 10_000;
@@ -85,21 +87,9 @@ export class PluginHost {
 
   constructor(readonly name: string, readonly title: string, private client: string, private hosts: string[], private deps: HostDeps, private views: string[] = []) {}
 
-  /**
-   * What the iframe may load: its own folder (the browser code, its assets) and the hosts its manifest
-   * declares (externalHosts, over https), nothing else. Administrators see those hosts before turning
-   * the plugin on; without this policy a plugin could reach any server with every viewer's address.
-   */
-  private policy(): string {
-    const own = new URL(`/plugins/${this.name}/`, location.href).href;
-    const out = this.hosts.filter((h) => /^[a-z0-9.-]+$/.test(h)).map((h) => "https://" + h);
-    return [
-      "default-src 'none'",
-      `script-src 'unsafe-inline' ${own}`,
-      `connect-src ${[own, ...out].join(" ")}`,
-      `img-src blob: data: ${[own, ...out].join(" ")}`,
-      "style-src 'unsafe-inline'",
-    ].join("; ");
+  /** What the iframe may load (frameDoc.ts's framePolicy); shared: the plugins whose shared/ images a view may draw. */
+  private policy(shared: string[] = []): string {
+    return framePolicy(location.href, this.name, this.hosts, shared);
   }
 
   /** URL of the plugin's public/ folder. */
@@ -278,7 +268,7 @@ export class PluginHost {
     this.view = conn;
     const src = new URL(`/plugins/${this.name}/views/${view}.js`, location.href).href.replace(/"/g, "%22");
     // the scripts run in <body>, so a view can add to document.body right away
-    frame.srcdoc = `${frameHead(frame.title || view, this.policy())}<style>html,body{margin:0}</style><body><script>${VIEW_SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
+    frame.srcdoc = `${frameHead(frame.title || view, this.policy(this.deps.running?.() ?? []))}<style>html,body{margin:0}</style><body><script>${VIEW_SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
     return () => {
       if (this.view === conn) this.detachView();
     };
