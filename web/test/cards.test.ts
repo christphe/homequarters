@@ -636,3 +636,36 @@ test("every window label fits 40 characters with the longest names", () => {
   assert.equal(labels.offer("Bo"), "Offer my hand to Bo");
   assert.ok(labels.withdraw(name).endsWith("…"));
 });
+
+// ---- the narrow layout (phones): no side columns, the other seats in rows on top, my hand drawn larger
+import { WIDE, NARROW, layoutFor } from "../../plugins/bundled/hq-cards/public/layout.ts";
+
+test("layoutFor picks the narrow layout when the wide one would be drawn under 1x", () => {
+  assert.equal(layoutFor(416 + 20), WIDE);
+  assert.equal(layoutFor(800), WIDE);
+  assert.equal(layoutFor(300), NARROW);
+  assert.equal(NARROW.w, FELT_W, "the whole felt, nothing beside it");
+});
+
+test("narrow seatSpots: everybody but me in rows above the felt, inside the view, apart", () => {
+  const spots = seatSpots(8, 3, NARROW);
+  assert.equal(spots.length, 7);
+  for (const s of spots) {
+    assert.ok(s.x - NARROW.seatW / 2 >= 0 && s.x + NARROW.seatW / 2 <= NARROW.w, JSON.stringify(s));
+    assert.ok(s.y + NARROW.seatH / 2 <= NARROW.fy, "above the felt: " + JSON.stringify(s));
+  }
+  for (const a of spots) for (const b of spots) if (a !== b) assert.ok(Math.abs(a.x - b.x) >= NARROW.seatW || Math.abs(a.y - b.y) >= NARROW.seatH, "overlap " + JSON.stringify([a, b]));
+});
+
+test("narrow hand: larger cards, all inside the view, and hit finds them", () => {
+  const h = handSpots(12, NARROW);
+  const w = CARD_W * NARROW.handK;
+  assert.ok(w >= 26, "a hand card is at least 26 view px wide: " + w);
+  for (const p of h) assert.ok(p.x >= 0 && p.x + w <= NARROW.w && p.y + CARD_H * NARROW.handK <= NARROW.h, JSON.stringify(p));
+  const t = free3();
+  deal(t, 0, "p0", 5, FREE);
+  const s = handSpots(5, NARROW);
+  assert.deepEqual(hit(t, 0, s[4].x + w - 2, s[4].y + 2, NARROW), { k: "hand", i: 4 }, "the right edge of the last, larger card");
+  const pile = cardAt(t.piles[0].at, NARROW);
+  assert.deepEqual(hit(t, 0, pile.x + 2, pile.y + 2, NARROW), { k: "pile", id: "p0" });
+});

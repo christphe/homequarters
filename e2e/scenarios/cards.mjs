@@ -7,7 +7,7 @@
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.mjs";
 import { CARD_W, CARD_H } from "../../plugins/bundled/hq-cards/public/art.ts";
-import { FX, FY, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
+import { FX, FY, NARROW, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 import { CODES as OLD_MAID } from "../../plugins/bundled/hq-card-pouilleux/rules.ts";
 
 const PLUGIN = "hq-cards";
@@ -259,6 +259,27 @@ export async function run(ctx) {
     const loose = await looseOf(bo);
     const spots = new Set(loose.map((c) => c.x + "," + c.y));
     check("UX: the button under the table plays the card selected last, and two cards put that way land in two places", left1?.c === before[2].c && spots.size === loose.length, JSON.stringify({ played: left1?.c, selected: before[2].c, loose: loose.map((c) => [c.c, c.x, c.y]) }));
+
+    // ---- UX: on a phone (390x844) the narrow layout: the whole felt, the other seats on top, my hand larger
+    await cy.page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+    // the page lays itself out for touch and closes the window: Cy opens it again, as on a phone
+    await sleep(500);
+    if (!(await cy.page.$(MODAL))) await openWithX(cy);
+    const phone = await waitFor(async () => { const d = await drawn(cy); return d?.layout === "narrow" ? d : null; }, { timeout: 5000, what: "Cy's narrow layout" }).catch(() => null);
+    const cyHand = phone?.cards.filter((c) => c.where === "hand") ?? [];
+    check("UX: on a 390 px phone the table switches to the narrow layout, hand cards at least 24 CSS px wide, text at least 8 px", !!phone && cyHand.length > 0 && cyHand.every((c) => c.w >= 24) && phone.font >= 8, JSON.stringify({ layout: phone?.layout, scale: phone?.scale, font: phone?.font, w: cyHand.map((c) => Math.round(c.w)) }));
+    if (phone) {
+      const hs = handSpots(cyHand.length, NARROW)[0];
+      const from = { x: hs.x + 14, y: hs.y + 20 }, to = { x: NARROW.fx + 250, y: NARROW.fy + 140 };
+      const card = cyHand[0].c;
+      const dPhone = await drag(cy, from, to);
+      const onFelt = await within(async () => (await looseOf(ann)).some((c) => c.c === card), 1500);
+      check("UX: on the phone, a card dragged from Cy's hand lands on the felt for everybody", onFelt >= 0 && dPhone.total === 1, JSON.stringify({ onFelt, d: dPhone }));
+    }
+    await cy.page.setViewport({ width: 1280, height: 720 });
+    await sleep(500);
+    if (!(await cy.page.$(MODAL))) await openWithX(cy);
+    await waitFor(async () => (await drawn(cy))?.layout === "wide", { timeout: 5000, what: "Cy back to the wide layout" }).catch(() => {});
 
     // ---- criterion 5: a spectator cannot move a card
     const di = await joinAs(browser, "Di" + t, { avatar: { sk: 2, hs: 0, hc: 4, sh: 3, pa: 1 } });

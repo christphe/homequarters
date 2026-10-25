@@ -14,7 +14,7 @@
 // and every new line of the log, which is also listed under the canvas.
 import { CARD_H, CARD_W, paintBack, paintCard } from "./art.ts";
 import { cardName, type ClientGame } from "./games.ts";
-import { cardAt, FELT_H, FELT_W, FX, FY, handSpots, hit, SEAT_H, SEAT_W, seatSpots, VIEW_H, VIEW_W, type Spot } from "./layout.ts";
+import { cardAt, FELT_H, FELT_W, handSpots, hit, layoutFor, seatSpots, WIDE, type Layout, type Spot } from "./layout.ts";
 import { sentence, type LogEntry } from "./log.ts";
 import type { Act, TableState, ViewIn } from "./messages.ts";
 import { UP, type Dest, type Src, type Table } from "./table.ts";
@@ -40,6 +40,7 @@ let me = 0;
 let mySeat: number | null = null;
 let selected: Spot | null = null;
 let scale = 2;
+let L: Layout = WIDE; // WIDE, or NARROW on a phone (layout.ts)
 
 // a card picked up: from where, which card, and (while dragging) where the pointer is, in view pixels
 let held: { src: Src; c: number; up: boolean; by: "drag" | "key"; x: number; y: number; moved: boolean } | null = null;
@@ -180,13 +181,13 @@ function freeSpot(t: Table): [number, number] {
 
 /** What a drop at view pixel (x, y) lands on. */
 function dropAt(x: number, y: number): Dest | null {
-  if (mySeat !== null && y >= FY + FELT_H && x >= FX && x < FX + FELT_W) return { k: "hand", seat: mySeat };
-  const s = st && hit(st.t, mySeat, x, y);
+  if (mySeat !== null && y >= L.fy + FELT_H && x >= L.fx && x < L.fx + FELT_W) return { k: "hand", seat: mySeat };
+  const s = st && hit(st.t, mySeat, x, y, L);
   if (!s) return null;
   if (s.k === "pile") return { k: "pile", id: s.id };
   if (s.k === "seat") return { k: "hand", seat: s.seat };
   if (s.k === "hand" && mySeat !== null) return { k: "hand", seat: mySeat };
-  const at: [number, number] = [Math.max(CARD_W / 2, Math.min(FELT_W - CARD_W / 2, Math.round(x - FX))), Math.max(CARD_H / 2, Math.min(FELT_H - CARD_H / 2, Math.round(y - FY)))];
+  const at: [number, number] = [Math.max(CARD_W / 2, Math.min(FELT_W - CARD_W / 2, Math.round(x - L.fx))), Math.max(CARD_H / 2, Math.min(FELT_H - CARD_H / 2, Math.round(y - L.fy)))];
   return { k: "felt", at };
 }
 
@@ -232,8 +233,8 @@ function drop(dest: Dest | null): void {
       // rearranging my hand: the card goes where it was dropped
       const hand = [...st.t.hands[mySeat]];
       const [c] = hand.splice(src.i, 1);
-      const spots = handSpots(hand.length + 1);
-      let at = spots.findIndex((p) => h.x < p.x + CARD_W / 2);
+      const spots = handSpots(hand.length + 1, L);
+      let at = spots.findIndex((p) => h.x < p.x + (CARD_W * L.handK) / 2);
       if (at < 0) at = hand.length;
       hand.splice(at, 0, c);
       if (hand.some((v, i) => v !== st!.t.hands[mySeat!][i])) send({ t: "order", hand });
@@ -253,7 +254,7 @@ function drop(dest: Dest | null): void {
 
 // ---- drawing
 
-interface Drawn { c: number; up: boolean; x: number; y: number; where: "hand" | "loose" | "pile" | "seat" | "look" | "pick" }
+interface Drawn { c: number; up: boolean; x: number; y: number; w?: number; where: "hand" | "loose" | "pile" | "seat" | "look" | "pick" }
 let drawn: Drawn[] = [];
 
 function text(s: string, x: number, y: number, colour = C.text, align: CanvasTextAlign = "center"): void {
@@ -273,24 +274,24 @@ function same(a: Spot | null, b: Spot | null): boolean {
 }
 
 function draw(): void {
-  canvas.width = VIEW_W * scale;
-  canvas.height = VIEW_H * scale;
-  canvas.style.width = VIEW_W * scale + "px";
-  canvas.style.height = VIEW_H * scale + "px";
+  canvas.width = L.w * scale;
+  canvas.height = L.h * scale;
+  canvas.style.width = L.w * scale + "px";
+  canvas.style.height = L.h * scale + "px";
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.imageSmoothingEnabled = false;
-  ctx.font = "7px system-ui, sans-serif";
+  ctx.font = `${L.font}px system-ui, sans-serif`;
   ctx.textBaseline = "middle";
   drawn = [];
   ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, L.w, L.h);
   ctx.fillStyle = C.feltLo;
-  ctx.fillRect(FX - 2, FY - 2, FELT_W + 4, FELT_H + 4);
+  ctx.fillRect(L.fx - 2, L.fy - 2, FELT_W + 4, FELT_H + 4);
   ctx.fillStyle = C.felt;
-  ctx.fillRect(FX, FY, FELT_W, FELT_H);
+  ctx.fillRect(L.fx, L.fy, FELT_W, FELT_H);
   const t = st?.t;
   if (!t || !game) {
-    text(st?.unavailable ? "This game is not available" : "Choose a game in the window", VIEW_W / 2, VIEW_H / 2);
+    text(st?.unavailable ? "This game is not available" : "Choose a game in the window", L.w / 2, L.h / 2);
     return publish();
   }
   const targets = targetList();
@@ -299,7 +300,7 @@ function draw(): void {
 
   // piles: their slot, their top card, their name and count
   for (const p of t.piles) {
-    const { x, y } = cardAt(p.at);
+    const { x, y } = cardAt(p.at, L);
     ctx.setLineDash([2, 2]);
     outline(x, y, CARD_W, CARD_H, C.slot);
     ctx.setLineDash([]);
@@ -322,7 +323,7 @@ function draw(): void {
   for (const l of t.loose) {
     const c = l.c & ~UP;
     if (hide?.k === "loose" && hide.c === c) continue;
-    const { x, y } = cardAt(l.at);
+    const { x, y } = cardAt(l.at, L);
     drawCard(c, !!(l.c & UP), x, y);
     drawn.push({ c, up: !!(l.c & UP), x, y, where: "loose" });
     const s: Spot = { k: "loose", c };
@@ -330,15 +331,16 @@ function draw(): void {
     if (same(cur, s)) outline(x - 1, y - 1, CARD_W + 2, CARD_H + 2, C.cursor);
   }
   // the other seats: name (away when their window is closed), their cards' backs, what they are doing
-  for (const sp of seatSpots(t.seats.length, mySeat)) {
+  for (const sp of seatSpots(t.seats.length, mySeat, L)) {
     const seat = t.seats[sp.seat];
-    const x0 = sp.x - SEAT_W / 2, y0 = sp.y - SEAT_H / 2;
+    const x0 = sp.x - L.seatW / 2, y0 = sp.y - L.seatH / 2;
     const s: Spot = { k: "seat", seat: sp.seat };
     if (!seat) {
       text(sp.side === "top" ? `Seat ${sp.seat + 1}: free` : `${sp.seat + 1}: free`, sp.x, sp.y, C.muted);
     } else {
       const away = !st!.here.includes(seat.id);
-      text(short(seat.name, sp.side === "top" ? 14 : 8) + (away ? " (away)" : ""), sp.x, y0 + 5, away ? C.muted : C.text);
+      const room = L.narrow ? (away ? 7 : 12) : sp.side === "top" ? 14 : 8; // characters that fit the spot
+      text(short(seat.name, room) + (away ? " (away)" : ""), sp.x, y0 + 5, away ? C.muted : C.text);
       const n = t.hands[sp.seat].length;
       // the side columns are narrow: there the count goes under the backs and the tags are short
       const side = sp.side !== "top";
@@ -348,26 +350,27 @@ function draw(): void {
       else text(String(n), sp.x + (shown * 5) / 2 + 8, y0 + 17, C.muted);
       if (t.offer?.from === sp.seat) {
         const tag = t.offer.to === mySeat ? (side ? "offers you" : "offers you a pick") : side ? "offering" : `offers ${short(seatName(t.offer.to), 8)}`;
-        text(tag, sp.x, side ? y0 - 2 : y0 + SEAT_H, C.select);
+        text(tag, sp.x, side ? y0 - 2 : L.narrow ? y0 + 28 : y0 + L.seatH, C.select);
       }
     }
-    if (same(selected, s)) outline(x0, y0, SEAT_W, SEAT_H - 2, C.select);
-    if (same(cur, s)) outline(x0 - 1, y0 - 1, SEAT_W + 2, SEAT_H, C.cursor);
+    if (same(selected, s)) outline(x0, y0, L.seatW, L.seatH - 2, C.select);
+    if (same(cur, s)) outline(x0 - 1, y0 - 1, L.seatW + 2, L.seatH, C.cursor);
   }
   // my hand
   if (mySeat !== null) {
     const hand = t.hands[mySeat];
-    const spots = handSpots(hand.length);
+    const spots = handSpots(hand.length, L);
     hand.forEach((c, i) => {
       if (hide?.k === "hand" && hide.i === i) return;
       const lift = same(selected, { k: "hand", i }) ? 4 : 0;
-      drawCard(c, true, spots[i].x, spots[i].y - lift);
-      drawn.push({ c, up: true, x: spots[i].x, y: spots[i].y - lift, where: "hand" });
-      if (same(cur, { k: "hand", i })) outline(spots[i].x - 1, spots[i].y - lift - 1, CARD_W + 2, CARD_H + 2, C.cursor);
+      const hw = CARD_W * L.handK; // my hand is drawn larger in the narrow layout
+      drawCard(c, true, spots[i].x, spots[i].y - lift, hw);
+      drawn.push({ c, up: true, x: spots[i].x, y: spots[i].y - lift, w: hw, where: "hand" });
+      if (same(cur, { k: "hand", i })) outline(spots[i].x - 1, spots[i].y - lift - 1, hw + 2, CARD_H * L.handK + 2, C.cursor);
     });
-    if (!hand.length) text("Your hand is empty", FX + FELT_W / 2, FY + FELT_H + 22, C.muted);
-    if (t.offer?.from === mySeat) text(`You offer your hand to ${short(seatName(t.offer.to), 10)}`, FX + FELT_W / 2, VIEW_H - 3, C.select);
-  } else text("Watching: take a seat in the window to play", FX + FELT_W / 2, FY + FELT_H + 22, C.muted);
+    if (!hand.length) text("Your hand is empty", L.fx + FELT_W / 2, L.fy + FELT_H + 22, C.muted);
+    if (t.offer?.from === mySeat) text(`You offer your hand to ${short(seatName(t.offer.to), 10)}`, L.fx + FELT_W / 2, L.h - 3, C.select);
+  } else text("Watching: take a seat in the window to play", L.fx + FELT_W / 2, L.fy + FELT_H + 22, C.muted);
   // overlays: looking through a pile, picking from an offered hand
   if (look) drawRow(look.cards.map((c) => ({ c: c & ~UP, up: true })), "look", look.grab);
   else if (picking && t.offer && t.offer.to === mySeat) drawRow(t.hands[t.offer.from].map((c) => ({ c, up: false })), "pick", null);
@@ -380,13 +383,13 @@ function draw(): void {
 /** A row of cards over the felt (a pile looked through, or a hand to pick from), several rows when long. */
 function rowSpots(n: number): { x: number; y: number }[] {
   const per = Math.max(1, Math.floor((FELT_W - 8) / 14));
-  return Array.from({ length: n }, (_, i) => ({ x: FX + 4 + (i % per) * 14, y: FY + 18 + Math.floor(i / per) * (CARD_H + 4) }));
+  return Array.from({ length: n }, (_, i) => ({ x: L.fx + 4 + (i % per) * 14, y: L.fy + 18 + Math.floor(i / per) * (CARD_H + 4) }));
 }
 
 function drawRow(cards: { c: number; up: boolean }[], where: "look" | "pick", grab: number | null): void {
   ctx.fillStyle = C.shade;
-  ctx.fillRect(FX, FY, FELT_W, FELT_H);
-  text(where === "look" ? "Drag to reorder, then Done" : "Pick a card", FX + FELT_W / 2, FY + 8);
+  ctx.fillRect(L.fx, L.fy, FELT_W, FELT_H);
+  text(where === "look" ? "Drag to reorder, then Done" : "Pick a card", L.fx + FELT_W / 2, L.fy + 8);
   const spots = rowSpots(cards.length);
   const targets = cursorShown ? targetList() : [];
   const cur = targets[cursor];
@@ -407,8 +410,10 @@ function rowIndexAt(n: number, x: number, y: number): number | null {
 /** For tests (e2e/scenarios/cards.mjs): what the canvas shows, in canvas pixels, and the log as written. */
 function publish(): void {
   (window as unknown as { __drawn: unknown }).__drawn = {
-    cards: drawn.map((d) => ({ ...d, x: d.x * scale, y: d.y * scale })),
+    cards: drawn.map((d) => ({ ...d, x: d.x * scale, y: d.y * scale, w: (d.w ?? CARD_W) * scale })),
     scale,
+    layout: L.narrow ? "narrow" : "wide",
+    font: L.font * scale, // CSS px of the canvas text
     seat: mySeat,
     sheet: !game || "standard" in game.deck ? null : sheet ? "loaded" : "loading",
     log: [...logList.children].map((li) => li.textContent),
@@ -524,7 +529,7 @@ function moveInLook(from: number, to: number): void {
 
 function toView(e: PointerEvent | MouseEvent): { x: number; y: number } {
   const r = canvas.getBoundingClientRect();
-  return { x: ((e.clientX - r.left) / r.width) * VIEW_W, y: ((e.clientY - r.top) / r.height) * VIEW_H };
+  return { x: ((e.clientX - r.left) / r.width) * L.w, y: ((e.clientY - r.top) / r.height) * L.h };
 }
 
 let lookDrag: { from: number; x: number; y: number } | null = null;
@@ -551,7 +556,7 @@ canvas.addEventListener("pointerdown", (e) => {
     }
     return draw();
   }
-  const s = hit(st.t, mySeat, p.x, p.y);
+  const s = hit(st.t, mySeat, p.x, p.y, L);
   selected = s && s.k !== "felt" ? s : null;
   if (s?.k === "seat" && st.t.offer?.from === s.seat && st.t.offer.to === mySeat) picking = true;
   const src = srcOf(s);
@@ -605,7 +610,7 @@ canvas.addEventListener("pointercancel", () => {
 canvas.addEventListener("dblclick", (e) => {
   if (!st || mySeat === null || !allowed("place")) return;
   const p = toView(e);
-  const s = hit(st.t, mySeat, p.x, p.y);
+  const s = hit(st.t, mySeat, p.x, p.y, L);
   const src = s?.k === "loose" || s?.k === "pile" ? srcOf(s) : null;
   if (src) send({ t: "flip", from: src });
 });
@@ -622,7 +627,7 @@ function targetList(): Spot[] {
   if (mySeat !== null) t.hands[mySeat].forEach((_, i) => out.push({ k: "hand", i }));
   for (const l of t.loose) out.push({ k: "loose", c: l.c & ~UP });
   for (const p of t.piles) out.push({ k: "pile", id: p.id });
-  for (const s of seatSpots(t.seats.length, mySeat)) out.push({ k: "seat", seat: s.seat });
+  for (const s of seatSpots(t.seats.length, mySeat, L)) out.push({ k: "seat", seat: s.seat });
   return out;
 }
 
@@ -735,11 +740,13 @@ canvas.addEventListener("keydown", (e) => {
 function fit(): void {
   // the table and the buttons under it fit the view: its width, and its height less the bar (the log scrolls below)
   const w = window.innerWidth - 12;
-  const k = Math.min(w / VIEW_W, (window.innerHeight - 48) / VIEW_H);
+  const layout = layoutFor(w); // a phone: the narrow layout, rather than the wide one drawn too small
+  const k = Math.min(w / layout.w, (window.innerHeight - 48) / layout.h);
   // whole and half steps: at 1x a 20 x 28 card is too small to read in a large window (about 700 px wide)
   const next = k >= 1 ? Math.max(1, Math.min(4, Math.floor(k * 2) / 2)) : Math.max(0.5, k);
-  if (next !== scale) {
+  if (next !== scale || layout !== L) {
     scale = next;
+    L = layout;
     draw();
   }
 }

@@ -1,71 +1,106 @@
-// Where things are in hq-cards's table view, in view pixels (the view scales the whole by a whole number):
-// the felt in the middle, the other seats around it (clockwise from my left: the left side going up, the
-// top going right, the right side going down), my hand fanned in a strip under it. Positions on the felt
-// are a card's centre, in felt units, the same for everybody. Pure: the view and the tests share it.
+// Where things are in hq-cards's table view, in view pixels (the view scales the whole to fit its window).
+// Two layouts. WIDE: the felt in the middle, the other seats around it (clockwise from my left: the left
+// side going up, the top going right, the right side going down), my hand fanned in a strip under it.
+// NARROW, for phones, where WIDE would be drawn under 1x: no side columns, the other seats in rows above
+// the felt, and my hand drawn larger (it is what a finger touches most). The felt itself is the same in
+// both: positions on it are a card's centre, in felt units, the same for everybody. Pure: the view and the
+// tests share it.
 import { CARD_H, CARD_W } from "./art.ts";
 import { FELT_H, FELT_W } from "./games.ts";
 import { UP, type Table } from "./table.ts";
 
 export { FELT_H, FELT_W };
-export const SIDE = 48; // the width of the left and right columns of seats (416 px in all: 1.5x fits a large window)
-export const TOP = 36; // the height of the band of seats above the felt
-export const HAND = 44; // the height of my hand's strip under the felt
-export const FX = SIDE;
-export const FY = TOP;
-export const VIEW_W = SIDE + FELT_W + SIDE;
-export const VIEW_H = TOP + FELT_H + HAND;
-export const SEAT_W = 46;
-export const SEAT_H = 32;
+
+export interface Layout {
+  narrow: boolean;
+  fx: number; // the felt's top-left corner
+  fy: number;
+  w: number; // the whole view
+  h: number;
+  seatW: number; // a seat's spot (name, card backs, count)
+  seatH: number;
+  hand: number; // the height of my hand's strip under the felt
+  handK: number; // my hand's cards drawn this much larger
+  font: number; // canvas text, in view pixels
+}
+
+const SIDE = 48; // WIDE: the width of the left and right columns of seats (416 px in all: 1.5x fits a large window)
+const TOP = 36; // WIDE: the band of seats above the felt
+export const WIDE: Layout = { narrow: false, fx: SIDE, fy: TOP, w: SIDE + FELT_W + SIDE, h: TOP + FELT_H + 44, seatW: 46, seatH: 32, hand: 44, handK: 1, font: 7 };
+const ROWS_TOP = 64; // NARROW: two rows of seats above the felt
+const NARROW_HAND = 58;
+export const NARROW: Layout = { narrow: true, fx: 0, fy: ROWS_TOP, w: FELT_W, h: ROWS_TOP + FELT_H + NARROW_HAND, seatW: 78, seatH: 30, hand: NARROW_HAND, handK: 1.4, font: 9 };
+const PER_ROW = 4; // NARROW: seats in a row
+
+/** The layout for a view this wide (CSS px): NARROW when WIDE would not fit at 1x. */
+export function layoutFor(width: number): Layout {
+  return width >= WIDE.w ? WIDE : NARROW;
+}
+
+// WIDE's values, for code written against one layout (the browser checks)
+export const FX = WIDE.fx;
+export const FY = WIDE.fy;
+export const VIEW_W = WIDE.w;
+export const VIEW_H = WIDE.h;
+export const SEAT_W = WIDE.seatW;
+export const SEAT_H = WIDE.seatH;
 
 export interface SeatSpot { seat: number; x: number; y: number; side: "top" | "left" | "right" }
 export type Spot = { k: "hand"; i: number } | { k: "loose"; c: number } | { k: "pile"; id: string } | { k: "seat"; seat: number } | { k: "felt"; at: [number, number] };
 
 /** The other seats (all of them but mine), each at the centre of its spot. */
-export function seatSpots(seats: number, me: number | null): SeatSpot[] {
+export function seatSpots(seats: number, me: number | null, L: Layout = WIDE): SeatSpot[] {
   const others: number[] = [];
   for (let k = 1; k <= seats; k++) {
     const s = me === null ? k - 1 : (me + k) % seats;
     if (s !== me) others.push(s);
   }
   const n = others.length;
-  const L = n >= 3 ? Math.floor(n / 3) : 0, R = L, T = n - L - R;
+  if (L.narrow) {
+    return others.map((seat, i) => {
+      const row = Math.floor(i / PER_ROW), inRow = Math.min(PER_ROW, n - row * PER_ROW), j = i % PER_ROW;
+      return { seat, side: "top", x: ((j + 0.5) * L.w) / inRow, y: L.seatH / 2 + 2 + row * (L.seatH + 2) };
+    });
+  }
+  const left = n >= 3 ? Math.floor(n / 3) : 0, right = left, top = n - left - right;
   return others.map((seat, i) => {
-    if (i < L) return { seat, side: "left", x: SIDE / 2, y: FY + FELT_H - ((i + 0.5) * FELT_H) / L };
-    if (i < L + T) return { seat, side: "top", x: FX + ((i - L + 0.5) * FELT_W) / T, y: TOP / 2 };
-    return { seat, side: "right", x: FX + FELT_W + SIDE / 2, y: FY + ((i - L - T + 0.5) * FELT_H) / R };
+    if (i < left) return { seat, side: "left", x: L.fx / 2, y: L.fy + FELT_H - ((i + 0.5) * FELT_H) / left };
+    if (i < left + top) return { seat, side: "top", x: L.fx + ((i - left + 0.5) * FELT_W) / top, y: L.fy / 2 };
+    return { seat, side: "right", x: L.fx + FELT_W + (L.w - L.fx - FELT_W) / 2, y: L.fy + ((i - left - top + 0.5) * FELT_H) / right };
   });
 }
 
 /** The top-left corner of a card whose centre is at felt position at. */
-export function cardAt(at: [number, number]): { x: number; y: number } {
-  return { x: FX + at[0] - CARD_W / 2, y: FY + at[1] - CARD_H / 2 };
+export function cardAt(at: [number, number], L: Layout = WIDE): { x: number; y: number } {
+  return { x: L.fx + at[0] - CARD_W / 2, y: L.fy + at[1] - CARD_H / 2 };
 }
 
-/** The top-left corners of the n cards of my hand, fanned and centred in the strip. */
-export function handSpots(n: number): { x: number; y: number }[] {
+/** The top-left corners of the n cards of my hand, fanned and centred in the strip (cards L.handK larger). */
+export function handSpots(n: number, L: Layout = WIDE): { x: number; y: number }[] {
   if (!n) return [];
-  const step = n > 1 ? Math.min(CARD_W + 2, Math.floor((FELT_W - CARD_W) / (n - 1))) : 0;
-  const x0 = FX + Math.floor((FELT_W - (step * (n - 1) + CARD_W)) / 2);
-  return Array.from({ length: n }, (_, i) => ({ x: x0 + i * step, y: FY + FELT_H + Math.floor((HAND - CARD_H) / 2) }));
+  const w = CARD_W * L.handK, h = CARD_H * L.handK;
+  const step = n > 1 ? Math.min(w + 2, Math.floor((FELT_W - w) / (n - 1))) : 0;
+  const x0 = L.fx + Math.floor((FELT_W - (step * (n - 1) + w)) / 2);
+  return Array.from({ length: n }, (_, i) => ({ x: x0 + i * step, y: L.fy + FELT_H + Math.floor((L.hand - h) / 2) }));
 }
 
 const inside = (x: number, y: number, x0: number, y0: number, w: number, h: number) => x >= x0 && x < x0 + w && y >= y0 && y < y0 + h;
 
 /** The topmost thing under view pixel (x, y): a card of my hand, a loose card, a pile, a seat, or the felt. me: my seat. */
-export function hit(t: Table, me: number | null, x: number, y: number): Spot | null {
+export function hit(t: Table, me: number | null, x: number, y: number, L: Layout = WIDE): Spot | null {
   if (me !== null) {
-    const h = handSpots(t.hands[me]?.length ?? 0);
-    for (let i = h.length - 1; i >= 0; i--) if (inside(x, y, h[i].x, h[i].y, CARD_W, CARD_H)) return { k: "hand", i };
+    const h = handSpots(t.hands[me]?.length ?? 0, L);
+    for (let i = h.length - 1; i >= 0; i--) if (inside(x, y, h[i].x, h[i].y, CARD_W * L.handK, CARD_H * L.handK)) return { k: "hand", i };
   }
   for (let i = t.loose.length - 1; i >= 0; i--) {
-    const c = cardAt(t.loose[i].at);
+    const c = cardAt(t.loose[i].at, L);
     if (inside(x, y, c.x, c.y, CARD_W, CARD_H)) return { k: "loose", c: t.loose[i].c & ~UP };
   }
   for (let i = t.piles.length - 1; i >= 0; i--) {
-    const c = cardAt(t.piles[i].at);
+    const c = cardAt(t.piles[i].at, L);
     if (inside(x, y, c.x, c.y, CARD_W, CARD_H)) return { k: "pile", id: t.piles[i].id };
   }
-  for (const s of seatSpots(t.seats.length, me)) if (inside(x, y, s.x - SEAT_W / 2, s.y - SEAT_H / 2, SEAT_W, SEAT_H)) return { k: "seat", seat: s.seat };
-  if (inside(x, y, FX, FY, FELT_W + 1, FELT_H + 1)) return { k: "felt", at: [Math.round(x - FX), Math.round(y - FY)] };
+  for (const s of seatSpots(t.seats.length, me, L)) if (inside(x, y, s.x - L.seatW / 2, s.y - L.seatH / 2, L.seatW, L.seatH)) return { k: "seat", seat: s.seat };
+  if (inside(x, y, L.fx, L.fy, FELT_W + 1, FELT_H + 1)) return { k: "felt", at: [Math.round(x - L.fx), Math.round(y - L.fy)] };
   return null;
 }

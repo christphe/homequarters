@@ -5,6 +5,7 @@
 //   free.png          the Cards window: a free table dealt to three, a card on the felt, a pile made
 //   look.png          looking through the Stock (its cards in a row)
 //   free-view.png     the table view alone, as a player sees it while playing
+//   phone*.png        the same table on a 390 x 844 phone (the narrow layout), the view and the whole page
 //   pick.png          Bo picking from the hand Ann offers him (the view)
 //   oldmaid.png       an Old Maid table after the deal
 //   lastcard.png      a Last Card table after the deal and a card played
@@ -84,6 +85,17 @@ export async function run(ctx) {
     await sleep(500);
     await window(ann, "free");
     await view(ann, "free-view");
+    // the same table on a phone (390 x 844): the narrow layout
+    await adm.page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+    await sleep(600);
+    if (!(await adm.page.$(MODAL))) await openWithX(adm);
+    await waitFor(async () => (await drawn(adm))?.layout === "narrow", { timeout: 5000, what: "the narrow layout" });
+    await sleep(400);
+    await view(adm, "phone");
+    await adm.page.screenshot({ path: path.join(dir, "phone-page.png") });
+    await adm.page.setViewport({ width: 1280, height: 720 });
+    await sleep(600);
+    if (!(await adm.page.$(MODAL))) await openWithX(adm);
     // looking through the Stock
     await viewClick(ann, pileAt([160, 90]));
     await viewButton(ann, "Look through Stock");
