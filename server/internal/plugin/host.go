@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -363,6 +364,30 @@ func (h *Host) Message(from Player, plugin string, data []byte) {
 		return
 	}
 	in.post(event{kind: evMessage, p: from, data: data})
+}
+
+// Use tells a running plugin that a member pressed X next to one of its map objects at tile (x, y).
+// A kind the plugin's manifest does not declare is ignored, as is a plugin that is not running; the
+// event is dropped (and counted) when the plugin's inbox is full, so the caller never waits.
+func (h *Host) Use(p Player, plugin, kind string, x, y int) {
+	h.mu.Lock()
+	in := h.inst[plugin]
+	h.mu.Unlock()
+	if in == nil {
+		return
+	}
+	if _, ok := in.info.Object(kind); !ok {
+		return
+	}
+	data, err := json.Marshal(struct {
+		Kind string `json:"kind"`
+		X    int    `json:"x"`
+		Y    int    `json:"y"`
+	}{kind, x, y})
+	if err != nil {
+		return
+	}
+	in.post(event{kind: evUse, p: p, data: data})
 }
 
 // RouteAuth says whether a running plugin has that route, and whether an app token may call it.

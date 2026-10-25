@@ -125,6 +125,9 @@ func (s *Server) pluginHost(office int64, w *world.World) *plugin.Host {
 	w.OnPresence = func(_ int64, id uint32, name, role string, online bool) {
 		h.Presence(plugin.Player{ID: id, Name: name, Role: role}, online)
 	}
+	w.OnUse = func(_ int64, id uint32, name, role, plug, kind string, x, y int) {
+		h.Use(plugin.Player{ID: id, Name: name, Role: role}, plug, kind, x, y)
+	}
 	s.hosts[office] = h
 	return h
 }

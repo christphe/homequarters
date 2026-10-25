@@ -567,3 +567,65 @@ func TestTokenRoutesNeedTheManifestFlag(t *testing.T) {
 		t.Fatalf("a token route without appTokens in the manifest must fail to load: %v", err)
 	}
 }
+
+// objHost installs plugin "p" declaring the object kind "thing", with the given server source.
+func objHost(t *testing.T, src string) (*Host, *fakeSink) {
+	t.Helper()
+	root := t.TempDir()
+	write(t, root, map[string]string{
+		"p/plugin.json":      `{"name":"p","title":"T","version":"1.0.0","description":"d","server":"main.ts","client":"client.js","objects":[{"kind":"thing","label":"Thing","size":[1,1],"sprite":"thing.png"}]}`,
+		"p/main.ts":          src,
+		"p/public/client.js": "",
+		"p/public/thing.png": "png",
+	})
+	cat, err := scanDir(root, Installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &fakeSink{}
+	h := NewHost(cat, sink, newMemKV(), quiet)
+	t.Cleanup(h.Close)
+	return h, sink
+}
+
+func TestUseCallsOnUse(t *testing.T) {
+	h, sink := objHost(t, `
+export function onUse(p: { id: number }, o: { kind: string; x: number; y: number }) { hq.send(p.id, { k: o.kind, x: o.x, y: o.y }); }`)
+	h.Use(alice, "p", "thing", 3, 4) // not running yet: nothing
+	h.Presence(alice, true)
+	if err := h.Start("p"); err != nil {
+		t.Fatal(err)
+	}
+	h.Use(alice, "p", "other", 1, 1) // kind the manifest does not declare
+	h.Use(alice, "p", "thing", 3, 4)
+	eventually(t, "onUse answered", func() bool { return len(sink.data(alice.ID)) == 1 })
+	got := sink.data(alice.ID)[0]
+	if got["k"] != "thing" || got["x"] != float64(3) || got["y"] != float64(4) {
+		t.Fatalf("onUse got %v", got)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := len(sink.data(alice.ID)); n != 1 {
+		t.Fatalf("an undeclared kind or a stopped plugin must reach nothing, got %d frames", n)
+	}
+	h.Stop("p")
+	h.Use(alice, "p", "thing", 3, 4)
+	time.Sleep(100 * time.Millisecond)
+	if n := len(sink.data(alice.ID)); n != 1 {
+		t.Fatalf("a stopped plugin must not be called, got %d frames", n)
+	}
+}
+
+func TestUseErrorsCountLikeAnyExport(t *testing.T) {
+	h, _ := objHost(t, "export function onUse() { throw new Error('boom'); }")
+	h.Presence(alice, true)
+	if err := h.Start("p"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 11; i++ {
+		h.Use(alice, "p", "thing", 1, 1)
+	}
+	eventually(t, "11th error crashes", func() bool { st, _ := state(h, "p"); return st == "crashed" })
+	if _, msg := state(h, "p"); !strings.Contains(msg, "boom") {
+		t.Fatalf("error %q", msg)
+	}
+}

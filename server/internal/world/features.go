@@ -15,6 +15,8 @@ const (
 	emoteCooldown = 700 * time.Millisecond
 	emoteKinds    = 8    // 1-7 bubbles, 8 dance
 	useReach      = 20.0 // px between the player's feet and the object's rectangle
+	useRate       = 4.0  // plugin object uses a second per member (token bucket)
+	useBurst      = 8.0
 	followGap     = 26.0 // a follower stops this close to the leader
 	maxFollowers  = 64   // bounds the path-finding work per tick
 	leadCooldown  = 3 * time.Second
@@ -78,6 +80,10 @@ func (w *World) doUse(p *Player, x, y int, now time.Time) {
 		if ai := w.m.AreaIndexAt(pr.X, pr.Y); ai != p.area && !w.canEnterArea(p, ai) {
 			return
 		}
+		if plugin, kind, ok := pr.PluginKind(); ok {
+			w.usePluginObject(p, plugin, kind, pr.X, pr.Y, now)
+			return
+		}
 		if pr.T == gamemap.PropWhiteboard {
 			w.openBoard(p, pr, now)
 			return
@@ -85,6 +91,24 @@ func (w *World) doUse(p *Player, x, y int, now time.Time) {
 		w.sendJSON(p, map[string]any{"t": "obj", "k": pr.T, "l": pr.Label, "d": pr.Data})
 		return
 	}
+}
+
+// usePluginObject hands "press X" on a plugin object to the plugin. Invisible members never reach a
+// plugin, and each member is throttled (useRate a second, burst useBurst; extra uses are dropped
+// silently). OnUse only posts to the plugin's bounded inbox, so the world goroutine never waits.
+func (w *World) usePluginObject(p *Player, plugin, kind string, x, y int, now time.Time) {
+	if w.OnUse == nil || p.Status == StatusInvisible {
+		return
+	}
+	if !p.useAt.IsZero() {
+		p.useTokens = math.Min(useBurst, p.useTokens+now.Sub(p.useAt).Seconds()*useRate)
+	}
+	p.useAt = now
+	if p.useTokens < 1 {
+		return
+	}
+	p.useTokens--
+	w.OnUse(w.OfficeID, p.ID, p.Name, p.Role, plugin, kind, x, y)
 }
 
 // ---- guided walking ----
