@@ -57,8 +57,8 @@ jobs:
         run: node scripts/lint-web.mjs
       - name: Web unit tests (pure game logic)
         run: node --test 'web/test/*.test.ts'
-      - name: E2E shard assignment
-        run: node --test e2e/shards.test.mjs
+      - name: E2E shard assignment and slots
+        run: node --test e2e/shards.test.mjs e2e/slots.test.mjs
       - name: Type-check the web unit tests
         run: pnpm exec tsc -p tsconfig.test.json --noEmit
         working-directory: web

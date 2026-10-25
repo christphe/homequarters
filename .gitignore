@@ -1,4 +1,6 @@
 .run
+# local settings (see .env.example)
+.env
 .gauntlet
 bin
 server/data
