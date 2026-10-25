@@ -122,7 +122,7 @@ Other agents or people may be working in the same tree at the same time.
 
 ## Testing notes and gotchas
 
-- The browser exposes `window.__hq` (view, media, state, session, `cachedLooks()` for the avatar texture cache size, `chimes` for the last chimes played, `autoOff` whose `grace` a test may shorten) for tests. Drive movement with `view.setDirection`, not synthetic key events.
+- The browser exposes `window.__hq` (view, media, state, session, `cachedLooks()` for the avatar texture cache size, `chimes` for the last chimes played, `autoOff` whose `grace` a test may shorten, `session.plugins.dropNext(plugin, n)` to lose the next n messages a plugin sends to the server) for tests. Drive movement with `view.setDirection`, not synthetic key events.
 - `window.__hq` shortcuts are for setup; every feature also needs one check through its real controls with its panel open (the chat crash hid behind API-only sends).
 - `node run.mjs capture-plugin-pet` writes frames (pets of the bundled plugin walking, the hover tag, its modal) and a contact sheet (with ffmpeg) to a fresh folder under `/tmp/hq-capture`; copy it for new `capture-*` scenarios. They are not in the default suite.
 - LiveKit's client may use a single peer connection; read RTP stats from `room.engine.pcManager.subscriber?.pc ?? publisher.pc` (see `rtpBytes` in `e2e/lib.mjs`).

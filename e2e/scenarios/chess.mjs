@@ -383,24 +383,22 @@ export async function run(ctx) {
     const annHeard = await waitFor(async () => (await said(ann)).slice(annSaid0).find((s) => s === "Black: pawn e7 to e5"), { timeout: 2000, what: "the announcement" }).catch(() => null);
     check("11: Ann's live region announces it", !!annHeard, JSON.stringify((await said(ann)).slice(annSaid0)));
 
-    // ---- a move lost on the way (the page's send budget spent by the plugin's own code) is undone after 1 s
-    const cf = await chessFrame(ann);
-    await cf.evaluate(() => { window.__flood = setInterval(() => { for (let i = 0; i < 10; i++) window.hq.send({ t: "noop" }); }, 60); });
-    await sleep(2500); // the burst is spent
+    // ---- a move lost on the way is undone after 1 s. The page drops the plugin's next message to the server
+    // as a spent send budget does (test hook: deterministic, where flooding the budget raced its refill)
+    await read(ann, (pl) => window.__hq.session.plugins.dropNext(pl, 1), PLUGIN);
     const nLost = ann.sent.length;
     const lostSaid0 = (await said(ann)).length;
     await dragSq(ann, "d2", "d4");
     const optimistic = (await board(ann)).p;
     const revertMs = await within(async () => (await board(ann))?.p === expected.p, 2500);
-    await cf.evaluate(() => clearInterval(window.__flood));
-    const lostSent = ann.sent.slice(nLost).filter((d) => d.t !== "noop");
+    await read(ann, (pl) => window.__hq.session.plugins.dropNext(pl, 0), PLUGIN); // nothing left to drop
+    const lostSent = ann.sent.slice(nLost);
     check("a move dropped at the page (over the send budget) never left it", lostSent.length === 0, JSON.stringify(lostSent));
     // the live region is filled on the next animation frame
     const told = await waitFor(async () => (await said(ann)).slice(lostSaid0).some((s) => s.startsWith("Move not received")), { timeout: 1000, what: "the lost move announced" }).catch(() => false);
     // revertMs counts from after the drop's own 250 ms pause (drag()): the view's timer is 1 s from the drop
     check("the view showed it at once, then went back to the server's position about 1 s after the drop, and says so", optimistic[sq("d4")] === "P" && revertMs >= 500 && revertMs <= 1500 && told, `${revertMs} ms after the drop's pause, ${JSON.stringify((await said(ann)).slice(lostSaid0))}`);
     check("nobody else saw the lost move", (await board(bo)).p === expected.p && (await board(cy)).p === expected.p);
-    await sleep(2500); // the budget refills
 
     // ---- criteria 6 and 14: captures go to the reserve on every page; a reserve piece back on the board; promotion
     await dragSq(bo, "d7", "d5");

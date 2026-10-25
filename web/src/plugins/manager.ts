@@ -30,6 +30,8 @@ export class PluginManager {
 
   private budget = new SendBudget();
   private warnedAt = 0;
+  /** Tests only (window.__hq): how many of a plugin's next messages to the server are dropped, as over the budget. */
+  private dropping = new Map<string, number>();
 
   /** Sheets drawn by a plugin for metadata, by "<plugin>|<metadata JSON>": asked once per page. */
   private provided = new Map<string, Promise<ProvidedSheet>>();
@@ -62,12 +64,22 @@ export class PluginManager {
   /** Plugin messages to the server, held under the socket's rate limit (excess dropped, with a warning). */
   private send = (plugin: string, d: unknown) => {
     const now = performance.now();
-    if (this.budget.allow(now)) return this.socketSend(plugin, d);
+    const drop = this.dropping.get(plugin) ?? 0;
+    if (drop > 0) {
+      if (drop > 1) this.dropping.set(plugin, drop - 1);
+      else this.dropping.delete(plugin);
+    } else if (this.budget.allow(now)) return this.socketSend(plugin, d);
     if (now - this.warnedAt > 5000) {
       this.warnedAt = now;
       console.warn(`[plugin ${plugin}] messages to the server dropped: more than ${LIMITS.sendRate} a second`);
     }
   };
+
+  /** Tests only (window.__hq): drops the next n messages this plugin sends to the server, as a spent budget does. */
+  dropNext(plugin: string, n: number) {
+    if (n > 0) this.dropping.set(plugin, Math.floor(n));
+    else this.dropping.delete(plugin);
+  }
 
   /** A plugin's decoded sheet (hq.ui.sprite with sheet), or null. */
   sheetImage(plugin: string, key: string) {
