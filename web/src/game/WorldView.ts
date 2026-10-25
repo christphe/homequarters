@@ -1122,6 +1122,10 @@ export class WorldView {
   get aoiMax() {
     return this.cam.aoiMax;
   }
+  /** Whether a box may stand at (x, y) on walls alone (motion.ts), as plugin sprites walk. */
+  canStandStatic(x: number, y: number) {
+    return canStandStatic(this.grid, x, y);
+  }
 
   /** Smallest and largest scale for this window. */
   scaleRange(width = this.app.screen.width, height = this.app.screen.height): [number, number] {
