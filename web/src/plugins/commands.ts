@@ -290,7 +290,7 @@ function parseOne(c: unknown): Cmd {
     case "send":
       return { op: "send", d: o.d };
     case "post":
-      // to the open view: checked (checkViewMessage) and rate limited when the page relays it, dropped if bad
+      // to the open view: checked and copied (viewMessage) and rate limited when the page relays it, dropped if bad
       return { op: "post", d: o.d };
   }
   throw new Bad(`unknown command ${String(o.op).slice(0, 20)}`);
@@ -315,6 +315,13 @@ export class SendBudget {
 /** Why a message between a view and its plugin's client code cannot go through (not JSON, or over
  *  LIMITS.viewBytes), or null. Such a message is dropped; the view and the plugin go on. */
 export function checkViewMessage(d: unknown): string | null {
+  const m = viewMessage(d);
+  return typeof m === "string" ? m : null;
+}
+
+/** What the page relays between a view and its plugin's client code: the JSON copy of d, never d itself
+ *  (a Map, a Blob or an ArrayBuffer serializes to {} but would be cloned whole), or why it cannot go. */
+export function viewMessage(d: unknown): { d: unknown } | string {
   let s: string | undefined;
   try {
     s = JSON.stringify(d);
@@ -323,7 +330,7 @@ export function checkViewMessage(d: unknown): string | null {
   }
   if (s === undefined) return "the message is not JSON";
   if (new TextEncoder().encode(s).length > LIMITS.viewBytes) return `the message is over ${LIMITS.viewBytes} bytes`;
-  return null;
+  return { d: JSON.parse(s) };
 }
 
 /** LIMITS.viewRate messages in any second, one direction of one view. Dropped messages do not count. */

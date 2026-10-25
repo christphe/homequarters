@@ -1,6 +1,6 @@
 import SDK from "./sdk.js?raw";
 import VIEW_SDK from "./viewSdk.js?raw";
-import { parseBatch, checkViewMessage, ViewRate, LIMITS, type Cmd, type UINode } from "./commands";
+import { parseBatch, viewMessage, ViewRate, LIMITS, type Cmd, type UINode } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 
 // One running plugin on this page. Its JavaScript runs in a hidden iframe with sandbox="allow-scripts"
@@ -279,11 +279,13 @@ export class PluginHost {
   }
 
   /** hq.ui.post: to the open view, if any (silently nothing without one). */
-  private postToView(d: unknown, now: number) {
+  private postToView(raw: unknown, now: number) {
     const node = this.modal ? findView(this.modal.content) : null;
     if (!node) return;
-    const bad = checkViewMessage(d);
-    if (bad) return this.viewWarn("to", bad + " (to the view)");
+    // the JSON copy, never the value itself: plugin code can post on its port past the SDK's own check
+    const m = viewMessage(raw);
+    if (typeof m === "string") return this.viewWarn("to", m + " (to the view)");
+    const d = m.d;
     const c = this.view?.view === node.view ? this.view : null;
     if (c && !c.toView.allow(now)) return this.viewWarn("to", `more than ${LIMITS.viewRate} a second to the view`);
     if (c?.port) c.port.postMessage({ t: "msg", d });
@@ -292,16 +294,15 @@ export class PluginHost {
   }
 
   /** hqView.send: to the onMessage of the view element of the modal. */
-  private fromView(c: ViewConn, m: unknown) {
-    const msg = m as { t?: unknown; d?: unknown } | null;
+  private fromView(c: ViewConn, raw: unknown) {
+    const msg = raw as { t?: unknown; d?: unknown } | null;
     if (this.view !== c || this.stoppedWith || msg?.t !== "msg") return;
-    const d = msg.d;
-    const bad = checkViewMessage(d);
-    if (bad) return this.viewWarn("from", bad + " (from the view)");
+    const m = viewMessage(msg.d);
+    if (typeof m === "string") return this.viewWarn("from", m + " (from the view)");
     if (!c.fromView.allow(performance.now())) return this.viewWarn("from", `more than ${LIMITS.viewRate} a second from the view`);
     const node = this.modal ? findView(this.modal.content) : null;
     if (!node || node.view !== c.view || !node.message) return;
-    this.port?.postMessage({ t: "cb", id: node.message, v: JSON.parse(JSON.stringify(d)) });
+    this.port?.postMessage({ t: "cb", id: node.message, v: m.d });
   }
 
   /** A message from the plugin's server code. */

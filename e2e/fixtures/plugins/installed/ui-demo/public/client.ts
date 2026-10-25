@@ -6,6 +6,11 @@ let state = "";
 let viewSays = "nothing";
 let fromView = 0; // flood messages received from the view
 let echoOpen = false, dirty = false;
+// the page's port, taken as the SDK takes it: what plugin code can do past the SDK, which the page must still check
+let rawPort: MessagePort | null = null;
+window.addEventListener("message", (ev) => {
+  if (ev.data === "hq-port" && ev.ports[0]) rawPort = ev.ports[0];
+});
 
 function echo(): void {
   echoOpen = true;
@@ -14,6 +19,8 @@ function echo(): void {
     hq.ui.text("From the view: " + fromView),
     hq.ui.view({ view: "echo", label: "Echo view", height: "small", onMessage: heard }),
     hq.ui.button({ label: "Flood the view", onClick: () => { for (let i = 0; i < 100; i++) hq.ui.post({ t: "flood" }); } }),
+    // a post past the SDK's own check: a Map and an ArrayBuffer serialize to {} but would clone whole
+    hq.ui.button({ label: "Raw post", onClick: () => rawPort?.postMessage({ t: "cmds", c: [{ op: "post", d: { t: "raw", big: new Map([["a", "x".repeat(100000)]]), buf: new ArrayBuffer(1 << 20) } }] }) }),
   ]);
 }
 

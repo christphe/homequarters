@@ -548,6 +548,10 @@ export async function run(ctx) {
     check("a message goes view -> client code -> view", true);
     await waitFor(async () => (await modalText()).includes("View: ping 7"), { what: "the modal redrawn after the ping" });
     check("redrawing the modal keeps the view's iframe and its state", (await viewEl.evaluate((f) => f.isConnected)) && (await view.evaluate(() => window.__mark)) === 42);
+    // plugin code posting on its raw port, past the SDK's check: the view gets the page's JSON copy, not the clone
+    await waitFor(() => click(mia, ".modal.plugin-modal button", "Raw post"), { what: "Raw post" });
+    const rawOut = await waitFor(async () => { const t = await view.evaluate(() => document.getElementById("out")?.textContent ?? ""); return t.startsWith("raw") ? t : null; }, { what: "the raw post in the view" });
+    check("a Map or an ArrayBuffer posted past the SDK reaches the view as {} (the page relays its JSON copy)", rawOut === "raw big={} buf={}", rawOut);
     // 100 messages in one second each way: at most 30 go through, and nothing stops
     await view.evaluate(() => { for (let i = 0; i < 100; i++) hqView.send({ t: "flood" }); });
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Flood the view"), { what: "Flood the view" });

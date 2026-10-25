@@ -12,8 +12,10 @@ out.id = "out";
 out.textContent = "waiting";
 document.body.appendChild(out);
 
-hqView.onMessage<{ t: string; n?: number }>((m) => {
+const kind = (v: unknown) => (v instanceof Map ? "Map" : v instanceof ArrayBuffer ? "ArrayBuffer " + v.byteLength : JSON.stringify(v));
+hqView.onMessage<{ t: string; n?: number; big?: unknown; buf?: unknown }>((m) => {
   if (m.t === "pong") out.textContent = "pong " + m.n;
+  else if (m.t === "raw") out.textContent = "raw big=" + kind(m.big) + " buf=" + kind(m.buf);
   else if (m.t === "flood") out.textContent = "flood " + ++received;
 });
 hqView.send({ t: "hello", reachedPage });

@@ -2,7 +2,7 @@
 // Run: node --test web/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseBatch, checkViewMessage, ViewRate, LIMITS, type Cmd } from "../src/plugins/commands.ts";
+import { parseBatch, checkViewMessage, viewMessage, ViewRate, LIMITS, type Cmd } from "../src/plugins/commands.ts";
 
 const view = (o: Record<string, unknown> = {}) => ({ type: "view", view: "echo", label: "Echo view", height: "medium", message: "c1", ...o });
 const modal = (content: unknown[]) => [{ op: "modal", title: "Demo", content }];
@@ -70,4 +70,18 @@ test("ViewRate lets 30 messages through in a second and drops the rest until the
   for (let i = 0; i < 100; i++) if (r.allow(1000 + i * 10)) ok++; // 100 in one second
   assert.equal(ok, LIMITS.viewRate);
   assert.equal(r.allow(2005), true); // the first ones are more than a second old
+});
+
+test("viewMessage gives the JSON copy the page relays, never the value it was handed", () => {
+  // what a plugin can post on its raw port, past the SDK: each serializes small but clones big
+  const big = new Map([["a", "x".repeat(100_000)]]);
+  assert.deepEqual(viewMessage(big), { d: {} });
+  assert.deepEqual(viewMessage(new ArrayBuffer(1 << 20)), { d: {} });
+  assert.deepEqual(viewMessage(new Set([1, 2, 3])), { d: {} });
+  const m = { t: "move", from: 52, to: 36, extra: new Map([["k", 1]]) };
+  const out = viewMessage(m);
+  assert.deepEqual(out, { d: { t: "move", from: 52, to: 36, extra: {} } });
+  assert.notEqual((out as { d: unknown }).d, m);
+  assert.equal(typeof viewMessage(() => 1), "string");
+  assert.equal(typeof viewMessage("x".repeat(4095)), "string");
 });
