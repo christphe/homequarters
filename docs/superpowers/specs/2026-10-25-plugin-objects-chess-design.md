@@ -127,6 +127,21 @@ Chess must be a **plugin** (`hq-chess`, bundled), not a built-in object like the
 
 **Board view.** A canvas of 8x8 squares in pixel-art style, flipped for the Black player. Pieces drawn in code. Pointer events: drag a piece of your colour and drop it; it snaps to the square under the pointer, or back to its square when dropped outside the board. Click a piece then a square does the same (touch screens and people who cannot drag). The board is also keyboard-operable: it takes focus, arrow keys move a square cursor, Enter or Space picks up and drops, Escape cancels, and a live region in the view announces the square under the cursor and each move ("White: pawn e2 to e4"). *(Builder's call, from AGENTS.md's accessibility rules; it gets its own check in the `chess` scenario.)* Spectators and non-owners cannot pick pieces up. A move sends one message on drop. The view redraws from the state the server sends; until the server confirms, the moved piece is shown at its new square (optimistic), corrected by the next state.
 
+### 3b. Object callbacks, dynamic objects, objects drawn by the plugin *(added by the user on 2026-10-25)*
+
+Two independent manifest choices per object:
+
+- **Who draws it.** With `sprite` (a PNG of `public/`), the page draws it, as before. With `"sprite": null` (or no `sprite`), the page draws nothing: the plugin's browser code draws it, as for pets (`hq.spawn` with any sheet, a PNG or image data drawn in code). X, the hint, reach and the editor work the same either way; the editor shows a plugin-drawn object as a labelled box of its size.
+- **Whether it gets updates.** `"dynamic": true` means the object gets `onObjectUpdate`; without it, it gets only init and destroy.
+
+Three callbacks in the plugin's browser code, for objects of this plugin placed on the map:
+
+- `hq.onObjectInit(fn(obj))` for **every** object: when the plugin starts on the page (one call per object already placed) and when an object is added to the map.
+- `hq.onObjectDestroy(fn(obj))` for every object: when it is removed from the map (or its kind is no longer declared). When the plugin stops, its sprites go anyway; no call.
+- `hq.onObjectUpdate(fn(dt, obj))` **only for objects marked `dynamic`**, in the existing update tick (about 10 a second), in the same message as `onUpdate`: no extra message per object or per frame.
+
+`obj` is `{ kind, x, y, w, h, px, py }`: tiles, plus the top-left corner in world pixels. An object is identified by `kind` and `x, y` (moving one in the editor is a destroy then an init). At most 64 dynamic objects of one plugin get updates; the rest get init and destroy only, with one console warning.
+
 **Playing badge.** *(Added by the user on 2026-10-25.)* A small chess-piece icon, white or black by the seat's colour, shows above the head of every **present** seated player, for everybody in the office. It goes away when the player closes the window (or a reset frees the seat). The icons are a PNG in the plugin's `public/`, drawn in code like the board sprite. The server broadcasts the list of present seated players (`{ t: "playing", list: [{ id, side }] }`) to every online member whenever it changes, and to a member when they join; each page attaches the matching sprite above those members with `hq.attach` (below).
 
 **`hq.attach(id, memberId | null)`** *(new client API, for the badge)*: pins a spawned sprite of the plugin above that member's head, just above their name tag (the drawing's real top, `AvatarFrames.tall`), moving with them every frame without lag; hidden while the member is off screen; `null` detaches it (it stays where it is until moved or removed). An attached sprite ignores `moveTo`/`walkTo`/`follow` until detached.

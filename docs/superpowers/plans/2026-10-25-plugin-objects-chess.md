@@ -180,6 +180,24 @@
 - [ ] **Step 8: Run** `cd web && pnpm exec tsc -p ../plugins/bundled/hq-chess && pnpm exec tsc -p ../plugins/bundled/hq-chess/public && cd ../server && go test -race ./internal/plugin` → PASS.
 - [ ] **Step 9: Commit** `git commit -m "hq-chess: a chessboard two members play on, without rules"`
 
+### Task 8b: Object callbacks, dynamic objects, objects drawn by the plugin
+
+Spec §3b. Runs after Task 8 (same SDK files).
+
+**Files:**
+- Modify: `server/internal/plugin/catalog.go` (`Object.Sprite` optional; `Object.Dynamic bool` `json:"dynamic"`), `server/internal/httpapi/plugins.go` (`objectEntry` gains `dynamic`; `sprite` omitted or null when absent), `web/src/net/protocol.ts` (`PluginObjectSpec.sprite?: string`, `dynamic?: boolean`), `web/src/game/WorldView.ts` / `objectPictures.ts` (no sprite → nothing drawn by the page; editor shows a labelled box), `web/src/plugins/host.ts` + `manager.ts` (send the plugin `{t:"objs", init:[...], destroy:[...]}` on start and whenever its placed objects change; add the dynamic objects to the `update` message), `web/src/plugins/sdk.js` (`hq.onObjectInit`, `hq.onObjectDestroy`, `hq.onObjectUpdate`), `plugins/sdk/client.d.ts`, `docs/plugins.md`, `docs/plugin-api.md`, `e2e/fixtures/plugins/installed/ui-demo` (one object `"dynamic": true` without `sprite` that the client draws and animates), `e2e/scenarios/plugins.mjs`
+- Test: `server/internal/plugin/catalog_test.go`, `web/test/pluginObjects.test.ts`
+
+**Interfaces:**
+- Produces: `interface PlacedObject { kind: string; x: number; y: number; w: number; h: number; px: number; py: number }`; `function objectChanges(prev: PlacedObject[], next: PlacedObject[]): { init: PlacedObject[]; destroy: PlacedObject[] }` (identity `kind@x,y`; a size change is destroy + init); client API `hq.onObjectInit(fn(obj))`, `hq.onObjectDestroy(fn(obj))`, `hq.onObjectUpdate(fn(dt, obj))`.
+
+- [ ] **Step 1: Write the failing tests**: Go: an object without `sprite` loads; `"dynamic": true` is kept; `/api/plugins` carries `dynamic` and no `sprite`. Web: `objectChanges` gives init for new, destroy for removed, both for a moved or resized object, nothing for unchanged; the dynamic list sent with updates is capped at 64.
+- [ ] **Step 2: Run** `cd server && go test ./internal/plugin ./internal/httpapi` and `node --test web/test/pluginObjects.test.ts` → FAIL.
+- [ ] **Step 3: Implement.** Init/destroy reach the iframe as one message per change; updates carry the dynamic objects inside the existing `update` message; the SDK calls the callbacks (errors reported like other callbacks). A plugin-drawn object of a stopped plugin has nothing to remove on the page beyond the plugin's own sprites.
+- [ ] **Step 4: Extend the plugins e2e**: the ui-demo dynamic object gets one init on start, `onObjectUpdate` about 10 a second, a destroy when the admin removes it from the map, and an init when it is put back; its sprite (spawned by the plugin) is drawn where the object is; no page-drawn sprite for it.
+- [ ] **Step 5: Run** `node --test 'web/test/*.test.ts' && cd web && pnpm exec tsc --noEmit && cd .. && CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe" HQ_TEST_PORT=18180 bash scripts/gauntlet.sh plugins` → `GATES GREEN`.
+- [ ] **Step 6: Commit** `git commit -m "Plugin objects: init, destroy and update callbacks; objects drawn by the plugin"`
+
 ### Task 9: Browser checks for chess
 
 **Files:**
