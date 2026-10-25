@@ -2,8 +2,10 @@
   "name": "ui-demo",
   "title": "UI demo",
   "version": "1.0.0",
-  "description": "Test plugin of the browser suite: a button at every anchor, a box on the map, a modal and an app token.",
+  "description": "Test plugin of the browser suite: a button at every anchor, a box on the map, a modal, a view, an app token and an orb it draws itself on the map.",
   "server": "main.ts",
   "client": "client.ts",
-  "appTokens": true
+  "appTokens": true,
+  "views": { "echo": "views/echo.ts" },
+  "objects": [{ "kind": "orb", "label": "Orb", "size": [1, 1], "dynamic": true }]
 }

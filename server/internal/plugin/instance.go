@@ -18,6 +18,7 @@ const (
 	evMessage evKind = iota + 1
 	evRoute
 	evHook
+	evUse
 )
 
 type event struct {
@@ -67,7 +68,7 @@ const (
 )
 
 // exportNames are the functions a server module may export.
-var exportNames = map[string]bool{"load": true, "update": true, "onJoin": true, "onLeave": true, "onMessage": true, "onSettings": true, "onPlugins": true, "unload": true}
+var exportNames = map[string]bool{"load": true, "update": true, "onJoin": true, "onLeave": true, "onMessage": true, "onUse": true, "onSettings": true, "onPlugins": true, "unload": true}
 
 // instance is one running plugin. A single goroutine (run) owns its QuickJS VM; everything else
 // reaches it through the bounded inbox, or the presence queue, which is never dropped so the
@@ -77,6 +78,7 @@ type instance struct {
 	info    Info
 	vm      *quickjs.VM
 	client  []byte
+	views   map[string][]byte
 	inbox   chan event
 	routes  map[string]route
 	hooks   map[string]bool // exposed with hq.expose, written while loading
@@ -119,7 +121,7 @@ func newInstance(h *Host, info Info) (*instance, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load stored data: %w", err)
 	}
-	in := &instance{h: h, info: info, client: code.client, inbox: make(chan event, inboxSize), routes: map[string]route{},
+	in := &instance{h: h, info: info, client: code.client, views: code.views, inbox: make(chan event, inboxSize), routes: map[string]route{},
 		hooks: map[string]bool{}, replies: make(chan hookReply, maxPendingCall),
 		wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}), kv: kv, started: time.Now()}
 	if code.server == "" {
@@ -179,7 +181,7 @@ func (in *instance) checkExports() error {
 	}
 	for _, n := range names {
 		if !exportNames[n] {
-			return fmt.Errorf("unknown export %q: a server module exports only load, update, onJoin, onLeave, onMessage, onSettings, onPlugins and unload", n)
+			return fmt.Errorf("unknown export %q: a server module exports only load, update, onJoin, onLeave, onMessage, onUse, onSettings, onPlugins and unload", n)
 		}
 	}
 	return nil
@@ -393,6 +395,9 @@ func (in *instance) handle(e event) error {
 		}
 		in.actor = e.p.ID
 		return in.check(in.callExport("onMessage", jsPlayer(e.p), json.RawMessage(e.data)))
+	case evUse:
+		in.actor = e.p.ID
+		return in.check(in.callExport("onUse", jsPlayer(e.p), json.RawMessage(e.data)))
 	case evRoute:
 		in.actor = e.req.Player.ID
 		resp, err := in.route(e)

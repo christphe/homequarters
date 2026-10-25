@@ -171,6 +171,33 @@ export async function run(ctx) {
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$("canvas.whiteboard")), { what: "whiteboard closed" });
 
+    // the chess window (bundled hq-chess): a board placed on the social area's table, opened with X; the
+    // page and the board view's own document are audited
+    const chessOn = (enabled) => fetch(API + "/api/admin/plugins/hq-chess", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
+    const setChessboard = async (on) => {
+      const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
+      m.props = m.props.filter((x) => x.t !== "hq-chess/chessboard");
+      if (on) m.props.push({ t: "hq-chess/chessboard", x: 13, y: 22, w: 1, h: 1 });
+      await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
+    };
+    await chessOn(true);
+    await setChessboard(true);
+    await walkTo(admin, 13 * 16 + 8, 23 * 16 + 8);
+    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "hq-chess/chessboard"), { what: "nearby chessboard" });
+    await p.keyboard.press("x");
+    const chessView = await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" });
+    await waitFor(() => chessView.evaluate(() => !!document.querySelector("canvas[aria-label]")), { what: "chess board view" });
+    await audit(p, "the chess window");
+    await chessView.evaluate(AXE);
+    // axe run inside the frame takes it for a whole page: its page-level rules (one main landmark, one h1),
+    // which axe applies to the top document only when it audits a page with its frames, are left out
+    const inView = await chessView.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
+    check("axe: no WCAG A/AA or best-practice violations inside the chess board view", inView.length === 0, inView.join(","));
+    await p.keyboard.press("Escape");
+    await waitFor(async () => !(await p.$(".modal")), { what: "chess closed" });
+    await chessOn(false);
+    await setChessboard(false);
+
     // a free desk: its Take button and the confirmation (Escape leaves the desk free)
     // earlier scenarios may have assigned some desks: take the first free one in the desk area
     const free = await p.evaluate(() => window.__hq.view.map.props.find((d) => d.t === "desk" && !d.assign && d.y < 14));

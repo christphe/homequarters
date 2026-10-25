@@ -15,8 +15,11 @@ mkdir -p .gauntlet
 record=.gauntlet/last-gates.log
 # shasum ships with Perl, which Git Bash on Windows may lack: sha1sum gives the same digest there
 sha() { if command -v shasum >/dev/null 2>&1; then shasum; else sha1sum; fi; }
+# The fingerprint is the content of the files the gates read, not the commit: files no gate reads
+# (changelogs, design notes and plans) are left out, so committing one keeps the record current.
+unread=(':(exclude)server/CHANGELOG.md' ':(exclude)desktop/CHANGELOG.md' ':(exclude)docs/superpowers')
 fingerprint() {
-  (git rev-parse HEAD; git diff HEAD; git ls-files --others --exclude-standard -z |
+  (git ls-files -s -- . "${unread[@]}"; git diff HEAD -- . "${unread[@]}"; git ls-files --others --exclude-standard -z -- . "${unread[@]}" |
     while IFS= read -r -d '' file; do
       printf '%s\0' "$file"
       if [ -f "$file" ]; then sha <"$file"; fi
@@ -44,7 +47,7 @@ gate tsc-tests bash -c 'cd web && pnpm exec tsc -p tsconfig.test.json --noEmit'
 gate vite-build bash -c 'cd web && pnpm exec vite build'
 gate web-lint node scripts/lint-web.mjs
 # plugin code is TypeScript type-checked against plugins/sdk/*.d.ts: the sample and the suite's test plugin
-gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done'
+gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done'
 gate web-unit bash -c "node --test 'web/test/*.test.ts'"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then

@@ -34,6 +34,15 @@ export interface LayerHost {
   /** Visible avatars, drawn positions. */
   avatars(): Avatar[];
   me(): number;
+  /** Where a sprite pinned to a member sits: bottom centre just above their name tag, and the member's feet y
+   *  (for sorting). Fills out and returns false when the member is unknown or off screen. */
+  headPoint(id: number, out: HeadPoint): boolean;
+}
+
+export interface HeadPoint {
+  x: number;
+  y: number;
+  feetY: number;
 }
 
 interface Sheet {
@@ -57,6 +66,8 @@ interface PEnt {
   ty: number;
   speed: number;
   player: number;
+  /** the member whose head it is pinned above (hq.attach), 0 when free */
+  attached: number;
   /** the sprite of the same plugin it follows instead of a member (follow with { sprite }) */
   target: string | null;
   /** measured speed in px/s, for sprites that follow this one, and where it was on the last step */
@@ -114,6 +125,7 @@ export class PluginLayer {
   /** Set when an image finished loading, so the next frame draws it. */
   private loaded = false;
   /** walkTo path searches, a few per frame (a batch may ask for hundreds) */
+  private head: HeadPoint = { x: 0, y: 0, feetY: 0 };
   private searches = new SearchQueue<{ e: PEnt; x: number; y: number }>(4);
 
   constructor(private parent: Container, private host: LayerHost) {}
@@ -164,7 +176,7 @@ export class PluginLayer {
             spr.visible = false;
             this.parent.addChild(spr);
             const x0 = c.x ?? 0, y0 = c.y ?? 0;
-            e = { spr, key: c.key, mode: "still", x: x0, y: y0, tx: x0, ty: y0, speed: DEFAULT_SPEED, player: 0, target: null, vel: 0, lastX: x0, lastY: y0, gap: DEFAULT_GAP, beside: REST_BESIDE, roam: 0, seed: seedOf(plugin + "/" + c.id), ps: newPet(), label: null, labelOwner: 0, dir: 0, moving: false, manual: null, animStart: now, shown: true, placed: false, path: null, pathTo: null, pathAt: 0, rejoin: false };
+            e = { spr, key: c.key, mode: "still", x: x0, y: y0, tx: x0, ty: y0, speed: DEFAULT_SPEED, player: 0, attached: 0, target: null, vel: 0, lastX: x0, lastY: y0, gap: DEFAULT_GAP, beside: REST_BESIDE, roam: 0, seed: seedOf(plugin + "/" + c.id), ps: newPet(), label: null, labelOwner: 0, dir: 0, moving: false, manual: null, animStart: now, shown: true, placed: false, path: null, pathTo: null, pathAt: 0, rejoin: false };
             g.ents.set(c.id, e);
           }
           e.key = c.key;
@@ -189,16 +201,28 @@ export class PluginLayer {
         }
         case "moveTo": {
           const e = g.ents.get(c.id);
-          if (!e) break;
+          if (!e || e.attached) break;
           e.mode = "move";
           e.tx = c.x;
           e.ty = c.y;
           e.speed = c.speed ?? DEFAULT_SPEED;
           break;
         }
-        case "follow": {
+        case "attach": {
           const e = g.ents.get(c.id);
           if (!e) break;
+          e.attached = c.player ?? 0;
+          if (e.attached) {
+            e.mode = "still"; // it ignores moveTo, walkTo and follow until let go
+            e.path = null;
+            e.moving = false;
+          }
+          this.loaded = true;
+          break;
+        }
+        case "follow": {
+          const e = g.ents.get(c.id);
+          if (!e || e.attached) break;
           // a sprite following another sprite keeps the member it belongs to (debug, hover)
           const target = c.sprite ?? null, player = c.player ?? e.player;
           if (e.mode !== "follow" || e.player !== player || e.target !== target) {
@@ -241,11 +265,11 @@ export class PluginLayer {
         case "walkTo": {
           // along a path around walls (tilePath.ts); somewhere it cannot reach (off the map, a wall), as close as it can
           const e = g.ents.get(c.id);
-          if (!e) break;
+          if (!e || e.attached) break;
           // searched on a later frame, within the per-frame budget; until then it keeps what it does
           e.speed = c.speed ?? DEFAULT_SPEED;
           this.searches.request(plugin + "/" + c.id, { e, x: c.x, y: c.y }, ({ e, x, y }) => {
-            if (!g.ents.has(c.id) || g.ents.get(c.id) !== e) return; // removed or replaced since
+            if (!g.ents.has(c.id) || g.ents.get(c.id) !== e || e.attached) return; // removed, replaced or pinned since
             const walkable = (tx: number, ty: number) => this.host.canStand(tx * 16 + 8, ty * 16 + 8);
             const path = findPath(e.x, e.y, x, y, walkable, undefined, true);
             e.path = path;
@@ -370,7 +394,15 @@ export class PluginLayer {
     for (const g of this.plugins.values()) {
       for (const e of g.ents.values()) {
         let on = e.shown;
-        if (e.mode === "follow" && e.target !== null) {
+        let z = NaN;
+        if (e.attached) {
+          // pinned above a member's name tag: it is where they are drawn this frame, and hidden while they are off screen
+          if (this.host.headPoint(e.attached, this.head)) {
+            e.x = this.head.x;
+            e.y = this.head.y;
+            z = this.head.feetY + 0.5; // over the member's own drawing
+          } else on = false;
+        } else if (e.mode === "follow" && e.target !== null) {
           // following another sprite of the plugin, as a pet follows its owner; it waits while that
           // sprite is gone or hidden
           const t = g.ents.get(e.target);
@@ -442,7 +474,7 @@ export class PluginLayer {
         e.spr.texture = tex;
         e.spr.position.set(px, py);
         e.placed = true;
-        e.spr.zIndex = e.y;
+        e.spr.zIndex = z === z ? z : e.y;
       }
     }
     return changed;
@@ -559,6 +591,6 @@ export class PluginLayer {
   debug(plugin: string) {
     const g = this.plugins.get(plugin);
     if (!g) return null;
-    return [...g.ents.entries()].map(([id, e]) => ({ id, x: e.x, y: e.y, visible: e.spr.visible, mode: e.mode, player: e.player, key: e.key, moving: e.moving, tint: e.spr.tint, label: e.label, target: e.target }));
+    return [...g.ents.entries()].map(([id, e]) => ({ id, x: e.x, y: e.y, visible: e.spr.visible, mode: e.mode, player: e.player, key: e.key, moving: e.moving, tint: e.spr.tint, label: e.label, target: e.target, anim: e.manual }));
   }
 }

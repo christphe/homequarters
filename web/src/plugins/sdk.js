@@ -9,7 +9,7 @@
   /** @type {object[]} */
   let queue = [];
   let scheduled = false;
-  const on = { load: [], update: [], message: [] };
+  const on = { load: [], update: [], message: [], objectInit: [], objectDestroy: [], objectUpdate: [] };
   /** hq.provideSheet: draws a sheet another plugin asked for by metadata (a guest pet of hq-pets) */
   let provider = null;
 
@@ -66,18 +66,20 @@
   };
   const ser = (owner, nodes) =>
     (nodes || []).map((n) => {
-      if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed, sprite: n.sprite };
+      if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed, disabled: n.disabled, sprite: n.sprite };
       if (n && n.type === "row") return { type: "row", children: ser(owner, n.children) };
       if (n && (n.type === "color" || n.type === "number" || n.type === "field")) {
         const { onChange, ...rest } = n;
         return { ...rest, change: reg(owner, onChange) };
       }
+      // what the view sends reaches onMessage as this callback's value (the page relays it)
+      if (n && n.type === "view") return { type: "view", view: n.view, label: n.label, height: n.height, message: reg(owner, n.onMessage) };
       return n;
     });
 
   const ui = Object.freeze({
     text: (text, opts = {}) => ({ type: "text", text: String(text), muted: opts.muted ? true : undefined }),
-    button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, sprite: opts.sprite }),
+    button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, disabled: opts.disabled, sprite: opts.sprite }),
     /** One cell of a PNG of public/: { src, frame: [x, y, w, h], scale, tint, alt }. */
     sprite: (opts) => ({ type: "sprite", sprite: { src: opts.src, sheet: opts.sheet, frame: opts.frame, scale: opts.scale, tint: opts.tint }, alt: opts.alt }),
     copy: (opts) => ({ type: "copy", label: opts.label, value: String(opts.value) }),
@@ -91,6 +93,22 @@
     number: (opts) => ({ type: "number", label: opts.label, value: opts.value, min: opts.min, max: opts.max, onChange: opts.onChange }),
     /** Home Quarters' own widget to create, copy (once) and revoke this member's token for this plugin. */
     appToken: () => ({ type: "appToken" }),
+    /** A view of the manifest ("views") in a sandboxed iframe, at most one per modal; onMessage(msg) gets what it sends. */
+    view: (opts) => ({ type: "view", view: opts.view, label: opts.label, height: opts.height ?? "medium", onMessage: opts.onMessage }),
+    /** Sends msg (JSON, at most 4096 bytes) to the open view's hqView.onMessage; nothing without an open view. */
+    post(msg) {
+      let s;
+      try {
+        s = JSON.stringify(msg);
+      } catch {
+        s = undefined;
+      }
+      if (s === undefined || new TextEncoder().encode(s).length > 4096) {
+        console.warn("hq.ui.post: message dropped, it must be JSON of at most 4096 bytes");
+        return;
+      }
+      push({ op: "post", d: JSON.parse(s) });
+    },
     /** A button at an anchor (topbar, topright, bottombar, sidebar, minimap), or a box on the map (screen). */
     slot(id, anchor, opts = {}) {
       const owner = "slot:" + id;
@@ -122,6 +140,13 @@
     onUpdate: handler(on.update),
     /** fn(msg): a message from this plugin's server code (hq.send / hq.broadcast) */
     onMessage: handler(on.message),
+    /** fn(obj): an object of this plugin placed on the map, once per object when the plugin starts on the
+     *  page and when one is added; obj = { kind, x, y, w, h, px, py } (tiles, top-left in world px) */
+    onObjectInit: handler(on.objectInit),
+    /** fn(obj): that object left the map (removed or moved, or its kind no longer declared) */
+    onObjectDestroy: handler(on.objectDestroy),
+    /** fn(dt, obj): with onUpdate, for each placed object of a kind declared "dynamic": true (at most 64) */
+    onObjectUpdate: handler(on.objectUpdate),
     ui,
     /** Sends msg (JSON, at most 1500 bytes) to this plugin's server onMessage. */
     send(msg) {
@@ -166,6 +191,10 @@
       const target = typeof who === "object" && who !== null ? { sprite: who.sprite } : { player: who };
       push({ op: "follow", id, ...target, gap: opts.gap, beside: opts.beside, roam: opts.roam });
     },
+    /** Pins the sprite above that member's head, over their name tag; null lets it go (it stays where it is). */
+    attach(id, memberId) {
+      push({ op: "attach", id, player: memberId });
+    },
     stop(id) {
       push({ op: "stop", id });
     },
@@ -197,7 +226,13 @@
     port.onmessage = (m) => {
       const d = m.data;
       if (d.t === "load") call(on.load);
-      else if (d.t === "update") call(on.update, d.dt, d.world);
+      else if (d.t === "update") {
+        call(on.update, d.dt, d.world);
+        for (const o of d.objects || []) call(on.objectUpdate, d.dt, o);
+      } else if (d.t === "objs") {
+        for (const o of d.destroy) call(on.objectDestroy, o);
+        for (const o of d.init) call(on.objectInit, o);
+      }
       else if (d.t === "msg") call(on.message, d.d);
       else if (d.t === "sheet") {
         // the page asks for a sheet by metadata: answer it (or say why not), whenever it is drawn

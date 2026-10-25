@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -365,6 +366,30 @@ func (h *Host) Message(from Player, plugin string, data []byte) {
 	in.post(event{kind: evMessage, p: from, data: data})
 }
 
+// Use tells a running plugin that a member pressed X next to one of its map objects at tile (x, y).
+// A kind the plugin's manifest does not declare is ignored, as is a plugin that is not running; the
+// event is dropped (and counted) when the plugin's inbox is full, so the caller never waits.
+func (h *Host) Use(p Player, plugin, kind string, x, y int) {
+	h.mu.Lock()
+	in := h.inst[plugin]
+	h.mu.Unlock()
+	if in == nil {
+		return
+	}
+	if _, ok := in.info.Object(kind); !ok {
+		return
+	}
+	data, err := json.Marshal(struct {
+		Kind string `json:"kind"`
+		X    int    `json:"x"`
+		Y    int    `json:"y"`
+	}{kind, x, y})
+	if err != nil {
+		return
+	}
+	in.post(event{kind: evUse, p: p, data: data})
+}
+
 // RouteAuth says whether a running plugin has that route, and whether an app token may call it.
 func (h *Host) RouteAuth(plugin, method, path string) (found, token bool) {
 	h.mu.Lock()
@@ -444,6 +469,17 @@ func (h *Host) bucketFor(id uint32, now time.Time) *bucket {
 type bucket struct {
 	tokens float64
 	at     time.Time
+}
+
+// View returns the compiled browser code of one view of a running plugin.
+func (h *Host) View(name, view string) ([]byte, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	in := h.inst[name]
+	if in == nil || in.views[view] == nil {
+		return nil, false
+	}
+	return in.views[view], true
 }
 
 // Client returns the compiled browser code of a running plugin.

@@ -128,6 +128,9 @@ type World struct {
 	// OnPresence reports a member becoming visible-online (joined, or left invisible) or not (left,
 	// evicted, went invisible). Plugins see only this presence. Must not block.
 	OnPresence func(officeID int64, userID uint32, name, role string, online bool)
+	// OnUse reports a member pressing X next to a plugin object (a map prop of type "<plugin>/<kind>")
+	// at tile (x, y): within reach, allowed in its area, visible and under the use throttle. Must not block.
+	OnUse func(officeID int64, userID uint32, name, role, plugin, kind string, x, y int)
 
 	// social features (world goroutine only)
 	followers map[*Player]struct{}
@@ -647,7 +650,7 @@ func (w *World) doJoin(e ev, now time.Time) {
 			return
 		}
 		p = &Player{ID: info.ID, Name: info.Name, Avatar: info.Avatar, Role: info.Role, Status: StatusAvailable,
-			area: -1, chatTokens: 5, portalOn: -1, ackSent: ^uint32(0)}
+			area: -1, chatTokens: 5, useTokens: useBurst, portalOn: -1, ackSent: ^uint32(0)}
 		p.sx0, p.sy0, p.sx1, p.sy1 = 0, 0, -1, -1
 		p.X, p.Y = w.spawnFor(p, info)
 		p.lastAdv = now

@@ -29,6 +29,20 @@ declare global {
       avatars: Avatar[];
     }
 
+    /** An object of this plugin placed on the map (manifest "objects"). It is identified by kind, x and y:
+     * moved or resized in the editor, it is destroyed, then initialised again. */
+    interface PlacedObject {
+      kind: string;
+      /** Top-left tile and size in tiles. */
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      /** Top-left corner in world pixels (x * 16, y * 16). */
+      px: number;
+      py: number;
+    }
+
     interface Animation {
       /** Row of the sheet. */
       row: number;
@@ -52,9 +66,9 @@ declare global {
       tint?: string;
     }
 
-    /** An element of a modal or a box on the map, made by hq.ui.text, button, copy, image, row, appToken, color, number, field or sprite. */
+    /** An element of a modal or a box on the map, made by hq.ui.text, button, copy, image, row, appToken, color, number, field, sprite or view. */
     interface UINode {
-      readonly type: "text" | "button" | "copy" | "image" | "row" | "appToken" | "color" | "number" | "field" | "sprite";
+      readonly type: "text" | "button" | "copy" | "image" | "row" | "appToken" | "color" | "number" | "field" | "sprite" | "view";
     }
 
     type ButtonAnchor = "topbar" | "topright" | "bottombar" | "sidebar" | "minimap";
@@ -62,8 +76,8 @@ declare global {
 
     interface UI {
       text(text: string, opts?: { muted?: boolean }): UINode;
-      /** A button; sprite shows a picture before its label. */
-      button(opts: { label: string; onClick?: () => void; primary?: boolean; pressed?: boolean; sprite?: SpriteCell }): UINode;
+      /** A button; sprite shows a picture before its label. disabled shows it greyed out and not pressable. */
+      button(opts: { label: string; onClick?: () => void; primary?: boolean; pressed?: boolean; disabled?: boolean; sprite?: SpriteCell }): UINode;
       /** One cell of a sheet, for a preview; alt names it for screen readers. */
       sprite(opts: SpriteCell & { alt: string }): UINode;
       copy(opts: { label: string; value: string }): UINode;
@@ -79,6 +93,12 @@ declare global {
       field(opts: { label: string; value?: string; maxLength?: number; placeholder?: string; hideLabel?: boolean; onChange?: (text: string) => void }): UINode;
       /** A whole number in min..max; onChange runs once it is entered (Enter or leaving the field), clamped to the range. */
       number(opts: { label: string; value: number; min: number; max: number; onChange?: (value: number) => void }): UINode;
+      /** A sandboxed iframe in a modal (at most one per modal) running the manifest view `view` ("views" in plugin.json);
+       * label is its accessible title, height a preset (default "medium"), the width the modal's. onMessage gets what the
+       * view sends with hqView.send. Redrawing the modal with the same view keeps the iframe and its state. */
+      view(opts: { view: string; label: string; height?: "small" | "medium" | "large"; onMessage?: (msg: any) => void }): UINode;
+      /** Sends to the open view's hqView.onMessage (anything JSON, at most 4096 bytes; 30 a second). */
+      post(msg: unknown): void;
       /** A button at an anchor. The label (1-40 characters) defaults to the plugin's title. */
       slot(id: string, anchor: ButtonAnchor, opts?: { label?: string; icon?: string; pressed?: boolean; onClick?: () => void }): void;
       /** A box on the map, at most 240 x 160 px, dx/dy 0-200 px from the corner. */
@@ -96,6 +116,15 @@ declare global {
       onUpdate(fn: (dt: number, world: World) => void): void;
       /** A message from the plugin's server code (hq.send / hq.broadcast there). Name its type: onMessage<MyMessage>(...). */
       onMessage<T = unknown>(fn: (msg: T) => void): void;
+      /** Each placed object of this plugin: once per object when the code starts on the page (after onLoad), and when
+       * one is added to the map. An object whose manifest has no sprite is drawn by you (hq.spawn at px, py). */
+      onObjectInit(fn: (obj: PlacedObject) => void): void;
+      /** The object left the map: removed or moved in the editor, or its kind is no longer declared. Not called when the
+       * plugin stops (its sprites go anyway); on restart, onObjectInit runs again for each object. */
+      onObjectDestroy(fn: (obj: PlacedObject) => void): void;
+      /** With onUpdate (about every 100 ms), for each placed object of a kind declared "dynamic": true; at most 64
+       * objects (the first in map order), the rest get only init and destroy. */
+      onObjectUpdate(fn: (dt: number, obj: PlacedObject) => void): void;
       /** To the plugin's server onMessage (anything JSON.stringify accepts). Throws if over 1500 bytes. */
       send(msg: unknown): void;
       /** A PNG sheet of public/ (at most 2048 px a side), cut into frameW x frameH cells. */
@@ -122,6 +151,9 @@ declare global {
       follow(id: string, memberId: number, opts?: { gap?: number; beside?: number; roam?: number }): void;
       /** Follows another sprite of this plugin the same way, gap px behind; it waits while that sprite is gone or hidden. */
       follow(id: string, who: { sprite: string }, opts?: { gap?: number; beside?: number; roam?: number }): void;
+      /** Pins the sprite above that member's head, over their name tag, moving with them; hidden while they are off screen.
+       * null lets it go (it stays where it is). While pinned it ignores moveTo, walkTo and follow. */
+      attach(id: string, memberId: number | null): void;
       /** Walks there along a path around walls (px/s, default 72); somewhere it cannot reach (off the map, in a wall), as close as it can. */
       walkTo(id: string, x: number, y: number, opts?: { speed?: number }): void;
       stop(id: string): void;

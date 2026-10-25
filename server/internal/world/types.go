@@ -151,6 +151,8 @@ type Player struct {
 
 	// input bookkeeping
 	chatTokens float64
+	useTokens  float64   // plugin object uses left (token bucket)
+	useAt      time.Time // when useTokens was last refilled
 
 	// social features
 	emoAt     time.Time // last emote (cooldown)

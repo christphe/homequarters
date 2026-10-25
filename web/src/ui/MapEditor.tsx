@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { session } from "../session";
 import { cloneMap, computeSolid, propSize, PROP_TYPES, toWire } from "../game/mapModel";
-import type { MapData } from "../net/protocol";
+import { isPluginProp } from "../game/props";
+import type { MapData, PluginObjectSpec } from "../net/protocol";
 import { toast, useStore } from "../store";
 import { t } from "../i18n";
 
@@ -10,6 +11,7 @@ const INTERACTIVE = ["note", "embed", "image", "portal", "whiteboard", "spotligh
 
 export function MapEditor({ onClose }: { onClose: () => void }) {
   const roster = useStore((s) => s.roster);
+  const pluginObjects = useStore((s) => s.pluginObjects);
   const [tool, setTool] = useState<Tool>("wall");
   const [propType, setPropType] = useState("plant");
   const [assignTo, setAssignTo] = useState(0);
@@ -25,6 +27,14 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
   const original = useRef<MapData | null>(null);
   const drag = useRef<{ x: number; y: number; paint?: boolean } | null>(null);
   const layer = useRef<HTMLDivElement>(null);
+
+  /** The running plugin's object chosen, or undefined (a built-in kind, or its plugin stopped meanwhile). */
+  const chosenSpec = isPluginProp(propType) ? pluginObjects.specs.find((o) => o.plugin + "/" + o.kind === propType) : undefined;
+
+  useEffect(() => {
+    session.view?.setEditing(true); // objects of plugins not running show as placeholders
+    return () => session.view?.setEditing(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,8 +82,11 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
       drag.current = { x, y, paint: on };
       setWall(x, y, on);
     } else if (tool === "prop") {
+      if (isPluginProp(propType) && !chosenSpec) return; // its plugin stopped meanwhile
       if (!d.props.some((p) => p.t === propType && p.x === x && p.y === y)) {
-        d.props.push({ t: propType, x, y, ...(propType === "portal" ? { to: { x: portalX, y: portalY } } : {}) });
+        // a plugin object's size is written in the map, from its manifest
+        const size = chosenSpec ? { w: chosenSpec.size[0], h: chosenSpec.size[1] } : {};
+        d.props.push({ t: propType, x, y, ...size, ...(propType === "portal" ? { to: { x: portalX, y: portalY } } : {}) });
         apply();
       }
     } else if (tool === "erase") {
@@ -140,7 +153,7 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
     if (!d || !session.view) return;
     const [x, y] = tileAt(e);
     if (tool === "prop") {
-      const [w, h] = propSize({ t: propType, x, y });
+      const [w, h] = chosenSpec ? chosenSpec.size : propSize({ t: propType, x, y });
       session.view.setHover({ x, y, w, h });
     } else if (tool === "room" && drag.current) {
       const x0 = Math.min(drag.current.x, x), y0 = Math.min(drag.current.y, y);
@@ -197,8 +210,16 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
         {tool === "prop" && (
           <label className="field"><span>{t("editor.object")}</span>
             <select value={propType} onChange={(e) => setPropType(e.target.value)}>
-              {PROP_TYPES.map((p) => <option key={p.t} value={p.t}>{p.label}</option>)}
+              <optgroup label={t("editor.group.builtin")}>
+                {PROP_TYPES.map((p) => <option key={p.t} value={p.t}>{p.label}</option>)}
+              </optgroup>
+              {Object.entries(pluginObjects.titles).map(([plugin, title]) => (
+                <optgroup key={plugin} label={t("editor.group.plugin", { title })}>
+                  {pluginObjects.specs.filter((o) => o.plugin === plugin).map((o) => <option key={o.kind} value={plugin + "/" + o.kind}>{o.label}</option>)}
+                </optgroup>
+              ))}
             </select>
+            {chosenSpec && <ObjectIcon spec={chosenSpec} />}
           </label>
         )}
         {tool === "prop" && propType === "portal" && <>
@@ -258,6 +279,16 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
       </aside>
     </>
   );
+}
+
+/** A plugin object's picture (its frame) beside the object list, enlarged by a whole factor to about 48 px. */
+function ObjectIcon({ spec }: { spec: PluginObjectSpec }) {
+  if (!spec.sprite) return null; // the plugin draws it on the map: no picture to show
+  const url = `/plugins/${spec.plugin}/assets/${spec.sprite}`;
+  if (!spec.frame) return <img className="editor-object-icon" src={url} alt="" />;
+  const [x, y, w, h] = spec.frame;
+  const zoom = Math.max(1, Math.floor(48 / Math.max(w, h)));
+  return <span className="editor-object-icon" aria-hidden="true" style={{ width: w, height: h, zoom, backgroundImage: `url("${url}")`, backgroundPosition: `${-x}px ${-y}px` }} />;
 }
 
 /** Frees whatever desk or private office a person had in the draft (the server allows one per person). */

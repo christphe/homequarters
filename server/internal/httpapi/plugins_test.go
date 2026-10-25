@@ -174,6 +174,17 @@ func TestEnablePluginEndToEnd(t *testing.T) {
 	if code, h, body := anon.raw("GET", "/plugins/echo/client.js", nil); code != 200 || !strings.HasPrefix(h.Get("Content-Type"), "text/javascript") || h.Get("Access-Control-Allow-Origin") != "*" || !strings.Contains(body, "hq.onLoad") {
 		t.Fatalf("compiled client: %d %v %s", code, h, body)
 	}
+	if _, _, body := bia.raw("GET", "/api/plugins", nil); !strings.Contains(body, `"objects":[{"kind":"box","label":"Box","size":[1,2],"sprite":"box.png","dynamic":false},{"kind":"orb","label":"Orb","size":[1,1],"dynamic":true}]`) || !strings.Contains(body, `"views":["board"]`) {
+		t.Fatalf("/api/plugins objects and views: %s", body)
+	}
+	if code, h, body := anon.raw("GET", "/plugins/echo/views/board.js", nil); code != 200 || !strings.HasPrefix(h.Get("Content-Type"), "text/javascript") || h.Get("Access-Control-Allow-Origin") != "*" || h.Get("ETag") == "" || !strings.Contains(body, "__view") {
+		t.Fatalf("compiled view: %d %v %s", code, h, body)
+	}
+	for _, p := range []string{"/plugins/echo/views/nope.js", "/plugins/echo/views/board", "/plugins/echo/views/board.png", "/plugins/nope/views/board.js"} {
+		if code, _, _ := anon.raw("GET", p, nil); code != 404 {
+			t.Errorf("%s: %d", p, code)
+		}
+	}
 	code, h, body := anon.raw("GET", "/plugins/echo/assets/client.js", nil)
 	if code != 200 || h.Get("Access-Control-Allow-Origin") != "*" || !strings.HasPrefix(h.Get("Content-Type"), "text/javascript") || h.Get("Cache-Control") != "no-cache" || !strings.Contains(body, "hq.onLoad") {
 		t.Fatalf("client.js: %d %v %s", code, h, body)
@@ -189,7 +200,7 @@ func TestEnablePluginEndToEnd(t *testing.T) {
 		t.Fatalf("disable: %d", code)
 	}
 	sb.wait(t, `{"t":"plgs"}`, 2)
-	for _, p := range []string{"/plugins/echo/api/hello", "/plugins/echo/assets/client.js", "/plugins/echo/client.js"} {
+	for _, p := range []string{"/plugins/echo/api/hello", "/plugins/echo/assets/client.js", "/plugins/echo/client.js", "/plugins/echo/views/board.js"} {
 		if code, _, _ := bia.raw("GET", p, nil); code != 404 {
 			t.Errorf("%s after disable: %d", p, code)
 		}

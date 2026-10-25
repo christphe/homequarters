@@ -16,6 +16,7 @@ const nameOf: NameOf = (id) => getState().owners.get(id) ?? getState().roster.ge
 /** Low-rate UI state only: avatar reactions themselves are drawn by Pixi, not React. */
 export function SocialControls() {
   const nearby = useStore((s) => s.nearby);
+  const objectSpecs = useStore((s) => s.pluginObjects.specs);
   const following = useStore((s) => s.following);
   const request = useStore((s) => s.leadRequest);
   const knock = useStore((s) => s.knock);
@@ -132,7 +133,7 @@ export function SocialControls() {
             </div>
           </div>
         )}
-        {nearby && <button className="btn interaction-hint" onClick={() => session.view?.interact()}>{t("object.use", { name: nearby.label || t(`object.${nearby.t}` as Key) })}</button>}
+        {nearby && <button className="btn interaction-hint" onClick={() => session.view?.interact()}>{t("object.use", { name: nearby.label || objectSpecs.find((o) => o.plugin + "/" + o.kind === nearby.t)?.label || t(`object.${nearby.t}` as Key) })}</button>}
         {following && <div className="follow-hint"><span>{t("follow.active", { name: following.name })}</span> <button className="btn" onClick={() => session.follow(0)}>{t("follow.stop")}</button></div>}
         {(lockable || myDesk) && <div className="room-actions">
           {lockable && <button className="btn" onClick={() => session.lock(!locked.includes(roomIndex))}>{t(lockKey(locked.includes(roomIndex)))}</button>}

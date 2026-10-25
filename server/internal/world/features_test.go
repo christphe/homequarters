@@ -456,3 +456,97 @@ func TestOnlyOneSpeakerAndTheFirstKeepsIt(t *testing.T) {
 		t.Fatal("the next person on the pad takes over")
 	}
 }
+
+type useCall struct {
+	id           uint32
+	plugin, kind string
+	x, y         int
+}
+
+func TestUsePluginObject(t *testing.T) {
+	h := newHarness(t)
+	m := *gamemap.Default()
+	// one object in the open reception, one inside Aurora (a room that can be locked)
+	m.Props = append(m.Props,
+		gamemap.Prop{T: "demo/thing", X: 12, Y: 9, W: 1, H: 1},
+		gamemap.Prop{T: "demo/thing", X: 45, Y: 4, W: 1, H: 1})
+	cm, err := gamemap.Compile(&m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.doReloadMap(cm, h.now); err != nil {
+		t.Fatal(err)
+	}
+	var calls []useCall
+	h.w.OnUse = func(_ int64, id uint32, _, _, plugin, kind string, x, y int) {
+		calls = append(calls, useCall{id, plugin, kind, x, y})
+	}
+	near := h.add(1, "member", 12*16+8, 10*16+8)
+	far := h.add(2, "member", 20*16+8, 9*16+8)
+	drain(near)
+	drain(far)
+
+	h.send(far, ev{kind: evUse, x: 12, y: 9})
+	if len(calls) != 0 {
+		t.Fatal("out of reach must not call the plugin")
+	}
+	h.send(near, ev{kind: evUse, x: 12, y: 9})
+	if len(calls) != 1 || calls[0] != (useCall{1, "demo", "thing", 12, 9}) {
+		t.Fatalf("expected one call for demo/thing at (12,9), got %+v", calls)
+	}
+	if strings.Contains(frames(near), `"t":"obj"`) {
+		t.Fatal("a plugin object must not send an obj frame")
+	}
+
+	// invisible members never reach a plugin
+	h.w.handle(ev{kind: evStatus, p: near, gen: near.gen, s: StatusInvisible}, h.now)
+	h.now = h.now.Add(10 * time.Second)
+	h.send(near, ev{kind: evUse, x: 12, y: 9})
+	if len(calls) != 1 {
+		t.Fatal("an invisible member must not reach the plugin")
+	}
+	h.w.handle(ev{kind: evStatus, p: near, gen: near.gen, s: StatusAvailable}, h.now)
+
+	// a locked area they may not enter
+	inside := h.add(3, "member", 46*16+8, 5*16+8)
+	outside := h.add(4, "member", 44*16+8, 4*16+8) // next to the object, on the other side of the door
+	h.send(inside, ev{kind: evLock, b: true})
+	h.send(outside, ev{kind: evUse, x: 45, y: 4})
+	if len(calls) != 1 {
+		t.Fatalf("a locked area must stop the use, got %+v", calls)
+	}
+	h.send(inside, ev{kind: evLock, b: false})
+	h.send(outside, ev{kind: evUse, x: 45, y: 4})
+	if len(calls) != 2 {
+		t.Fatalf("once unlocked the same use must reach the plugin, got %+v", calls)
+	}
+}
+
+func TestUsePluginObjectIsThrottled(t *testing.T) {
+	h := newHarness(t)
+	m := *gamemap.Default()
+	m.Props = append(m.Props, gamemap.Prop{T: "demo/thing", X: 12, Y: 9, W: 1, H: 1})
+	cm, err := gamemap.Compile(&m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.w.doReloadMap(cm, h.now); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	h.w.OnUse = func(int64, uint32, string, string, string, string, int, int) { n++ }
+	p := h.add(1, "member", 12*16+8, 10*16+8)
+	for i := 0; i < 20; i++ {
+		h.send(p, ev{kind: evUse, x: 12, y: 9})
+	}
+	if n != 8 {
+		t.Fatalf("a burst of 20 uses must reach the plugin 8 times, got %d", n)
+	}
+	h.now = h.now.Add(time.Second)
+	for i := 0; i < 20; i++ {
+		h.send(p, ev{kind: evUse, x: 12, y: 9})
+	}
+	if n != 12 {
+		t.Fatalf("after one second 4 more uses are allowed, got %d total", n)
+	}
+}

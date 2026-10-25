@@ -18,7 +18,7 @@
 - **Avatars and pets.** Pixel-art characters with skin tones, hair styles, beards, headwear and any colour. Pets come with the bundled pets plugin: several per person, each named and in any colour, that follow you or wander off on their own.
 - **Office life.** Reactions, shared whiteboards, notes, embedded sites and images, announcements.
 - **Administration.** Ready-made layouts to switch to (Loft, Lodge, Manor), a live office editor (walls, objects, rooms, desk assignments), invites, roles, an activity log and the office's name. Optional Google sign-in with admission by domain or invite.
-- **Plugins.** The operator installs plugins as folders and administrators turn them on. They are written in TypeScript against a typed SDK: server code runs in QuickJS, browser code in a sandboxed iframe that can draw sprites, add buttons, a box on the map or a modal. See the [Plugins guide](docs/plugins.md) and the [API reference](docs/plugin-api.md).
+- **Plugins.** The operator installs plugins as folders and administrators turn them on. They are written in TypeScript against a typed SDK: server code runs in QuickJS, browser code in a sandboxed iframe that can draw sprites, add buttons, a box on the map or a modal, place objects on the map and show a view of their own in their window (the bundled Chess plugin does both). See the [Plugins guide](docs/plugins.md) and the [API reference](docs/plugin-api.md).
 - **Efficiency.** One goroutine per office, a spatial grid and areas of interest, state changes at 10-15 Hz instead of a position stream, bounded queues, a map baked into one texture and rendering on demand. See [Efficiency and benchmarks](docs/efficiency-and-benchmarks.md).
 
 It is alpha software. The documentation lives in [docs/](docs/).

@@ -54,6 +54,88 @@ type Manifest struct {
 	// ExternalHosts are the only hosts the plugin's browser code may fetch from (images it cannot ship,
 	// say), over https: shown to administrators, enforced in its iframe by a Content Security Policy
 	ExternalHosts []string `json:"externalHosts"`
+	// Objects are the kinds of map object the plugin provides (props of type <plugin>/<kind>)
+	Objects []Object `json:"objects"`
+	// Views are extra browser scripts, name to file in public/, run later in a visible sandboxed iframe
+	Views map[string]string `json:"views"`
+}
+
+// Object is one kind of map object a plugin provides, at the given size in tiles. With a Sprite (a PNG
+// of public/, optionally cut from a sheet by Frame) the page draws it; without one (absent or null)
+// the plugin's browser code draws it. Dynamic objects also get onObjectUpdate in the browser.
+type Object struct {
+	Kind    string  `json:"kind"`
+	Label   string  `json:"label"`
+	Size    [2]int  `json:"size"`
+	Sprite  *string `json:"sprite"`
+	Frame   *[4]int `json:"frame,omitempty"` // x, y, w, h in the sprite, whole image when absent
+	Dynamic bool    `json:"dynamic"`
+}
+
+const (
+	maxObjects = 8
+	maxViews   = 4
+)
+
+// Object returns the declared object of a kind.
+func (i *Info) Object(kind string) (Object, bool) {
+	for _, o := range i.Objects {
+		if o.Kind == kind {
+			return o, true
+		}
+	}
+	return Object{}, false
+}
+
+// checkObjects validates the manifest's objects and views against the files of public/.
+func checkObjects(dir string, m Manifest) error {
+	pub := filepath.Join(dir, "public")
+	regular := func(rel string) bool {
+		st, err := os.Stat(filepath.Join(pub, filepath.FromSlash(rel)))
+		return err == nil && st.Mode().IsRegular()
+	}
+	if len(m.Objects) > maxObjects {
+		return fmt.Errorf("objects: at most %d", maxObjects)
+	}
+	seen := map[string]bool{}
+	for _, o := range m.Objects {
+		switch {
+		case !nameRE.MatchString(o.Kind):
+			return fmt.Errorf("object kind %q must match %s", o.Kind, nameRE)
+		case seen[o.Kind]:
+			return fmt.Errorf("object %q is declared twice", o.Kind)
+		case strings.TrimSpace(o.Label) == "" || len([]rune(o.Label)) > 40:
+			return fmt.Errorf("object %q needs a label of 1 to 40 characters", o.Kind)
+		case o.Size[0] < 1 || o.Size[0] > 4 || o.Size[1] < 1 || o.Size[1] > 4:
+			return fmt.Errorf("object %q: size is [width, height], each 1 to 4 tiles", o.Kind)
+		}
+		if sp := o.Sprite; sp != nil {
+			switch {
+			case !local(*sp) || strings.ToLower(filepath.Ext(*sp)) != ".png":
+				return fmt.Errorf("object %q: sprite %q must be a .png file inside public/ (or null when the plugin draws it)", o.Kind, *sp)
+			case !regular(*sp):
+				return fmt.Errorf("object %q: sprite %s: no such file in public/", o.Kind, *sp)
+			}
+		}
+		if f := o.Frame; f != nil && (f[0] < 0 || f[1] < 0 || f[2] < 1 || f[2] > 128 || f[3] < 1 || f[3] > 128) {
+			return fmt.Errorf("object %q: frame is [x, y, width, height] with x, y >= 0 and width, height 1 to 128", o.Kind)
+		}
+		seen[o.Kind] = true
+	}
+	if len(m.Views) > maxViews {
+		return fmt.Errorf("views: at most %d", maxViews)
+	}
+	for name, file := range m.Views {
+		switch {
+		case !nameRE.MatchString(name):
+			return fmt.Errorf("view name %q must match %s", name, nameRE)
+		case !local(file) || !script(file):
+			return fmt.Errorf("view %q: %q must be a .ts or .js file inside public/", name, file)
+		case !regular(file):
+			return fmt.Errorf("view %q: %s: no such file in public/", name, file)
+		}
+	}
+	return nil
 }
 
 var hostRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
@@ -323,6 +405,9 @@ func load(dir, source string) Info {
 		if st, err := os.Stat(filepath.Join(dir, "public", filepath.FromSlash(m.Client))); err != nil || !st.Mode().IsRegular() {
 			return fail("client %s: no such file in public/", m.Client)
 		}
+	}
+	if err := checkObjects(dir, m); err != nil {
+		return fail("%v", err)
 	}
 	if _, err := i.code(); err != nil {
 		return fail("%v", err)

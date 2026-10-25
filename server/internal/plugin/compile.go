@@ -30,8 +30,9 @@ const maxPluginFiles = 2000
 type compiled struct {
 	mu     sync.Mutex
 	stamp  string
-	server string // JavaScript defining the global __plugin (the module's exports); "" without server code
-	client []byte // JavaScript for the browser; nil without client code
+	server string            // JavaScript defining the global __plugin (the module's exports); "" without server code
+	client []byte            // JavaScript for the browser; nil without client code
+	views  map[string][]byte // JavaScript of each view, by name
 	err    error
 }
 
@@ -50,7 +51,7 @@ func (i *Info) code() (*compiled, error) {
 	if stamp == c.stamp {
 		return c, c.err
 	}
-	c.stamp, c.server, c.client, c.err = stamp, "", nil, nil
+	c.stamp, c.server, c.client, c.views, c.err = stamp, "", nil, nil, nil
 	if i.Server != "" {
 		js, err := bundle(i.Dir, i.Dir, i.Server, api.FormatIIFE, "__plugin", api.PlatformNeutral)
 		if err != nil {
@@ -67,6 +68,18 @@ func (i *Info) code() (*compiled, error) {
 			return c, err
 		}
 		c.client = js
+	}
+	for name, file := range i.Views {
+		pub := filepath.Join(i.Dir, "public")
+		js, err := bundle(pub, pub, file, api.FormatIIFE, "", api.PlatformBrowser)
+		if err != nil {
+			c.err = err
+			return c, err
+		}
+		if c.views == nil {
+			c.views = map[string][]byte{}
+		}
+		c.views[name] = js
 	}
 	return c, nil
 }

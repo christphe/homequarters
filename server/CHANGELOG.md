@@ -3,6 +3,8 @@
 ## [Unreleased] - minor
 
 ### Added
+- Chess: a bundled plugin with a chessboard to place on a table; take the White or Black seat, anybody else with the window open watches, and each board keeps its game (#36)
+- Plugins can put objects on the map that X opens (placed by administrators in the map editor, hidden while the plugin is off), draw them, react to them being added or removed, show a view of their own in their window and pin a sprite above a member's head (#36)
 - Administrators can switch the office to a ready-made layout from Admin > Office: Loft (today's starter office), Lodge (36 desks) or Manor (48 desks in islands of back-to-back desks, meeting rooms, mini meeting rooms, a break room whose duo and couch corners each have their own call, an arena); the whole map is replaced, desk assignments carry over by desk number and everybody online reconnects into the new office at its entrance (#35)
 
 ### Changed

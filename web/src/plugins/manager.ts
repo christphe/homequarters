@@ -2,6 +2,8 @@ import { PluginHost, type ProvidedSheet } from "./host";
 import { LIMITS, SendBudget } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 import { setState, type PluginSlot } from "../store";
+import type { PluginObjectSpec, Prop } from "../net/protocol";
+import { dynamicObjects, placedObjects } from "../game/pluginObjects";
 
 const EARLY_PLUGINS = 16;
 const EARLY_MESSAGES = 64;
@@ -11,6 +13,8 @@ interface Entry {
   title: string;
   client: string | null;
   hosts?: string[]; // externalHosts of its manifest: what its iframe may fetch
+  objects?: Omit<PluginObjectSpec, "plugin">[]; // map objects of its manifest
+  views?: string[]; // names of the views of its manifest
 }
 
 /** Starts and stops plugin hosts to match GET /api/plugins, and routes messages to them. */
@@ -26,11 +30,24 @@ export class PluginManager {
 
   private budget = new SendBudget();
   private warnedAt = 0;
+  /** Tests only (window.__hq): how many of a plugin's next messages to the server are dropped, as over the budget. */
+  private dropping = new Map<string, number>();
 
   /** Sheets drawn by a plugin for metadata, by "<plugin>|<metadata JSON>": asked once per page. */
   private provided = new Map<string, Promise<ProvidedSheet>>();
 
-  constructor(private layer: PluginLayer, private socketSend: (plugin: string, d: unknown) => void) {
+  /** The props of the map the page shows, and the map objects of the running plugins. */
+  private props: Prop[] = [];
+  private specs: PluginObjectSpec[] = [];
+  /** Plugins already warned about having more dynamic objects than get updates. */
+  private warnedDynamic = new Set<string>();
+
+  constructor(
+    private layer: PluginLayer,
+    private socketSend: (plugin: string, d: unknown) => void,
+    /** The map objects of the running plugins changed (the world view draws them). */
+    private objectsChanged: (specs: PluginObjectSpec[]) => void = () => {},
+  ) {
     layer.provider = (from, metadata) => {
       const k = from + "|" + JSON.stringify(metadata);
       let p = this.provided.get(k);
@@ -47,12 +64,22 @@ export class PluginManager {
   /** Plugin messages to the server, held under the socket's rate limit (excess dropped, with a warning). */
   private send = (plugin: string, d: unknown) => {
     const now = performance.now();
-    if (this.budget.allow(now)) return this.socketSend(plugin, d);
+    const drop = this.dropping.get(plugin) ?? 0;
+    if (drop > 0) {
+      if (drop > 1) this.dropping.set(plugin, drop - 1);
+      else this.dropping.delete(plugin);
+    } else if (this.budget.allow(now)) return this.socketSend(plugin, d);
     if (now - this.warnedAt > 5000) {
       this.warnedAt = now;
       console.warn(`[plugin ${plugin}] messages to the server dropped: more than ${LIMITS.sendRate} a second`);
     }
   };
+
+  /** Tests only (window.__hq): drops the next n messages this plugin sends to the server, as a spent budget does. */
+  dropNext(plugin: string, n: number) {
+    if (n > 0) this.dropping.set(plugin, Math.floor(n));
+    else this.dropping.delete(plugin);
+  }
 
   /** A plugin's decoded sheet (hq.ui.sprite with sheet), or null. */
   sheetImage(plugin: string, key: string) {
@@ -71,6 +98,7 @@ export class PluginManager {
       return; // offline: the next hello or plgs tries again
     }
     if (gen !== this.gen) return; // a newer refresh won
+    this.setObjects(list);
     const want = new Map(list.filter((e) => e.client).map((e) => [e.name, e]));
     for (const [name, h] of this.hosts) {
       if (restart || !want.has(name)) {
@@ -91,12 +119,33 @@ export class PluginManager {
           if (this.hosts.get(name) === h) this.hosts.delete(name);
           this.layer.providerStopped(name);
         },
-      });
+      }, e.views ?? []);
       this.hosts.set(e.name, h);
       h.start();
       this.layer.providerStarted(e.name); // sheets asked for before it ran, or while it was off
       for (const d of this.early.get(e.name) ?? []) h.deliver(d);
       this.early.delete(e.name);
+    }
+    this.tellObjects();
+  }
+
+  /** The map the page shows changed (a new map, a reload, an editor draft). */
+  setProps(props: Prop[]) {
+    this.props = props;
+    this.tellObjects();
+  }
+
+  /** Gives each running plugin its placed objects: they say what changed to its browser code. */
+  private tellObjects() {
+    for (const h of this.hosts.values()) {
+      const own = this.specs.filter((s) => s.plugin === h.name);
+      const placed = placedObjects(this.props, own, h.name);
+      const { objects, over } = dynamicObjects(placed, own);
+      if (over > 0 && !this.warnedDynamic.has(h.name)) {
+        this.warnedDynamic.add(h.name);
+        console.warn(`[plugin ${h.name}] ${objects.length + over} dynamic objects on the map: only the first ${objects.length} get onObjectUpdate`);
+      }
+      h.setObjects(placed, objects);
     }
   }
 
@@ -119,6 +168,13 @@ export class PluginManager {
     if (callback) this.hosts.get(plugin)?.callback(callback, value);
   }
 
+  /** Connects the view iframe of a plugin's modal (PluginViewFrame); returns what disconnects it. */
+  attachView(plugin: string, view: string, frame: HTMLIFrameElement, fail: (reason: string) => void): () => void {
+    const h = this.hosts.get(plugin);
+    if (!h) return () => {};
+    return h.attachView(view, frame, fail);
+  }
+
   /** The person closed the plugin modal. */
   closeModal() {
     const h = this.hosts.get(this.modalOwner);
@@ -134,6 +190,21 @@ export class PluginManager {
     this.early.clear();
     this.modalOwner = "";
     setState({ pluginUI: { slots: [], modal: null } });
+    this.setObjects([]);
+  }
+
+  /** Map objects come from every running plugin, browser code or not. */
+  private setObjects(list: Entry[]) {
+    const specs: PluginObjectSpec[] = [];
+    const titles: Record<string, string> = {};
+    for (const e of list) {
+      if (!Array.isArray(e.objects) || e.objects.length === 0) continue;
+      titles[e.name] = e.title;
+      for (const o of e.objects) specs.push({ ...o, plugin: e.name });
+    }
+    this.specs = specs;
+    setState({ pluginObjects: { specs, titles } });
+    this.objectsChanged(specs);
   }
 
   running() {

@@ -157,5 +157,21 @@ export type Spotlight = { t: "spot"; op: "off" } | { t: "spot"; op: "on"; sid: n
 export type PluginMsg = { t: "plg"; pl: string; d: unknown };
 /** The set of running plugins changed: fetch GET /api/plugins again. */
 export type PluginsChanged = { t: "plgs" };
+/** A map object a running plugin declares (GET /api/plugins "objects", with the plugin's name): props
+ *  of type "<plugin>/<kind>" draw it and X on them calls the plugin's onUse (docs/plugins.md). */
+export interface PluginObjectSpec {
+  plugin: string;
+  kind: string;
+  label: string;
+  /** footprint in tiles, [w, h] */
+  size: [number, number];
+  /** path in the plugin's public/ folder, served at /plugins/<plugin>/assets/<sprite>; absent: the
+   *  plugin's browser code draws the object itself (the page draws nothing) */
+  sprite?: string;
+  /** the part of the picture to draw, [x, y, w, h] in px (the whole picture when absent) */
+  frame?: [number, number, number, number];
+  /** the plugin's browser code gets onObjectUpdate for each placed object of this kind */
+  dynamic?: boolean;
+}
 
 export type ServerMsg = PluginMsg | PluginsChanged | MapUpdate | OwnerName | Hello | WorldDelta | Ack | RosterDelta | ChatIn | ConvJoin | ConvMembers | ConvLeave | Loc | Pong | Emote | ObjectReply | Follow | GoResult | Wave | Muted | WaveResult | AreaCounts | Announcement | LayoutMoved | OfficeName | SelfPosition | LeadRequest | DoorState | Knock | KnockResult | Forced | BoardEvent | Spotlight;

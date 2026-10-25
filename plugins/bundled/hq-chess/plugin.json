@@ -1,0 +1,11 @@
+{
+  "name": "hq-chess",
+  "title": "Chess",
+  "version": "1.0.0",
+  "description": "A chessboard two members play on while others watch.",
+  "longDescription": "Place a chessboard from the map editor (on a table, for instance), walk up to it and press X. Take White or Black, or watch; pieces are dragged and dropped, with no rules checked. Each board keeps its game and its two players until somebody resets it: a seated player who has the board open, or anybody when neither player has it open.",
+  "server": "main.ts",
+  "client": "client.ts",
+  "objects": [{ "kind": "chessboard", "label": "Chessboard", "size": [1, 1], "sprite": "chessboard.png" }],
+  "views": { "board": "board.ts" }
+}

@@ -13,6 +13,7 @@ export type Cmd =
   | { op: "spawn"; id: string; key: string; x?: number; y?: number; anim?: string }
   | { op: "remove"; id: string }
   | { op: "moveTo"; id: string; x: number; y: number; speed?: number }
+  | { op: "attach"; id: string; player: number | null }
   | { op: "follow"; id: string; player?: number; sprite?: string; gap?: number; beside?: number; roam?: number }
   | { op: "tint"; id: string; colour: string | null }
   | { op: "label"; id: string; text: string | null; owner?: number }
@@ -25,7 +26,8 @@ export type Cmd =
   | { op: "unslot"; id: string }
   | { op: "modal"; title: string; size: "small" | "medium" | "large"; place: "center" | "right"; close?: string; content: UINode[] }
   | { op: "close" }
-  | { op: "send"; d: unknown };
+  | { op: "send"; d: unknown }
+  | { op: "post"; d: unknown };
 
 /** Where a plugin may put things: buttons in Home Quarters' bars, or a floating box on the map (screen). */
 export const ANCHORS = ["topbar", "topright", "bottombar", "sidebar", "minimap", "screen"] as const;
@@ -39,7 +41,7 @@ export interface SpriteSpec { src?: string; sheet?: string; frame: [number, numb
 
 export type UINode =
   | { type: "text"; text: string; muted?: boolean }
-  | { type: "button"; label: string; click?: string; primary?: boolean; pressed?: boolean; sprite?: SpriteSpec }
+  | { type: "button"; label: string; click?: string; primary?: boolean; pressed?: boolean; disabled?: boolean; sprite?: SpriteSpec }
   | { type: "sprite"; sprite: SpriteSpec; alt: string }
   | { type: "copy"; label: string; value: string }
   | { type: "image"; src: string; alt: string }
@@ -47,7 +49,11 @@ export type UINode =
   | { type: "appToken" }
   | { type: "color"; label: string; value: string; change?: string; hideLabel?: boolean }
   | { type: "number"; label: string; value: number; min: number; max: number; change?: string }
-  | { type: "field"; label: string; value: string; maxLength: number; placeholder?: string; change?: string; hideLabel?: boolean };
+  | { type: "field"; label: string; value: string; maxLength: number; placeholder?: string; change?: string; hideLabel?: boolean }
+  | { type: "view"; view: string; label: string; height: ViewHeight; message?: string };
+
+export const VIEW_HEIGHTS = ["small", "medium", "large"] as const;
+export type ViewHeight = (typeof VIEW_HEIGHTS)[number];
 
 export const LIMITS = {
   batch: 512, // commands per batch
@@ -76,6 +82,8 @@ export const LIMITS = {
   copy: 2000,
   callbacks: 256,
   screenOffset: 200, // px from the chosen corner
+  viewBytes: 4096, // a message between a view and its plugin's client code, as JSON, each way
+  viewRate: 30, // such messages a second, each way per view; the rest are dropped
 };
 
 class Bad extends Error {}
@@ -152,9 +160,11 @@ const oneOf = <T extends string>(v: unknown, list: readonly T[], what: string): 
   return v as T;
 };
 
-/** A UI tree: at most LIMITS.nodes nodes, LIMITS.depth deep. */
-function tree(v: unknown): UINode[] {
-  let count = 0;
+const VIEW_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** A UI tree: at most LIMITS.nodes nodes, LIMITS.depth deep; in a modal (views), at most one view. */
+function tree(v: unknown, views = false): UINode[] {
+  let count = 0, viewCount = 0;
   const walk = (list: unknown, depth: number): UINode[] => {
     if (!Array.isArray(list)) throw new Bad("content must be an array");
     if (depth > LIMITS.depth) throw new Bad(`content deeper than ${LIMITS.depth}`);
@@ -163,7 +173,7 @@ function tree(v: unknown): UINode[] {
       const o = (n ?? {}) as Record<string, unknown>;
       switch (o.type) {
         case "text": return { type: "text", text: str(o.text, "text", LIMITS.text), muted: opt(o.muted, (x) => bool(x, "muted")) };
-        case "button": return { type: "button", label: label(o.label), click: opt(o.click, cb), primary: opt(o.primary, (x) => bool(x, "primary")), pressed: opt(o.pressed, (x) => bool(x, "pressed")), sprite: opt(o.sprite, sprite) };
+        case "button": return { type: "button", label: label(o.label), click: opt(o.click, cb), primary: opt(o.primary, (x) => bool(x, "primary")), pressed: opt(o.pressed, (x) => bool(x, "pressed")), disabled: opt(o.disabled, (x) => bool(x, "disabled")), sprite: opt(o.sprite, sprite) };
         case "sprite": return { type: "sprite", sprite: sprite(o.sprite), alt: str(o.alt, "alt", LIMITS.label) };
         case "copy": return { type: "copy", label: label(o.label), value: str(o.value, "value", LIMITS.copy) };
         case "image": return { type: "image", src: url(o.src), alt: str(o.alt, "alt", LIMITS.label) };
@@ -179,6 +189,12 @@ function tree(v: unknown): UINode[] {
         case "number": {
           const min = num(o.min, "min", -1e6, 1e6, true), max = num(o.max, "max", min, 1e6, true);
           return { type: "number", label: label(o.label), value: num(o.value, "value", min, max, true), min, max, change: opt(o.change, cb) };
+        }
+        case "view": {
+          if (!views) throw new Bad("a view goes in a modal");
+          if (++viewCount > 1) throw new Bad("at most one view per modal");
+          if (typeof o.view !== "string" || !VIEW_NAME.test(o.view)) throw new Bad("view must be the name of a view of the manifest");
+          return { type: "view", view: o.view, label: label(o.label), height: oneOf(o.height ?? "medium", VIEW_HEIGHTS, "height"), message: opt(o.message, cb) };
         }
       }
       throw new Bad(`unknown UI element ${String(o.type).slice(0, 20)}`);
@@ -245,11 +261,14 @@ function parseOne(c: unknown): Cmd {
       return { op: "slot", id: str(o.id, "id"), anchor, label: opt(o.label, label), icon: opt(o.icon, url), click: opt(o.click, cb), pressed: opt(o.pressed, (x) => bool(x, "pressed")) };
     }
     case "modal":
-      return { op: "modal", title: label(o.title, "title"), size: oneOf(o.size ?? "medium", ["small", "medium", "large"] as const, "size"), place: oneOf(o.place ?? "center", ["center", "right"] as const, "place"), close: opt(o.close, cb), content: tree(o.content) };
+      return { op: "modal", title: label(o.title, "title"), size: oneOf(o.size ?? "medium", ["small", "medium", "large"] as const, "size"), place: oneOf(o.place ?? "center", ["center", "right"] as const, "place"), close: opt(o.close, cb), content: tree(o.content, true) };
     case "close":
       return { op: "close" };
     case "moveTo":
       return { op: "moveTo", id: str(o.id, "id"), x: num(o.x, "x", -COORD, COORD), y: num(o.y, "y", -COORD, COORD), speed: opt(o.speed, (v) => num(v, "speed", 1, 1000)) };
+    case "attach":
+      // a member's id, or null to let it go
+      return { op: "attach", id: str(o.id, "id"), player: o.player === null ? null : num(o.player, "player", 1, 2 ** 32 - 1, true) };
     case "follow": {
       // a member's trail, or another sprite of the same plugin (one of the two)
       const id = str(o.id, "id");
@@ -274,6 +293,9 @@ function parseOne(c: unknown): Cmd {
       return { op: o.op, id: str(o.id, "id"), on: bool(o.on, "on") };
     case "send":
       return { op: "send", d: o.d };
+    case "post":
+      // to the open view: checked and copied (viewMessage) and rate limited when the page relays it, dropped if bad
+      return { op: "post", d: o.d };
   }
   throw new Bad(`unknown command ${String(o.op).slice(0, 20)}`);
 }
@@ -290,6 +312,38 @@ export class SendBudget {
     this.at = now;
     if (this.tokens < 1) return false;
     this.tokens--;
+    return true;
+  }
+}
+
+/** Why a message between a view and its plugin's client code cannot go through (not JSON, or over
+ *  LIMITS.viewBytes), or null. Such a message is dropped; the view and the plugin go on. */
+export function checkViewMessage(d: unknown): string | null {
+  const m = viewMessage(d);
+  return typeof m === "string" ? m : null;
+}
+
+/** What the page relays between a view and its plugin's client code: the JSON copy of d, never d itself
+ *  (a Map, a Blob or an ArrayBuffer serializes to {} but would be cloned whole), or why it cannot go. */
+export function viewMessage(d: unknown): { d: unknown } | string {
+  let s: string | undefined;
+  try {
+    s = JSON.stringify(d);
+  } catch {
+    return "the message is not JSON";
+  }
+  if (s === undefined) return "the message is not JSON";
+  if (new TextEncoder().encode(s).length > LIMITS.viewBytes) return `the message is over ${LIMITS.viewBytes} bytes`;
+  return { d: JSON.parse(s) };
+}
+
+/** LIMITS.viewRate messages in any second, one direction of one view. Dropped messages do not count. */
+export class ViewRate {
+  private times: number[] = [];
+  allow(now: number): boolean {
+    while (this.times.length > 0 && now - this.times[0] >= 1000) this.times.shift();
+    if (this.times.length >= LIMITS.viewRate) return false;
+    this.times.push(now);
     return true;
   }
 }

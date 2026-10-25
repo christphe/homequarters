@@ -1,9 +1,12 @@
-import { Application, BitmapText, Container, Graphics, Sprite, Text } from "pixi.js";
-import type { Ack, AvatarSpec, MapData, Person, Prop, SelfPosition, WorldDelta } from "../net/protocol";
+import { Application, BitmapText, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { isBusyKey, isHomeKey } from "./home";
-import { propSize } from "./mapModel";
+import { isPluginProp, propSize } from "./props";
+import { nearestUsable, objectsFor } from "./pluginObjects";
+import { ObjectPictures } from "./objectPictures";
+import { t } from "../i18n";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { bakeMap } from "./mapArt";
 import { PluginLayer } from "./pluginLayer";
@@ -140,6 +143,15 @@ export class WorldView {
     canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
     me: () => this.meId,
+    headPoint: (id, out) => {
+      const e = this.ents.get(id);
+      if (!e || !e.spr.visible) return false;
+      // the name tag is in screen pixels, over the drawing's real top; the sprite goes 2 px above its top
+      out.x = e.x;
+      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.S);
+      out.feetY = e.y;
+      return true;
+    },
   });
   private people = new Map<number, Person>();
   /** Names of the members places belong to (the server's owner names); online people fill the gaps. */
@@ -216,7 +228,17 @@ export class WorldView {
   private guided = false;
   private guidedRun = false; // a walk-to runs; following a person goes at their pace (`self` tells)
   private nearby: Prop | null = null;
+  /** Map objects of the running plugins, the sprites drawn for them and their pictures (by URL). */
+  private objSpecs: PluginObjectSpec[] = [];
+  private objSprites: Sprite[] = [];
+  private objPictures = new ObjectPictures();
+  /** The map editor is open: objects of plugins not running show as dashed placeholders. */
+  private editing = false;
+  private placeholderG = new Graphics();
+  private placeholderLabels: { text: BitmapText; x: number; y: number }[] = [];
   private nearbyAt = 0;
+  /** The props of the map shown changed (a new map or an editor draft): plugins hear of their objects. */
+  onProps: ((props: Prop[]) => void) | null = null;
   private emotes = new Map<number, { text: Text; until: number }>();
   private cleanup: (() => void)[] = [];
 
@@ -240,7 +262,7 @@ export class WorldView {
     host.appendChild(app.canvas);
     app.canvas.style.display = "block";
     app.stage.addChild(this.world, this.hud);
-    this.world.addChild(this.entLayer, this.fxG);
+    this.world.addChild(this.entLayer, this.placeholderG, this.fxG);
     this.entLayer.sortableChildren = true;
     this.hud.addChild(this.hudG);
     this.hoverTag.anchor.set(0.5, 1);
@@ -558,6 +580,8 @@ export class WorldView {
         const back = map.props.some((q) => q.t === "desk" && q.up && q.y === p.y - 1 && q.x === p.x);
         return { text, x: (p.x + (p.w ?? 2) / 2) * T, y: back ? (p.y + 2) * T + 10 : p.y * T, p, ai };
       });
+    this.drawObjects();
+    this.onProps?.(map.props);
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
     if (this.meEnt) {
@@ -620,6 +644,12 @@ export class WorldView {
   // ---- map editor support ----
   currentMap() {
     return this.map;
+  }
+  /** The map editor opened or closed: it shows objects of plugins that are not running. */
+  setEditing(on: boolean) {
+    if (this.editing === on) return;
+    this.editing = on;
+    this.drawObjects();
   }
   /** Re-render/re-collide with an unsaved draft (deny rules are kept). */
   previewMap(map: MapData) {
@@ -795,15 +825,70 @@ export class WorldView {
   }
 
   private updateNearby() {
-    let best: Prop | null = null;
-    let bestD = 20;
-    for (const p of this.map?.props ?? []) {
-      if (!["note", "embed", "image", "whiteboard"].includes(p.t)) continue;
-      const [w, h] = propSize(p);
-      const d = Math.hypot(Math.max(p.x * T - this.mx, 0, this.mx - (p.x + w) * T), Math.max(p.y * T - this.my, 0, this.my - (p.y + h) * T));
-      if (d <= bestD) { bestD = d; best = p; }
-    }
+    const best = nearestUsable(this.map?.props ?? [], this.objSpecs, this.mx, this.my, 20);
     if (best !== this.nearby) { this.nearby = best; this.hooks.onNearby?.(best); }
+  }
+
+  /** The map objects of the running plugins (PluginManager): drawn on the map, and X uses them. */
+  setPluginObjects(specs: PluginObjectSpec[]) {
+    this.objSpecs = specs;
+    this.drawObjects();
+    this.objPictures.keepOnly(new Set(specs.map((s) => s.plugin))); // after their sprites are gone
+    this.updateNearby();
+  }
+
+  /** Redraws plugin objects (and, in the editor, placeholders for those of plugins not running). */
+  private drawObjects() {
+    this.dirty = true;
+    for (const s of this.objSprites) s.destroy(); // their textures are shared (objPictures)
+    this.objSprites = [];
+    this.placeholderG.clear();
+    for (const l of this.placeholderLabels) l.text.destroy();
+    this.placeholderLabels = [];
+    if (!this.map) return;
+    const drawn = objectsFor(this.map.props, this.objSpecs);
+    for (const { prop, spec } of drawn) {
+      const sprite = spec.sprite;
+      if (!sprite) continue; // the plugin's browser code draws it (hq.spawn)
+      const [, h] = propSize(prop);
+      // bottom-left of the footprint, sorted by its bottom edge: an avatar north of the table it
+      // stands on stays behind it
+      const spr = new Sprite(Texture.EMPTY);
+      spr.anchor.set(0, 1);
+      spr.position.set(prop.x * T, (prop.y + h) * T);
+      spr.zIndex = (prop.y + h) * T;
+      this.entLayer.addChild(spr);
+      this.objSprites.push(spr);
+      void this.objPictures.frame(spec.plugin, sprite, spec.frame).then((tex) => {
+        if (!tex || spr.destroyed) return;
+        spr.texture = tex;
+        this.dirty = true;
+      });
+    }
+    if (!this.editing) return;
+    const label = (text: string, fill: number, p: Prop, w: number, h: number) => {
+      const b = new BitmapText({ text, style: { fontFamily: FONT, fontSize: 18, fill, align: "center", stroke: { color: 0x1a1526, width: 3 } } });
+      b.anchor.set(0.5, 0.5);
+      this.hud.addChild(b);
+      this.placeholderLabels.push({ text: b, x: (p.x + w / 2) * T, y: (p.y + h / 2) * T });
+    };
+    // objects the plugin draws itself: a solid labelled box of their size, so the editor can find them
+    const plugin = drawn.filter((o) => !o.spec.sprite);
+    for (const { prop: p, spec } of plugin) {
+      const [w, h] = propSize(p);
+      this.placeholderG.rect(p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
+      label(t("editor.pluginDraws", { label: spec.label }), 0x9fe0ff, p, w, h);
+    }
+    if (plugin.length > 0) this.placeholderG.fill({ color: 0x9fe0ff, alpha: 0.15 }).stroke({ color: 0x9fe0ff, width: 1 });
+    // objects of plugins that are not running: a dashed box with their type
+    const shown = new Set(drawn.map((o) => o.prop));
+    for (const p of this.map.props) {
+      if (!isPluginProp(p.t) || shown.has(p)) continue;
+      const [w, h] = propSize(p);
+      dashedRect(this.placeholderG, p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
+      label(t("editor.pluginMissing", { type: p.t }), 0xffe9a8, p, w, h);
+    }
+    this.placeholderG.stroke({ color: 0xffe9a8, width: 1 });
   }
 
   showLocation(x: number, y: number) {
@@ -1315,6 +1400,13 @@ export class WorldView {
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
 
+    for (const l of this.placeholderLabels) {
+      const sx = l.x * S + this.camX;
+      const sy = l.y * S + this.camY;
+      l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H + 20;
+      l.text.position.set(Math.round(sx), Math.round(sy));
+    }
+
     for (const l of this.deskLabels) {
       const sx = l.x * S + this.camX;
       const sy = l.y * S + this.camY;
@@ -1432,5 +1524,20 @@ function writeZoom(z: number) {
     localStorage.setItem("hq.zoom", String(z));
   } catch {
     // storage blocked: the zoom is just not remembered
+  }
+}
+
+/** A dashed rectangle outline (2 px dashes) for the caller to stroke. */
+function dashedRect(g: Graphics, x: number, y: number, w: number, h: number) {
+  const DASH = 2;
+  for (let i = 0; i < w; i += DASH * 2) {
+    const e = Math.min(i + DASH, w);
+    g.moveTo(x + i, y).lineTo(x + e, y);
+    g.moveTo(x + i, y + h).lineTo(x + e, y + h);
+  }
+  for (let i = 0; i < h; i += DASH * 2) {
+    const e = Math.min(i + DASH, h);
+    g.moveTo(x, y + i).lineTo(x, y + e);
+    g.moveTo(x + w, y + i).lineTo(x + w, y + e);
   }
 }

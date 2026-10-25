@@ -94,6 +94,10 @@ declare global {
       onMessage?(player: Player, msg: unknown): void;
       /** An administrator changed a setting: read the new values with hq.settings(). */
       onSettings?(): void;
+      /** The member pressed X next to one of this plugin's map objects (declared in plugin.json "objects"). x, y are
+       * the object's top-left tile. At most 4 a second per member (burst 8), never for invisible members. Nothing is
+       * sent to the browser by Home Quarters: answer with hq.send. */
+      onUse?(player: Player, object: { kind: string; x: number; y: number }): void;
       /** Another plugin started or stopped (turned on or off, or crashed): ask with hq.plugins.running. */
       onPlugins?(): void;
       /** Before the plugin stops. */

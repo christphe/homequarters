@@ -3,6 +3,7 @@ import { session } from "../session";
 import { toast, useStore, type PluginSlot } from "../store";
 import { t } from "../i18n";
 import { Modal } from "./Modal";
+import { PluginViewFrame } from "./PluginViewFrame";
 import type { Anchor, SpriteSpec, UINode } from "../plugins/commands";
 
 // What plugins show, drawn by Home Quarters: buttons at anchors, boxes on the map, one modal. Plugin code
@@ -80,7 +81,7 @@ function Nodes({ nodes, plugin, base }: { nodes: UINode[]; plugin: string; base:
             return <p key={i} className={n.muted ? "muted" : undefined}>{n.text}</p>;
           case "button":
             return (
-              <button key={i} className={"btn" + (n.primary ? " primary" : "") + (n.pressed ? " on" : "") + (n.sprite ? " with-sprite" : "")} aria-pressed={n.pressed} onClick={() => run(plugin, n.click)}>
+              <button key={i} className={"btn" + (n.primary ? " primary" : "") + (n.pressed ? " on" : "") + (n.sprite ? " with-sprite" : "")} aria-pressed={n.pressed} disabled={n.disabled} onClick={() => run(plugin, n.click)}>
                 {n.sprite && <SpriteView spec={n.sprite} base={base} plugin={plugin} />}
                 {n.label}
               </button>
@@ -102,6 +103,9 @@ function Nodes({ nodes, plugin, base }: { nodes: UINode[]; plugin: string; base:
             return <TextField key={i} node={n} onCommit={(v) => run(plugin, n.change, v)} />;
           case "number":
             return <NumberField key={i + ":" + n.value} node={n} onCommit={(v) => run(plugin, n.change, v)} />;
+          case "view":
+            // keyed by plugin and view, not place: redrawing the modal keeps the iframe and its state
+            return <PluginViewFrame key={"view:" + plugin + "/" + n.view} plugin={plugin} node={n} />;
         }
         return null;
       })}
