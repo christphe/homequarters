@@ -54,15 +54,12 @@ let chooser: { from: number; to: number; choice: number } | null = null;
 let cursor: { k: "sq"; sq: number } | { k: "res"; side: Side; j: number } = { k: "sq", sq: 52 }; // e2
 let cursorShown = false; // the cursor is drawn only once the keyboard is used
 
-// the view's document starts without a language or a title (the host's srcdoc): a screen reader needs both
-document.documentElement.lang = "en";
-document.title = "Chessboard";
-
 const style = document.createElement("style");
 style.textContent = `
-  html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  canvas { image-rendering: pixelated; touch-action: none; outline: none; }
+  html, body { height: 100%; margin: 0; background: transparent; }
+  body { display: flex; flex-direction: column; align-items: center; overflow: auto; }
+  /* centred while it fits; taller than the view (a short screen) it starts at the top and the view scrolls */
+  canvas { margin: auto; flex-shrink: 0; image-rendering: pixelated; touch-action: none; outline: none; }
   canvas:focus-visible { box-shadow: 0 0 0 3px #3b7dd8; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
@@ -130,9 +127,11 @@ function fit(): void {
   const h = BOARD + 2 * stripH();
   if (canvas.height !== h) canvas.height = h;
   const w = window.innerWidth - 8, hh = window.innerHeight - 8;
-  const k = Math.min(w / BOARD, hh / h);
-  // a whole number keeps the pixels crisp; under 1 a smooth fraction rather than nothing
-  const scale = k >= 1 ? Math.floor(k) : Math.max(0.5, k);
+  const kw = w / BOARD, k = Math.min(kw, hh / h);
+  // the largest whole number that fits (crisp pixels); a short view keeps 2x and scrolls rather than
+  // shrink the pieces under it; only a narrow one goes under 2x, and under 1x a smooth fraction
+  const fits = k >= 2 ? Math.floor(k) : Math.min(2, kw);
+  const scale = fits >= 1 ? Math.floor(fits) : Math.max(0.5, fits);
   canvas.style.width = BOARD * scale + "px";
   canvas.style.height = h * scale + "px";
 }

@@ -3,6 +3,7 @@ import VIEW_SDK from "./viewSdk.js?raw";
 import { parseBatch, viewMessage, ViewRate, LIMITS, type Cmd, type UINode } from "./commands";
 import type { PluginLayer } from "../game/pluginLayer";
 import { objectChanges, type PlacedObject } from "../game/pluginObjects";
+import { frameHead } from "./frameDoc";
 
 // One running plugin on this page. Its JavaScript runs in a hidden iframe with sandbox="allow-scripts"
 // only: an opaque origin, so it cannot read this page, its cookies, storage or media. It talks to the
@@ -118,7 +119,7 @@ export class PluginHost {
     f.dataset.plugin = this.name;
     const src = new URL(this.client, location.href).href.replace(/"/g, "%22");
     // "</script" cannot appear inside the inlined SDK; escape it anyway in case it ever does
-    f.srcdoc = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${this.policy()}"><script>${SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
+    f.srcdoc = `${frameHead(this.title, this.policy())}<script>${SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
     window.addEventListener("message", this.onWindowMessage);
     document.body.appendChild(f);
     this.frame = f;
@@ -277,7 +278,7 @@ export class PluginHost {
     this.view = conn;
     const src = new URL(`/plugins/${this.name}/views/${view}.js`, location.href).href.replace(/"/g, "%22");
     // the scripts run in <body>, so a view can add to document.body right away
-    frame.srcdoc = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${this.policy()}"><style>html,body{margin:0}</style><body><script>${VIEW_SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
+    frame.srcdoc = `${frameHead(frame.title || view, this.policy())}<style>html,body{margin:0}</style><body><script>${VIEW_SDK.replace(/<\/script/gi, "<\\/script")}</script><script src="${src}"></script>`;
     return () => {
       if (this.view === conn) this.detachView();
     };

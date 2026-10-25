@@ -45,6 +45,7 @@ function draw(): void {
   // who has the board open, as the server says it: the seated players marked here, and me (my window is open)
   const present = new Set<number>([me]);
   for (const seat of [s.w, s.b]) if (seat?.here) present.add(seat.id);
+  // medium view: the whole window (seats, Reset, the board at 2x with its strips, Close) fits a 1280x720 screen
   hq.ui.modal({ title: "Chess", size: "medium", onClose: closed }, [
     hq.ui.row([
       seatButton(s, "w", mine),
@@ -54,7 +55,7 @@ function draw(): void {
     ]),
     hq.ui.text(holders(s), { muted: true }),
     hq.ui.row([hq.ui.button({ label: "Reset", disabled: !canReset(board, me, present), onClick: () => send({ t: "reset", x, y }) })]),
-    hq.ui.view({ view: "board", label: "Chessboard", height: "large", onMessage: fromView }),
+    hq.ui.view({ view: "board", label: "Chessboard", height: "medium", onMessage: fromView }),
   ]);
   const toView: ViewIn = { s, me, id: `${x},${y}` };
   hq.ui.post(toView);

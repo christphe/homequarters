@@ -88,28 +88,40 @@ async function board(u) {
   }, { ...ART, flip: u.flip });
 }
 
-/** Page coordinates of a square's centre on that member's view (Black's view is turned around). */
+const canvasSize = async (u) => (await viewFrame(u)).evaluate(() => ({ w: document.querySelector("canvas").width, h: document.querySelector("canvas").height }));
+/** A square's centre in canvas pixels on that member's view (Black's view is turned around). */
 async function squareAt(u, s) {
-  // the window scrolls on a small screen (CI's 800x450): bring the board into view first
+  const strip = ((await canvasSize(u)).h - 128) / 2;
+  const i = u.flip ? 63 - s : s;
+  return { cx: (i % 8) * 16 + 8, cy: strip + Math.floor(i / 8) * 16 + 8 };
+}
+/** Cell j of a side's reserve strip, in canvas pixels. */
+async function cellAt(u, side, j) {
+  const strip = ((await canvasSize(u)).h - 128) / 2;
+  const y0 = side === (u.flip ? "w" : "b") ? 0 : strip + 128;
+  return { cx: (j % 16) * 8 + 4, cy: y0 + 1 + Math.floor(j / 16) * 8 + 4 };
+}
+/**
+ * Page coordinates of canvas points. On a short screen (CI's 800x450) the window scrolls and so does the view
+ * (the board keeps 2x): the view is brought into the window's sight, then scrolled to centre the points.
+ */
+async function onPage(u, ...pts) {
   await u.page.evaluate((sel) => document.querySelector(sel + " iframe.plugin-view")?.scrollIntoView({ block: "center" }), MODAL);
   const f = await viewFrame(u);
+  await f.evaluate((ys) => {
+    const c = document.querySelector("canvas"), r = c.getBoundingClientRect(), k = r.width / c.width;
+    const mid = r.top + scrollY + ((Math.min(...ys) + Math.max(...ys)) / 2) * k;
+    scrollTo(0, Math.max(0, mid - innerHeight / 2));
+  }, pts.map((p) => p.cy));
   const box = await (await f.$("canvas")).boundingBox();
-  const size = await f.evaluate(() => ({ w: document.querySelector("canvas").width, h: document.querySelector("canvas").height }));
-  const k = box.width / size.w, strip = (size.h - 128) / 2;
-  const i = u.flip ? 63 - s : s;
-  return { x: box.x + ((i % 8) * 16 + 8) * k, y: box.y + (strip + Math.floor(i / 8) * 16 + 8) * k, k, box, strip };
-}
-/** Page coordinates of cell j of a side's reserve strip. */
-async function cellAt(u, side, j) {
-  const { box, k, strip } = await squareAt(u, 0);
-  const top = u.flip ? "w" : "b";
-  const y0 = side === top ? 0 : strip + 128;
-  return { x: box.x + ((j % 16) * 8 + 4) * k, y: box.y + (y0 + 1 + Math.floor(j / 16) * 8 + 4) * k };
+  const k = box.width / (await canvasSize(u)).w;
+  return pts.map((p) => ({ x: box.x + p.cx * k, y: box.y + p.cy * k }));
 }
 const downs = async (u) => (await (await viewFrame(u))?.evaluate(() => window.__downs ?? 0)) ?? 0;
-/** A real mouse drag (pointer down, several moves, up); returns the plg frames sent while dragging and in all,
+/** A real mouse drag between two canvas points (pointer down, several moves, up); returns the plg frames sent while dragging and in all,
  * and whether the press reached the board. */
-async function drag(u, from, to) {
+async function drag(u, fromAt, toAt) {
+  const [from, to] = await onPage(u, fromAt, toAt);
   const n0 = u.sent.length, d0 = await downs(u);
   await u.page.mouse.move(from.x, from.y);
   await u.page.mouse.down();
@@ -228,6 +240,39 @@ export async function run(ctx) {
     const viewTitle = await read(ann, (sel) => document.querySelector(sel + " iframe.plugin-view")?.title, MODAL);
     check("X opens the Chess window with the board view (iframe titled Chessboard)", (await modalOpen(ann)) && viewTitle === "Chessboard" && (await board(ann)).p === START, viewTitle);
 
+    // ---- the window fits a 1280x720 screen without scrolling: seats, the board with both strips, Close
+    const small = ann.page.viewport();
+    await ann.page.setViewport({ width: 1280, height: 720 });
+    await sleep(500);
+    const fitAt = async () => {
+      const f = await viewFrame(ann);
+      const inner = await f.evaluate(() => { const r = document.querySelector("canvas").getBoundingClientRect(); return { top: r.top, bottom: r.bottom, width: r.width, scroll: document.documentElement.scrollHeight > innerHeight }; });
+      return read(ann, ({ sel, inner }) => {
+        const m = document.querySelector(sel), H = innerHeight;
+        const rect = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+        const btn = (text) => [...m.querySelectorAll("button")].find((b) => b.textContent.trim() === text);
+        const frame = m.querySelector("iframe.plugin-view").getBoundingClientRect();
+        const parts = { title: rect(m.querySelector("h2") ?? m), seats: rect(btn("White").parentElement), reset: rect(btn("Reset")), boardTop: Math.round(frame.top + inner.top), stripBottom: Math.round(frame.top + inner.bottom), close: rect(btn("Close")) };
+        const inside = (r) => r.top >= 0 && r.bottom <= H;
+        return { H, parts, scale: inner.width / 128, modalScrolls: m.scrollHeight > m.clientHeight, viewScrolls: inner.scroll,
+          ok: inside(parts.title) && inside(parts.seats) && inside(parts.reset) && parts.boardTop >= 0 && parts.stripBottom <= H && inside(parts.close) };
+      }, { sel: MODAL, inner });
+    };
+    const fit720 = await fitAt();
+    check("at 1280x720 the whole Chess window shows without scrolling: title, seats, Reset, the board with its bottom strip, Close", fit720.ok && !fit720.modalScrolls && !fit720.viewScrolls, JSON.stringify(fit720));
+    check("at 1280x720 the pieces are drawn at a whole scale of at least 2x", fit720.scale >= 2 && Number.isInteger(fit720.scale), String(fit720.scale));
+    await ann.page.setViewport(small);
+    await sleep(500);
+    const order = await read(ann, (sel) => {
+      const m = document.querySelector(sel);
+      const seats = [...m.querySelectorAll("button")].find((b) => b.textContent.trim() === "White");
+      return !!(seats.compareDocumentPosition(m.querySelector("iframe.plugin-view")) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }, MODAL);
+    check("the seat buttons come before the board in reading order (a small screen scrolls to the board)", order);
+    // the plugin's two frames declare their language and have a title (the host's srcdoc)
+    const docs = { view: await (await viewFrame(ann)).evaluate(() => [document.documentElement.lang, document.title]), hidden: await (await chessFrame(ann)).evaluate(() => [document.documentElement.lang, document.title]) };
+    check("the view's document and the plugin's hidden frame have lang=en and a title (Chessboard, Chess)", JSON.stringify(docs) === JSON.stringify({ view: ["en", "Chessboard"], hidden: ["en", "Chess"] }), JSON.stringify(docs));
+
     // ---- criterion 5: seats
     await press(ann, "White");
     await waitFor(async () => (await button(ann, "White"))?.text === "White: " + ann.name, { what: "Ann seated" });
@@ -262,7 +307,7 @@ export async function run(ctx) {
     // ---- criteria 6 and 10: e2-e4 dragged by Ann, seen by Bo and Cy within 1 s; one frame per drop
     playMove(expected, ann.id, sq("e2"), sq("e4"));
     const n0 = ann.sent.length;
-    const from = await squareAt(ann, sq("e2")), to = await squareAt(ann, sq("e4"));
+    const [from, to] = await onPage(ann, await squareAt(ann, sq("e2")), await squareAt(ann, sq("e4")));
     await ann.page.mouse.move(from.x, from.y);
     await ann.page.mouse.down();
     await ann.page.mouse.move(from.x, (from.y + to.y) / 2, { steps: 10 });
@@ -301,10 +346,10 @@ export async function run(ctx) {
 
     // ---- criterion 6: a drop outside the board puts the piece back; click-then-click
     const outside = await squareAt(ann, sq("d2"));
-    const out = await drag(ann, outside, { x: outside.box.x - 60, y: outside.y });
+    const out = await drag(ann, outside, { cx: -30, cy: outside.cy }); // left of the canvas
     check("6: a drop outside the board puts the piece back (pressed on the board, nothing sent, board unchanged)", out.reached && out.total === 0 && (await board(ann)).p === expected.p, JSON.stringify(out));
     const nClick = ann.sent.length;
-    const g1 = await squareAt(ann, sq("g1")), f3 = await squareAt(ann, sq("f3"));
+    const [g1, f3] = await onPage(ann, await squareAt(ann, sq("g1")), await squareAt(ann, sq("f3")));
     await ann.page.mouse.click(g1.x, g1.y);
     await sleep(200);
     const afterFirst = ann.sent.length - nClick;
@@ -374,8 +419,9 @@ export async function run(ctx) {
     const nPromo = ann.sent.length;
     const promoDrop = await dragSq(ann, "a2", "e8");
     const choiceOpen = promoDrop.total === 0 && (await board(ann)).live.includes("Becomes a queen");
-    const e8 = await squareAt(ann, sq("e8"));
-    const queenCell = { x: e8.box.x + 57 * e8.k, y: e8.box.y + (e8.strip + 16 + 6) * e8.k };
+    // the choice's box: four 10 px cells under e8 (row 0), from x = 51; the queen is the first
+    const strip8 = ((await canvasSize(ann)).h - 128) / 2;
+    const [queenCell] = await onPage(ann, { cx: 57, cy: strip8 + 16 + 6 });
     await ann.page.mouse.click(queenCell.x, queenCell.y);
     playMove(expected, ann.id, sq("a2"), sq("e8"), "q");
     const promoSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => (await board(u))?.p === expected.p, 1000)));
@@ -505,4 +551,4 @@ export async function run(ctx) {
 }
 
 // shared with capture-chess.mjs
-export { ART, setPlugin, setBoards, board, viewFrame, squareAt, dragSq, drag, press, button, modalState, openWithX, countFrames, sq, MODAL, BOARD };
+export { ART, setPlugin, setBoards, board, viewFrame, squareAt, onPage, dragSq, drag, press, button, modalState, openWithX, countFrames, sq, MODAL, BOARD };
