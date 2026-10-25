@@ -50,8 +50,6 @@ function draw(): void {
     hq.ui.row([
       seatButton(s, "w", mine),
       seatButton(s, "b", mine),
-      // a spectator is anybody without a seat: pressed then, and out of reach once seated
-      hq.ui.button({ label: "Spectate", pressed: mine === null, disabled: mine !== null }),
     ]),
     hq.ui.text(holders(s), { muted: true }),
     hq.ui.row([hq.ui.button({ label: "Reset", disabled: !canReset(board, me, present), onClick: () => send({ t: "reset", x, y }) })]),

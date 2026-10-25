@@ -283,8 +283,8 @@ export async function run(ctx) {
     const annSeats = await modalState(ann), cySeats = await modalState(cy);
     const b = (s, text) => s.buttons.find((x) => x.text === text || x.text.startsWith(text + ":"));
     check("5: Ann takes White and Bo Black; every page names them", b(cySeats, "White").text === "White: " + ann.name && b(cySeats, "Black").text === "Black: " + bo.name && cySeats.holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, JSON.stringify(cySeats));
-    check("5: Cy, without a seat, spectates (Spectate pressed; both seats taken)", b(cySeats, "Spectate").pressed && b(cySeats, "White").disabled && b(cySeats, "Black").disabled, JSON.stringify(cySeats.buttons));
-    check("7: a seated player cannot change side or spectate (Ann's Black and Spectate disabled, White pressed)", b(annSeats, "White").pressed && b(annSeats, "Black").disabled && b(annSeats, "Spectate").disabled, JSON.stringify(annSeats.buttons));
+    check("5: Cy, without a seat, just watches (neither White nor Black pressed; both seats taken)", !b(cySeats, "White").pressed && !b(cySeats, "Black").pressed && b(cySeats, "White").disabled && b(cySeats, "Black").disabled, JSON.stringify(cySeats.buttons));
+    check("7: a seated player cannot change side (Ann's White pressed and disabled, Black disabled)", b(annSeats, "White").pressed && b(annSeats, "White").disabled && b(annSeats, "Black").disabled, JSON.stringify(annSeats.buttons));
     await waitFor(async () => (await board(bo))?.p === START, { what: "Bo's board turned for Black" });
 
     // ---- criterion 13: the playing badges on Cy's page
