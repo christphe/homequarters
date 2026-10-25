@@ -1,4 +1,5 @@
 // Shared helpers for real-browser end-to-end tests (Chrome + fake camera/mic).
+import { chrome } from "./env.mjs";
 import puppeteer from "puppeteer-core";
 import crypto from "node:crypto";
 
@@ -7,7 +8,7 @@ export const API = process.env.HQ_API ?? "http://127.0.0.1:8080";
 export const LK = process.env.HQ_LK_HTTP ?? "http://127.0.0.1:7880";
 const KEY = process.env.LIVEKIT_API_KEY ?? "devkey";
 const SECRET = process.env.LIVEKIT_API_SECRET ?? "secret";
-const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let results = [];
@@ -31,7 +32,7 @@ export async function launch(extra = [], { waitEmpty = true } = {}) {
   // HQ_SHARED_OFFICE=1: a public instance (the demo) may have real visitors and no /metrics; do not wait.
   if (waitEmpty && !process.env.HQ_SHARED_OFFICE) await waitForEmptyOffice();
   return puppeteer.launch({
-    executablePath: CHROME,
+    executablePath: chrome(),
     headless: true,
     args: [
       "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", "--no-first-run", "--enable-unsafe-swiftshader",
@@ -67,7 +68,8 @@ export async function joinAs(browser, name, { path = "/", avatar = null, viewpor
   const logs = [];
   // livekit-client logs these two as errors when WE close a call on purpose (user-initiated abort of its data channels)
   const benign = /DataChannel error on (lossy|reliable): User-Initiated Abort|publisher data channel '(DATA_TRACK_)?(LOSSY|RELIABLE)' closed unexpectedly|error reading from signal stream/i; // the last one: LiveKit's signal socket dropped on a loaded runner; the client reconnects on its own
-  page.on("console", (m) => { if (m.type() === "error" && !benign.test(m.text())) logs.push(m.text()); });
+  // a failed load says only its status: add the URL it was for (the console message carries it)
+  page.on("console", (m) => { if (m.type() === "error" && !benign.test(m.text())) logs.push(m.text() + (/^Failed to load resource/.test(m.text()) && m.location()?.url ? " " + m.location().url : "")); });
   page.on("pageerror", (e) => logs.push("pageerror: " + e.message));
   await page.goto(APP + path, { waitUntil: "domcontentloaded" });
   if (!cookie) {

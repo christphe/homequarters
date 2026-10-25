@@ -8,22 +8,13 @@ import os from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
+import { chrome } from "./env.mjs";
 import { ALL, shard, parseShard } from "./shards.mjs";
 import { acquire, parseMax, ports } from "./slots.mjs";
 import { LK_IMAGE, liveKitMode, startLiveKit, stopLiveKit, sweepOrphans } from "./livekit.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-// The repository's .env (see .env.example): E2E_MAX_PARALLEL, CHROME. A worktree without one reads its main
-// checkout's. A variable already in the environment wins over the file.
-{
-  const files = [path.join(root, ".env")];
-  try {
-    const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    files.push(path.join(path.dirname(common), ".env"));
-  } catch {}
-  const file = files.find((f) => fs.existsSync(f));
-  if (file) process.loadEnvFile(file);
-}
+chrome(); // the suite cannot run without it: stop before building anything
 // HQ_EXTERNAL_URL=http://127.0.0.1:8080 runs the scenarios against an already running stack (for example
 // the Docker Compose one). Scenarios that restart the server or spawn the local binary are skipped there.
 const EXTERNAL = process.env.HQ_EXTERNAL_URL ?? "";

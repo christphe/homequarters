@@ -575,7 +575,13 @@ export async function run(ctx) {
     check("13: a reset takes both badges down on Cy's page within 1 s", resetGoneMs >= 0, `${resetGoneMs} ms`);
     await waitFor(async () => (await board(ann))?.p === START, { timeout: 3000, what: "final reset" }).catch(() => {});
 
-    const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
+    // The plugin is turned off on purpose above, while a page may still be loading its code or pictures
+    // (a page reloaded by the restart starts the plugin again just before): the server answers such a
+    // request 404 once the plugin stopped, before the page hears it did, and the browser logs that; the
+    // page drops the load (the checks of criterion 4 show nothing of the plugin stays). Only a 404 of this
+    // plugin's own files is let through, so any other failed load still fails the check.
+    const offRace = new RegExp(`^Failed to load resource: the server responded with a status of 404 \\(Not Found\\) \\S*/plugins/${PLUGIN}/(client\\.js|assets/)`);
+    const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l) && !offRace.test(l));
     for (const u of [ann, bo, cy, di]) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
   } catch (e) {
     check("scenario completed", false, String(e && e.stack || e));

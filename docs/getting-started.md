@@ -44,7 +44,7 @@ cd server && go test -race ./...
 cd web && pnpm install && pnpm exec tsc --noEmit && pnpm exec vite build
 ~~~
 
-The browser suite drives real Chrome instances (fake camera and microphone) against a **real LiveKit server**. It builds the app, starts its own server with a fresh database and its own LiveKit (the `livekit-server` binary if it is on PATH, else Docker), and needs neither the dev stack nor any cleanup. At most `E2E_MAX_PARALLEL` runs (default 2) go at once on a machine; a run waits for a free slot. Copy `.env.example` to `.env` to set that limit and the Chrome path (`CHROME`):
+The browser suite drives real Chrome instances (fake camera and microphone) against a **real LiveKit server**. It builds the app, starts its own server with a fresh database and its own LiveKit (the `livekit-server` binary if it is on PATH, else Docker), and needs neither the dev stack nor any cleanup. At most `E2E_MAX_PARALLEL` runs (default 2) go at once on a machine; a run waits for a free slot. Copy `.env.example` to `.env` and fill it in first: `CHROME` (the path to Chrome; the file lists the usual ones) is required, nothing is guessed, and the suite stops without it.
 
 ~~~bash
 cd e2e && pnpm install

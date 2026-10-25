@@ -1,6 +1,7 @@
 // Offline art pipeline: sprite cast and walking GIF, built from the sheets exported by
 // export-art.mjs. Needs Chrome + ffmpeg, no running server. The social banner comes from a real
 // in-game scene instead: see banner.mjs.
+import { chrome } from "./env.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +11,7 @@ import puppeteer from "puppeteer-core";
 // Standalone on purpose: no server needed, so it does not depend on lib.mjs.
 const launch = () =>
   puppeteer.launch({
-    executablePath: process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    executablePath: chrome(),
     headless: true,
     args: ["--no-first-run", "--enable-unsafe-swiftshader"],
   });
