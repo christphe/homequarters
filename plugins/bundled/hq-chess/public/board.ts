@@ -54,6 +54,10 @@ let chooser: { from: number; to: number; choice: number } | null = null;
 let cursor: { k: "sq"; sq: number } | { k: "res"; side: Side; j: number } = { k: "sq", sq: 52 }; // e2
 let cursorShown = false; // the cursor is drawn only once the keyboard is used
 
+// the view's document starts without a language or a title (the host's srcdoc): a screen reader needs both
+document.documentElement.lang = "en";
+document.title = "Chessboard";
+
 const style = document.createElement("style");
 style.textContent = `
   html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }
