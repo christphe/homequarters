@@ -137,6 +137,20 @@ export async function run(ctx) {
     check("an admin can assign a desk to a person", put.status === 200);
     await waitFor(() => c.page.evaluate(() => window.__hq.view.deskLabels.length > 0), { what: "desk label" });
     check("clients render the desk owner label", true);
+    // labels share one bitmap font per look (WorldView has 6): Pixi makes a glyph atlas per font.
+    // It makes a font when a text is first measured, and labels out of view are not: measure them all.
+    const fontsAfterMeasuring = () => c.page.evaluate(() => {
+      const v = window.__hq.view;
+      for (const l of [...v.areaLabels, ...v.deskLabels]) void l.text.width;
+      return window.__hq.bitmapFonts();
+    });
+    const fonts0 = await fontsAfterMeasuring();
+    await c.page.evaluate(() => { window.__oldDeskLabels = window.__hq.view.deskLabels; });
+    desk.label = "Renamed desk " + t;
+    await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(map) });
+    await waitFor(() => c.page.evaluate(() => window.__hq.view.deskLabels !== window.__oldDeskLabels), { what: "labels rebuilt by the map reload" });
+    const fonts1 = await fontsAfterMeasuring();
+    check("name tags and labels share one bitmap font per look, and a map reload adds none", fonts0 <= 6 && fonts1 === fonts0, `fonts ${fonts0} -> ${fonts1}`);
 
     // ---- history: a newcomer sees the office chat; it survives a restart; DMs and group chat do not
     // ---- the chat panel is usable on small screens: nothing covers its controls (real hit tests)

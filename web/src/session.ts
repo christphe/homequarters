@@ -1,4 +1,4 @@
-import { WorldView } from "./game/WorldView";
+import { WorldView, bitmapFonts } from "./game/WorldView";
 import { cachedLooks } from "./game/avatars";
 import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
@@ -94,7 +94,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, chimes: chimeLog, get state() { return getState(); }, session: this, plugins: this.plugins };
+    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, bitmapFonts, chimes: chimeLog, get state() { return getState(); }, session: this, plugins: this.plugins };
   }
 
   private applyAutoStatus(inactive: boolean) {

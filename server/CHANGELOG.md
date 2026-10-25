@@ -19,6 +19,9 @@
 - The office looks more lived in: desks have legs, a monitor, a keyboard and a mouse, chairs that face away are seen from behind, armchairs beside a table face it, tables have legs (low ones among couches), and a doorway carries each room's floor up to a thin sill instead of a doormat (#35)
 - Maps hold up to 128 areas instead of 64, and the map format has new furniture (armchair, stands, stairs, an arena field, a banner, a scoreboard) and desks turned around (`up`) for back-to-back islands (#35)
 
+### Fixed
+- Name tags and map labels share one bitmap font per look, so the client no longer builds a glyph atlas per label and adds more on every map reload (#40)
+
 ## [0.4.0] - 2026-10-22
 
 ### Added
