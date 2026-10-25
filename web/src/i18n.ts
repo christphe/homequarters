@@ -221,7 +221,6 @@ const en = {
   "prop.image": "Image stand",
   "prop.portal": "Portal",
   "prop.spotlight": "Spotlight pad",
-  "prop.pc": "PC",
   "prop.armchair": "Armchair",
   "prop.bleachers": "Stands",
   "prop.court": "Arena field",

@@ -1,6 +1,6 @@
 // Desks and their PCs have depth: they are drawn again as sprites over the baked map, sorted with the
 // avatars, so somebody behind a desk is hidden by it. With nobody around the office looks exactly as
-// baked; a saved map without pc props keeps its built-in screens; the editor places and erases PCs.
+// baked; a saved map without pc props keeps its built-in screens; the editor erases a desk with its PC.
 // The shared office is put back as it was at the end.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API } from "../lib.mjs";
 
@@ -95,35 +95,25 @@ export async function run(ctx) {
       check("a person south of a desk (on its chair) is drawn in front of it", s.on !== s.onEmpty);
     } else check("setup: a desk with a free chair south of it", false);
 
-    // ---- the editor: a pc goes centred on a desk; erasing takes the pc, then the desk with any pc left
-    const target = withMap.props.find((p) => p.t === "desk" && !p.up && !withMap.props.some((q) => q.t === "pc" && q.y === p.y && q.x >= p.x && q.x < p.x + (p.w ?? 2)) ) ?? north ?? south;
+    // ---- the editor: one click erases a desk with its pc, and it shows; a pc is not offered on its own
+    const target = withMap.props.find((p) => p.t === "desk" && !p.up && free(withMap, p.x, p.y + 2));
+    await walkTo(walker, 5 * 16 + 8, 5 * 16 + 8).catch(() => {}); // out of the way
     await walkTo(admin, target.x * 16 + 8, (target.y + 2) * 16 + 8).catch(() => {});
     await admin.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Edit office")?.click());
     await waitFor(() => admin.page.$(".editor"), { what: "editor open" });
+    await chip(admin, "Objects");
+    const offered = await admin.page.evaluate(() => [...document.querySelectorAll(".editor select option")].map((o) => o.value));
+    check("the editor does not offer a pc on its own (a desk without one draws its screen)", offered.includes("desk") && !offered.includes("pc"), offered.join(","));
+    const deskArea = { x: target.x * 16, y: target.y * 16 - 12, w: (target.w ?? 2) * 16, h: 28 };
+    const before = await pixels(admin, { depth: true, ents: false, rect: deskArea });
+    await chip(admin, "Erase object");
+    await clickTile(admin, target.x, target.y); // the tile its pc stands on
     const pcsOn = async (d) => (await viewMap(admin)).props.filter((p) => p.t === "pc" && p.y === d.y && p.x >= d.x && p.x < d.x + (d.w ?? 2));
-    await chip(admin, "Erase object");
-    await clickTile(admin, target.x + 1, target.y);
-    check("erasing on a desk removes its pc first", (await pcsOn(target)).length === 0 && (await viewMap(admin)).props.some((p) => p.t === "desk" && p.x === target.x && p.y === target.y));
-    await chip(admin, "Objects");
-    await admin.page.evaluate(() => { const s = [...document.querySelectorAll(".editor select")].find((x) => [...x.options].some((o) => o.value === "pc")); s.value = "pc"; s.dispatchEvent(new Event("change", { bubbles: true })); });
-    await clickTile(admin, target.x + 1, target.y);
-    const placed = await pcsOn(target);
-    const w = target.w ?? 2;
-    check("placing a pc on a desk centres it", placed.length === 1 && placed[0].x === target.x + Math.floor((w - 1) / 2) && (placed[0].dx ?? 0) === (w % 2 === 0 ? 8 : 0), JSON.stringify(placed));
-    await clickTile(admin, target.x, target.y + 1 < withMap.h ? target.y + 1 : target.y);
-    check("placing a pc off a desk does nothing", (await viewMap(admin)).props.filter((p) => p.t === "pc").length === withMap.props.filter((p) => p.t === "pc").length);
-    await chip(admin, "Erase object");
-    await clickTile(admin, target.x, target.y); // the pc (last placed) first
-    await chip(admin, "Objects");
-    await clickTile(admin, target.x, target.y); // a pc again
-    await chip(admin, "Erase object");
-    // erase the desk itself from its other tile: first click takes the pc, the second the desk and anything on it
-    await clickTile(admin, target.x + 1, target.y);
-    await clickTile(admin, target.x + 1, target.y);
-    const after = await viewMap(admin);
-    check("erasing a desk leaves no pc on its tiles", !after.props.some((p) => p.t === "desk" && p.x === target.x && p.y === target.y) && (await pcsOn(target)).length === 0);
-    const err = await editorButton(admin, "Save") && await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => /saved|error|invalid|refused/i.test(x))), { timeout: 5000, what: "save toast" }).catch(() => "");
-    check("the edited map saves", !!err && !/error|invalid|refused/i.test(err), err);
+    const gone = await viewMap(admin);
+    check("one click of the eraser on a desk removes the desk and its pc", !gone.props.some((p) => p.t === "desk" && p.x === target.x && p.y === target.y) && (await pcsOn(target)).length === 0);
+    check("and the change shows at once", (await pixels(admin, { depth: true, ents: false, rect: deskArea })) !== before);
+    const saved = await editorButton(admin, "Save") && await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => /saved|error|invalid|refused/i.test(x))), { timeout: 5000, what: "save toast" }).catch(() => "");
+    check("the edited map saves", !!saved && !/error|invalid|refused/i.test(saved), saved);
     await editorButton(admin, "Close");
 
     // ---- switching layout rebuilds the depth sprites; turned desks hide whoever sits behind them

@@ -1,31 +1,31 @@
-// A pc on a desk: where the editor puts it (the server's gamemap.PCOn) and what erasing a desk takes.
-// Run: node --test web/test
+// A pc on a desk: what erasing a desk takes, and how the depth sprites are packed. Run: node --test web/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { eraseAt, pcOn } from "../src/game/props.ts";
+import { eraseAt } from "../src/game/props.ts";
+import { ATLAS_MAX_H, ATLAS_W, packCells } from "../src/game/art/pack.ts";
 import type { Prop } from "../src/net/protocol.ts";
 
-test("pcOn centres a pc on a desk, the half tile left over as dx", () => {
-  assert.deepEqual(pcOn({ t: "desk", x: 4, y: 7 }), { t: "pc", x: 4, y: 7, dx: 8 });
-  assert.deepEqual(pcOn({ t: "desk", x: 4, y: 7, w: 3, h: 1 }), { t: "pc", x: 5, y: 7 });
-  assert.deepEqual(pcOn({ t: "desk", x: 0, y: 1, w: 4, h: 1 }), { t: "pc", x: 1, y: 1, dx: 8 });
-  assert.deepEqual(pcOn({ t: "desk", x: 4, y: 7, up: true }), { t: "pc", x: 4, y: 7, dx: 8 });
-});
-
-test("eraseAt on a desk takes its pcs first, then the desk", () => {
+test("eraseAt on a desk takes it with its pcs in one click, whichever tile is clicked", () => {
   const desk: Prop = { t: "desk", x: 2, y: 2 };
   const chair: Prop = { t: "chair", x: 2, y: 3 };
-  const props: Prop[] = [desk, chair, { t: "pc", x: 2, y: 2, dx: 8 }];
-  assert.equal(eraseAt(props, 3, 2), true); // the desk's pc, though it stands on the other tile
-  assert.deepEqual(props, [desk, chair]);
-  props.push({ t: "pc", x: 3, y: 2 });
-  props.splice(1, 0, { t: "pc", x: 2, y: 2 });
-  assert.equal(eraseAt(props, 2, 3), true); // the chair: nothing else goes
-  assert.equal(props.length, 3);
-  assert.equal(eraseAt(props, 2, 2), true); // the desk's last pc
-  assert.equal(eraseAt(props, 2, 2), true); // then its other one
-  assert.deepEqual(props, [desk]);
-  assert.equal(eraseAt(props, 3, 2), true); // then the desk
+  const other: Prop = { t: "desk", x: 6, y: 2 };
+  const props: Prop[] = [desk, chair, other, { t: "pc", x: 2, y: 2, dx: 8 }, { t: "pc", x: 6, y: 2, dx: 8 }];
+  assert.equal(eraseAt(props, 2, 2), true); // the pc's own tile: the desk goes too
+  assert.deepEqual(props, [chair, other, { t: "pc", x: 6, y: 2, dx: 8 }]);
+  assert.equal(eraseAt(props, 7, 2), true); // the other tile of a desk
+  assert.deepEqual(props, [chair]);
+  assert.equal(eraseAt(props, 2, 3), true); // anything else: the last prop on the tile
   assert.deepEqual(props, []);
-  assert.equal(eraseAt(props, 3, 2), false);
+  assert.equal(eraseAt(props, 2, 3), false);
+});
+
+test("packCells fills rows of the atlas and leaves out what does not fit under its height limit", () => {
+  const placed = packCells([{ w: 600, h: 40 }, { w: 500, h: 30 }, { w: 100, h: 20 }]);
+  assert.deepEqual(placed, [{ sx: 0, sy: 0 }, { sx: 0, sy: 40 }, { sx: 500, sy: 40 }]);
+  // a hostile map: a thousand desks 32 tiles wide (512 px), two per row
+  const many = packCells(Array.from({ length: 1000 }, () => ({ w: 512, h: 32 })));
+  const kept = many.filter((p) => p !== null);
+  assert.ok(kept.length < 1000 && kept.length > 0);
+  assert.ok(kept.every((p) => p!.sx + 512 <= ATLAS_W && p!.sy + 32 <= ATLAS_MAX_H));
+  assert.equal(packCells([{ w: ATLAS_W + 1, h: 4 }])[0], null);
 });

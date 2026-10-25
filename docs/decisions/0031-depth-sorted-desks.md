@@ -13,6 +13,8 @@ The whole map, furniture included, is baked into one texture under every avatar.
 - **The PC is a prop.** Type `pc`, 1x1, not solid, on a tile of a desk, no other field; it faces the way its desk does. A desk carrying a `pc` is drawn without its built-in screen and keyboard; the bake draws the `pc` right after its desk, at the same pixels. A desk without one (any map saved before this change) keeps its built-in screen: no migration.
 - **Visual offsets.** Props gain `dx`, `dy` (pixels, -15 to 15), accepted only on `pc` for now. They move the drawing only; the server never reads them. The templates centre a PC on the desk tile under the desk's centre, the half tile left over as `dx` (8 on a 2-tile desk, 0 on a 3-tile desk).
 - **Templates.** Loft (also a new office's map and the demo's), Lodge and Manor put one `pc` on every desk.
+- **Editor, until its rework.** `pc` is not in the prop list (on a desk without one, the built-in screen would make it invisible), and erasing a desk takes its PCs with it in one click.
+- **A bounded atlas.** Cells are packed 1024 px wide and at most 4096 px tall, within any GPU's texture limit; on a hostile map of thousands of wide desks, the objects that do not fit keep no depth and stay baked.
 
 ## Alternatives
 
@@ -24,6 +26,6 @@ The whole map, furniture included, is baked into one texture under every avatar.
 
 - **Performance:** a few dozen static sprites (Manor: 96) sharing one atlas texture of at most a few hundred kilobytes, rebuilt only with the bake (map load, editor change, layout switch), never per frame. Measured on 2026-10-25, Windows 11, AMD Ryzen 5 9600X, Chrome 156 headless with software GL (SwiftShader), Manor, 1280x720, one moving avatar forcing a re-sort every frame, 5 runs of 500 frames each way: 7.6 ms per frame with the sprites, 7.7 ms without (medians), so no measurable difference. Not measured: a real GPU, a phone, a crowd.
 - **Memory:** the bake still holds desks and PCs, so the atlas is extra (below 1 MB for the Manor). It goes away when desks leave the bake.
-- **Maintenance:** one painter per object serves both the bake and the sprites (`drawObject` in `tiles.ts`), the cut is in `art/objects.ts`. Covered by Go tests (validation, placement, templates), web unit tests (placement, erasing) and the `depth` browser scenario (pixel identity with and without sprites, depth north and south of front and turned desks, editor, layout switch); `capture-desk-depth` films it for review.
+- **Maintenance:** one painter per object serves both the bake and the sprites (`drawObject` in `tiles.ts`), the cut is in `art/objects.ts`. Covered by Go tests (validation, placement, templates), web unit tests (erasing, packing) and the `depth` browser scenario (pixel identity with and without sprites, depth north and south of front and turned desks, editor, layout switch); `capture-desk-depth` films it for review.
 - **Install:** none. No migration; the map format gains optional fields.
 - **Next:** the editor rework (dragging, snapping, offsets by hand) takes desks and PCs out of the bake, other furniture follows type by type, and plugin objects (the chessboard) join the same rules.

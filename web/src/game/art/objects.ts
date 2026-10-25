@@ -1,5 +1,6 @@
 import type { MapData, Prop } from "../../net/protocol";
 import { DEPTH_OBJECTS, T, deskOf, drawObject, propRect } from "./tiles";
+import { ATLAS_W, packCells } from "./pack";
 
 /** One depth sprite: its cell in the atlas, where it goes on the map (world px) and its depth. */
 export interface DepthPiece {
@@ -12,8 +13,6 @@ export interface DepthPiece {
   y: number;
   z: number;
 }
-
-const ATLAS_W = 1024;
 
 /** The box a depth object may paint: a desk rises above its tile (its top, a screen), a pc spreads
  * around the point it is centred on (screen, keyboard and mouse). */
@@ -30,7 +29,8 @@ function paintBox(p: Prop) {
  * The desks and pcs drawn alone, each kept only where the finished bake shows exactly that pixel: where
  * something baked later covers the object (a neighbour rising over it), the sprite stays transparent,
  * so with nobody around the office looks as baked. Desks sort by their front edge, a pc just above its
- * desk. One cell per placed object, packed in rows.
+ * desk. One cell per placed object, packed in rows; what does not fit under the atlas's height limit
+ * keeps no depth (it is still baked).
  */
 export function depthAtlas(map: MapData, baked: HTMLCanvasElement): { canvas: HTMLCanvasElement; pieces: DepthPiece[] } {
   const W = map.w * T, H = map.h * T;
@@ -70,19 +70,16 @@ export function depthAtlas(map: MapData, baked: HTMLCanvasElement): { canvas: HT
     const dr = propRect(desk);
     cells.push({ piece: { t: p.t, sx: 0, sy: 0, w, h, x: x0 + minX, y: y0 + minY, z: dr.y + dr.h + (p.t === "pc" ? 0.5 : 0) }, data: out });
   }
-  // shelf packing
-  let x = 0, y = 0, row = 0;
-  for (const c of cells) {
-    if (x + c.piece.w > ATLAS_W) { x = 0; y += row; row = 0; }
-    c.piece.sx = x;
-    c.piece.sy = y;
-    x += c.piece.w;
-    row = Math.max(row, c.piece.h);
-  }
+  const placed = packCells(cells.map((c) => c.piece));
+  const kept = cells.filter((c, i) => {
+    const at = placed[i];
+    if (at) Object.assign(c.piece, at);
+    return !!at;
+  });
   const canvas = document.createElement("canvas");
   canvas.width = ATLAS_W;
-  canvas.height = Math.max(1, y + row);
+  canvas.height = Math.max(1, ...kept.map((c) => c.piece.sy + c.piece.h));
   const ctx = canvas.getContext("2d")!;
-  for (const c of cells) ctx.putImageData(c.data, c.piece.sx, c.piece.sy);
-  return { canvas, pieces: cells.map((c) => c.piece) };
+  for (const c of kept) ctx.putImageData(c.data, c.piece.sx, c.piece.sy);
+  return { canvas, pieces: kept.map((c) => c.piece) };
 }

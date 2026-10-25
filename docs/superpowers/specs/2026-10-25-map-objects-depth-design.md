@@ -88,9 +88,8 @@ The long-term aim, stated by the user: furniture and the objects on it leave the
 
 ### 5. Editor (minimal, until the rework)
 
-- `pc` appears in the prop list. Clicking a desk tile with it places a `pc` centred on that desk (left tile and `dx` as the templates do); clicking a tile that is not a desk does nothing.
-- Erasing on a desk tile removes the `pc` on it first; a second click removes the desk. Erasing a desk also removes the `pc` props standing on it, so the map never holds a floating `pc` that `Validate` would refuse.
-- New labels go through `web/src/i18n.ts` (`prop.pc`).
+- `pc` is **not** offered in the prop list: a desk without one draws its own screen, so placing or erasing a lone `pc` would change nothing on screen. *(Changed after the UX critic's review: the first version offered it and erased a desk's pc before the desk, two edits an administrator could not see.)*
+- Erasing on a desk removes the desk and every `pc` standing on it in one click, whichever of its tiles is clicked, so the map never holds a floating `pc` that `Validate` would refuse.
 
 ### 6. Docs
 
@@ -105,6 +104,6 @@ The long-term aim, stated by the user: furniture and the objects on it leave the
 | 3 | With nobody near, the office renders pixel-identical with and without the sprite layer, for a saved map without `pc`, for Manor (desks with `pc`), and for a fixture map where a plant and a chair on the row below overlap a desk | browser scenario: read back the canvas with sprites hidden and shown, diff |
 | 4 | A saved map from before this change (no `pc`) renders as it did before the change, and Manor with its `pc` props renders as Manor did before the change (desks with built-in screens) | the same diff against captures made on the base branch |
 | 5 | An avatar on the tile north of a front-facing desk and on the chair north of a turned desk is cut by the desk top and the screen; on the chair south of a desk, it covers the desk as before | `capture-desk-depth` scenario frames, looked at |
-| 6 | Erasing a desk with the editor's real controls removes its `pc`; the map saves; placing a `pc` on a desk centres it | browser scenario through the editor panel |
+| 6 | One click of the editor's eraser on a desk removes it with its `pc`, the change shows, the map saves; `pc` is not in the prop list | browser scenario through the editor panel |
 | 7 | Switching template rebuilds the sprites: no sprite of the old map remains, none is missing | browser scenario counts desk and pc sprites against the map |
 | 8 | No per-frame cost beyond the sort: frame time with Manor and the browser suite's usual players does not regress measurably | recorded before/after, with hardware stated |
