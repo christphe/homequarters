@@ -219,7 +219,8 @@ export async function run(ctx) {
       return false;
     }, { what: "cards window" });
     const cardsButton = (text) => p.evaluate((sel, text) => { const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text);
-    await waitFor(() => cardsButton("Free table"), { what: "Free table" });
+    // a table left over by an earlier scenario on the same tile keeps its game: start it afresh
+    await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
     await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" });
     await waitFor(() => cardsButton("Deal 7 each"), { what: "Deal 7 each" });
     const cardsView = await (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]')).contentFrame();

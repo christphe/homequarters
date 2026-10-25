@@ -382,6 +382,9 @@ export async function run(ctx) {
 
     const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     for (const u of users) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
+    // leave the table as new for later scenarios that put a deck on the same tile
+    await press(ann, "Reset").catch(() => {});
+    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table"), { timeout: 5000, what: "the table reset" }).catch(() => {});
   } catch (e) {
     check("scenario completed", false, String((e && e.stack) || e));
   } finally {
