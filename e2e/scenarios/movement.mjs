@@ -21,6 +21,24 @@ const stride = (u) => read(u, () => new Promise((resolve) => {
   }, 1500);
 }));
 
+/** Every frame the page sends leaves 0-120 ms late, in order, like a bad Wi-Fi; window.__origSend undoes it.
+ * Each frame gets its own timer, but a timer sends the oldest frame still queued, not its own: two frames
+ * due within the same millisecond could otherwise fire swapped (Chrome truncates fractional delays), and
+ * a heartbeat "right" landing after the stop once sent the avatar running on alone on the server (CI,
+ * 215 px). A WebSocket never reorders, so neither may this stand-in for one. */
+const delaySends = (u) => read(u, () => {
+  const orig = WebSocket.prototype.send;
+  const queue = [];
+  let last = 0;
+  window.__origSend = orig;
+  WebSocket.prototype.send = function (d) {
+    const at = Math.max(last, performance.now() + Math.random() * 120);
+    last = at;
+    queue.push(d);
+    setTimeout(() => orig.call(this, queue.shift()), at - performance.now());
+  };
+});
+
 export async function run() {
   resetChecks();
   const browser = await launch();
@@ -62,9 +80,9 @@ export async function run() {
     // Every input leaves the page 0-120 ms late (in order), like a bad Wi-Fi. While "right" is held
     // at run speed, the own avatar must never be drawn stepping back, and it must end where the server says.
     await walkTo(a, 4 * 16 + 8, 28 * 16 + 8);
-    // Recorded for the convergence check below, which failed once on a starved CI runner (the observer's
-    // view kept running 213 px past the stop) and never on a workstation, even with the CPU slowed 10x:
-    // what B receives about A, what the server acknowledges to A, and what A sends. Reported on failure.
+    // Recorded for the convergence check below, which failed on CI when this jitter shim sent the stop
+    // before the heartbeat queued just ahead of it (the server ran on 215 px): what B receives about A,
+    // what the server acknowledges to A, and what A sends. Reported on failure.
     await read(b, (id) => {
       const v = window.__hq.view, f = v.applyWorld.bind(v);
       window.__tapB = [];
@@ -78,16 +96,7 @@ export async function run() {
       window.__sentA = [];
       WebSocket.prototype.send = function (d) { if (String(d).includes('"t":"in"')) window.__sentA.push([Math.round(performance.now()), String(d)]); return send.call(this, d); };
     });
-    await read(a, () => {
-      const orig = WebSocket.prototype.send;
-      let last = 0;
-      window.__origSend = orig;
-      WebSocket.prototype.send = function (d) {
-        const at = Math.max(last, performance.now() + Math.random() * 120);
-        last = at;
-        setTimeout(() => orig.call(this, d), at - performance.now());
-      };
-    });
+    await delaySends(a);
     const jitter = await read(a, () => new Promise((resolve) => {
       const v = window.__hq.view;
       v.toggleRun(true);
@@ -128,19 +137,13 @@ export async function run() {
       console.log("  runner's acks:", JSON.stringify(await read(a, () => window.__tapA.slice(-8))));
       console.log("  runner sent:", JSON.stringify(await read(a, () => window.__sentA.slice(-8))));
     }
+    const seqs = await read(a, () => window.__sentA.map(([, d]) => JSON.parse(d).s));
+    check("the delayed inputs still left the page in order, as on a WebSocket", seqs.length > 2 && seqs.every((s, i) => i === 0 || s > seqs[i - 1]), seqs.join(","));
     check("...and stops where the server and other people see it", converged && gap < 1, gap.toFixed(2) + " px after " + ((Date.now() - tc0) / 1000).toFixed(1) + " s, trail " + gtrail.join("->") + ", mine " + JSON.stringify(mine) + " theirs " + JSON.stringify(theirs));
     await read(a, () => { WebSocket.prototype.send = window.__origSend; });
     // the same on a diagonal at walking speed, where each axis moves slowest (51 px/s): both axes monotonic
     await walkTo(a, 6 * 16 + 8, 30 * 16 + 8);
-    await read(a, () => {
-      const orig = WebSocket.prototype.send;
-      let last = 0;
-      WebSocket.prototype.send = function (d) {
-        const at = Math.max(last, performance.now() + Math.random() * 120);
-        last = at;
-        setTimeout(() => orig.call(this, d), at - performance.now());
-      };
-    });
+    await delaySends(a);
     const diag = await read(a, () => new Promise((resolve) => {
       const v = window.__hq.view;
       v.setDirection(1, -1);

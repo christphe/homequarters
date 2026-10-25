@@ -49,10 +49,10 @@ gate vite-build bash -c 'cd web && pnpm exec vite build'
 gate web-lint node scripts/lint-web.mjs
 # plugin code is TypeScript type-checked against plugins/sdk/*.d.ts: the sample and the suite's test plugin
 gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../plugins/bundled/hq-cards ../plugins/bundled/hq-cards/public ../plugins/bundled/hq-card-pouilleux ../plugins/bundled/hq-card-lastcard ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done'
-gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs"
+gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs e2e/slots.test.mjs"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then
-  gate e2e bash -c 'cd e2e && CI=1 node run.mjs "$@"' _ "$@"
+  gate e2e bash -c 'cd e2e && E2E_VIEWPORT=small node run.mjs "$@"' _ "$@"
 else
   echo 'SKIPPED e2e' | tee -a "$record"
 fi
