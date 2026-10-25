@@ -409,8 +409,7 @@ export async function run(ctx) {
     await waitFor(() => hasButton(bo, "Seat 2"), { what: "seat 2 free for Bo" });
     await press(bo, "Seat 2");
     await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e) => {
-      await bo.page.screenshot({ path: "C:/Users/jorsc/AppData/Local/Temp/claude/f--projects-homequarters/4c888347-707b-446e-ae7c-833980e27b8f/scratchpad/bo-seat.png" });
-      throw new Error(e.message + " " + JSON.stringify({ log: (await logOf(bo)).slice(-2), vp: bo.page.viewport() }));
+      throw new Error(e.message + " " + JSON.stringify({ controls: (await modal(bo))?.buttons.slice(0, 10), log: (await logOf(bo)).slice(-3), sent: bo.sent.slice(-3), vp: bo.page.viewport() }));
     });
     const om = (await modal(ann)).buttons.map((b) => b.text);
     check("8: Old Maid's window offers Deal all and Count, not Deal N, a new pile or Draw", om.includes("Deal all") && om.includes("Count") && !om.some((b) => b.startsWith("Deal ") && b.endsWith("each")) && !om.includes("New pile face up"), JSON.stringify(om));
