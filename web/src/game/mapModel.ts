@@ -29,7 +29,8 @@ const LABELS: Record<string, string> = {
   spotlight: t("prop.spotlight"),
 };
 
-export const PROP_TYPES: { t: string; w: number; h: number; solid: boolean; label: string }[] = PROP_DEFS.map((p) => ({ ...p, label: LABELS[p.t] ?? p.t }));
+// a pc is not offered until a desk can be bare: a desk without one draws its own screen
+export const PROP_TYPES: { t: string; w: number; h: number; solid: boolean; label: string }[] = PROP_DEFS.filter((p) => p.t !== "pc").map((p) => ({ ...p, label: LABELS[p.t] ?? p.t }));
 
 /** Same rule as the server (gamemap.Compile): walls plus the footprint of solid props. */
 export function computeSolid(map: MapData): string[] {

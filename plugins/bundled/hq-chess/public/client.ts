@@ -113,6 +113,8 @@ hq.onMessage<ToClient>((m) => {
     // another board's window was open: that one is closed now
     if (open && (open.x !== m.x || open.y !== m.y)) send({ t: "close", x: open.x, y: open.y });
     open = { x: m.x, y: m.y, s: m.s };
+    // the window is drawn: say so (if the plugin started after X was pressed, the hello came after the open)
+    send({ t: "opened", x: m.x, y: m.y });
   } else if (m.t === "state") {
     if (!open || open.x !== m.x || open.y !== m.y) return;
     open.s = m.s;

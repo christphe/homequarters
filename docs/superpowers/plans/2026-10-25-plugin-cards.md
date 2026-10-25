@@ -62,7 +62,7 @@ web/test/cardGames.test.ts       pouilleux and lastcard rules.ts
 web/test/pluginFrameDoc.test.ts  + framePolicy tests
 server/internal/plugin/cards_test.go   hq-cards and the two games through the real host
 e2e/scenarios/cards.mjs, e2e/scenarios/capture-cards.mjs, e2e/scenarios/a11y.mjs (extended), e2e/run.mjs (list)
-docs/decisions/0031-card-table-and-shared-images.md, docs/plugins.md, docs/plugin-api.md, docs/status.md, README.md, server/CHANGELOG.md
+docs/decisions/0032-card-table-and-shared-images.md, docs/plugins.md, docs/plugin-api.md, docs/status.md, README.md, server/CHANGELOG.md
 scripts/gauntlet.sh, .github/workflows/ci.yml   (plugin-types lists)
 ```
 
@@ -303,7 +303,7 @@ scripts/gauntlet.sh, .github/workflows/ci.yml   (plugin-types lists)
 
 **Files:**
 - Modify: `web/src/plugins/frameDoc.ts`, `web/src/plugins/host.ts:86-103,281`, `web/src/plugins/manager.ts:112`
-- Create: `docs/decisions/0031-card-table-and-shared-images.md`
+- Create: `docs/decisions/0032-card-table-and-shared-images.md`
 - Test: `web/test/pluginFrameDoc.test.ts` (append)
 
 **Interfaces:**
@@ -313,7 +313,7 @@ scripts/gauntlet.sh, .github/workflows/ci.yml   (plugin-types lists)
 - [ ] **Step 2: Run** `cd web && node --test test/pluginFrameDoc.test.ts` → FAIL.
 - [ ] **Step 3: Implement** `framePolicy`; `PluginHost.policy(shared)` calls it; the hidden frame passes `[]`, the view frame passes `this.deps.running()` read when the view iframe is created (`host.ts:281`); `manager.ts` supplies `running` from its list of running plugins (`manager.ts:210` already has `running()`).
 - [ ] **Step 4: Run** `node --test test/pluginFrameDoc.test.ts test/pluginView.test.ts` and `pnpm exec tsc --noEmit` → PASS.
-- [ ] **Step 5: Write ADR 0031** (format of 0030): context (games bring their own cards, views could only read their own folder), decision (views' `img-src` adds the `shared/` folders of plugins running when the view starts; `hq-cards` owns the table and games register through hooks; free table; client-side hiding with a log as the honesty mechanism), alternatives (approach B and C of the spec; a blob relay through `hq.ui.post`), impact (performance: one state message per change to the table's viewers, ≤ 4 KB, not measured; maintenance; install: none).
+- [ ] **Step 5: Write ADR 0032** (numbered 0031 at first; main took 0031 meanwhile) (format of 0030): context (games bring their own cards, views could only read their own folder), decision (views' `img-src` adds the `shared/` folders of plugins running when the view starts; `hq-cards` owns the table and games register through hooks; free table; client-side hiding with a log as the honesty mechanism), alternatives (approach B and C of the spec; a blob relay through `hq.ui.post`), impact (performance: one state message per change to the table's viewers, ≤ 4 KB, not measured; maintenance; install: none).
 - [ ] **Step 6: Commit** `git commit -m "Plugin views draw the shared images of running plugins"`.
 
 ### Task 8: `hq-card-pouilleux` (Old Maid)

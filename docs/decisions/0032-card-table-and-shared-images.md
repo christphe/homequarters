@@ -1,4 +1,4 @@
-# 0031: A card table plugin, games as plugins, and views drawing shared images
+# 0032: A card table plugin, games as plugins, and views drawing shared images
 
 Date: 2026-10-25. Status: accepted.
 

@@ -1,4 +1,4 @@
-import { Application, BitmapText, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
@@ -9,6 +9,8 @@ import { ObjectPictures } from "./objectPictures";
 import { t } from "../i18n";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { bakeMap } from "./mapArt";
+import { bakeMapCanvas } from "./art/tiles";
+import { depthAtlas } from "./art/objects";
 import { PluginLayer } from "./pluginLayer";
 import { areaTitle, deskTitle, type NameOf } from "./places";
 
@@ -190,6 +192,9 @@ export class WorldView {
   private camX = 0;
   private camY = 0;
   private mapSprite: Sprite | null = null;
+  /** Desks and pcs drawn again over the bake, sorted with the avatars (art/objects.ts), and their atlas. */
+  private depthSprites: Sprite[] = [];
+  private depthTex: Texture | null = null;
   private keys = new Set<string>();
   private destroyed = false;
 
@@ -547,6 +552,7 @@ export class WorldView {
     this.baked = tex.source.resource as HTMLCanvasElement;
     this.mapSprite = new Sprite(tex);
     this.world.addChildAt(this.mapSprite, 0);
+    this.buildDepth(map);
     this.areaLabels.forEach((l) => l.text.destroy());
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
     this.shownOf = new Int16Array(map.areas.length).map((_, i) => {
@@ -975,6 +981,62 @@ export class WorldView {
 
   position() {
     return { x: this.mx, y: this.my };
+  }
+
+  /** Rebuilt with the bake, never touched per frame: the sort they join already runs as avatars move. */
+  private buildDepth(map: MapData) {
+    for (const s of this.depthSprites) s.destroy();
+    this.depthSprites = [];
+    this.depthTex?.destroy(true);
+    this.depthTex = null;
+    if (!this.baked) return;
+    const { canvas, pieces } = depthAtlas(map, this.baked);
+    if (!pieces.length) return;
+    const tex = Texture.from(canvas);
+    tex.source.scaleMode = "nearest";
+    this.depthTex = tex;
+    for (const p of pieces) {
+      const spr = new Sprite(new Texture({ source: tex.source, frame: new Rectangle(p.sx, p.sy, p.w, p.h) }));
+      spr.position.set(p.x, p.y);
+      spr.zIndex = p.z;
+      spr.label = "depth-" + p.t;
+      this.entLayer.addChild(spr);
+      this.depthSprites.push(spr);
+    }
+  }
+
+  /** Tests: how many depth sprites stand for desks and for pcs. */
+  debugDepth() {
+    const n = (t: string) => this.depthSprites.filter((s) => s.label === "depth-" + t).length;
+    return { desks: n("desk"), pcs: n("pc") };
+  }
+
+  /** Tests: a hash of the world's pixels over rect (world px, 1:1), with or without the depth sprites and
+   * the people (avatars, pets, plugin sprites, rings and effects). */
+  async debugWorldPixels(o: { depth: boolean; ents: boolean; rect: { x: number; y: number; w: number; h: number } }) {
+    const keep = new Set<Container>([...this.objSprites, ...(o.depth ? this.depthSprites : [])]);
+    const depth = new Set<Container>(this.depthSprites);
+    const shown: [Container, boolean][] = [];
+    const set = (c: Container, v: boolean) => { shown.push([c, c.visible]); c.visible = v; };
+    for (const c of this.entLayer.children) set(c, keep.has(c) || (o.ents && !depth.has(c)));
+    for (const c of this.world.children) if (c !== this.mapSprite && c !== this.entLayer) set(c, o.ents && c.visible);
+    try {
+      const { pixels } = this.app.renderer.extract.pixels({ target: this.world, frame: new Rectangle(o.rect.x, o.rect.y, o.rect.w, o.rect.h), resolution: 1 });
+      let h = 0x811c9dc5;
+      for (let i = 0; i < pixels.length; i++) h = Math.imul(h ^ pixels[i], 0x01000193);
+      return (h >>> 0).toString(16) + ":" + pixels.length;
+    } finally {
+      for (const [c, v] of shown.reverse()) c.visible = v;
+    }
+  }
+
+  /** Tests: a hash of what the bake paints for a map. */
+  debugBakeHash(map: MapData) {
+    const c = bakeMapCanvas(map);
+    const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < d.length; i++) h = Math.imul(h ^ d[i], 0x01000193);
+    return (h >>> 0).toString(16);
   }
 
   debugEntities() {

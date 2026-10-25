@@ -59,6 +59,8 @@ scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, race tests, ts
 node scripts/lint-web.mjs                # static web rules (effects return a cleanup or nothing, i18n)
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
 cd e2e && node run.mjs                    # real Chrome + real LiveKit; builds, starts its own server with a fresh database
+cd e2e && E2E_PARALLELISM=2 node run.mjs   # the whole suite as 2 shards at once, each with its own server, LiveKit and Chrome (gauntlet.sh passes it on)
+cd e2e && node run.mjs --shard 2/4         # one of 4 duration-balanced shards (e2e/shards.mjs); CI runs one job per shard
 cd e2e && HQ_EXTERNAL_URL=http://127.0.0.1:8080 node run.mjs   # same scenarios against a running stack (e.g. Docker Compose)
 cd site && pnpm install && node build.mjs && node check.mjs # builds site/dist, then checks links, SEO metadata, sitemap, llms.txt and README links
 ~~~
@@ -118,7 +120,7 @@ Other agents or people may be working in the same tree at the same time.
 
 - Check `git status` before editing; do not revert or reformat files you did not touch, and never run destructive git commands (`reset --hard`, `checkout --`, `clean`) without an explicit request.
 - Do not kill processes or free ports you did not start. Use your own database file (for example `HQ_DB=server/data/<unique>.db`) instead of deleting shared ones.
-- The dev stack listens on 5173 (Vite), 8080 (Go) and 7880 (LiveKit). Start long-running processes in a persistent session; they die with short-lived shells. The browser runner takes `HQ_TEST_PORT` (default 18080, `auth` uses it + 10) and `HQ_TEST_LK_PORT` (default 7880) to stay off ports already in use; a LiveKit on another port needs its own RTC ports as well.
+- The dev stack listens on 5173 (Vite), 8080 (Go) and 7880 (LiveKit). Start long-running processes in a persistent session; they die with short-lived shells. The browser runner takes `HQ_TEST_PORT` (default 18080, `auth` uses it + 10) and `HQ_TEST_LK_PORT` (default 7880) to stay off ports already in use; a LiveKit on another port needs its own RTC ports as well. With `E2E_PARALLELISM=N` (`e2e/parallel.mjs`), shard i uses server port 38080+100*i (auth +10) and its own LiveKit on 47880+100*i (RTC TCP +1, UDP +2): the `livekit-server` binary if it is on PATH, else a Docker container per shard (labelled `hq-e2e-owner`, removed at the end, on a failing shard and on Ctrl+C; a container left by a run that was killed outright is removed by the next one). The build runs once before the shards; each shard's output is printed whole at the end, logs stay in a `homequarters-e2e-shards-*` temp folder. Shards share the CPU: on a 12-thread Windows machine 2 shards passed (11.5 min against 20 min serial) while 3 saturated it and failed a few timing checks each run, so pick N by your cores and treat a timing failure under N > 1 as unconfirmed until it fails alone (see `docs/status.md`).
 
 ## Testing notes and gotchas
 
@@ -130,7 +132,7 @@ Other agents or people may be working in the same tree at the same time.
 - Avatar sheet cells are 18x30 px (16x24 body plus a 1 px outline margin and 4 rows on top for hats and tall hair). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops rows 4-28 when it reuses cells. Name tags follow the drawing's real top (`AvatarFrames.tall`), not the cell height.
 - The camera uses integer zoom (`VIEW_REF_W/H` in `WorldView.ts`). Keep the server's area of interest large enough to cover the visible world at the smallest zoom.
 - Tests that need real media use Chrome flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`. The fake microphone is a beep: it proves audio flows, not how well noise suppression cleans a voice.
-- On Windows, headless Chrome's fake camera track ends as soon as it starts unless the GPU is off: `launch()` in `e2e/lib.mjs` adds `--disable-gpu` there. Video RTP does not cross Docker Desktop's network either, so with LiveKit in Docker the video RTP checks of `proximity` and `spotlight` fail locally; with LiveKit's Windows binary on the host (`livekit-server.exe --dev` with its own `port` and `rtc` ports in a config) the whole suite passed (2026-10-21). Vite may listen on `::1` only: open `http://localhost`, not `127.0.0.1`.
+- On Windows, headless Chrome's fake camera track ends as soon as it starts unless the GPU is off: `launch()` in `e2e/lib.mjs` adds `--disable-gpu` there. LiveKit in Docker Desktop carries video RTP when its RTC ports are published with the same numbers inside and out and it advertises 127.0.0.1 (`--node-ip 127.0.0.1`, as `deploy/docker-compose.local.yml` and `e2e/parallel.mjs` do): the whole serial suite passed against the dev container (2026-10-25), and the video RTP checks of `proximity` and `spotlight` passed with three shard containers at once (2026-10-25). LiveKit's Windows binary on the host (`livekit-server.exe` with its own `port` and `rtc` ports in a config) also works. Vite may listen on `::1` only: open `http://localhost`, not `127.0.0.1`.
 - Load generators must run **outside** the machine being measured.
 
 ## The site (GitHub Pages)
