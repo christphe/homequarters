@@ -127,6 +127,10 @@ Chess must be a **plugin** (`hq-chess`, bundled), not a built-in object like the
 
 **Board view.** A canvas of 8x8 squares in pixel-art style, flipped for the Black player. Pieces drawn in code. Pointer events: drag a piece of your colour and drop it; it snaps to the square under the pointer, or back to its square when dropped outside the board. Click a piece then a square does the same (touch screens and people who cannot drag). The board is also keyboard-operable: it takes focus, arrow keys move a square cursor, Enter or Space picks up and drops, Escape cancels, and a live region in the view announces the square under the cursor and each move ("White: pawn e2 to e4"). *(Builder's call, from AGENTS.md's accessibility rules; it gets its own check in the `chess` scenario.)* Spectators and non-owners cannot pick pieces up. A move sends one message on drop. The view redraws from the state the server sends; until the server confirms, the moved piece is shown at its new square (optimistic), corrected by the next state.
 
+**Playing badge.** *(Added by the user on 2026-10-25.)* A small chess-piece icon, white or black by the seat's colour, shows above the head of every **present** seated player, for everybody in the office. It goes away when the player closes the window (or a reset frees the seat). The icons are a PNG in the plugin's `public/`, drawn in code like the board sprite. The server broadcasts the list of present seated players (`{ t: "playing", list: [{ id, side }] }`) to every online member whenever it changes, and to a member when they join; each page attaches the matching sprite above those members with `hq.attach` (below).
+
+**`hq.attach(id, memberId | null)`** *(new client API, for the badge)*: pins a spawned sprite of the plugin above that member's head, just above their name tag (the drawing's real top, `AvatarFrames.tall`), moving with them every frame without lag; hidden while the member is off screen; `null` detaches it (it stays where it is until moved or removed). An attached sprite ignores `moveTo`/`walkTo`/`follow` until detached.
+
 **Text.** Plugin labels are plain English strings in the plugin, as for every plugin (not in `i18n.ts`).
 
 ## Protocol and docs touched
@@ -149,7 +153,8 @@ Chess must be a **plugin** (`hq-chess`, bundled), not a built-in object like the
 | 9 | The view iframe is sandboxed without `allow-same-origin`, has the CSP, cannot read `parent.document`; its messages over 4 KB or 30/s are dropped | browser scenario `plugins` extension + `commands.ts` tests |
 | 10 | One message per drop, none while dragging | browser scenario `chess` counts `plg` frames |
 | 11 | The `a11y` scenario stays at zero axe violations with the chess window open; a move made with the keyboard only (arrows, Enter) reaches the other window and is announced | `a11y` and `chess` scenarios |
-| 12 | The art is original and readable at the office's zoom (board on table; pieces in the window) | `capture-chess` frames and contact sheet, looked at |
+| 12 | The art is original and readable at the office's zoom (board on table; pieces in the window; the playing badge) | `capture-chess` frames and contact sheet, looked at |
+| 13 | A present seated player shows a white or black piece badge above their name tag on every page (including pages far from the board, once the avatar is on screen); it follows them as they walk and disappears within 1 s of closing the window or a reset | browser scenario `chess` + frames looked at |
 
 ## Left to the builder
 

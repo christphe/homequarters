@@ -128,6 +128,21 @@
 - [ ] **Step 5: Run** `node --test web/test/pluginView.test.ts && scripts/gauntlet.sh plugins` → `GATES GREEN`.
 - [ ] **Step 6: Commit** `git commit -m "Plugin views: a sandboxed iframe of the plugin in its modal"`
 
+### Task 6b: `hq.attach`, a sprite above a member's head
+
+**Files:**
+- Modify: `web/src/plugins/commands.ts` (`Cmd` gains `{ op: "attach"; id: string; player: number | null }`, player 1..2^32-1 or null), `web/src/plugins/sdk.js` (`hq.attach(id, memberId)`), `web/src/game/pluginLayer.ts` (attached entities: position each frame from the member's drawn position and head top; hidden while off screen; ignore moveTo/walkTo/follow while attached), `web/src/game/WorldView.ts` (whatever `LayerHost` needs to expose: the member's drawn feet position and `AvatarFrames.tall` head top, read from what already places name tags), `plugins/sdk/client.d.ts` (`attach(id: string, memberId: number | null): void`), `docs/plugins.md` and `docs/plugin-api.md` (one row each)
+- Test: `web/test/pluginView.test.ts` or a new `web/test/pluginAttach.test.ts` (command validation); e2e check lands in Task 9
+
+**Interfaces:**
+- Produces: plugin client API `hq.attach(id, memberId | null)`; the sprite's bottom centre sits 2 px above the top of the member's name tag.
+
+- [ ] **Step 1: Write the failing tests**: `parseBatch` accepts `{op:"attach",id:"b",player:7}` and `{op:"attach",id:"b",player:null}`, refuses player 0, 1.5, "7", 2^32.
+- [ ] **Step 2: Run** `node --test web/test/pluginAttach.test.ts` → FAIL.
+- [ ] **Step 3: Implement** the command, the SDK call and the layer behaviour (set `dirty` when an attached sprite moves; no per-frame allocation).
+- [ ] **Step 4: Run** `node --test 'web/test/*.test.ts' && cd web && pnpm exec tsc --noEmit && pnpm exec vite build && cd .. && node scripts/lint-web.mjs` → PASS.
+- [ ] **Step 5: Commit** `git commit -m "hq.attach: a plugin sprite above a member's head"`
+
 ### Task 7: hq-chess game logic
 
 **Files:**
@@ -160,7 +175,8 @@
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Implement `client.ts`**: `onLoad` sends `hello`; on `open`/`state` draws the modal `Chess` (medium): a row of White/Black/Spectate buttons with the rules of the spec's "Window" paragraph, Reset (enabled by `canReset`), and `hq.ui.view({ view: "board", label: "Chessboard", height: "large", onMessage })`; posts `{ s, me }` to the view on each state; `onClose` sends `close`.
 - [ ] **Step 6: Implement `board.ts`**: canvas 8x8, pixel-art pieces drawn in code, flipped when `me` is Black; pointer drag with snap, drop outside → back; click-click; keyboard (arrows, Enter/Space, Escape) with an `aria-live` region announcing `"<Side>: <piece> e2 to e4"`; one `hqView.send({t:"move",from,to})` per drop; optimistic redraw corrected by the next state.
-- [ ] **Step 7: Generate the sprite** `node plugins/bundled/hq-chess/tools/sprite.mjs` → writes `public/chessboard.png` (16x16 board seen from above, 1 px dark outline, matches `docs/art-style.md`).
+- [ ] **Step 6b: Playing badge**: the server keeps the list of present seated players and broadcasts `{ t: "playing", list: [{ id, side }] }` to everyone when it changes (collected in `update()`), and sends it to a member in `onJoin`; `client.ts` spawns one badge sprite per listed member (`badge-<id>`, anim `w` or `b`) and `hq.attach`es it, removing badges no longer listed. Go test `TestChessPlayingList` (seat + open → listed; close → unlisted; reset → empty; a joining member gets the list).
+- [ ] **Step 7: Generate the sprites** `node plugins/bundled/hq-chess/tools/sprite.mjs` → writes `public/chessboard.png` (16x16 board seen from above, 1 px dark outline, matches `docs/art-style.md`) and `public/badges.png` (two 7x9 piece icons, white and black, 1 px dark outline, readable over any floor).
 - [ ] **Step 8: Run** `cd web && pnpm exec tsc -p ../plugins/bundled/hq-chess && pnpm exec tsc -p ../plugins/bundled/hq-chess/public && cd ../server && go test -race ./internal/plugin` → PASS.
 - [ ] **Step 9: Commit** `git commit -m "hq-chess: a chessboard two members play on, without rules"`
 
@@ -170,7 +186,7 @@
 - Create: `e2e/scenarios/chess.mjs`, `e2e/scenarios/capture-chess.mjs` (copy of `capture-plugin-pet.mjs`, not in the default suite)
 - Modify: `e2e/run.mjs` (`all` gains `"chess"`), `e2e/scenarios/a11y.mjs` (axe with the chess window open)
 
-- [ ] **Step 1: Write `chess.mjs`** (admin enables `hq-chess` with `PUT /api/admin/plugins/hq-chess`, puts a `hq-chess/chessboard` 1x1 on the bottom row of a table of the map through `PUT /api/map`, then three members A, B, C walk next to it). Checks, each through the real controls with the modal open: board sprite drawn and X hint shown (criterion 4); X opens `Chess`; A White, B Black, C Spectate, C cannot pick a piece, A cannot pick a black piece (5); real mouse drag e2→e4 by A seen by B and C within 1 s, capture on an occupied square, drop outside returns, click-click works (6); exactly one `plg` frame per drop (count on A's socket) (10); keyboard-only move by B reaches A and the live region announces it (11); B closes → A sees "away"; C Reset disabled; A closes → C resets → seats free (7); server restart → board, seats back (8); plugin off → sprite gone and X does nothing; on → back with its game (4).
+- [ ] **Step 1: Write `chess.mjs`** (admin enables `hq-chess` with `PUT /api/admin/plugins/hq-chess`, puts a `hq-chess/chessboard` 1x1 on the bottom row of a table of the map through `PUT /api/map`, then three members A, B, C walk next to it). Checks, each through the real controls with the modal open: board sprite drawn and X hint shown (criterion 4); X opens `Chess`; A White, B Black, C Spectate, C cannot pick a piece, A cannot pick a black piece (5); real mouse drag e2→e4 by A seen by B and C within 1 s, capture on an occupied square, drop outside returns, click-click works (6); exactly one `plg` frame per drop (count on A's socket) (10); keyboard-only move by B reaches A and the live region announces it (11); B closes → A sees "away"; C Reset disabled; A closes → C resets → seats free (7); server restart → board, seats back (8); plugin off → sprite gone and X does nothing; on → back with its game (4); while A and B have the window open, C's page shows a white badge above A and a black badge above B, the badge follows A when A walks, and disappears within 1 s after A closes the window (13).
 - [ ] **Step 2: Run** `cd e2e && node run.mjs chess` → every check passes. Sanity: make `canReset` always return `true`, rerun, check 7 fails; revert.
 - [ ] **Step 3: Run** `cd e2e && node run.mjs capture-chess` and look at the frames: board readable on the table at the default zoom, avatars north of the table behind it, pieces readable in the window (12).
 - [ ] **Step 4: Run** `scripts/gauntlet.sh chess a11y plugins` → `GATES GREEN`.
