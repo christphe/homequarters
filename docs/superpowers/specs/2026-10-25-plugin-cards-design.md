@@ -167,6 +167,47 @@ Part of this change *(user's decision)*. It is the first game with its own cards
 - Count hook: the points left in each hand. Number cards count their face value, Skip, Reverse and Draw Two count 20, and both Wilds count 50 ("Michel 32, Vincent 0, …").
 - Nothing else is automated. Players say the Wild's colour and "last card" out loud (proximity audio) and apply Skip, Reverse and Draw Two themselves *(user: "le choix de la couleur ou last card peut se faire à l'oral")*. No announce buttons.
 
+## Round 2: after the user tried it (2026-10-25)
+
+The user played the first version: on a computer screen the table is too small to read the cards; piles cannot be moved or deleted; a solitaire is impossible; cards cannot be taken out of the game. Decisions, the user's unless marked:
+
+### 9. A full-screen plugin window (plugin API)
+
+- `hq.ui.modal({ size: "full" })`: the window takes the screen, less a margin (the user: "on doit pouvoir faire un plein écran"). `hq.ui.view({ height: "full" })` fills the window's height left after the elements above it. Validated like the other sizes; documented in `docs/plugins.md`, `docs/plugin-api.md` and `plugins/sdk/client.d.ts`; recorded in ADR 0032 *(builder's call: one ADR for the whole change)*.
+- The Cards window uses it, and holds only its title and the view: the seats, the table actions and the log move into the view, as HTML controls above and beside the canvas *(builder's call: the controls above the view took the height the table needs)*. Target: at 1280 x 720 the table is drawn at 2x or more; on a larger screen, larger (whole and half steps as now). On a phone the narrow layout stays.
+
+### 10. Snapping, overlapping, cascades
+
+- **Snapping is a setting of the table, the same for everybody** *(the user: "l'option de snapping c'est pour tout le monde")*: a switch in the view that any seated player can turn on or off, saved with the table and logged ("Ann turned snapping on"); on for a new game *(builder's call)*. Off, a card lands where it is dropped, as now.
+- On, a dropped card lands on a **grid** of the felt *(builder's call: a step of 24 x 32 felt units, a card and a gap)*.
+- **Cards may overlap.** Dropped on another loose card's upper half, it lands exactly on it (a stack); dropped on its **lower half**, it lands **13 felt units lower**, so the card under it shows its index (rank and suit) above it: a cascade, as the columns of a solitaire.
+- The positions are computed by the dropping player's page from the table's setting; the server stores the setting and does not check positions (as now).
+
+### 11. Moving groups of cards and piles
+
+- A **stack or cascade** of loose cards (cards that overlap, in the order they were put down) has a **handle** above its bottom card: dragging the handle moves the whole group *(the user: "on peut déplacer des tas via un handle")*.
+- Picking a card **in the middle of a cascade** takes it **and the cards put on it** (needed for a solitaire) *(builder's proposal, accepted with the playback)*.
+- One action, `moveCards { cards, dx, dy }`: the cards must all be loose; they keep their order and go on top; logged as "Ann moved 4 cards" *(builder's call on the name and shape)*.
+- **Piles have a handle too** (beside their name): `movePile { pile, at }`. **Any pile can be removed**, except the stock (the first pile); its cards go back to the stock face down *(the user asked to delete piles; where the cards go is the builder's proposal)*.
+
+### 12. Taking cards out of the game
+
+- At the start of a game, players set cards aside ("set the jokers aside"). `remove` takes one card (from my hand, the felt or a pile's top) **out of the game**: it goes to a set-aside list of the table, not shown, counted ("3 out of the game"), logged with its name *(builder's call: the card is named, as it is seen leaving)*.
+- **They stay out through everything, Gather all included; only a Reset brings them back** (it starts the game again from a whole deck) *(the user: "ils ne sont pas récupérés quand on ramasse, uniquement au reset")*. There is no separate restore.
+- `remove` is a new allowed action; games that list their actions (Old Maid, Last Card) do not offer it.
+
+### Acceptance criteria of round 2
+
+| # | Criterion | Seam |
+| --- | --- | --- |
+| R1 | A plugin window of size `full` with a `full` view fills the screen less its margin at 1280 x 720 and 800 x 450; a malformed size still stops the plugin as before | `pluginCommands` tests + browser scenario `plugins` |
+| R2 | At 1280 x 720 the Cards table is drawn at 2x or more, with the seats, actions and log usable; the `a11y` scenario stays at zero violations | browser scenarios `cards` and `a11y` + frames looked at |
+| R3 | Snapping on: a card dropped near a grid point lands on it; dropped on a card's lower half it lands 13 units lower, its index visible; on its upper half, exactly on it; snapping off: where dropped. A seated player turns it off: every page shows it off and the log says so | web unit tests of the snapping function + browser scenario `cards` |
+| R4 | Dragging a cascade's handle moves all its cards by the same offset; picking a middle card of a cascade moves it and the cards above it; one message per drop | web unit tests + browser scenario `cards` |
+| R5 | A pile moves by its handle; any pile but the stock can be removed and its cards go back to the stock | unit and Go tests + browser scenario `cards` |
+| R6 | A card set aside leaves the table for everybody, is counted and logged; it stays out through every action, Gather all included; a Reset and a new game bring it back | unit and Go tests + browser scenario `cards` |
+| R7 | A solitaire can be laid out and played on the free table by one player: 7 cascades, 4 foundation stacks, a stock and a waste pile, a run moved between cascades | browser scenario `cards` (scripted through the real controls) + frames looked at |
+
 ## Protocol and docs touched
 
 `docs/plugins.md` and `docs/plugin-api.md` (views and shared images; the Cards hooks), `plugins/sdk/*.d.ts` if a type changes, a new ADR, `docs/status.md` and the README status table, `server/CHANGELOG.md` entries (`fchange added` for Cards, Old Maid and Last Card, `changed` for views reading shared images). No change to the game WebSocket protocol: everything rides the plugin channel.

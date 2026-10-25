@@ -382,3 +382,45 @@ scripts/gauntlet.sh, .github/workflows/ci.yml   (plugin-types lists)
 - [ ] **Step 4: Site check:** `cd site && node build.mjs && node check.mjs` → passes (new links resolve).
 - [ ] **Step 5: Gates:** `scripts/gauntlet.sh` (whole suite) → `GATES GREEN`. Then run the gauntlet's critics (UX, invariants, regression) per `.agents/skills/gauntlet/SKILL.md`, fix blockers and majors, repeat.
 - [ ] **Step 6: Commit** `git commit -m "Docs, status and changelog for the card table (#38)"`.
+
+---
+
+## Round 2 (spec sections 9-12, criteria R1-R7)
+
+Executed by the lead in this worktree. Same rules: TDD, one message per drop, labels ≤ 40, sizes in UTF-8 bytes.
+
+### Task 12: Table model, round 2 (`table.ts`, `games.ts`, `log.ts`)
+
+- `Action` gains `"remove"`. `Table` gains `snap: boolean` (true for a new game) and `out: number[]` (cards set aside).
+- `setSnap(t, seat, on)` (any seated player, not narrowed) → log `{ v: "snap", n: on ? 1 : 0 }` ("Ann turned snapping on/off").
+- `moveCards(t, seat, cards, dx, dy, g)` (allowed with `place`): every card loose, the moved positions stay on the felt; they keep their order and go on top → log `{ v: "moved", n }`.
+- `movePile(t, seat, id, at, g)` (allowed with `place`) → log `{ v: "moved pile", p }`.
+- `removePile` (allowed with `createPile`): any pile but the first; its cards go to the first pile face down → log `removed`.
+- `setAside(t, seat, from, g)` (allowed with `remove`): from my hand, a loose card or a pile's top into `out` → log `{ v: "set aside", c }` (named). `gather` leaves `out` alone; `reset`/`choose` start from a whole deck. `defaultCount` adds "N set aside".
+- Tests in `web/test/cards.test.ts`, red first.
+
+### Task 13: Snapping and groups (`layout.ts`)
+
+- `GRID = [24, 32]`, `CASCADE = 13`. `snapAt(t, at, moving, on): [x, y]`: off → `at`; on → over a loose card not in `moving`: its lower half → `[its x, its y + CASCADE]`, its upper half → its position; else the nearest grid point (inside the felt).
+- `groupFrom(t, c): number[]`: c and the loose cards put after it that overlap the chain (a cascade or stack above c), in their order. `groups(t)`: the bottom card of every group of two or more, for the handles.
+- Tests, red first.
+
+### Task 14: Server wiring (`main.ts`, `messages.ts`) and Go tests
+
+- Messages `snap { on }`, `moveCards { cards, dx, dy }`, `movePile { pile, at }`, `setAside { from }`; `delPile` keeps its name. Go tests in `cards_test.go`: each through the real host, hostile shapes refused without plugin errors.
+
+### Task 15: A full-screen plugin window (core)
+
+- `web/src/plugins/commands.ts`: modal `size` accepts `"full"`, view `height` accepts `"full"`; `PluginUI.tsx`/`styles.css`: `.plugin-modal.size-full` fills the screen less 12 px, `.plugin-view.h-full` fills the window's remaining height. `plugins/sdk/client.d.ts`, `docs/plugins.md`, `docs/plugin-api.md`, ADR 0032. Tests in `web/test/pluginCommands.test.ts`, red first; a check in the `plugins` scenario.
+
+### Task 16: The Cards window in full screen, controls in the view
+
+- `client.ts`: the choice of a game stays in the window; with a game, the window is `size: "full"` with only the view (`height: "full"`). Everything else moves into `view.ts`: a top bar (seats, holders, the table actions allowed, Deal N, a new pile, offers, the snap switch, Reset, the count and the offer notice) and the log beside the canvas on a wide screen, under it on a narrow one. The view fits its canvas to the space left (2x or more at 1280 x 720).
+- Handles: a grip above each group's bottom card and beside each pile's name; dragging one sends `moveCards` / `movePile`. A press on a card inside a group takes the card and those above it. Drops use `snapAt`. Under the canvas, for a selected card: "Set it aside"; for a pile: "Remove …" for any pile but the stock.
+
+### Task 17: Browser checks and captures
+
+- `cards.mjs` follows the controls into the view; new checks R2-R7, the solitaire played by one player through the real controls (lay out 7 cascades with snapping, move a run, build a foundation); `a11y` audits the full-screen window; `capture-cards` films the solitaire. Look at the frames.
+
+### Task 18: Docs, changelog (#38), status, gauntlet, critics
+
