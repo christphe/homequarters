@@ -25,6 +25,8 @@ export interface Table {
   offer: { from: number; to: number } | null;
   count: string;
   next: number; // the next pile id's number
+  snap: boolean; // drops land on a grid and on other cards (layout.ts snapAt), for everybody at the table
+  out: number[]; // cards set aside, out of the game until a reset
 }
 export type Dest = { k: "felt"; at: [number, number] } | { k: "pile"; id: string } | { k: "hand"; seat: number };
 export type Src = { k: "hand"; i: number } | { k: "loose"; c: number } | { k: "pile"; id: string };
@@ -45,7 +47,7 @@ const sameCards = (a: number[], b: number[]) => {
 };
 
 export function newTable(): Table {
-  return { game: null, seats: [], hands: [], piles: [], loose: [], offer: null, count: "", next: 0 };
+  return { game: null, seats: [], hands: [], piles: [], loose: [], offer: null, count: "", next: 0, snap: true, out: [] };
 }
 
 export function parseTable(s: string | null): Table {
@@ -54,7 +56,11 @@ export function parseTable(s: string | null): Table {
     const t = JSON.parse(s) as Table;
     const ok = typeof t === "object" && t !== null && (t.game === null || typeof t.game === "string") && Array.isArray(t.seats) &&
       Array.isArray(t.hands) && Array.isArray(t.piles) && Array.isArray(t.loose) && typeof t.count === "string" && isInt(t.next);
-    return ok ? t : newTable();
+    if (!ok) return newTable();
+    // tables saved before snapping and setting aside existed
+    if (typeof t.snap !== "boolean") t.snap = true;
+    if (!Array.isArray(t.out)) t.out = [];
+    return t;
   } catch {
     return newTable();
   }
@@ -275,12 +281,55 @@ export function createPile(t: Table, seat: number | null, name: string, face: "u
   });
 }
 
+/** Any pile but the stock (the first); its cards go back to the stock, face down. */
 export function removePile(t: Table, seat: number | null, id: string, g: Game): Done {
   return act(t, seat, g, "createPile", (me) => {
     const p = pile(t, id);
-    if (!p?.mine || p.cards.length) return null;
+    if (!p || p === t.piles[0]) return null;
+    t.piles[0].cards.push(...p.cards.map(card));
     t.piles = t.piles.filter((x) => x !== p);
     return { s: me, v: "removed", p: p.name };
+  });
+}
+
+/** Snapping on or off, for everybody at the table. */
+export function setSnap(t: Table, seat: number | null, on: boolean): Done {
+  if (!seated(t, seat) || typeof on !== "boolean") return NO;
+  t.snap = on;
+  return { ok: true, log: { s: seat, v: "snap", n: on ? 1 : 0 } };
+}
+
+/** Loose cards moved together by (dx, dy): they keep their order and go on top. */
+export function moveCards(t: Table, seat: number | null, cards: number[], dx: number, dy: number, g: Game): Done {
+  return act(t, seat, g, "place", (me) => {
+    if (!Array.isArray(cards) || !cards.length || cards.length > t.loose.length || !isInt(dx) || !isInt(dy)) return null;
+    if (new Set(cards).size !== cards.length) return null;
+    const moving = t.loose.filter((l) => cards.includes(card(l.c)));
+    if (moving.length !== cards.length) return null;
+    const moved = moving.map((l) => ({ c: l.c, at: [l.at[0] + dx, l.at[1] + dy] as [number, number] }));
+    if (!moved.every((l) => onFelt(l.at))) return null;
+    t.loose = [...t.loose.filter((l) => !moving.includes(l)), ...moved];
+    return { s: me, v: "moved", n: cards.length };
+  });
+}
+
+export function movePile(t: Table, seat: number | null, id: string, at: [number, number], g: Game): Done {
+  return act(t, seat, g, "place", (me) => {
+    const p = pile(t, id);
+    if (!p || !onFelt(at)) return null;
+    p.at = [at[0], at[1]];
+    return { s: me, v: "moved pile", p: p.name };
+  });
+}
+
+/** A card out of the game (from my hand, the felt or a pile's top) until a reset. */
+export function setAside(t: Table, seat: number | null, from: Src, g: Game): Done {
+  return act(t, seat, g, "remove", (me) => {
+    if (!isSrc(from)) return null;
+    const c = lift(t, me, from);
+    if (c === null) return null;
+    t.out.push(card(c));
+    return { s: me, v: "set aside", c: card(c) };
   });
 }
 
@@ -316,6 +365,7 @@ export function defaultCount(t: Table): string {
   const piles = t.piles.map((p) => `${p.name} ${p.cards.length}`).join(", ");
   const parts = [hands, piles].filter(Boolean);
   if (t.loose.length) parts.push(`${t.loose.length} on the table`);
+  if (t.out.length) parts.push(`${t.out.length} set aside`);
   return parts.join(" · ");
 }
 

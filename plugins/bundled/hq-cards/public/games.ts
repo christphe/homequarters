@@ -2,8 +2,8 @@
 // what a page is told about a game. Shared by the server code, the page code, the view and the tests.
 // Types and pure functions only.
 
-export type Action = "place" | "offer" | "dealAll" | "deal" | "shuffle" | "gather" | "count" | "createPile" | "viewPile" | "draw";
-export const ACTIONS: readonly Action[] = ["place", "offer", "dealAll", "deal", "shuffle", "gather", "count", "createPile", "viewPile", "draw"];
+export type Action = "place" | "offer" | "dealAll" | "deal" | "shuffle" | "gather" | "count" | "createPile" | "viewPile" | "draw" | "remove";
+export const ACTIONS: readonly Action[] = ["place", "offer", "dealAll", "deal", "shuffle", "gather", "count", "createPile", "viewPile", "draw", "remove"];
 
 // The felt, in felt units (the view draws it at a whole-number scale); positions are within it.
 export const FELT_W = 320;

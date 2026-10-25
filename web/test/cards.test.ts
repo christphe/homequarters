@@ -103,7 +103,7 @@ test("FREE is the free table: a 54-card stock, 2 to 8 seats, everything allowed"
   assert.equal(FREE.piles?.[0].face, "down");
   assert.equal(allows(FREE, "viewPile"), true);
   const cg = clientGame(FREE);
-  assert.equal(cg.allow.length, 10);
+  assert.equal(cg.allow.length, 11);
 });
 
 // ---- log.ts
@@ -380,9 +380,10 @@ test("createPile and removePile", () => {
   assert.equal(createPile(t, 0, "A", "sideways" as "up", [1, 1], FREE).ok, false);
   for (let i = 2; i < 16; i++) assert.equal(createPile(t, 0, "P" + i, "up", [1, 1], FREE).ok, true);
   assert.equal(createPile(t, 0, "P16", "up", [1, 1], FREE).ok, false, "16 piles at most");
-  assert.equal(removePile(t, 0, "p0", FREE).ok, false, "a game's pile stays");
+  assert.equal(removePile(t, 0, "p0", FREE).ok, false, "the stock stays");
   place(t, 0, { k: "pile", id: "p0" }, { k: "pile", id: "p1" }, true, FREE);
-  assert.equal(removePile(t, 0, "p1", FREE).ok, false, "not empty");
+  assert.equal(removePile(t, 0, "p1", FREE).ok, true, "a pile with cards goes, its cards back to the stock");
+  assert.equal(t.piles[0].cards.length, 54);
   r = removePile(t, 1, "p2", FREE);
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual(r.log, { s: 1, v: "removed", p: "P2" });
@@ -668,4 +669,80 @@ test("narrow hand: larger cards, all inside the view, and hit finds them", () =>
   assert.deepEqual(hit(t, 0, s[4].x + w - 2, s[4].y + 2, NARROW), { k: "hand", i: 4 }, "the right edge of the last, larger card");
   const pile = cardAt(t.piles[0].at, NARROW);
   assert.deepEqual(hit(t, 0, pile.x + 2, pile.y + 2, NARROW), { k: "pile", id: "p0" });
+});
+
+// ---- round 2: snapping setting, moving groups and piles, removing any pile, setting cards aside
+import { setSnap, moveCards, movePile, setAside } from "../../plugins/bundled/hq-cards/public/table.ts";
+
+test("a new game snaps; any seated player turns it off and on, logged", () => {
+  const t = free3();
+  assert.equal(t.snap, true);
+  let r = setSnap(t, 1, false);
+  assert.deepEqual(r, { ok: true, log: { s: 1, v: "snap", n: 0 } });
+  assert.equal(t.snap, false);
+  r = setSnap(t, 0, true);
+  if (r.ok) assert.equal(r.log?.n, 1);
+  assert.equal(setSnap(t, null, false).ok, false, "a spectator");
+  assert.equal(sentence({ s: 1, v: "snap", n: 0 }, (s) => names[s], String), "Bo turned snapping off");
+});
+
+test("moveCards moves loose cards together, on top, in their order", () => {
+  const t = free3();
+  deal(t, 0, "p0", 3, FREE);
+  for (let i = 0; i < 3; i++) place(t, 0, { k: "hand", i: 0 }, { k: "felt", at: [40 + i, 40 + 13 * i] }, true, FREE);
+  place(t, 0, { k: "pile", id: "p0" }, { k: "felt", at: [200, 100] }, true, FREE); // another card, put down last
+  const [a, b, c] = t.loose.slice(0, 3).map((l) => l.c & ~UP);
+  const r = moveCards(t, 1, [a, b, c], 100, 20, FREE);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.log, { s: 1, v: "moved", n: 3 });
+  assert.deepEqual(t.loose.slice(-3).map((l) => [l.c & ~UP, l.at]), [[a, [140, 60]], [b, [141, 73]], [c, [142, 86]]]);
+  assert.equal(moveCards(t, 1, [a, 999], 1, 1, FREE).ok, false, "a card not on the felt");
+  assert.equal(moveCards(t, 1, [a, a], 1, 1, FREE).ok, false, "twice");
+  assert.equal(moveCards(t, 1, [a], 1000, 0, FREE).ok, false, "off the felt");
+  assert.equal(moveCards(t, 1, [], 1, 1, FREE).ok, false);
+  assert.equal(moveCards(t, null, [a], 1, 1, FREE).ok, false);
+  assert.equal(moveCards(t, 1, [a], 1, 1, { ...FREE, allow: ["draw"] }).ok, false);
+});
+
+test("movePile moves a pile; removePile removes any pile but the stock, its cards back to the stock", () => {
+  const g: Game = { ...FREE, piles: [{ name: "Stock", face: "down", at: [160, 90] }, { name: "Discard", face: "up", at: [200, 90] }] };
+  const t = newTable();
+  choose(t, g, lcg());
+  take(t, 0, ANN);
+  place(t, 0, { k: "pile", id: "p0" }, { k: "pile", id: "p1" }, true, g);
+  let r = movePile(t, 0, "p1", [20, 30], g);
+  assert.deepEqual(r, { ok: true, log: { s: 0, v: "moved pile", p: "Discard" } });
+  assert.deepEqual(t.piles[1].at, [20, 30]);
+  assert.equal(movePile(t, 0, "p1", [999, 0], g).ok, false);
+  r = removePile(t, 0, "p1", g);
+  assert.equal(r.ok, true, "a game's pile, not empty");
+  assert.equal(t.piles.length, 1);
+  assert.equal(t.piles[0].cards.length, 54);
+  assert.ok(t.piles[0].cards.every((c) => c < UP), "back face down");
+  assert.equal(removePile(t, 0, "p0", g).ok, false, "never the stock");
+});
+
+test("setAside takes a card out of the game until a reset; gather leaves it out", () => {
+  const t = free3();
+  deal(t, 0, "p0", 2, FREE);
+  const mine = t.hands[0][0];
+  let r = setAside(t, 0, { k: "hand", i: 0 }, FREE);
+  assert.deepEqual(r, { ok: true, log: { s: 0, v: "set aside", c: mine } });
+  assert.deepEqual(t.out, [mine]);
+  const top = t.piles[0].cards.at(-1)!;
+  setAside(t, 1, { k: "pile", id: "p0" }, FREE);
+  assert.equal(t.out.length, 2);
+  assert.ok(t.out.includes(top & ~UP));
+  assert.equal(setAside(t, 0, { k: "hand", i: 0 }, { ...FREE, allow: ["place"] }).ok, false, "not allowed");
+  gather(t, 0, FREE);
+  assert.equal(t.piles[0].cards.length, 52, "gather leaves them out");
+  assert.equal(t.out.length, 2);
+  assert.match(defaultCount(t), /2 set aside/);
+  reset(t);
+  choose(t, FREE, lcg());
+  assert.equal(t.piles[0].cards.length, 54, "a new game starts from the whole deck");
+  assert.deepEqual(t.out, []);
+  assert.equal(sentence({ s: 0, v: "set aside", c: 7 }, (s) => names[s], () => "8 of spades"), "Ann set the 8 of spades aside");
+  assert.equal(sentence({ s: 0, v: "moved", n: 3 }, (s) => names[s], String), "Ann moved 3 cards");
+  assert.equal(sentence({ s: 0, v: "moved pile", p: "Discard" }, (s) => names[s], String), "Ann moved the pile Discard");
 });
