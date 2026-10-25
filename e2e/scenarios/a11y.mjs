@@ -218,13 +218,21 @@ export async function run(ctx) {
       if (tries++ % 20 === 0) await p.keyboard.press("x");
       return false;
     }, { what: "cards window" });
-    const cardsButton = (text) => p.evaluate((sel, text) => { const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text);
+    // a control of the window, or (with a game) of the table view's panel
+    const cardsButton = async (text) => {
+      if (await p.evaluate((sel, text) => { const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text)) return true;
+      const f = await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame();
+      return !!f && f.evaluate((text) => { const b = [...document.querySelectorAll(".controls button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, text);
+    };
     // a table left over by an earlier scenario on the same tile keeps its game: start it afresh
     await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
     // on a failure, say what the window showed (a CI runner cannot be watched)
-    const cardsWindow = () => p.evaluate((sel) => ({ buttons: [...document.querySelectorAll(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), texts: [...document.querySelectorAll(sel + " p")].map((x) => x.textContent), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS);
+    const cardsWindow = async () => ({
+      window: await p.evaluate((sel) => ({ buttons: [...document.querySelectorAll(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS),
+      panel: await (await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame())?.evaluate(() => [...document.querySelectorAll(".controls button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : ""))).catch(() => null),
+    });
     await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
-    await waitFor(() => cardsButton("Deal 7 each"), { what: "Deal 7 each" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
+    await waitFor(() => cardsButton("Deal"), { what: "Deal" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     const cardsView = await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" });
     await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     await audit(p, "the Cards window with a dealt free table");
