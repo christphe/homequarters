@@ -14,17 +14,11 @@ import { depthAtlas } from "./art/objects";
 import { PluginLayer } from "./pluginLayer";
 import { areaTitle, deskTitle, type NameOf } from "./places";
 import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Grid, type Remote } from "./motion";
+import { Camera, zoomStore } from "./camera";
 import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
 
 const T = 16;
-// Reference view in world pixels. A 240x160 handheld screen would be 15x10 tiles; an office wants a little more room.
-const VIEW_REF_W = 320;
-const VIEW_REF_H = 200;
-const MAX_SCALE = 8;
 const WHEEL_GAP_MS = 120; // at most one zoom step per this long, so a trackpad or a free-spinning wheel does not race through every level
-// world px kept inside the interest radius beyond what is visible: a sprite drawn above its feet,
-// and my predicted position running ahead of the server's
-const VIEW_PAD = 24;
 const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
 // Jersey 10 is drawn on a 10 px grid and has a small x-height: map text uses twice its grid (20 px,
 // 30 for the area banner), which stays crisp and reads like the interface.
@@ -136,7 +130,7 @@ export class WorldView {
       if (!e || !e.spr.visible) return false;
       // the name tag is in screen pixels, over the drawing's real top; the sprite goes 2 px above its top
       out.x = e.x;
-      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.S);
+      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.cam.S);
       out.feetY = e.y;
       return true;
     },
@@ -158,25 +152,15 @@ export class WorldView {
   private runToggle = false; // "always run" (R or the HUD button)
   private dest: { x: number; y: number } | null = null;
   private baked: HTMLCanvasElement | null = null;
-  private S = 3;
-  private zoom = readZoom(); // whole steps away from the automatic scale (wheel); negative = farther
+  /** Scale, zoom, pan, where the world sits on screen, and the interest radius asked for (camera.ts). */
+  private cam = new Camera(zoomStore(() => localStorage));
   private wheelAt = 0;
-  // camera pan (left-drag with a mouse): world px added to the followed position; moving recentres
-  private panX = 0;
-  private panY = 0;
   private drag: { id: number; x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
   /** The mouse over the map (canvas pixels), for the name of a plugin sprite under it; null elsewhere or for touch. */
   private mouse: { x: number; y: number } | null = null;
   /** A plugin sprite's label and its owner's name, shown while the mouse is over the sprite. */
   private hoverTag = new BitmapText({ text: "", style: NOTE_STYLE });
   private dragEndAt = 0;
-  // the server's area of interest (hello): its cell size, default and largest radius in cells
-  private cellPx = 0;
-  private aoi = 0;
-  private aoiMax = 0;
-  private viewCells = 0; // radius last asked for (0 = the server default)
-  private camX = 0;
-  private camY = 0;
   private mapSprite: Sprite | null = null;
   /** Desks and pcs drawn again over the bake, sorted with the avatars (art/objects.ts), and their atlas. */
   private depthSprites: Sprite[] = [];
@@ -303,8 +287,8 @@ export class WorldView {
         const { width: W, height: H } = app.screen;
         d.x = e.clientX;
         d.y = e.clientY;
-        d.camX = W / 2 - (this.self.x + this.self.ox + this.panX) * this.S;
-        d.camY = H / 2 - (this.self.y + this.self.oy + this.panY) * this.S;
+        d.camX = W / 2 - (this.self.x + this.self.ox + this.cam.panX) * this.cam.S;
+        d.camY = H / 2 - (this.self.y + this.self.oy + this.cam.panY) * this.cam.S;
       }
     };
     app.canvas.addEventListener("wheel", wheel, { passive: false });
@@ -312,7 +296,7 @@ export class WorldView {
     // double-click to run there still works. Touch keeps the browser's own gestures and the pad.
     const pdown = (e: PointerEvent) => {
       if (e.button !== 0 || e.pointerType !== "mouse" || document.querySelector(".scrim, .editor")) return;
-      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.camX, camY: this.camY, moved: false };
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.cam.x, camY: this.cam.y, moved: false };
     };
     const pmove = (e: PointerEvent) => {
       const d = this.drag;
@@ -559,7 +543,7 @@ export class WorldView {
 
   setMe(id: number, x: number, y: number, speed: number, runMul = 2) {
     this.meId = id;
-    this.panX = this.panY = 0;
+    this.cam.panX = this.cam.panY = 0;
     this.self.reset(x, y);
     this.speed = speed;
     this.runMul = runMul;
@@ -620,7 +604,7 @@ export class WorldView {
   private placeHoverTag(): boolean {
     const tag = this.hoverTag;
     const m = !this.mouse || this.drag?.moved || document.querySelector(".scrim") ? null : this.mouse;
-    const hit = m ? this.plugins.labelAt((m.x - this.camX) / this.S, (m.y - this.camY) / this.S) : null;
+    const hit = m ? this.plugins.labelAt((m.x - this.cam.x) / this.cam.S, (m.y - this.cam.y) / this.cam.S) : null;
     if (!hit) {
       if (!tag.visible) return false;
       tag.visible = false;
@@ -628,7 +612,7 @@ export class WorldView {
     }
     const owner = hit.owner ? this.people.get(hit.owner)?.n : undefined;
     const text = owner ? hit.text + "\n(" + owner + ")" : hit.text;
-    const x = Math.round(this.camX + hit.x * this.S), y = Math.round(this.camY + hit.top * this.S - 2);
+    const x = Math.round(this.cam.x + hit.x * this.cam.S), y = Math.round(this.cam.y + hit.top * this.cam.S - 2);
     if (tag.visible && tag.text === text && tag.x === x && tag.y === y) return false;
     tag.text = text;
     tag.position.set(x, y);
@@ -639,15 +623,15 @@ export class WorldView {
   /** Tests: where world point (x, y) is in the page, and the hover tag's text ("" while hidden). */
   pageOf(x: number, y: number): { x: number; y: number } {
     const r = this.app.canvas.getBoundingClientRect();
-    return { x: r.left + this.camX + x * this.S, y: r.top + this.camY + y * this.S };
+    return { x: r.left + this.cam.x + x * this.cam.S, y: r.top + this.cam.y + y * this.cam.S };
   }
   hoverText(): string {
     return this.hoverTag.visible ? this.hoverTag.text : "";
   }
   screenToTile(clientX: number, clientY: number): [number, number] {
     const r = this.app.canvas.getBoundingClientRect();
-    const wx = (clientX - r.left - this.camX) / this.S;
-    const wy = (clientY - r.top - this.camY) / this.S;
+    const wx = (clientX - r.left - this.cam.x) / this.cam.S;
+    const wy = (clientY - r.top - this.cam.y) / this.cam.S;
     return [Math.floor(wx / T), Math.floor(wy / T)];
   }
   setHover(h: { x: number; y: number; w: number; h: number } | null) {
@@ -655,7 +639,7 @@ export class WorldView {
     this.hover = h;
   }
   teleport(x: number, y: number) {
-    this.panX = this.panY = 0;
+    this.cam.panX = this.cam.panY = 0;
     this.self.reset(x, y);
     this.dx = this.dy = 0;
     this.keys.clear();
@@ -1067,30 +1051,23 @@ export class WorldView {
   // ---- zoom / area of interest ----
   /** From hello: the server's interest grid, which bounds how far out the map may zoom. */
   setInterest(cellPx: number, aoi: number, aoiMax: number) {
-    this.cellPx = cellPx;
-    this.aoi = aoi;
-    this.aoiMax = Math.max(aoi, aoiMax);
-    this.viewCells = -1; // tell each new connection, even when it is the default
+    this.cam.setInterest(cellPx, aoi, aoiMax);
     this.layout();
   }
 
   /** Zooms by whole scale steps (positive = closer) and returns the scale in use. Public for tests. */
   zoomBy(steps: number) {
-    if (!this.app) return this.S;
+    if (!this.app) return this.cam.S;
     const { width, height } = this.app.screen;
-    this.zoom += steps;
+    this.cam.zoomBy(steps, width, height);
     this.layout();
-    if (!this.cellPx) return this.S; // limits are not known before hello: keep the remembered zoom
-    this.zoom = this.S - autoScale(width, height); // forget steps past a limit
-    writeZoom(this.zoom);
-    return this.S;
+    return this.cam.S;
   }
 
   /** Puts the camera at this screen offset (the frame keeps it on the map and within reach). */
   private panTo(camX: number, camY: number) {
     const { width: W, height: H } = this.app.screen;
-    this.panX = (W / 2 - camX) / this.S - (this.self.x + this.self.ox);
-    this.panY = (H / 2 - camY) / this.S - (this.self.y + this.self.oy);
+    this.cam.panTo(camX, camY, W, H, this.self.x + this.self.ox, this.self.y + this.self.oy);
     this.dirty = true;
   }
 
@@ -1105,44 +1082,50 @@ export class WorldView {
     this.app.canvas.style.cursor = "";
     document.body.style.userSelect = "";
     this.dragEndAt = performance.now();
-    this.panTo(this.camX, this.camY);
+    this.panTo(this.cam.x, this.cam.y);
   }
 
   /** Camera pan in world px (tests). */
   get pan() {
-    return { x: this.panX, y: this.panY };
+    return { x: this.cam.panX, y: this.cam.panY };
   }
 
   get scale() {
-    return this.S;
+    return this.cam.S;
+  }
+
+  // Tests (window.__hq.view) read these, as they read the fields they once were.
+  get S() {
+    return this.cam.S;
+  }
+  get camX() {
+    return this.cam.x;
+  }
+  get camY() {
+    return this.cam.y;
+  }
+  get panX() {
+    return this.cam.panX;
+  }
+  set panX(v: number) {
+    this.cam.panX = v;
+  }
+  get panY() {
+    return this.cam.panY;
+  }
+  set panY(v: number) {
+    this.cam.panY = v;
+  }
+  get cellPx() {
+    return this.cam.cellPx;
+  }
+  get aoiMax() {
+    return this.cam.aoiMax;
   }
 
   /** Smallest and largest scale for this window. */
   scaleRange(width = this.app.screen.width, height = this.app.screen.height): [number, number] {
-    const auto = autoScale(width, height);
-    // Farthest out: half the visible map must fit the largest radius the server grants, or people
-    // near the screen edge would be missing. Before hello (unknown radius) only the automatic scale.
-    const reach = this.aoiMax * this.cellPx - VIEW_PAD;
-    const lo = this.cellPx ? Math.min(auto, Math.max(1, Math.ceil(Math.max(width, height) / (2 * reach)))) : auto;
-    return [lo, Math.max(auto, MAX_SCALE)];
-  }
-
-  /**
-   * Asks the server for the interest radius that covers the visible part of the map. The server
-   * subscribes whole cells around the player's cell, so a radius of r cells reaches at least r cells
-   * of pixels from the player in every direction; asking for the distance to the farthest visible
-   * map pixel keeps the request steady while walking (no flip-flop at cell boundaries).
-   */
-  private syncView(W: number, H: number, px: number, py: number) {
-    if (!this.map || !this.cellPx) return;
-    const S = this.S, mw = this.map.w * T, mh = this.map.h * T;
-    const left = Math.max(0, -this.camX / S), right = Math.min(mw, (W - this.camX) / S);
-    const top = Math.max(0, -this.camY / S), bottom = Math.min(mh, (H - this.camY) / S);
-    const far = Math.max(px - left, right - px, py - top, bottom - py);
-    const need = Math.max(this.aoi, Math.min(this.aoiMax, Math.ceil((far + VIEW_PAD) / this.cellPx - 1e-6)));
-    if (need === (this.viewCells || this.aoi)) return;
-    this.viewCells = need;
-    this.hooks.onView?.(need);
+    return this.cam.range(width, height);
   }
 
   // ---- layout / frame ----
@@ -1150,12 +1133,7 @@ export class WorldView {
     this.dirty = true;
     if (!this.app) return;
     const { width, height } = this.app.screen;
-    // integer zoom keeps pixel art crisp; the reference view is a handheld-style screen scaled by
-    // whole numbers, then moved by the wheel within what the server's area of interest can fill
-    const auto = autoScale(width, height);
-    const [lo, hi] = this.scaleRange(width, height);
-    this.S = Math.max(lo, Math.min(hi, auto + this.zoom));
-    this.world.scale.set(this.S);
+    this.world.scale.set(this.cam.fit(width, height));
   }
 
   private frame(deltaMS: number) {
@@ -1163,7 +1141,7 @@ export class WorldView {
     const t0 = performance.now();
     const dt = Math.min(deltaMS / 1000, 0.1);
     const now = t0;
-    const S = this.S;
+    const cam = this.cam, S = cam.S;
     const { width: W, height: H } = this.app.screen;
 
     this.advanceLocal(now);
@@ -1172,35 +1150,22 @@ export class WorldView {
     const rx = this.self.x + this.self.ox, ry = this.self.y + this.self.oy; // where my avatar is drawn
     if (now - this.nearbyAt > 150) { this.nearbyAt = now; this.updateNearby(); }
 
-    if ((this.dx || this.dy || this.guided) && (this.panX || this.panY || this.drag)) {
+    if ((this.dx || this.dy || this.guided) && (cam.panX || cam.panY || this.drag)) {
       // moving recentres the camera on me, and ends a drag in progress
       if (this.drag?.moved) {
         this.app.canvas.style.cursor = "";
         document.body.style.userSelect = "";
       }
-      this.panX = this.panY = 0;
+      cam.panX = cam.panY = 0;
       this.drag = null;
-    }
-    // The middle of the screen may go anywhere on the office but never past its edges: at the top of
-    // the office the open space sits mid-screen, clear of the toolbars, with at most half a screen of
-    // margin beyond the map. Following me, I stay in the middle; a pan stops at the office's edge.
-    const vx = Math.max(0, Math.min(this.map.w * T, rx + this.panX)), vy = Math.max(0, Math.min(this.map.h * T, ry + this.panY));
-    let cx = W / 2 - vx * S, cy = H / 2 - vy * S;
-    // Never show map farther from me than the server's largest interest radius reaches: zoomed far
-    // out next to a map edge the camera stops following the edge and shows a margin instead of
-    // people the server does not send. A no-op whenever the visible map is already within reach.
-    if (this.cellPx) {
-      const R = this.aoiMax * this.cellPx - VIEW_PAD;
-      cx = reachClamp(cx, W, S, rx, R, this.map.w * T);
-      cy = reachClamp(cy, H, S, ry, R, this.map.h * T);
     }
     let changed = this.dirty;
     this.dirty = false;
-    if (Math.round(cx) !== this.camX || Math.round(cy) !== this.camY) changed = true;
-    this.camX = Math.round(cx);
-    this.camY = Math.round(cy);
-    this.syncView(W, H, rx, ry);
-    this.world.position.set(this.camX, this.camY);
+    const mapW = this.map.w * T, mapH = this.map.h * T;
+    if (cam.follow(W, H, rx, ry, mapW, mapH)) changed = true;
+    const need = cam.view(W, H, rx, ry, mapW, mapH);
+    if (need >= 0) this.hooks.onView?.(need);
+    this.world.position.set(cam.x, cam.y);
 
     const walkRate = this.eco ? 5 : 8;
     let visible = 0;
@@ -1211,8 +1176,8 @@ export class WorldView {
       } else {
         stepRemote(e, this.grid, dt, this.speed * (e.run ? this.runMul : 1));
       }
-      const sx = Math.round(e.x * S + this.camX);
-      const sy = Math.round(e.y * S + this.camY);
+      const sx = Math.round(e.x * S + cam.x);
+      const sy = Math.round(e.y * S + cam.y);
       const on = sx > -40 && sx < W + 40 && sy > -60 && sy < H + 60;
       if (e.spr.visible !== on) changed = true;
       e.spr.visible = on;
@@ -1254,28 +1219,28 @@ export class WorldView {
       const e = this.ents.get(id);
       if (!e || now >= bubble.until) { bubble.text.destroy(); this.emotes.delete(id); changed = true; continue; }
       bubble.text.visible = e.label.visible;
-      bubble.text.position.set(e.x * S + this.camX, e.y * S + this.camY - (26 + extraHeight(e.frames)) * S - 28);
+      bubble.text.position.set(e.x * S + cam.x, e.y * S + cam.y - (26 + extraHeight(e.frames)) * S - 28);
     }
 
     // area labels
     for (const l of this.areaLabels) {
       const a = this.map.areas[l.ai];
-      const sx = (a.x + a.w / 2) * T * S + this.camX;
-      const sy = (a.y + 0.2) * T * S + this.camY;
+      const sx = (a.x + a.w / 2) * T * S + cam.x;
+      const sy = (a.y + 0.2) * T * S + cam.y;
       l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
 
     for (const l of this.placeholderLabels) {
-      const sx = l.x * S + this.camX;
-      const sy = l.y * S + this.camY;
+      const sx = l.x * S + cam.x;
+      const sy = l.y * S + cam.y;
       l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H + 20;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
 
     for (const l of this.deskLabels) {
-      const sx = l.x * S + this.camX;
-      const sy = l.y * S + this.camY;
+      const sx = l.x * S + cam.x;
+      const sy = l.y * S + cam.y;
       l.text.visible = S >= 3 && sx > -60 && sx < W + 60 && sy > 0 && sy < H + 20;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
@@ -1295,7 +1260,7 @@ export class WorldView {
       else {
         const pulse = (now % 900) / 900;
         this.fxG.circle(this.locate.x, this.locate.y, 6 + pulse * 14).stroke({ color: 0xffb84d, width: 2, alpha: 1 - pulse });
-        const sx = this.locate.x * S + this.camX, sy = this.locate.y * S + this.camY;
+        const sx = this.locate.x * S + cam.x, sy = this.locate.y * S + cam.y;
         if (sx < 0 || sy < 0 || sx > W || sy > H) {
           const ang = Math.atan2(sy - H / 2, sx - W / 2);
           const ex = Math.max(24, Math.min(W - 24, sx)), ey = Math.max(24, Math.min(H - 24, sy));
@@ -1361,35 +1326,6 @@ export class WorldView {
       e.dot.roundRect(x, -12, 12, 9, 1).fill(0x1a1526).roundRect(x + 1.5, -10.5, 9, 6, 1).fill(0x6ec8ff).rect(x + 4, -3, 4, 2).fill(0x1a1526);
     }
     if (e.hand) e.hand.position.set(w / 2 + 3 + (e.inConv ? 9 : 0) + (e.sharing ? 15 : 0), 0);
-  }
-}
-
-/**
- * Camera offset c (screen px, one axis) moved as little as possible so the visible map stays within
- * R world px of the player at p; when the window is wider than 2R both ends cannot hold: centre on p.
- */
-function reachClamp(c: number, W: number, S: number, p: number, R: number, mapLen: number) {
-  const hi = p - R > 0 ? (R - p) * S : Infinity; // the map's near end is out of reach: c at most this
-  const lo = p + R < mapLen ? W - (p + R) * S : -Infinity; // the far end is out of reach: c at least this
-  if (lo > hi) return W / 2 - p * S;
-  return Math.min(hi, Math.max(lo, c));
-}
-
-function autoScale(width: number, height: number) {
-  return Math.max(2, Math.min(6, Math.floor(Math.min(width / VIEW_REF_W, height / VIEW_REF_H))));
-}
-function readZoom() {
-  try {
-    return Math.round(Number(localStorage.getItem("hq.zoom"))) || 0;
-  } catch {
-    return 0;
-  }
-}
-function writeZoom(z: number) {
-  try {
-    localStorage.setItem("hq.zoom", String(z));
-  } catch {
-    // storage blocked: the zoom is just not remembered
   }
 }
 
