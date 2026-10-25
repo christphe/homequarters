@@ -8,7 +8,7 @@ Home Quarters looks like a 2000s handheld RPG: a top-down 3/4 view, 16 px tiles,
 
 | Aspect | Rule |
 | --- | --- |
-| Tile size | 16 x 16 px; the map is baked into one texture |
+| Tile size | 16 x 16 px; the map is baked into one texture, and desks and PCs are drawn again over it as sprites sorted with the avatars ([decision 0031](decisions/0031-depth-sorted-desks.md)) |
 | Camera | integer zoom only (nearest-neighbour), reference view about 320 x 200 world px (20 x 12.5 tiles); a 240 x 160 handheld screen would show 15 x 10. The mouse wheel moves the scale by whole steps (decision 0018) |
 | Light | from the top-left: a light top/left edge, a darker bottom/right edge |
 | Outlines | every prop and character has a 1 px dark outline, never pure black; on characters it is a very dark version of the neighbouring colour, so hair, skin and clothes stay distinct |
@@ -24,6 +24,7 @@ Home Quarters looks like a 2000s handheld RPG: a top-down 3/4 view, 16 px tiles,
 ~~~text
 web/src/game/art/pixel.ts        helpers: hue-shifted shading, deterministic hash, outlined slabs and blobs
 web/src/game/art/tiles.ts        floors, walls, doorways, furniture, rugs and the whole-map baker
+web/src/game/art/objects.ts      the depth sprites: desks and PCs cut from the bake into one atlas
 web/src/game/art/characters.ts   character painter, walk frames, per-cell outline, sheet builder
 web/src/game/palette.ts          skin, hair, shirt and trouser palettes
 web/src/game/avatars.ts          turns a sheet into cached PixiJS textures

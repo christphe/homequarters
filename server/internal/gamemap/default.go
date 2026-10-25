@@ -166,7 +166,7 @@ func Default() *Map {
 		}
 		areas = append(areas, Area{ID: "office-" + itoa(i+1), Name: "Office " + itoa(i+1), Kind: KindRoom, X: x, Y: 39, W: w, H: 6, Floor: floors[i], Access: Access{Mode: AccessOffice}, Capacity: 8})
 	}
-	return &Map{Version: 1, W: W, H: H, Walls: walls, Props: props, Areas: areas, Spawn: Point{X: 9, Y: 7}}
+	return &Map{Version: 1, W: W, H: H, Walls: walls, Props: withPCs(props), Areas: areas, Spawn: Point{X: 9, Y: 7}}
 }
 
 // officeX holds the first column of each private office (each 9 tiles wide, the last 8).

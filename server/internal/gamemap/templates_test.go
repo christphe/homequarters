@@ -286,3 +286,34 @@ func equal(a, b []int64) bool {
 	}
 	return true
 }
+
+// Every template (the Loft is also a new office's map) puts one pc centred on each desk.
+func TestTemplatesPutAPCOnEveryDesk(t *testing.T) {
+	for _, tp := range Templates {
+		t.Run(tp.ID, func(t *testing.T) {
+			m := tp.Build()
+			if err := Validate(m); err != nil {
+				t.Fatal(err)
+			}
+			pcs := map[Prop]int{}
+			desks := 0
+			for _, p := range m.Props {
+				if p.T == PropPC {
+					pcs[p]++
+				}
+			}
+			for _, p := range m.Props {
+				if p.T != "desk" {
+					continue
+				}
+				desks++
+				if pcs[PCOn(p)] != 1 {
+					t.Errorf("desk at %d,%d: %d pcs at %+v", p.X, p.Y, pcs[PCOn(p)], PCOn(p))
+				}
+			}
+			if n := len(pcs); n != desks || desks == 0 {
+				t.Errorf("%d pc places for %d desks", n, desks)
+			}
+		})
+	}
+}

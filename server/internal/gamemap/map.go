@@ -75,6 +75,41 @@ type Prop struct {
 	Data string `json:"data,omitempty"`
 	// To is the destination tile of a portal.
 	To *Point `json:"to,omitempty"`
+	// DX, DY shift the drawing by a few pixels (a pc centred on a desk). Visual only: collisions,
+	// reach and rooms stay on the prop's tiles.
+	DX int `json:"dx,omitempty"`
+	DY int `json:"dy,omitempty"`
+}
+
+// PropPC is a computer standing on a desk, drawn over it and facing the way the desk does.
+const PropPC = "pc"
+
+// MaxPropOffset bounds DX and DY, in pixels: less than a tile either way.
+const MaxPropOffset = 15
+
+// PCOn is the pc that sits centred on desk: on the desk tile under its centre, the half tile left
+// over (an even width) as DX.
+func PCOn(desk Prop) Prop {
+	w, _ := desk.Size()
+	pc := Prop{T: PropPC, X: desk.X + (w-1)/2, Y: desk.Y}
+	if w%2 == 0 {
+		pc.DX = TilePx / 2
+	}
+	return pc
+}
+
+// OnDesk reports whether tile (x, y) is part of a desk.
+func OnDesk(m *Map, x, y int) bool {
+	for _, p := range m.Props {
+		if p.T != "desk" {
+			continue
+		}
+		w, h := p.Size()
+		if x >= p.X && x < p.X+w && y >= p.Y && y < p.Y+h {
+			return true
+		}
+	}
+	return false
 }
 
 // Interactive object kinds (press X next to them).
@@ -180,6 +215,7 @@ var propDefaults = map[string]struct {
 	PropImage:        {1, 1, true},
 	PropPortal:       {1, 1, false},
 	PropSpotlight:    {1, 1, false},
+	PropPC:           {1, 1, false},
 }
 
 func (p Prop) Size() (int, int) {
@@ -244,6 +280,13 @@ func Validate(m *Map) error {
 		return errors.New("too many props")
 	}
 	for i, p := range m.Props {
+		// only objects drawn as sprites can be shifted off their tiles; a pc is the only one so far
+		if (p.DX != 0 || p.DY != 0) && p.T != PropPC {
+			return fmt.Errorf("prop %d: only a pc takes an offset", i)
+		}
+		if p.DX < -MaxPropOffset || p.DX > MaxPropOffset || p.DY < -MaxPropOffset || p.DY > MaxPropOffset {
+			return fmt.Errorf("prop %d: offset beyond %d px", i, MaxPropOffset)
+		}
 		if _, _, ok := p.PluginKind(); ok {
 			if p.W < 1 || p.H < 1 || p.W > MaxPluginPropSide || p.H > MaxPluginPropSide {
 				return fmt.Errorf("prop %d: a plugin object is 1 to %d tiles wide and high", i, MaxPluginPropSide)
@@ -290,6 +333,13 @@ func Validate(m *Map) error {
 			}
 			if p.To == nil || p.To.X < 0 || p.To.Y < 0 || p.To.X >= m.W || p.To.Y >= m.H {
 				return fmt.Errorf("prop %d: portal needs a destination inside the map", i)
+			}
+		case PropPC:
+			if p.Data != "" || p.To != nil || p.Assign != 0 || p.Label != "" || p.Up || p.W != 0 || p.H != 0 {
+				return fmt.Errorf("prop %d: a pc takes only a place and an offset", i)
+			}
+			if !OnDesk(m, p.X, p.Y) {
+				return fmt.Errorf("prop %d: a pc stands on a desk", i)
 			}
 		default:
 			if p.Data != "" || p.To != nil {

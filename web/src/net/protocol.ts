@@ -58,6 +58,9 @@ export interface Prop {
   up?: boolean;
   data?: string; // available only in the admin editor or an authorized interaction reply
   to?: { x: number; y: number };
+  /** Shifts the drawing by a few pixels (a pc centred on a desk); collisions stay on the tiles. */
+  dx?: number;
+  dy?: number;
 }
 export interface MapData {
   version: number;
