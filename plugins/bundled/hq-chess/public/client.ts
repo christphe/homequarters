@@ -2,7 +2,7 @@
 // (X next to a chessboard): the seat buttons, Reset and the board view (public/board.ts), and relays
 // between the view and the server. It also pins the playing badge over the head of every present seated
 // player (public/badges.png, white or black).
-import { canReset, type Board, type Side } from "./game";
+import { canReset, PROMOTIONS, type Board, type Side } from "./game";
 import type { BoardState, ToClient, ToServer, ViewIn, ViewOut } from "./messages";
 
 const NAME_MAX = 24; // a seat's label must stay within a button's 40 characters
@@ -28,11 +28,20 @@ function seatButton(s: BoardState, side: Side, mine: Side | null): HQ.UINode {
   return hq.ui.button({ label: sideName(side), disabled: mine !== null, onClick: () => send({ t: "seat", x, y, side }) });
 }
 
+/** Who holds each seat, as a line of text: disabled seat buttons are out of the Tab order, this line is not. */
+function holders(s: BoardState): string {
+  const one = (side: Side) => {
+    const seat = s[side];
+    return `${sideName(side)}: ${seat ? `${short(seat.name)} (${seat.here ? "here" : "away"})` : "free"}`;
+  };
+  return `${one("w")} · ${one("b")}`;
+}
+
 function draw(): void {
   if (!open) return;
   const { x, y, s } = open;
   const mine: Side | null = s.w?.id === me ? "w" : s.b?.id === me ? "b" : null;
-  const board: Board = { p: s.p, w: s.w, b: s.b };
+  const board: Board = { p: s.p, w: s.w, b: s.b, r: s.r };
   // who has the board open, as the server says it: the seated players marked here, and me (my window is open)
   const present = new Set<number>([me]);
   for (const seat of [s.w, s.b]) if (seat?.here) present.add(seat.id);
@@ -43,16 +52,24 @@ function draw(): void {
       // a spectator is anybody without a seat: pressed then, and out of reach once seated
       hq.ui.button({ label: "Spectate", pressed: mine === null, disabled: mine !== null }),
     ]),
+    hq.ui.text(holders(s), { muted: true }),
     hq.ui.row([hq.ui.button({ label: "Reset", disabled: !canReset(board, me, present), onClick: () => send({ t: "reset", x, y }) })]),
     hq.ui.view({ view: "board", label: "Chessboard", height: "large", onMessage: fromView }),
   ]);
-  const toView: ViewIn = { s, me };
+  const toView: ViewIn = { s, me, id: `${x},${y}` };
   hq.ui.post(toView);
 }
 
+// The view's message, checked for shape only (the server checks the rules), one message to the server each.
 function fromView(m: ViewOut): void {
-  if (!open || !m || m.t !== "move" || !Number.isInteger(m.from) || !Number.isInteger(m.to)) return;
-  send({ t: "move", x: open.x, y: open.y, from: m.from, to: m.to });
+  if (!open || !m || typeof m !== "object") return;
+  const { x, y } = open;
+  const int = Number.isInteger;
+  if (m.t === "move" && int(m.from) && int(m.to)) {
+    if (m.promote === undefined) send({ t: "move", x, y, from: m.from, to: m.to });
+    else if ((PROMOTIONS as readonly string[]).includes(m.promote)) send({ t: "move", x, y, from: m.from, to: m.to, promote: m.promote });
+  } else if (m.t === "place" && typeof m.piece === "string" && m.piece.length === 1 && int(m.to)) send({ t: "place", x, y, piece: m.piece, to: m.to });
+  else if (m.t === "stash" && int(m.from)) send({ t: "stash", x, y, from: m.from });
 }
 
 function closed(): void {

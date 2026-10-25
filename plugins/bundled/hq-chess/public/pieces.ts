@@ -1,5 +1,6 @@
 // The chess pieces of the board view, as pixel art drawn in code (original work, docs/art-style.md): each
-// piece is 11 x 13 pixels, "#" its 1 px outline, "h" the lit side (light from the top-left), "o" the
+// piece is 11 x 13 pixels (in a 16 px square), and again 7 x 8 (in an 8 px cell of the reserve and the
+// promotion choice: redrawn at that size, not scaled down), "#" its 1 px outline, "h" the lit side (light from the top-left), "o" the
 // body, "s" the shade, "." nothing. Pure data plus a painter that takes any pixel setter, so the view
 // draws them on its canvas and a script can draw them into a PNG to look at.
 
@@ -99,14 +100,82 @@ const ART: Record<string, string[]> = {
   ],
 };
 
+// The half-size pieces: the same silhouettes with fewer pixels, still outlined.
+export const SMALL_W = 7;
+export const SMALL_H = 8;
+
+const SMALL: Record<string, string[]> = {
+  p: [
+    ".......",
+    ".......",
+    "..###..",
+    ".#hos#.",
+    "..#o#..",
+    ".#hos#.",
+    "#hooos#",
+    "#######",
+  ],
+  r: [
+    "#.#.#.#",
+    "#h#o#s#",
+    "#hooos#",
+    ".#hos#.",
+    ".#hos#.",
+    ".#hos#.",
+    "#hooos#",
+    "#######",
+  ],
+  n: [
+    "..##...",
+    ".#ho#..",
+    "#hoos#.",
+    "#ho#os#",
+    ".##hos#",
+    "..#hos#",
+    "#hooos#",
+    "#######",
+  ],
+  b: [
+    "...#...",
+    "..#h#..",
+    ".#h#s#.",
+    ".#hos#.",
+    "..#o#..",
+    ".#hos#.",
+    "#hooos#",
+    "#######",
+  ],
+  q: [
+    "...#...",
+    "#.#h#.#",
+    "#h#o#s#",
+    "#hooos#",
+    ".#hos#.",
+    "..#o#..",
+    "#hooos#",
+    "#######",
+  ],
+  k: [
+    "..#h#..",
+    ".#hhs#.",
+    "..#o#..",
+    ".#hos#.",
+    "#hooos#",
+    ".#hos#.",
+    "#hooos#",
+    "#######",
+  ],
+};
+
 export const TONES = {
   w: { "#": "#1a1526", h: "#ffffff", o: "#ece6d8", s: "#b9ae9c" },
   b: { "#": "#1a1526", h: "#7a6c90", o: "#4a4058", s: "#2c2536" },
 } as const;
 
-/** Paints the piece ("KQRBNP" white, "kqrbnp" black) with its top-left corner at (x, y), one call per pixel. */
-export function paintPiece(piece: string, x: number, y: number, set: (x: number, y: number, colour: string) => void): void {
-  const rows = ART[piece.toLowerCase()];
+/** Paints the piece ("KQRBNP" white, "kqrbnp" black) with its top-left corner at (x, y), one call per pixel;
+ * small: the half-size drawing. */
+export function paintPiece(piece: string, x: number, y: number, set: (x: number, y: number, colour: string) => void, small = false): void {
+  const rows = (small ? SMALL : ART)[piece.toLowerCase()];
   if (!rows) return;
   const tone: Record<string, string> = piece === piece.toUpperCase() ? TONES.w : TONES.b;
   rows.forEach((row, j) => {
@@ -117,4 +186,3 @@ export function paintPiece(piece: string, x: number, y: number, set: (x: number,
   });
 }
 
-export const PIECE_NAMES: Record<string, string> = { p: "pawn", r: "rook", n: "knight", b: "bishop", q: "queen", k: "king" };

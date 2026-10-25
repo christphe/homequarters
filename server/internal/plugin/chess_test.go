@@ -354,3 +354,94 @@ func TestChessPlayingList(t *testing.T) {
 	send(h, alice, `{"t":"reset","x":1,"y":1}`)
 	want("a reset frees both seats")
 }
+
+// The reserve of captured pieces and promotion, through the real plugin: place, stash and move with promote.
+func TestChessReserveAndPromotion(t *testing.T) {
+	kv := newMemKV()
+	h, sink, errs := chessHost(t, kv, alice, bob)
+	h.Use(alice, chess, "chessboard", 3, 3)
+	h.Use(bob, chess, "chessboard", 3, 3)
+	send(h, alice, `{"t":"seat","x":3,"y":3,"side":"w"}`)
+	send(h, bob, `{"t":"seat","x":3,"y":3,"side":"b"}`)
+	s := waitBoard(t, sink, bob.ID, 3, 3, "seated, empty reserve", func(s map[string]any) bool { return seat(s, "b") == "Bob" })
+	if s["r"] != "" {
+		t.Fatalf("a new board's reserve is empty: %v", s)
+	}
+	send(h, alice, `{"t":"move","x":3,"y":3,"from":52,"to":12}`) // e2 takes e7
+	waitBoard(t, sink, bob.ID, 3, 3, "the black pawn in the reserve", func(s map[string]any) bool { return s["r"] == "p" })
+	send(h, bob, `{"t":"place","x":3,"y":3,"piece":"p","to":20}`)   // the pawn back on e6
+	send(h, alice, `{"t":"place","x":3,"y":3,"piece":"p","to":21}`) // refused: not White's piece
+	send(h, alice, `{"t":"stash","x":3,"y":3,"from":62}`)           // the g1 knight off the board
+	send(h, alice, `{"t":"stash","x":3,"y":3,"from":1}`)            // refused: a black knight
+	s = waitBoard(t, sink, bob.ID, 3, 3, "placed and stashed", func(s map[string]any) bool { return s["r"] == "N" })
+	if p := s["p"].(string); p[20] != 'p' || p[21] != '.' || p[62] != '.' || p[1] != 'n' {
+		t.Fatalf("place and stash: %v", s)
+	}
+	send(h, alice, `{"t":"move","x":3,"y":3,"from":12,"to":5,"promote":"k"}`) // refused: not a choice
+	send(h, alice, `{"t":"move","x":3,"y":3,"from":12,"to":5,"promote":"q"}`) // e7 takes f8 and is a queen
+	s = waitBoard(t, sink, bob.ID, 3, 3, "promoted", func(s map[string]any) bool { return s["r"] == "Nb" })
+	if p := s["p"].(string); p[5] != 'Q' || p[12] != '.' || p[59] != 'Q' {
+		t.Fatalf("promotion makes a second queen: %v", s)
+	}
+	send(h, alice, `{"t":"place","x":3,"y":3,"piece":"N","to":4}`) // on the black king: it goes to the reserve
+	waitBoard(t, sink, bob.ID, 3, 3, "the king in the reserve", func(s map[string]any) bool { return s["r"] == "bk" })
+	h.Close()
+
+	h2, sink2, _ := chessHost(t, kv, carol)
+	h2.Use(carol, chess, "chessboard", 3, 3)
+	s = waitBoard(t, sink2, carol.ID, 3, 3, "reopened", func(map[string]any) bool { return true })
+	if s["r"] != "bk" || s["p"].(string)[4] != 'N' {
+		t.Fatalf("the reserve survives a restart: %v", s)
+	}
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("%d errors", n)
+	}
+}
+
+func TestChessResetEmptiesTheReserve(t *testing.T) {
+	kv := newMemKV()
+	h, sink, _ := chessHost(t, kv, alice)
+	h.Use(alice, chess, "chessboard", 1, 1)
+	send(h, alice, `{"t":"seat","x":1,"y":1,"side":"w"}`)
+	send(h, alice, `{"t":"stash","x":1,"y":1,"from":57}`)
+	waitBoard(t, sink, alice.ID, 1, 1, "stashed", func(s map[string]any) bool { return s["r"] == "N" })
+	send(h, alice, `{"t":"reset","x":1,"y":1}`)
+	waitBoard(t, sink, alice.ID, 1, 1, "reset", func(s map[string]any) bool { return s["r"] == "" && s["w"] == nil })
+	var stored map[string]any
+	eventually(t, "stored", func() bool {
+		got, _ := kv.Load(chess)
+		return json.Unmarshal([]byte(got["board:1,1"]), &stored) == nil && stored["r"] == ""
+	})
+}
+
+func TestChessIgnoresMalformedReserve(t *testing.T) {
+	h, sink, errs := chessHost(t, newMemKV(), alice)
+	h.Use(alice, chess, "chessboard", 1, 2)
+	send(h, alice, `{"t":"seat","x":1,"y":2,"side":"w"}`)
+	send(h, alice, `{"t":"stash","x":1,"y":2,"from":57}`)
+	waitBoard(t, sink, alice.ID, 1, 2, "stashed", func(s map[string]any) bool { return s["r"] == "N" })
+	for _, m := range []string{
+		`{"t":"place","x":1,"y":2}`,
+		`{"t":"place","x":1,"y":2,"piece":"N"}`,
+		`{"t":"place","x":1,"y":2,"piece":7,"to":40}`,
+		`{"t":"place","x":1,"y":2,"piece":"NN","to":40}`,
+		`{"t":"place","x":1,"y":2,"piece":"N","to":64}`,
+		`{"t":"place","x":1,"y":2,"piece":"N","to":"40"}`,
+		`{"t":"stash","x":1,"y":2}`,
+		`{"t":"stash","x":1,"y":2,"from":-1}`,
+		`{"t":"stash","x":1,"y":2,"from":[]}`,
+		`{"t":"move","x":1,"y":2,"from":52,"to":36,"promote":null}`,
+		`{"t":"move","x":1,"y":2,"from":52,"to":36,"promote":1}`,
+		`{"t":"move","x":1,"y":2,"from":52,"to":36,"promote":"q"}`,
+	} {
+		send(h, alice, m)
+	}
+	send(h, alice, `{"t":"place","x":1,"y":2,"piece":"N","to":42}`) // a valid one after them
+	s := waitBoard(t, sink, alice.ID, 1, 2, "valid place", func(s map[string]any) bool { return s["p"].(string)[42] == 'N' })
+	if s["r"] != "" || s["p"].(string)[52] != 'P' || s["p"].(string)[40] != '.' {
+		t.Fatalf("a malformed message applied: %v", s)
+	}
+	if n := errs.n.Load(); n != 0 {
+		t.Fatalf("malformed messages are ignored, not errors: %d", n)
+	}
+}

@@ -1,15 +1,17 @@
 // Chess plugin, server side. A chessboard is a map object (plugin.json "objects"); pressing X next to one
 // opens it (onUse). Two members take White and Black, others watch; pieces go where they are dropped, no
-// rules. Each board's position and players are saved in hq.kv under "board:<x>,<y>" (its tile), loaded on
-// first use and written on every change. Who has a board's window open (its viewers) lives in memory only:
-// a seated player is "here" while they are a viewer. The rules of seats and reset are in public/game.ts;
+// rules. A taken piece goes to the board's reserve, from which its side may put it back anywhere; a pawn
+// on its last rank may be promoted. Each board's position, reserve and players are saved in hq.kv under
+// "board:<x>,<y>" (its tile), loaded on first use and written on every change. Who has a board's window
+// open (its viewers) lives in memory only: a seated player is "here" while they are a viewer. The rules of
+// seats, moves, the reserve and reset are in public/game.ts;
 // the browser side is public/client.ts (the window) and public/board.ts (the board view).
 //
 // Every change is collected and sent in update(), to the board's viewers (state) and to everybody (the
 // list of present seated players, for the badge over their heads); a send refused by the budget is kept
 // for the next update.
 
-import { canReset, move, parseBoard, reset, seatOf, take, type Board, type Side } from "./public/game";
+import { canReset, move, parseBoard, place, reset, seatOf, take, toReserve, type Board, type Side } from "./public/game";
 import type { BoardState, SeatState, ToClient, ToServer } from "./public/messages";
 
 const boards = new Map<string, Board>(); // loaded on first use
@@ -38,7 +40,7 @@ const seen = (k: string) => viewers.get(k) ?? new Set<number>();
 function stateOf(k: string): BoardState {
   const b = board(k), here = seen(k);
   const seat = (s: Board["w"]): SeatState | null => (s ? { id: s.id, name: s.name, here: here.has(s.id) } : null);
-  return { p: b.p, w: seat(b.w), b: seat(b.b) };
+  return { p: b.p, w: seat(b.w), b: seat(b.b), r: b.r };
 }
 
 function coords(k: string): { x: number; y: number } {
@@ -145,10 +147,19 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
       if ((msg.side === "w" || msg.side === "b") && take(b, msg.side, { id: p.id, name: p.name })) save(k);
       return;
     case "move":
-      if (square(msg.from) && square(msg.to) && move(b, p.id, msg.from, msg.to)) save(k);
-      // refused: the mover's view already shows the move (optimistic), so it gets the real position again
+    case "place":
+    case "stash": {
+      let ok = false;
+      if (msg.t === "move") {
+        const promote: unknown = msg.promote; // absent: a plain move; null or a number: refused
+        ok = square(msg.from) && square(msg.to) && (promote === undefined || typeof promote === "string") && move(b, p.id, msg.from, msg.to, promote);
+      } else if (msg.t === "place") ok = typeof msg.piece === "string" && square(msg.to) && place(b, p.id, msg.piece, msg.to);
+      else ok = square(msg.from) && toReserve(b, p.id, msg.from);
+      if (ok) save(k);
+      // refused: the player's view already shows the action (optimistic), so it gets the real position again
       else if (seatOf(b, p.id) !== null) queue(p.id, k);
       return;
+    }
     case "reset":
       if (canReset(b, p.id, seen(k))) {
         reset(b);
