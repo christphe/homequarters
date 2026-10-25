@@ -7,9 +7,9 @@
 // is "here" while they are a viewer. The table's actions are in public/table.ts, the log in public/log.ts,
 // games in public/games.ts; the browser side is public/client.ts (the window) and public/view.ts (the felt).
 //
-// Every change is queued and sent in update(), to the table's viewers: the game (or the list of games while
-// none is chosen), the table's state, the log, in that order; a send refused by the budget is kept for the
-// next update.
+// Every change is queued and sent in update(), to the table's viewers: the table's state (an "open" first,
+// which opens the window), the game (or the list of games while none is chosen), the log, in that order; a
+// send refused by the budget is kept for the next update.
 
 import { allows, clientGame, CLIENT_GAME_MAX, FREE, validateCards, validateDefinition, type Game } from "./public/games.ts";
 import { append, parseLog, type LogEntry } from "./public/log.ts";
@@ -289,13 +289,13 @@ export function update(): void {
         m.delete(k);
         continue;
       }
-      if (q.h) {
-        if (!hq.send(id, headOf(k))) break; // this member's budget is spent
-        q.h = false;
-      }
       if (q.s) {
-        if (!hq.send(id, { t: q.o ? "open" : "state", ...coords(k), s: stateOf(k) } satisfies ToClient)) break;
+        if (!hq.send(id, { t: q.o ? "open" : "state", ...coords(k), s: stateOf(k) } satisfies ToClient)) break; // this member's budget is spent
         q.s = q.o = false;
+      }
+      if (q.h) {
+        if (!hq.send(id, headOf(k))) break;
+        q.h = false;
       }
       if (q.l) {
         if (!hq.send(id, { t: "log", ...coords(k), log: logOf(k) } satisfies ToClient)) break;
