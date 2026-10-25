@@ -10,7 +10,7 @@ This guide runs the full development stack on one machine: LiveKit, the Go serve
 | --- | --- |
 | Go | 1.27 or newer |
 | Node.js and pnpm | developed with Node 26.4 and pnpm 11.9; other recent versions are untested |
-| LiveKit server | `brew install livekit` on macOS, or the official release binary / image on Linux |
+| LiveKit server | `brew install livekit` on macOS, or the official release binary; or in Docker: `docker compose -f deploy/docker-compose.local.yml up -d livekit` (the script reuses a LiveKit already listening on 7880) |
 | A Chromium-based browser | for the end-to-end tests: Google Chrome |
 
 ## Run it

@@ -18,9 +18,11 @@ const art = await page.evaluate(() => window.artExport);
 const save = (name, url) => fs.writeFileSync(path.join(OUT, name), Buffer.from(url.split(",")[1], "base64"));
 for (const [name, url] of Object.entries(art.sheets)) save("sheet-" + name + ".png", url);
 save("map.png", art.map);
+save("map-lodge.png", art.mapLodge);
+save("map-manor.png", art.mapManor);
 // the bundled pets plugin's sheets (plugins/bundled/hq-pets), drawn by web/src/game/art/pluginPets.ts
 const pets = path.resolve(import.meta.dirname, "../plugins/bundled/hq-pets/public");
 fs.writeFileSync(path.join(pets, "pets.png"), Buffer.from(art.pluginPets.split(",")[1], "base64"));
 fs.writeFileSync(path.join(pets, "pets-tint.png"), Buffer.from(art.pluginPetsTint.split(",")[1], "base64"));
 await browser.close();
-console.log("exported", Object.keys(art.sheets).length, "sheets and the map to", OUT);
+console.log("exported", Object.keys(art.sheets).length, "sheets and the three template maps to", OUT);

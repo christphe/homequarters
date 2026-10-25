@@ -134,25 +134,63 @@ function posterDeco(ctx: Ctx, tx: number, ty: number) {
 
 // ---------- props ----------
 const WOOD = "#c08a52";
+// A monitor seen from the front, from the top of its screen (top) down to its foot (top + 12): the foot
+// sits right under the screen.
+function screenFront(ctx: Ctx, cx: number, top: number) {
+  px(ctx, cx - 7, top, 14, 10, OUT);
+  px(ctx, cx - 6, top + 1, 12, 8, "#3a4262"); // bezel
+  px(ctx, cx - 5, top + 2, 10, 6, "#5cc4e6");
+  px(ctx, cx - 5, top + 2, 10, 2, "#8ee0f6");
+  px(ctx, cx - 4, top + 2, 2, 1, "#e2fbff");
+  px(ctx, cx - 3, top + 5, 5, 1, "#3a9cc4"); // a window on the screen
+  px(ctx, cx - 3, top + 6, 3, 1, "#3a9cc4");
+  px(ctx, cx - 3, top + 10, 6, 2, OUT); // foot
+  px(ctx, cx - 2, top + 10, 4, 1, "#8a92ac");
+}
+// The same monitor seen from behind.
+function screenBack(ctx: Ctx, cx: number, top: number) {
+  px(ctx, cx - 7, top, 14, 10, OUT);
+  px(ctx, cx - 6, top + 1, 12, 8, "#8c93ab");
+  px(ctx, cx - 6, top + 1, 12, 1, "#b4bace");
+  px(ctx, cx - 4, top + 3, 8, 1, "#737a94"); // vents
+  px(ctx, cx - 4, top + 5, 8, 1, "#737a94");
+  px(ctx, cx - 2, top + 7, 4, 2, "#646b86"); // the stand's mount
+  px(ctx, cx - 3, top + 10, 6, 2, OUT);
+  px(ctx, cx - 2, top + 10, 4, 1, "#8a92ac");
+}
+// A keyboard in a full outline, 4 px tall, its mouse on the user's right: on our right when they face
+// away from us, on our left when they face us.
+function keyboard(ctx: Ctx, cx: number, y: number, mouse: "right" | "left") {
+  px(ctx, cx - 5, y, 10, 4, OUT);
+  px(ctx, cx - 4, y + 1, 8, 2, "#eceef6");
+  for (let k = 0; k < 4; k++) px(ctx, cx - 3 + k * 2, y + 2, 1, 1, "#b4b8cc");
+  const mx = mouse === "right" ? cx + 6 : cx - 9;
+  px(ctx, mx, y, 3, 4, OUT);
+  px(ctx, mx + 1, y + 1, 1, 2, "#eceef6");
+}
+// Every desk has the same body. Seen from the front, it rises above its tile by its own height: 6 px for
+// the top, its 2 px edge and the legs. Drawn back to front, a desk below covers exactly the edge and legs
+// of the desk it is pushed against.
+const DESK_RISE = 6;
+function deskBody(ctx: Ctx, x: number, y: number, w: number) {
+  slab(ctx, x, y - DESK_RISE, w, T + 3, WOOD, 2);
+  for (const lx of [x + 1, x + w - 3]) {
+    px(ctx, lx, y + 13, 2, 3, OUT);
+    px(ctx, lx, y + 13, 1, 2, "#7c4c28");
+  }
+}
+// The desks of an island mirror each other across the line where they meet: 2 px from the user's edge
+// to the keyboard, 2 px from the keyboard to the screen's foot. Seat below: the screen faces us.
 function desk(ctx: Ctx, x: number, y: number, w: number) {
-  px(ctx, x + 2, y + 14, w - 4, 2, "rgba(40,24,80,0.22)");
-  slab(ctx, x, y + 5, w, 10, WOOD, 3);
-  px(ctx, x + 2, y + 15, 2, 1, OUT);
-  px(ctx, x + w - 4, y + 15, 2, 1, OUT);
+  deskBody(ctx, x, y, w);
   const cx = x + w / 2;
-  // monitor
-  px(ctx, cx - 6, y, 12, 9, OUT);
-  px(ctx, cx - 5, y + 1, 10, 7, "#404a68");
-  px(ctx, cx - 4, y + 2, 8, 5, "#7ad6f0");
-  px(ctx, cx - 4, y + 2, 8, 1, "#c8f4ff");
-  px(ctx, cx - 4, y + 3, 1, 2, "#c8f4ff");
-  px(ctx, cx - 1, y + 8, 2, 2, "#404a68");
-  // keyboard and mouse
-  px(ctx, cx - 5, y + 10, 10, 3, OUT);
-  px(ctx, cx - 4, y + 10, 8, 2, "#f0f0f6");
-  px(ctx, cx - 4, y + 12, 8, 0, "#a0a4b8");
-  px(ctx, cx + 6, y + 10, 3, 3, OUT);
-  px(ctx, cx + 7, y + 10, 1, 2, "#f0f0f6");
+  if (hash(x, y, 70) < 0.5) {
+    const mx = hash(x, y, 71) < 0.5 ? x + 3 : x + w - 6; // a mug
+    px(ctx, mx, y - 3, 3, 4, OUT);
+    px(ctx, mx + 1, y - 2, 1, 2, hash(x, y, 72) < 0.5 ? "#e8685a" : "#f6f2e6");
+  }
+  screenFront(ctx, cx, y - 11); // foot at y - 1..y
+  keyboard(ctx, cx, y + 4, "right"); // the edge's line is at y + 10
 }
 function chair(ctx: Ctx, x: number, y: number) {
   px(ctx, x + 4, y + 13, 8, 2, "rgba(40,24,80,0.2)");
@@ -162,6 +200,17 @@ function chair(ctx: Ctx, x: number, y: number) {
   px(ctx, x + 3, y + 8, 10, 4, OUT);
   px(ctx, x + 4, y + 9, 8, 2, "#5e76b4");
   px(ctx, x + 7, y + 12, 2, 2, OUT);
+  px(ctx, x + 4, y + 14, 3, 1, OUT);
+  px(ctx, x + 9, y + 14, 3, 1, OUT);
+}
+// A chair seen from behind: its occupant faces the desk or table above it.
+function chairBack(ctx: Ctx, x: number, y: number) {
+  px(ctx, x + 4, y + 13, 8, 2, "rgba(40,24,80,0.2)");
+  px(ctx, x + 4, y + 2, 8, 11, OUT); // the backrest hides the seat
+  px(ctx, x + 5, y + 3, 6, 9, "#4a5f9c");
+  px(ctx, x + 5, y + 3, 6, 1, "#7088c4");
+  px(ctx, x + 6, y + 5, 4, 5, "#3e5088");
+  px(ctx, x + 7, y + 13, 2, 1, OUT);
   px(ctx, x + 4, y + 14, 3, 1, OUT);
   px(ctx, x + 9, y + 14, 3, 1, OUT);
 }
@@ -197,9 +246,15 @@ function couch(ctx: Ctx, x: number, y: number, w: number) {
   px(ctx, x + w - 3, y + 5, 2, 9, "#3058a8");
   px(ctx, x + w - 3, y + 5, 2, 1, "#8ab0f4");
 }
-function table(ctx: Ctx, x: number, y: number, w: number, h: number) {
-  px(ctx, x + 2, y + h - 3, w - 4, 3, "rgba(40,24,80,0.22)");
-  slab(ctx, x, y + 2, w, h - 4, "#d8a86c", 4);
+function table(ctx: Ctx, x: number, y: number, w: number, h: number, low = false) {
+  px(ctx, x + 2, y + h - 2, w - 4, 2, "rgba(40,24,80,0.22)");
+  // legs under the front edge, at the corners; a coffee table's are short
+  const legH = low ? 2 : 4;
+  slab(ctx, x, y + 2, w, h - 1 - legH, "#d8a86c", low ? 3 : 4);
+  for (const lx of [x + 2, x + w - 4]) {
+    px(ctx, lx, y + h - legH, 2, legH, OUT);
+    if (!low) px(ctx, lx, y + h - legH, 1, legH - 1, "#8a5c32");
+  }
   // a few things on top so meeting rooms feel used
   for (let i = 0; i < Math.floor(w / 16); i++) {
     const px0 = x + 5 + i * 14 + Math.floor(hash(x, i, 7) * 3);
@@ -303,24 +358,261 @@ function rug(ctx: Ctx, x: number, y: number, w: number, h: number) {
     for (let xx = 7 + ((yy / 4) % 2) * 2; xx < w - 7; xx += 4) px(ctx, x + xx, y + yy, 1, 1, "#8ad894");
 }
 
+// A desk whose seat is above it (back to back in an island): its keyboard is on the far side and we see
+// the back of its screen, standing on the near edge.
+function deskUp(ctx: Ctx, x: number, y: number, w: number) {
+  // the same desk, seat above, mirrored: 2 px from its far edge (the outline at y - 6) to the keyboard,
+  // 2 px to the screen's foot; the screen's back rises over the keyboard
+  deskBody(ctx, x, y, w);
+  const cx = x + w / 2;
+  keyboard(ctx, cx, y - 3, "left");
+  screenBack(ctx, cx, y - 5); // foot at y + 5..y + 6
+}
+function armchair(ctx: Ctx, x: number, y: number) {
+  px(ctx, x + 2, y + 14, 12, 2, "rgba(40,24,80,0.22)");
+  px(ctx, x + 2, y + 1, 12, 8, OUT);
+  px(ctx, x + 3, y + 2, 10, 6, "#d0644c");
+  px(ctx, x + 3, y + 2, 10, 1, "#f09a7c");
+  px(ctx, x + 1, y + 6, 14, 9, OUT);
+  px(ctx, x + 2, y + 7, 3, 7, "#b84c3a");
+  px(ctx, x + 11, y + 7, 3, 7, "#b84c3a");
+  px(ctx, x + 2, y + 7, 3, 1, "#f09a7c");
+  px(ctx, x + 11, y + 7, 3, 1, "#f09a7c");
+  px(ctx, x + 5, y + 8, 6, 5, "#e8806a");
+  px(ctx, x + 5, y + 8, 6, 1, "#ffc0a8");
+}
+// An armchair seen from the side, facing right (mirrored to face left): backrest on the left.
+function armchairSide(ctx: Ctx, x: number, y: number) {
+  px(ctx, x + 2, y + 14, 12, 2, "rgba(40,24,80,0.22)");
+  px(ctx, x + 1, y + 1, 6, 14, OUT); // backrest
+  px(ctx, x + 2, y + 2, 4, 12, "#b84c3a");
+  px(ctx, x + 2, y + 2, 4, 1, "#f09a7c");
+  px(ctx, x + 2, y + 2, 1, 12, "#d0644c");
+  px(ctx, x + 5, y + 7, 10, 8, OUT); // seat
+  px(ctx, x + 6, y + 8, 8, 4, "#e8806a");
+  px(ctx, x + 6, y + 8, 8, 1, "#ffc0a8");
+  px(ctx, x + 6, y + 12, 8, 2, "#b84c3a");
+  px(ctx, x + 5, y + 5, 10, 4, OUT); // armrest along the near side
+  px(ctx, x + 6, y + 6, 8, 2, "#d0644c");
+  px(ctx, x + 6, y + 6, 8, 1, "#f09a7c");
+  px(ctx, x + 13, y + 14, 2, 1, OUT);
+}
+// Stands: rows of seats on stepped concrete, facing the viewer; the caller turns them to face the field.
+function seatRows(ctx: Ctx, x: number, y: number, w: number, h: number) {
+  px(ctx, x, y, w, h, OUT);
+  for (let ry = y; ry < y + h; ry += T) {
+    px(ctx, x + 1, ry + 1, w - 2, 11, "#ded4ae"); // the step
+    px(ctx, x + 1, ry + 1, w - 2, 1, "#f0e8c8");
+    px(ctx, x + 1, ry + 12, w - 2, 3, "#b8a87e"); // its riser
+    px(ctx, x + 1, ry + 12, w - 2, 1, "#9c8c64");
+    const n = Math.floor((w - 2) / 8); // one seat every 8 px, centred in the row
+    for (let i = 0, sx = x + 1 + Math.floor((w - 2 - n * 8) / 2); i < n; i++, sx += 8) {
+      px(ctx, sx + 1, ry + 2, 6, 6, OUT); // backrest
+      px(ctx, sx + 2, ry + 3, 4, 4, "#4a64a4");
+      px(ctx, sx + 2, ry + 3, 4, 1, "#7a94d4");
+      px(ctx, sx, ry + 6, 8, 5, OUT); // the seat, wider, in front
+      px(ctx, sx + 1, ry + 7, 6, 2, "#6a88d0");
+      px(ctx, sx + 1, ry + 7, 6, 1, "#9ab4ec");
+    }
+  }
+}
+// Side stands, seen from the side, the seats facing right: one tier per 16 px column, each seat a
+// backrest and a seat in profile, one every 8 px down the column. Mirrored to face left.
+function seatCols(ctx: Ctx, x: number, y: number, w: number, h: number) {
+  px(ctx, x, y, w, h, OUT);
+  const n = Math.floor((h - 2) / 8);
+  for (let cx = x; cx < x + w; cx += T) {
+    px(ctx, cx + 1, y + 1, T - 2, h - 2, "#ded4ae"); // the tier
+    px(ctx, cx + 1, y + 1, 1, h - 2, "#f0e8c8");
+    px(ctx, cx + T - 3, y + 1, 2, h - 2, "#b8a87e"); // its edge, down to the next tier
+    for (let i = 0, sy = y + 1 + Math.floor((h - 2 - n * 8) / 2); i < n; i++, sy += 8) {
+      const x0 = cx + 3;
+      px(ctx, x0, sy, 3, 6, OUT); // backrest, a gap below it before the next seat
+      px(ctx, x0 + 1, sy + 1, 1, 4, "#4a64a4");
+      px(ctx, x0 + 2, sy + 2, 7, 5, OUT); // seat
+      px(ctx, x0 + 3, sy + 3, 5, 3, "#6a88d0");
+      px(ctx, x0 + 3, sy + 3, 5, 1, "#9ab4ec");
+    }
+  }
+}
+// Stairs through the stands: plain steps, lit from above.
+// Steps run across the way up: horizontal bands for stairs climbing up or down the map, vertical ones
+// (across) for stairs climbing sideways.
+function stairs(ctx: Ctx, x: number, y: number, w: number, h: number, across = false) {
+  px(ctx, x, y, w, h, OUT);
+  if (across) {
+    for (let sx = x + 1; sx < x + w - 1; sx += 4) {
+      px(ctx, sx, y + 1, 3, h - 2, "#e6dcb8");
+      px(ctx, sx, y + 1, 1, h - 2, "#f6f0d8");
+      px(ctx, sx + 3, y + 1, 1, h - 2, "#a8986c");
+    }
+    return;
+  }
+  for (let sy = y + 1; sy < y + h - 1; sy += 4) {
+    px(ctx, x + 1, sy, w - 2, 3, "#e6dcb8");
+    px(ctx, x + 1, sy, w - 2, 1, "#f6f0d8");
+    px(ctx, x + 1, sy + 3, w - 2, 1, "#a8986c");
+  }
+}
+// Stands below the field: we see the seats from behind, their backs on the steps.
+function seatRowsBack(ctx: Ctx, x: number, y: number, w: number, h: number) {
+  px(ctx, x, y, w, h, OUT);
+  for (let ry = y; ry < y + h; ry += T) {
+    px(ctx, x + 1, ry + 1, w - 2, 14, "#ded4ae"); // the step
+    px(ctx, x + 1, ry + 1, w - 2, 1, "#9c8c64"); // the edge down to the step in front
+    px(ctx, x + 1, ry + 2, w - 2, 1, "#f0e8c8");
+    const n = Math.floor((w - 2) / 8);
+    for (let i = 0, sx = x + 1 + Math.floor((w - 2 - n * 8) / 2); i < n; i++, sx += 8) {
+      px(ctx, sx + 1, ry + 4, 6, 9, OUT); // the seat's back hides the seat
+      px(ctx, sx + 2, ry + 5, 4, 7, "#4a64a4");
+      px(ctx, sx + 2, ry + 5, 4, 1, "#7a94d4");
+      px(ctx, sx + 3, ry + 7, 2, 3, "#3e5088");
+    }
+  }
+}
+// The field in the middle of the arena: a coral kerb, a teal floor in mown bands, white lines (border,
+// half-way line, centre circle and spot). Generic: no emblem of any sport's league or any game.
+function court(ctx: Ctx, x: number, y: number, w: number, h: number) {
+  px(ctx, x, y, w, h, OUT);
+  px(ctx, x + 1, y + 1, w - 2, h - 2, "#e8603c");
+  px(ctx, x + 1, y + 1, w - 2, 1, "#f89070");
+  px(ctx, x + 3, y + 3, w - 6, h - 6, OUT);
+  for (let bx = 0; bx < w - 8; bx += 16) px(ctx, x + 4 + bx, y + 4, Math.min(16, w - 8 - bx), h - 8, (bx / 16) % 2 ? "#4aa898" : "#52b0a0");
+  const line = "#e6f6ee";
+  px(ctx, x + 8, y + 8, w - 16, 1, line);
+  px(ctx, x + 8, y + h - 9, w - 16, 1, line);
+  px(ctx, x + 8, y + 8, 1, h - 16, line);
+  px(ctx, x + w - 9, y + 8, 1, h - 16, line);
+  px(ctx, x + w / 2, y + 8, 1, h - 16, line);
+  const cx = x + w / 2, cy = y + h / 2, r = 14;
+  for (let a = 0; a < 128; a++) {
+    const t = (a / 128) * Math.PI * 2;
+    px(ctx, Math.round(cx + Math.cos(t) * r), Math.round(cy + Math.sin(t) * r), 1, 1, line);
+  }
+  px(ctx, cx - 1, cy - 1, 3, 3, line);
+}
+// A pennant hanging on a wall: coral or blue by column.
+function banner(ctx: Ctx, x: number, y: number) {
+  const c = (x / T) % 2 ? "#4a78d0" : "#e8603c";
+  px(ctx, x + 1, y + 1, 14, 2, OUT); // rod
+  px(ctx, x + 3, y + 2, 10, 11, OUT);
+  px(ctx, x + 4, y + 3, 8, 9, c);
+  px(ctx, x + 4, y + 3, 8, 1, light(c, 0.35));
+  px(ctx, x + 7, y + 6, 2, 2, light(c, 0.5)); // a small diamond
+  px(ctx, x + 6, y + 7, 4, 1, light(c, 0.5));
+  px(ctx, x + 4, y + 12, 3, 2, OUT); // forked tail
+  px(ctx, x + 9, y + 12, 3, 2, OUT);
+  px(ctx, x + 5, y + 12, 1, 1, c);
+  px(ctx, x + 10, y + 12, 1, 1, c);
+}
+// A dark board on a wall with two amber scores.
+function scoreboard(ctx: Ctx, x: number, y: number, w: number) {
+  px(ctx, x + 1, y + 1, w - 2, 13, OUT);
+  px(ctx, x + 2, y + 2, w - 4, 11, "#2a2840");
+  px(ctx, x + 2, y + 2, w - 4, 1, "#46445e");
+  const digit = (dx: number) => {
+    px(ctx, dx, y + 5, 4, 1, "#ffc84a");
+    px(ctx, dx, y + 7, 4, 1, "#ffc84a");
+    px(ctx, dx, y + 9, 4, 1, "#ffc84a");
+    px(ctx, dx + 3, y + 5, 1, 5, "#ffc84a");
+  };
+  digit(x + w / 2 - 12);
+  digit(x + w / 2 + 8);
+  px(ctx, x + w / 2 - 1, y + 6, 2, 1, "#f2eefc");
+  px(ctx, x + w / 2 - 1, y + 8, 2, 1, "#f2eefc");
+}
+/** Draws f as if the prop were turned (a quarter turn either way, upside down or mirrored) inside its rectangle. */
+function turned(ctx: Ctx, x: number, y: number, w: number, h: number, turn: "cw" | "ccw" | "flip" | "mirror", f: (x: number, y: number, w: number, h: number) => void) {
+  ctx.save();
+  if (turn === "mirror") {
+    ctx.translate(x + w, y);
+    ctx.scale(-1, 1);
+    f(0, 0, w, h);
+  } else if (turn === "flip") {
+    ctx.translate(x, y + h);
+    ctx.scale(1, -1);
+    f(0, 0, w, h);
+  } else {
+    ctx.translate(x + (turn === "cw" ? w : 0), y + (turn === "cw" ? 0 : h));
+    ctx.rotate(turn === "cw" ? Math.PI / 2 : -Math.PI / 2);
+    f(0, 0, h, w);
+  }
+  ctx.restore();
+}
+
 const DIMS: Record<string, [number, number]> = {
   desk: [2, 1], chair: [1, 1], plant: [1, 1], couch: [3, 1], table: [3, 2], reception_desk: [6, 1],
   bookshelf: [2, 1], coffee: [1, 1], whiteboard: [3, 1], rug: [4, 3], lamp: [1, 1],
+  armchair: [1, 1], bleachers: [4, 2], court: [6, 4], stairs: [2, 2], banner: [1, 1], scoreboard: [4, 1],
   note: [1, 1], image: [1, 1], embed: [2, 1], portal: [1, 1], spotlight: [1, 1],
 };
 export function propRect(p: Prop) {
   const d = DIMS[p.t] ?? [1, 1];
   return { x: p.x * T, y: p.y * T, w: (p.w ?? d[0]) * T, h: (p.h ?? d[1]) * T };
 }
-function drawProp(ctx: Ctx, p: Prop) {
+/** Whether a table (or a desk) touches the rectangle on the given side: seats face it, a couch turns its back to it. */
+function tableBeside(props: Prop[], p: Prop, side: "left" | "right" | "above" | "below") {
+  const r = propRect(p);
+  return props.some((q) => {
+    if (q.t !== "table" && q.t !== "desk") return false;
+    const o = propRect(q);
+    if (side === "above") return o.y + o.h === r.y && o.x < r.x + r.w && r.x < o.x + o.w;
+    if (side === "below") return o.y === r.y + r.h && o.x < r.x + r.w && r.x < o.x + o.w;
+    const touch = side === "right" ? o.x === r.x + r.w : o.x + o.w === r.x;
+    return touch && o.y < r.y + r.h && r.y < o.y + o.h;
+  });
+}
+type Rect = { x: number; y: number; w: number; h: number };
+/** Whether two rectangles share an edge (side by side or one above the other). */
+function touching(a: Rect, b: Rect) {
+  const overlapX = a.x < b.x + b.w && b.x < a.x + a.w, overlapY = a.y < b.y + b.h && b.y < a.y + a.h;
+  return (overlapY && (a.x + a.w === b.x || b.x + b.w === a.x)) || (overlapX && (a.y + a.h === b.y || b.y + b.h === a.y));
+}
+function drawProp(ctx: Ctx, p: Prop, props: Prop[] = []) {
   const { x, y, w, h } = propRect(p);
   switch (p.t) {
     case "rug": return rug(ctx, x, y, w, h);
-    case "desk": return desk(ctx, x, y, w);
-    case "chair": return chair(ctx, x, y);
+    case "court": return court(ctx, x, y, w, h);
+    case "bleachers": {
+      // the seats face the field (the court nearest to them)
+      const f = props.find((q) => q.t === "court");
+      const fr = f ? propRect(f) : { x, y: y + h, w, h };
+      const dx = fr.x + fr.w / 2 - (x + w / 2), dy = fr.y + fr.h / 2 - (y + h / 2);
+      const draw = (x0: number, y0: number, w0: number, h0: number) => seatRows(ctx, x0, y0, w0, h0);
+      if (Math.abs(dx) > Math.abs(dy)) // beside the field: seen from the side
+        return dx > 0 ? seatCols(ctx, x, y, w, h) : turned(ctx, x, y, w, h, "mirror", (x0, y0, w0, h0) => seatCols(ctx, x0, y0, w0, h0));
+      return dy >= 0 ? draw(x, y, w, h) : seatRowsBack(ctx, x, y, w, h);
+    }
+    case "stairs": {
+      // beside the field they climb sideways
+      const f = props.find((q) => q.t === "court");
+      if (!f) return stairs(ctx, x, y, w, h);
+      const fr = propRect(f);
+      const dx = fr.x + fr.w / 2 - (x + w / 2), dy = fr.y + fr.h / 2 - (y + h / 2);
+      return stairs(ctx, x, y, w, h, Math.abs(dx) > Math.abs(dy));
+    }
+    case "banner": return banner(ctx, x, y);
+    case "scoreboard": return scoreboard(ctx, x, y, w);
+    case "armchair":
+      // beside a table it faces it, seen from the side
+      if (tableBeside(props, p, "right")) return armchairSide(ctx, x, y);
+      if (tableBeside(props, p, "left")) return turned(ctx, x, y, w, h, "mirror", (x0, y0) => armchairSide(ctx, x0, y0));
+      return armchair(ctx, x, y);
+    case "desk": return p.up ? deskUp(ctx, x, y, w) : desk(ctx, x, y, w);
+    case "chair":
+      // a chair is pulled up to its desk or table, off the tile grid: under one it shows its back
+      if (tableBeside(props, p, "above")) return chairBack(ctx, x, y - 4);
+      if (tableBeside(props, p, "below")) // a desk's top already rises towards it; a table's does not
+        return chair(ctx, x, props.some((q) => q.t === "desk" && touching(propRect(q), { x, y, w, h })) ? y : y + 3);
+      return chair(ctx, x, y);
     case "plant": return plant(ctx, x, y);
-    case "couch": return couch(ctx, x, y, w);
-    case "table": return table(ctx, x, y, w, h);
+    case "couch":
+      // an upright couch beside a table, or one under it, turns its back to the table
+      if (h > w) return turned(ctx, x, y, w, h, tableBeside(props, p, "right") ? "ccw" : "cw", (x0, y0, ww) => couch(ctx, x0, y0, ww));
+      if (tableBeside(props, p, "above")) return turned(ctx, x, y, w, h, "flip", (x0, y0, ww) => couch(ctx, x0, y0, ww));
+      return couch(ctx, x, y, w);
+    case "table": // a table among couches is a coffee table
+      return table(ctx, x, y, w, h, props.some((q) => q.t === "couch" && touching(propRect(q), { x, y, w, h })));
     case "reception_desk": return reception(ctx, x, y, w);
     case "bookshelf": return bookshelf(ctx, x, y, w);
     case "coffee": return coffee(ctx, x, y);
@@ -372,20 +664,58 @@ export function bakeMapCanvas(map: MapData): HTMLCanvasElement {
     });
   const areaOf = (x: number, y: number) => (x < 0 || y < 0 || x >= map.w || y >= map.h ? -2 : areaAt[y * map.w + x]);
   const floorOf = (x: number, y: number) => {
-    const i = areaAt[y * map.w + x];
+    let i = areaAt[y * map.w + x];
+    // a tile in no area (a doorway in a wall) continues the floor of a room next to it
+    for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+      if (i >= 0) break;
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < map.w && ny < map.h) i = areaAt[ny * map.w + nx];
+    }
     return FLOORS[i >= 0 ? map.areas[i].floor : "tile_gray"] ?? FLOORS.tile_gray;
   };
 
+  // A doorway (a tile in no area, in a wall) between two areas: half of each floor, a sill in the middle,
+  // across the way through ("h": rooms above and below, "v": rooms left and right).
+  const doorway = (tx: number, ty: number) => {
+    if (areaOf(tx, ty) !== -1) return null;
+    const up = areaOf(tx, ty - 1), dn = areaOf(tx, ty + 1), lf = areaOf(tx - 1, ty), rt = areaOf(tx + 1, ty);
+    if ((isWall(tx - 1, ty) || isWall(tx + 1, ty)) && up >= 0 && dn >= 0 && up !== dn) return { dir: "h" as const, a: up, b: dn };
+    if ((isWall(tx, ty - 1) || isWall(tx, ty + 1)) && lf >= 0 && rt >= 0 && lf !== rt) return { dir: "v" as const, a: lf, b: rt };
+    return null;
+  };
+  const floorNamed = (i: number) => FLOORS[map.areas[i].floor] ?? FLOORS.tile_gray;
+
   // 1. floors
-  for (let ty = 0; ty < map.h; ty++) for (let tx = 0; tx < map.w; tx++) if (!isWall(tx, ty)) floorTile(ctx, floorOf(tx, ty), tx, ty);
+  for (let ty = 0; ty < map.h; ty++)
+    for (let tx = 0; tx < map.w; tx++) {
+      if (isWall(tx, ty)) continue;
+      const d = doorway(tx, ty);
+      if (!d) {
+        floorTile(ctx, floorOf(tx, ty), tx, ty);
+        continue;
+      }
+      floorTile(ctx, floorNamed(d.a), tx, ty);
+      ctx.save();
+      ctx.beginPath();
+      if (d.dir === "h") ctx.rect(tx * T, ty * T + T / 2, T, T / 2);
+      else ctx.rect(tx * T + T / 2, ty * T, T / 2, T);
+      ctx.clip();
+      floorTile(ctx, floorNamed(d.b), tx, ty);
+      ctx.restore();
+    }
   // 2. carpet edges where a carpet meets another area, plus contact shadow under wall faces
   for (let ty = 0; ty < map.h; ty++)
     for (let tx = 0; tx < map.w; tx++) {
       if (isWall(tx, ty)) continue;
       const f = floorOf(tx, ty);
       const x = tx * T, y = ty * T, me = areaOf(tx, ty);
-      if (f.kind === "carpet") {
-        const edge = (nx: number, ny: number) => !isWall(nx, ny) && areaOf(nx, ny) !== me;
+      if (f.kind === "carpet" && me !== -1) { // a doorway gets a sill instead (below)
+        // no border towards a doorway half made of this same carpet
+        const edge = (nx: number, ny: number) => {
+          if (isWall(nx, ny) || areaOf(nx, ny) === me) return false;
+          const d = doorway(nx, ny);
+          return !(d && (d.a === me || d.b === me));
+        };
         if (edge(tx - 1, ty)) {
           px(ctx, x, y, 2, T, f.edge);
           for (let yy = 1; yy < T; yy += 4) px(ctx, x + 2, y + yy, 1, 1, light(f.edge, 0.5));
@@ -408,22 +738,19 @@ export function bakeMapCanvas(map: MapData): HTMLCanvasElement {
         px(ctx, x, y + 3, T, 2, "rgba(40,24,90,0.10)");
       }
       if (isWall(tx - 1, ty)) px(ctx, x, y, 2, T, "rgba(40,24,90,0.14)");
-      // doorway threshold: an open tile squeezed between walls gets a doormat. The walls on both sides
-      // must run on past the gap (a door frame), so a narrow corridor between two walls gets none.
-      const scan = (dx: number, dy: number) => {
-        for (let k = 1; k <= 2; k++) if (isWall(tx + dx * k, ty + dy * k)) return isWall(tx + dx * (k + 1), ty + dy * (k + 1));
-        return false;
-      };
-      if ((scan(-1, 0) && scan(1, 0)) || (scan(0, -1) && scan(0, 1))) {
-        px(ctx, x + 1, y + 3, T - 2, T - 6, "#7c3040");
-        px(ctx, x + 2, y + 4, T - 4, T - 8, "#b8505c");
-        px(ctx, x + 2, y + 4, T - 4, 1, "#d87880");
-        px(ctx, x + 4, y + 6, T - 8, 1, "#e8b0b0");
-      }
+    }
+  // the doorways' sills: a light grey threshold strip where one floor gives way to the other
+  for (let ty = 0; ty < map.h; ty++)
+    for (let tx = 0; tx < map.w; tx++) {
+      const d = isWall(tx, ty) ? null : doorway(tx, ty);
+      if (!d || map.areas[d.a].floor === map.areas[d.b].floor) continue; // the same floor on both sides needs no sill
+      const x = tx * T, y = ty * T;
+      if (d.dir === "h") px(ctx, x, y + T / 2, T, 1, "#d8dae4");
+      else px(ctx, x + T / 2, y, 1, T, "#d8dae4");
     }
   // 3. floor decor, then walls, then furniture (back to front)
   const props = [...map.props].sort((a, b) => a.y + (propRect(a).h / T) - (b.y + propRect(b).h / T));
-  for (const p of props) if (p.t === "rug") drawProp(ctx, p);
+  for (const p of props) if (p.t === "rug" || p.t === "court") drawProp(ctx, p);
   for (let ty = 0; ty < map.h; ty++)
     for (let tx = 0; tx < map.w; tx++)
       if (isWall(tx, ty)) wallTile(ctx, tx, ty, isWall, isWall(tx, ty + 1) || ty + 1 >= map.h ? WALL.cap : floorOf(tx, ty + 1).trim);
@@ -433,6 +760,6 @@ export function bakeMapCanvas(map: MapData): HTMLCanvasElement {
       if (ty === 0 && tx % 8 === 3) windowDeco(ctx, tx, ty);
       else if (ty > 0 && tx % 6 === 2 && hash(tx, ty, 60) < 0.7) posterDeco(ctx, tx, ty);
     }
-  for (const p of props) if (p.t !== "rug") drawProp(ctx, p);
+  for (const p of props) if (p.t !== "rug" && p.t !== "court") drawProp(ctx, p, props);
   return canvas;
 }

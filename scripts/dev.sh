@@ -29,15 +29,24 @@ esac
 mkdir -p .run server/data
 LOG=.run
 
-command -v livekit-server >/dev/null || { echo "livekit-server not found (brew install livekit, or use docker compose)"; exit 1; }
+# A LiveKit already on 7880 (e.g. `docker compose -f deploy/docker-compose.local.yml up -d livekit`) is reused;
+# it must run in --dev mode (devkey/secret).
+livekit=start
+if (exec 3<>/dev/tcp/127.0.0.1/7880) 2>/dev/null; then
+  livekit=external
+else
+  command -v livekit-server >/dev/null || { echo "livekit-server not found and nothing listens on 7880 (brew install livekit, or: docker compose -f deploy/docker-compose.local.yml up -d livekit)"; exit 1; }
+fi
 command -v go >/dev/null || { echo "go not found"; exit 1; }
 
 pids=()
 cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT INT TERM
 
-livekit-server --dev --bind 127.0.0.1 > $LOG/livekit.log 2>&1 &
-pids+=($!)
+if [ "$livekit" = start ]; then
+  livekit-server --dev --bind 127.0.0.1 > $LOG/livekit.log 2>&1 &
+  pids+=($!)
+fi
 
 ( cd server && go build -o ../bin/homequarters ./cmd/homequarters )
 # plugins: the repository's plugins/bundled, plus your own in plugins/installed (git-ignored)
@@ -55,7 +64,7 @@ echo "Home Quarters dev stack:"
 # Google sends the browser back to the registered address: open that one, or the sign-in cookie is on another host
 echo "  app      ${HQ_PUBLIC_URL:-http://127.0.0.1:5173}"
 echo "  server   http://127.0.0.1:8080  (metrics: /metrics)"
-echo "  livekit  ws://127.0.0.1:7880"
+echo "  livekit  ws://127.0.0.1:7880 ($livekit)"
 echo "  sign-in  $auth"
 echo "logs in $LOG/. Ctrl-C to stop."
 wait

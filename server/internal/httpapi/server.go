@@ -334,6 +334,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/announce", s.announce)
 	mux.HandleFunc("PATCH /api/admin/office", s.renameOffice)
 	mux.HandleFunc("GET /api/admin/map", s.getFullMap)
+	mux.HandleFunc("GET /api/admin/templates", s.listTemplates)
+	mux.HandleFunc("POST /api/admin/map/template", s.applyTemplate)
 	mux.HandleFunc("PUT /api/map", s.putMap)
 	mux.HandleFunc("POST /api/desk", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, false) })
 	mux.HandleFunc("POST /api/desk/release", func(w http.ResponseWriter, r *http.Request) { s.changeDesk(w, r, true) })

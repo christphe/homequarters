@@ -88,8 +88,39 @@ func TestDemoResetRestoresMapAndWipesChatAndBoards(t *testing.T) {
 	}
 }
 
-// A demo that saved an older starter map (another size) picks up the new one when it starts: the
-// running world cannot change size, so a scheduled reset alone would fail half-way.
+// A running demo whose office got another layout (another size) is still reset on schedule: everybody
+// reconnects into the starter map, the chat and the whiteboards are wiped.
+func TestDemoResetRestoresTheStarterMapAfterALayoutOfAnotherSize(t *testing.T) {
+	r := demoRig(t)
+	ctx := context.Background()
+	office, _ := r.st.OfficeBySlug(ctx, "default")
+	u, _ := r.join("Visitor", "")
+	wd, err := r.srv.worldFor(office)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm, _ := gamemap.Compile(gamemap.Manor())
+	if err := wd.ReplaceMap(ctx, cm, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(cm.Map)
+	r.st.SaveMap(ctx, office.ID, string(raw))
+	r.st.AppendChat(ctx, office.ID, u.ID, "hello", 1)
+
+	if err := r.srv.demoReset(ctx); err != nil {
+		t.Fatalf("the reset must not wait for a restart: %v", err)
+	}
+	def, _ := gamemap.Compile(gamemap.Default())
+	if !wd.SameSize(def) {
+		t.Fatal("the running world is back on the starter map")
+	}
+	if rows, _ := r.st.RecentChat(ctx, office.ID, 10); len(rows) != 0 {
+		t.Fatalf("office chat must be wiped: %v", rows)
+	}
+}
+
+// A demo that saved an older starter map (another size) picks up the new one when it starts, before
+// anybody joins, rather than at the next scheduled reset.
 func TestDemoStartupInstallsAResizedStarterMap(t *testing.T) {
 	r := demoRig(t)
 	ctx := context.Background()
