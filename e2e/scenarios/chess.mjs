@@ -127,7 +127,7 @@ async function drag(u, fromAt, toAt) {
   await u.page.mouse.down();
   await u.page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 6 });
   await u.page.mouse.move(to.x, to.y, { steps: 6 });
-  await sleep(150);
+  await sleep(200); // CDP reports a sent frame asynchronously: let any frame sent while dragging arrive
   const during = u.sent.length - n0;
   await u.page.mouse.up();
   await sleep(250);
@@ -293,7 +293,9 @@ export async function run(ctx) {
       return badgeAbove(a, "w") && badgeAbove(o, "b") ? { a, o } : null;
     }, { timeout: 5000, what: "badges on Cy's page" }).catch(() => null);
     check("13: Cy's page shows a white badge above Ann and a black one above Bo", !!badgesUp, JSON.stringify([await badgeOf(cy, ann.id), await badgeOf(cy, bo.id)]));
-    check("13: no badge over a spectator", !(await badgeOf(ann, cy.id)).badge);
+    const spectatorBadge = [];
+    for (let i = 0; i < 5; i++) { spectatorBadge.push(!!(await badgeOf(ann, cy.id)).badge); await sleep(100); }
+    check("13: no badge over a spectator (sampled for 500 ms)", spectatorBadge.every((x) => !x), JSON.stringify(spectatorBadge));
 
     // ---- criterion 5: a spectator cannot move, White cannot move a black piece
     let expected = { p: START, r: "", w: { id: ann.id, name: "" }, b: { id: bo.id, name: "" } };
@@ -312,6 +314,7 @@ export async function run(ctx) {
     await ann.page.mouse.down();
     await ann.page.mouse.move(from.x, (from.y + to.y) / 2, { steps: 10 });
     await ann.page.mouse.move(to.x, to.y, { steps: 10 });
+    await sleep(200); // CDP reports a sent frame asynchronously: let any frame sent while dragging arrive
     const whileDragging = ann.sent.length - n0;
     await ann.page.mouse.up();
     const [boMs, cyMs] = await Promise.all([bo, cy].map((u) => within(async () => (await board(u))?.p === expected.p, 1000)));
@@ -406,7 +409,7 @@ export async function run(ctx) {
     const cap = await dragSq(ann, "e4", "d5");
     playMove(expected, ann.id, sq("e4"), sq("d5"));
     const capSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => { const s = await board(u); return s.p === expected.p && s.b === "p" && s.w === ""; }, 1000)));
-    check("6: dropping on an occupied square removes the piece there (exd5)", cap.total === 1 && capSeen.every((ms) => ms >= 0), JSON.stringify(capSeen));
+    check("6, 10: dropping on an occupied square removes the piece there (exd5); nothing sent while dragging, one frame", cap.during === 0 && cap.total === 1 && capSeen.every((ms) => ms >= 0), JSON.stringify(capSeen));
     check("14: the captured black pawn shows in Black's reserve strip on all three pages", capSeen.every((ms) => ms >= 0), JSON.stringify(await Promise.all([ann, bo, cy].map(board))));
     await dragSq(bo, "d8", "d5");
     playMove(expected, bo.id, sq("d8"), sq("d5"));
@@ -414,11 +417,11 @@ export async function run(ctx) {
     const place = await drag(ann, await cellAt(ann, "w", 0), await squareAt(ann, sq("e3")));
     playPlace(expected, ann.id, "P", sq("e3"));
     const placeSeen = await Promise.all([ann, bo, cy].map((u) => within(async () => { const s = await board(u); return s.p === expected.p && s.w === "" && s.b === "p"; }, 1000)));
-    check("14: Ann drags her captured pawn from the reserve back onto e3, seen on every page", place.total === 1 && place.msgs[0].t === "place" && placeSeen.every((ms) => ms >= 0), JSON.stringify({ place: place.msgs, placeSeen }));
+    check("14: Ann drags her captured pawn from the reserve back onto e3, seen on every page", place.during === 0 && place.total === 1 && place.msgs[0].t === "place" && placeSeen.every((ms) => ms >= 0), JSON.stringify({ place: place.msgs, placeSeen }));
     // a white pawn dropped on e8: the choice opens, Queen is clicked
     const nPromo = ann.sent.length;
     const promoDrop = await dragSq(ann, "a2", "e8");
-    const choiceOpen = promoDrop.total === 0 && (await board(ann)).live.includes("Becomes a queen");
+    const choiceOpen = promoDrop.during === 0 && promoDrop.total === 0 && (await board(ann)).live.includes("Becomes a queen");
     // the choice's box: four 10 px cells under e8 (row 0), from x = 51; the queen is the first
     const strip8 = ((await canvasSize(ann)).h - 128) / 2;
     const [queenCell] = await onPage(ann, { cx: 57, cy: strip8 + 16 + 6 });
@@ -524,8 +527,8 @@ export async function run(ctx) {
     await press(ann, "Close");
     await press(bo, "Close");
     await setPlugin(ctx, false);
-    await waitFor(() => read(ann, () => window.__hq.view.objSprites.length === 0 && !document.querySelector(".interaction-hint")), { what: "board gone" });
-    check("4: plugin off: the board's sprite and the X hint are gone", true);
+    const gone = await waitFor(() => read(ann, () => window.__hq.view.objSprites.length === 0 && !document.querySelector(".interaction-hint")), { what: "board gone" }).catch(() => false);
+    check("4: plugin off: the board's sprite and the X hint are gone", gone === true);
     await ann.page.keyboard.press("x");
     await sleep(1000);
     check("4: plugin off: X next to where the board was does nothing", !(await ann.page.$(".modal")) && (await read(ann, () => window.__hq.state.nearby)) === null);
@@ -535,7 +538,12 @@ export async function run(ctx) {
     await openWithX(bo);
     await waitFor(async () => (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, { timeout: 3000, what: "seats after off/on" }).catch(() => {});
     check("4, 8: plugin on again: the board is back, X opens it, with its game and its players", (await board(ann)).p === expected.p && (await modalState(ann)).holders === `White: ${ann.name} (here) · Black: ${bo.name} (here)`, (await modalState(ann)).holders);
-    await press(ann, "Reset"); // leave the board as new
+    // criterion 13, the reset half: both badges are up on Cy's page, and a reset takes them down within 1 s
+    const upBeforeReset = await waitFor(async () => badgeAbove(await badgeOf(cy, ann.id), "w") && badgeAbove(await badgeOf(cy, bo.id), "b"), { timeout: 3000, what: "badges before the reset" }).catch(() => false);
+    check("13: with Ann and Bo seated and present, Cy's page shows both badges", upBeforeReset === true, JSON.stringify([await badgeOf(cy, ann.id), await badgeOf(cy, bo.id)]));
+    await press(ann, "Reset"); // also leaves the board as new
+    const resetGoneMs = await within(async () => !(await badgeOf(cy, ann.id)).badge && !(await badgeOf(cy, bo.id)).badge, 1000);
+    check("13: a reset takes both badges down on Cy's page within 1 s", resetGoneMs >= 0, `${resetGoneMs} ms`);
     await waitFor(async () => (await board(ann))?.p === START, { timeout: 3000, what: "final reset" }).catch(() => {});
 
     const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
