@@ -164,7 +164,6 @@ Content elements (a `content` array, at most 64 elements, nested at most 4 deep)
 | `hq.ui.color({ label, value, onChange })` | A colour picker; `value` is `"#rrggbb"`. `onChange(colour)` gets the colour (lower case) while it is being chosen, at most every 250 ms, and the final one at once. `hideLabel: true` keeps the label for screen readers only (also on `field`). |
 | `hq.ui.field({ label, value, maxLength, placeholder, onChange })` | One line of text; `maxLength` 1-200 (default 200), `placeholder` up to 40 characters. `onChange(text)` runs on Enter or when the field loses focus, only if it changed. |
 | `hq.ui.number({ label, value, min, max, onChange })` | A whole number, `min` <= `value` <= `max` (integers within ±1,000,000). `onChange(value)` runs on Enter or when the field loses focus, clamped to the range, and only if it changed. |
-
 | `hq.ui.view({ view, label, height, onMessage })` | A manifest view in a sandboxed iframe; at most one per modal. `view` names a `views` entry; `label` 1-40 characters, the iframe's title; `height` `small`, `medium` (default) or `large`; `onMessage(msg)` gets what the view sends. Redrawing the modal with the same view keeps the iframe. |
 | `hq.ui.post(msg)` | Sends to the open view; JSON of at most 4096 bytes. |
 
@@ -179,7 +178,7 @@ The script of a manifest view runs in `<iframe sandbox="allow-scripts">` (no `al
 | `hqView.send(msg)` | To the `onMessage` of the view element. |
 | `hqView.onMessage(fn)` | `fn(msg)` for each `hq.ui.post` of the plugin's client code. |
 
-Messages are JSON of at most 4096 bytes, 30 a second each way per view; beyond that they are dropped with a console warning. The page relays over MessageChannels and never interprets the content. The iframe is removed when the modal closes, another plugin's modal replaces it, or the plugin stops on that page; a view that breaks a limit is removed with a console warning and the modal stays.
+Messages are JSON of at most 4096 bytes, 30 a second each way per view; beyond that they are dropped with a console warning. The page relays over MessageChannels and never interprets the content. The iframe is removed when the modal closes, another plugin's modal replaces it, or the plugin stops on that page; a view that fails in another way (handshake failure, an invalid or undeclared view) is removed with a console warning and the modal stays. Messages over a limit never remove the view.
 
 ### Page limits
 
@@ -193,7 +192,6 @@ A plugin breaking one of these is stopped on that page only (iframe, sprites and
 | Sprites | 256 |
 | Slots | 8 |
 | Start (handshake) | 10 s |
-| View messages | 4096 bytes, 30 a second each way per view |
 
 An invalid command (an unknown operation, a wrong type, a value out of range, a path outside `public/`) stops the plugin the same way, with the reason in the console.
 

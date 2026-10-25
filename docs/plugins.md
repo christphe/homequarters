@@ -191,7 +191,7 @@ The view runs in an iframe with `sandbox="allow-scripts"` only (no `allow-same-o
 | Message size, each way | 4096 bytes of JSON |
 | Messages, each way | 30 a second per view; the rest are dropped with a console warning |
 
-Redrawing the modal with the same view in the same place keeps the iframe and its state; it is not reloaded. Closing the modal, another plugin's modal replacing it, or the plugin stopping on that page removes the iframe. A view that breaks a limit is removed with a console warning; the modal stays. Send a message when something happens (a drop, a click), never one per animation frame.
+Redrawing the modal with the same view in the same place keeps the iframe and its state; it is not reloaded. Closing the modal, another plugin's modal replacing it, or the plugin stopping on that page removes the iframe. Messages over a limit are dropped with a console warning, and the view stays. A view that fails in another way (it does not start, or is invalid or not declared in your manifest) is removed, and the modal stays. Send a message when something happens (a drop, a click), never one per animation frame.
 
 ## Browser side
 
@@ -296,7 +296,6 @@ Each limit applies to one page. A plugin that breaks one is stopped **on that pa
 | Interface elements in one modal or box | 64, nested at most 4 deep; text 500 characters, labels 1 to 40, copy values 2000 |
 | Live callbacks | 256 |
 | Time to start | 10 s |
-| View messages | 4096 bytes each, 30 a second each way per view |
 
 Updates are skipped while your code has not finished the previous one, so a slow plugin does not pile them up. When the page reconnects (a network drop, a server restart), every plugin restarts there, so your browser code can ask its server code for the current state.
 
