@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -192,6 +193,7 @@ func (s *Server) pluginRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /plugins/{name}/api/{path...}", s.pluginRoute)
 	mux.HandleFunc("GET /plugins/{name}/assets/{path...}", s.pluginAsset)
 	mux.HandleFunc("GET /plugins/{name}/client.js", s.pluginClient)
+	mux.HandleFunc("GET /plugins/{name}/views/{view}", s.pluginView)
 	mux.HandleFunc("/plugins/", http.NotFound) // nothing else under /plugins/, never the SPA page
 	mux.HandleFunc("GET /api/plugins/{name}/token", s.appToken)
 	mux.HandleFunc("POST /api/plugins/{name}/token", s.appToken)
@@ -253,6 +255,17 @@ type pluginEntry struct {
 	Client *string `json:"client"`
 	// Hosts the page lets the plugin's iframe fetch from (its Content Security Policy)
 	Hosts []string `json:"hosts,omitempty"`
+	// Objects the plugin provides for the map, Views are the names of its extra browser scripts
+	Objects []objectEntry `json:"objects"`
+	Views   []string      `json:"views"`
+}
+
+type objectEntry struct {
+	Kind   string  `json:"kind"`
+	Label  string  `json:"label"`
+	Size   [2]int  `json:"size"`
+	Sprite string  `json:"sprite"`
+	Frame  *[4]int `json:"frame,omitempty"`
 }
 
 // listPlugins tells a member's page which plugins run and where their browser code is.
@@ -264,7 +277,14 @@ func (s *Server) listPlugins(w http.ResponseWriter, r *http.Request) {
 	out := []pluginEntry{}
 	if h := s.hostFor(r.Context()); h != nil {
 		for _, i := range h.RunningInfo() {
-			e := pluginEntry{Name: i.Name, Title: i.Title, Hosts: i.ExternalHosts}
+			e := pluginEntry{Name: i.Name, Title: i.Title, Hosts: i.ExternalHosts, Objects: []objectEntry{}, Views: []string{}}
+			for _, o := range i.Objects {
+				e.Objects = append(e.Objects, objectEntry(o))
+			}
+			for v := range i.Views {
+				e.Views = append(e.Views, v)
+			}
+			sort.Strings(e.Views)
 			if i.Client != "" {
 				c := "/plugins/" + i.Name + "/client.js" // compiled by the server from client.ts or client.js
 				e.Client = &c
@@ -504,6 +524,22 @@ func (s *Server) pluginClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	js, ok := h.Client(r.PathValue("name"))
+	s.serveScript(w, r, js, ok)
+}
+
+// pluginView serves one compiled view of a running plugin, like its client code.
+func (s *Server) pluginView(w http.ResponseWriter, r *http.Request) {
+	h := s.runningHost(r.Context())
+	view, isJS := strings.CutSuffix(r.PathValue("view"), ".js")
+	if h == nil || !isJS {
+		http.NotFound(w, r)
+		return
+	}
+	js, ok := h.View(r.PathValue("name"), view)
+	s.serveScript(w, r, js, ok)
+}
+
+func (s *Server) serveScript(w http.ResponseWriter, r *http.Request, js []byte, ok bool) {
 	if !ok {
 		http.NotFound(w, r)
 		return

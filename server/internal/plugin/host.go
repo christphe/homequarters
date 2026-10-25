@@ -446,6 +446,17 @@ type bucket struct {
 	at     time.Time
 }
 
+// View returns the compiled browser code of one view of a running plugin.
+func (h *Host) View(name, view string) ([]byte, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	in := h.inst[name]
+	if in == nil || in.views[view] == nil {
+		return nil, false
+	}
+	return in.views[view], true
+}
+
 // Client returns the compiled browser code of a running plugin.
 func (h *Host) Client(name string) ([]byte, bool) {
 	h.mu.Lock()

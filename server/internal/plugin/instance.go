@@ -77,6 +77,7 @@ type instance struct {
 	info    Info
 	vm      *quickjs.VM
 	client  []byte
+	views   map[string][]byte
 	inbox   chan event
 	routes  map[string]route
 	hooks   map[string]bool // exposed with hq.expose, written while loading
@@ -119,7 +120,7 @@ func newInstance(h *Host, info Info) (*instance, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load stored data: %w", err)
 	}
-	in := &instance{h: h, info: info, client: code.client, inbox: make(chan event, inboxSize), routes: map[string]route{},
+	in := &instance{h: h, info: info, client: code.client, views: code.views, inbox: make(chan event, inboxSize), routes: map[string]route{},
 		hooks: map[string]bool{}, replies: make(chan hookReply, maxPendingCall),
 		wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}), kv: kv, started: time.Now()}
 	if code.server == "" {
