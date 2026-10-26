@@ -13,16 +13,12 @@ import { bakeMapCanvas } from "./art/tiles";
 import { depthAtlas } from "./art/objects";
 import { PluginLayer } from "./pluginLayer";
 import { areaTitle, deskTitle, type NameOf } from "./places";
+import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Grid, type Remote } from "./motion";
+import { Camera, zoomStore } from "./camera";
+import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
 
 const T = 16;
-// Reference view in world pixels. A 240x160 handheld screen would be 15x10 tiles; an office wants a little more room.
-const VIEW_REF_W = 320;
-const VIEW_REF_H = 200;
-const MAX_SCALE = 8;
 const WHEEL_GAP_MS = 120; // at most one zoom step per this long, so a trackpad or a free-spinning wheel does not race through every level
-// world px kept inside the interest radius beyond what is visible: a sprite drawn above its feet,
-// and my predicted position running ahead of the server's
-const VIEW_PAD = 24;
 const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
 // Jersey 10 is drawn on a 10 px grid and has a small x-height: map text uses twice its grid (20 px,
 // 30 for the area banner), which stays crisp and reads like the interface.
@@ -39,19 +35,6 @@ const PLUGIN_NOTE_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 18, fill: 
 const BANNER_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 30, fill: 0x383858 });
 /** For tests: how many bitmap fonts Pixi holds (it keeps them in its asset cache under keys holding "-bitmap"). */
 export const bitmapFonts = () => [...(Cache as unknown as { _cache: Map<unknown, unknown> })._cache.keys()].filter((k) => typeof k === "string" && k.includes("-bitmap")).length;
-const BOX_HW = 5;
-const BOX_HH = 3;
-// Movement rules shared with the server (world.move): sub-steps of at most SUB_STEP_PX so no wall
-// is skipped, and a blocked axis moves to the point of contact, so the result does not depend on
-// how time was split into frames or ticks.
-const SUB_STEP_PX = 4;
-const MAX_ADVANCE = 1; // seconds integrated at most in one go (a backgrounded tab)
-const OFFSET_TAU = 0.08; // seconds over which a remote correction blends in
-const SELF_TAU = 0.12; // seconds over which a correction of my own position blends in
-// ...but on each axis never faster than this fraction of the slowest per-axis walking speed (a diagonal
-// walk), so a held key never draws a step back in any direction
-const SELF_BLEND_FRAC = 0.6;
-const SNAP_PX = 128; // larger corrections are not network jitter: no blending (teleports reset the offset anyway)
 // Render on demand: a frame is drawn only when something on screen changed, plus this slow
 // heartbeat as a safety net. An office is mostly people standing still; redrawing an unchanged
 // scene 60 times a second kept the GPU awake for nothing.
@@ -64,12 +47,8 @@ const extraHeight = (f: AvatarFrames) => Math.max(0, f.tall - 22);
 
 const DEFAULT_AV: AvatarSpec = { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 };
 
-/** Where a box of half size `half` moving in direction v touches the tile edge it crosses reaching c (server: contact). */
-function contact(c: number, v: number, half: number) {
-  return v > 0 ? Math.floor((c + half - 0.001) / T) * T - half : (Math.floor((c - half) / T) + 1) * T + half;
-}
-
-interface Ent {
+/** A person on the map: where they are (Remote, dead-reckoned when they are not me) and what draws them. */
+interface Ent extends Remote {
   id: number;
   key: string;
   frames: AvatarFrames;
@@ -80,17 +59,6 @@ interface Ent {
   ring: Graphics | null;
   hand: Text | null;
   danceUntil: number;
-  // Remote entities are dead-reckoned: the server sends state changes (position + direction),
-  // the client keeps walking the entity with the same collision rules. (tx,ty) is the extrapolated
-  // truth, (ox,oy) a short-lived offset that hides corrections.
-  tx: number;
-  ty: number;
-  ox: number;
-  oy: number;
-  dx: number;
-  dy: number;
-  x: number;
-  y: number;
   dir: number;
   moving: boolean;
   run: boolean;
@@ -154,7 +122,7 @@ export class WorldView {
       const fast = e.id === this.meId ? this.fast : e.run;
       return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible };
     },
-    canStand: (x, y) => !!this.map && this.canStandStatic(x, y),
+    canStand: (x, y) => !!this.map && canStandStatic(this.grid, x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
     me: () => this.meId,
     headPoint: (id, out) => {
@@ -162,7 +130,7 @@ export class WorldView {
       if (!e || !e.spr.visible) return false;
       // the name tag is in screen pixels, over the drawing's real top; the sprite goes 2 px above its top
       out.x = e.x;
-      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.S);
+      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.cam.S);
       out.feetY = e.y;
       return true;
     },
@@ -172,37 +140,27 @@ export class WorldView {
   private owners = new Map<number, string>();
   private nameOf: NameOf = (id) => this.owners.get(id) ?? this.people.get(id)?.n;
   private map: MapData | null = null;
-  private solid = new Uint8Array(0);
-  private areaAt = new Int16Array(0);
+  /** The map as movement sees it: walls, the area of each tile, and the rooms I may not enter. */
+  private grid: Grid = { w: 0, h: 0, solid: new Uint8Array(0), areaAt: new Int16Array(0), deny: new Set() };
   // the area named to the player for each area: itself, or for a desk room the area it sits in
   private shownOf = new Int16Array(0);
-  private mShown = -1;
-  private deny = new Set<number>();
+  /** My area (room access) and the area named for it (the signboard). */
+  private where = new Whereabouts();
   private speed = 72;
   private runMul = 2;
   private runHeld = false; // Shift
   private runToggle = false; // "always run" (R or the HUD button)
   private dest: { x: number; y: number } | null = null;
   private baked: HTMLCanvasElement | null = null;
-  private S = 3;
-  private zoom = readZoom(); // whole steps away from the automatic scale (wheel); negative = farther
+  /** Scale, zoom, pan, where the world sits on screen, and the interest radius asked for (camera.ts). */
+  private cam = new Camera(zoomStore(() => localStorage));
   private wheelAt = 0;
-  // camera pan (left-drag with a mouse): world px added to the followed position; moving recentres
-  private panX = 0;
-  private panY = 0;
   private drag: { id: number; x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
   /** The mouse over the map (canvas pixels), for the name of a plugin sprite under it; null elsewhere or for touch. */
   private mouse: { x: number; y: number } | null = null;
   /** A plugin sprite's label and its owner's name, shown while the mouse is over the sprite. */
   private hoverTag = new BitmapText({ text: "", style: NOTE_STYLE });
   private dragEndAt = 0;
-  // the server's area of interest (hello): its cell size, default and largest radius in cells
-  private cellPx = 0;
-  private aoi = 0;
-  private aoiMax = 0;
-  private viewCells = 0; // radius last asked for (0 = the server default)
-  private camX = 0;
-  private camY = 0;
   private mapSprite: Sprite | null = null;
   /** Desks and pcs drawn again over the bake, sorted with the avatars (art/objects.ts), and their atlas. */
   private depthSprites: Sprite[] = [];
@@ -213,20 +171,12 @@ export class WorldView {
   // local player
   meId = 0;
   private meEnt: Ent | null = null;
-  private mx = 0;
-  private my = 0;
+  /** My position, predicted and reconciled with the server (motion.ts); drawn at x+ox, y+oy. */
+  private self = new LocalMotion();
   private dx = 0;
   private dy = 0;
   private mdir = 0;
-  private mArea = -1;
-  private seq = 0;
-  private hist = new Map<number, { x: number; y: number }>();
-  private lastAck = 0; // newest acknowledgement sequence applied
   private lastBeat = 0;
-  private lastLocal = 0; // performance.now() the local position was integrated to
-  // visual offset that hides reconciliation: the avatar is drawn at (mx+vox, my+voy)
-  private vox = 0;
-  private voy = 0;
 
   // stats
   private nFrames = 0;
@@ -337,8 +287,8 @@ export class WorldView {
         const { width: W, height: H } = app.screen;
         d.x = e.clientX;
         d.y = e.clientY;
-        d.camX = W / 2 - (this.mx + this.vox + this.panX) * this.S;
-        d.camY = H / 2 - (this.my + this.voy + this.panY) * this.S;
+        d.camX = W / 2 - (this.self.x + this.self.ox + this.cam.panX) * this.cam.S;
+        d.camY = H / 2 - (this.self.y + this.self.oy + this.cam.panY) * this.cam.S;
       }
     };
     app.canvas.addEventListener("wheel", wheel, { passive: false });
@@ -346,7 +296,7 @@ export class WorldView {
     // double-click to run there still works. Touch keeps the browser's own gestures and the pad.
     const pdown = (e: PointerEvent) => {
       if (e.button !== 0 || e.pointerType !== "mouse" || document.querySelector(".scrim, .editor")) return;
-      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.camX, camY: this.camY, moved: false };
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.cam.x, camY: this.cam.y, moved: false };
     };
     const pmove = (e: PointerEvent) => {
       const d = this.drag;
@@ -504,10 +454,7 @@ export class WorldView {
 
   private sendDir() {
     this.advanceLocal(performance.now());
-    this.seq++;
-    this.hist.set(this.seq, { x: this.mx, y: this.my });
-    if (this.hist.size > 64) this.hist.delete(this.hist.keys().next().value!);
-    this.hooks.sendInput(this.seq, this.dx, this.dy, this.running);
+    this.hooks.sendInput(this.self.record(), this.dx, this.dy, this.running);
     this.lastBeat = performance.now();
   }
 
@@ -549,15 +496,7 @@ export class WorldView {
   setMap(map: MapData, deny: number[]) {
     this.dirty = true;
     this.map = map;
-    this.deny = new Set(deny);
-    this.solid = new Uint8Array(map.w * map.h);
-    this.areaAt = new Int16Array(map.w * map.h).fill(-1);
-    for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) this.solid[y * map.w + x] = map.solid[y][x] === "1" ? 1 : 0;
-    for (let pass = 0; pass < 2; pass++)
-      map.areas.forEach((a, i) => {
-        if ((a.kind === "room") !== (pass === 1)) return;
-        for (let y = a.y; y < a.y + a.h; y++) for (let x = a.x; x < a.x + a.w; x++) this.areaAt[y * map.w + x] = i;
-      });
+    this.grid = { w: map.w, h: map.h, solid: solidGrid(map), areaAt: areaGrid(map), deny: new Set(deny) };
     this.mapSprite?.destroy({ texture: true, textureSource: true }); // do not leak a GPU texture per edit
     const tex = bakeMap(this.app.renderer, map);
     this.baked = tex.source.resource as HTMLCanvasElement;
@@ -566,11 +505,7 @@ export class WorldView {
     this.buildDepth(map);
     this.areaLabels.forEach((l) => l.text.destroy());
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
-    this.shownOf = new Int16Array(map.areas.length).map((_, i) => {
-      const a = map.areas[i];
-      if (!a.auto) return i;
-      return map.areas.findLastIndex((p) => p.kind !== "room" && a.x >= p.x && a.y >= p.y && a.x < p.x + p.w && a.y < p.y + p.h);
-    });
+    this.shownOf = shownAreas(map);
     this.areaLabels = map.areas.flatMap((a, ai) => {
       if (a.auto) return []; // the desk's own label already names it
       const text = new BitmapText({ text: this.areaLabel(ai), style: TAG_STYLE });
@@ -584,7 +519,7 @@ export class WorldView {
     this.deskLabels = map.props
       .filter((p) => p.t === "desk" && p.assign)
       .map((p) => {
-        const ai = map.areas.findIndex((a) => a.auto && a.id === `desk-${p.x}-${p.y}`); // the desk's own room
+        const ai = deskRoom(map, p); // the desk's own room
         const text = new BitmapText({ text: this.deskLabel(p, ai), style: DESK_STYLE });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
@@ -599,27 +534,23 @@ export class WorldView {
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
     if (this.meEnt) {
-      this.mArea = this.areaIndex(this.mx, this.my);
-      this.hooks.onArea(this.areaName(this.mArea), this.mArea);
-      this.mShown = this.shownArea(this.mArea);
+      this.where.area = this.areaIndex(this.self.x, this.self.y);
+      this.hooks.onArea(this.areaName(this.where.area), this.where.area);
+      this.where.shown = shownArea(this.shownOf, this.where.area);
     }
     this.layout();
   }
 
   setMe(id: number, x: number, y: number, speed: number, runMul = 2) {
     this.meId = id;
-    this.panX = this.panY = 0;
-    this.mx = x;
-    this.my = y;
-    this.vox = this.voy = 0;
-    this.hist.clear();
-    this.lastAck = 0;
+    this.cam.panX = this.cam.panY = 0;
+    this.self.reset(x, y);
     this.speed = speed;
     this.runMul = runMul;
-    this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.mArea), this.mArea);
-    this.mShown = this.shownArea(this.mArea);
-    if (this.mShown >= 0) this.showBanner(this.areaName(this.mArea));
+    this.where.area = this.areaIndex(x, y);
+    this.hooks.onArea(this.areaName(this.where.area), this.where.area);
+    this.where.shown = shownArea(this.shownOf, this.where.area);
+    if (this.where.shown >= 0) this.showBanner(this.areaName(this.where.area));
     if (!this.meEnt) {
       this.meEnt = this.makeEnt(id);
       this.ents.set(id, this.meEnt);
@@ -667,13 +598,13 @@ export class WorldView {
   }
   /** Re-render/re-collide with an unsaved draft (deny rules are kept). */
   previewMap(map: MapData) {
-    this.setMap(map, [...this.deny]);
+    this.setMap(map, [...this.grid.deny]);
   }
   /** Shows the label of the plugin sprite under the mouse (and its owner's name), or hides it; true when it changed. */
   private placeHoverTag(): boolean {
     const tag = this.hoverTag;
     const m = !this.mouse || this.drag?.moved || document.querySelector(".scrim") ? null : this.mouse;
-    const hit = m ? this.plugins.labelAt((m.x - this.camX) / this.S, (m.y - this.camY) / this.S) : null;
+    const hit = m ? this.plugins.labelAt((m.x - this.cam.x) / this.cam.S, (m.y - this.cam.y) / this.cam.S) : null;
     if (!hit) {
       if (!tag.visible) return false;
       tag.visible = false;
@@ -681,7 +612,7 @@ export class WorldView {
     }
     const owner = hit.owner ? this.people.get(hit.owner)?.n : undefined;
     const text = owner ? hit.text + "\n(" + owner + ")" : hit.text;
-    const x = Math.round(this.camX + hit.x * this.S), y = Math.round(this.camY + hit.top * this.S - 2);
+    const x = Math.round(this.cam.x + hit.x * this.cam.S), y = Math.round(this.cam.y + hit.top * this.cam.S - 2);
     if (tag.visible && tag.text === text && tag.x === x && tag.y === y) return false;
     tag.text = text;
     tag.position.set(x, y);
@@ -692,15 +623,15 @@ export class WorldView {
   /** Tests: where world point (x, y) is in the page, and the hover tag's text ("" while hidden). */
   pageOf(x: number, y: number): { x: number; y: number } {
     const r = this.app.canvas.getBoundingClientRect();
-    return { x: r.left + this.camX + x * this.S, y: r.top + this.camY + y * this.S };
+    return { x: r.left + this.cam.x + x * this.cam.S, y: r.top + this.cam.y + y * this.cam.S };
   }
   hoverText(): string {
     return this.hoverTag.visible ? this.hoverTag.text : "";
   }
   screenToTile(clientX: number, clientY: number): [number, number] {
     const r = this.app.canvas.getBoundingClientRect();
-    const wx = (clientX - r.left - this.camX) / this.S;
-    const wy = (clientY - r.top - this.camY) / this.S;
+    const wx = (clientX - r.left - this.cam.x) / this.cam.S;
+    const wy = (clientY - r.top - this.cam.y) / this.cam.S;
     return [Math.floor(wx / T), Math.floor(wy / T)];
   }
   setHover(h: { x: number; y: number; w: number; h: number } | null) {
@@ -708,16 +639,12 @@ export class WorldView {
     this.hover = h;
   }
   teleport(x: number, y: number) {
-    this.panX = this.panY = 0;
-    this.mx = x;
-    this.my = y;
-    this.vox = this.voy = 0;
+    this.cam.panX = this.cam.panY = 0;
+    this.self.reset(x, y);
     this.dx = this.dy = 0;
-    this.lastAck = 0;
-    this.hist.clear();
     this.keys.clear();
-    this.mArea = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+    this.where.area = this.areaIndex(x, y);
+    this.hooks.onArea(this.areaName(this.where.area), this.where.area);
   }
 
   /** The server steers me (a walk-to when run, else following a person) or stopped steering. */
@@ -754,33 +681,24 @@ export class WorldView {
   applySelf(m: SelfPosition) {
     this.mdir = m.d;
     if (m.tp) {
-      this.mx = m.x;
-      this.my = m.y;
-      this.lastLocal = performance.now();
+      this.self.restart(performance.now());
       this.teleport(m.x, m.y);
     } else {
       // a server-steered walk: my avatar runs on between these 15 Hz positions (advanceLocal), and the
       // gap to each one fades in instead of jumping there, so it moves smoothly and its followers too
       this.advanceLocal(performance.now());
       if (this.guided) this.guidedRun = m.r; // a follower runs while the person it follows runs
-      const ex = m.x - this.mx, ey = m.y - this.my;
-      this.mx = m.x;
-      this.my = m.y;
-      if (Math.hypot(ex, ey) > SNAP_PX) this.vox = this.voy = 0;
-      else {
-        this.vox -= ex;
-        this.voy -= ey;
-      }
+      this.self.correct(m.x, m.y);
       this.dx = m.dx;
       this.dy = m.dy;
-      this.mArea = this.areaIndex(m.x, m.y);
-      this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+      this.where.area = this.areaIndex(m.x, m.y);
+      this.hooks.onArea(this.areaName(this.where.area), this.where.area);
     }
   }
 
   setDeny(deny: number[]) {
     this.dirty = true;
-    this.deny = new Set(deny);
+    this.grid.deny = new Set(deny);
     this.relabel();
   }
 
@@ -796,11 +714,11 @@ export class WorldView {
   }
 
   private areaLabel(ai: number) {
-    return areaTitle(this.map!.areas[ai], this.nameOf) + (this.deny.has(ai) ? " 🔒" : "");
+    return areaTitle(this.map!.areas[ai], this.nameOf) + (this.grid.deny.has(ai) ? " 🔒" : "");
   }
 
   private deskLabel(p: Prop, ai: number) {
-    return deskTitle(p, this.nameOf) + (this.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
+    return deskTitle(p, this.nameOf) + (this.grid.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
   }
 
   private relabel() {
@@ -814,7 +732,7 @@ export class WorldView {
       const s = this.deskLabel(l.p, l.ai);
       if (l.text.text !== s) l.text.text = s;
     }
-    if (this.meEnt) this.hooks.onArea(this.areaName(this.mArea), this.mArea);
+    if (this.meEnt) this.hooks.onArea(this.areaName(this.where.area), this.where.area);
   }
 
   showEmote(id: number, kind: number) {
@@ -839,7 +757,7 @@ export class WorldView {
   }
 
   private updateNearby() {
-    const best = nearestUsable(this.map?.props ?? [], this.objSpecs, this.mx, this.my, 20);
+    const best = nearestUsable(this.map?.props ?? [], this.objSpecs, this.self.x, this.self.y, 20);
     if (best !== this.nearby) { this.nearby = best; this.hooks.onNearby?.(best); }
   }
 
@@ -925,18 +843,7 @@ export class WorldView {
           e.ty = e.y = y;
           this.ents.set(id, e);
         } else {
-          // keep the picture continuous: the difference to the new truth fades out
-          const ox = e.tx + e.ox - x;
-          const oy = e.ty + e.oy - y;
-          if (Math.hypot(ox, oy) > 24) {
-            e.ox = 0;
-            e.oy = 0;
-          } else {
-            e.ox = ox;
-            e.oy = oy;
-          }
-          e.tx = x;
-          e.ty = y;
+          retarget(e, x, y); // keep the picture continuous: the difference to the new truth fades out
         }
         e.dir = d & 3;
         e.dx = dx;
@@ -948,39 +855,9 @@ export class WorldView {
     if (m.l) for (const id of m.l) if (id !== this.meId) this.removeEnt(id);
   }
 
-  /**
-   * Server reconciliation: compare with where we were when that input was sent. The whole error
-   * is applied, to the position and to every input still in flight (whose recorded positions
-   * share the same error; leaving them alone applied it again on each later ack and overshot).
-   * The avatar is drawn where it was and the offset fades, so jitter never shows as a step back.
-   */
+  /** Server reconciliation (motion.ts, LocalMotion.ack). */
   applyAck(a: Ack) {
-    let h = this.hist.get(a.s);
-    if (!h) {
-      // No record of this input: its acknowledgement arrived after newer ones already
-      // cleared it (a delayed message after a stall). The effects of every input up to this
-      // one are already in the live position, so compare against that — but only for acks
-      // newer than anything applied so far.
-      if (a.s <= this.lastAck) return;
-      h = { x: this.mx, y: this.my };
-    }
-    this.lastAck = Math.max(this.lastAck, a.s);
-    for (const k of this.hist.keys()) if (k <= a.s) this.hist.delete(k);
-    const ex = a.x - h.x;
-    const ey = a.y - h.y;
-    if (Math.abs(ex) <= 0.1 && Math.abs(ey) <= 0.1) return; // the server rounds to 0.1 px
-    this.mx += ex;
-    this.my += ey;
-    for (const p of this.hist.values()) {
-      p.x += ex;
-      p.y += ey;
-    }
-    if (Math.hypot(ex, ey) > SNAP_PX) this.vox = this.voy = 0;
-    else {
-      this.vox -= ex;
-      this.voy -= ey;
-    }
-    this.syncArea();
+    if (this.self.ack(a.s, a.x, a.y)) this.syncArea();
   }
 
   clearRemote() {
@@ -988,7 +865,17 @@ export class WorldView {
   }
 
   position() {
-    return { x: this.mx, y: this.my };
+    return { x: this.self.x, y: this.self.y };
+  }
+
+  /** Tests: the area index I am in (room access). */
+  get mArea() {
+    return this.where.area;
+  }
+
+  /** Tests: the areas I may not enter. */
+  get deny() {
+    return this.grid.deny;
   }
 
   /** Rebuilt with the bake, never touched per frame: the sort they join already runs as avatars move. */
@@ -1137,145 +1024,50 @@ export class WorldView {
 
   // ---- movement / collision (mirrors the server) ----
   private areaIndex(x: number, y: number) {
-    if (!this.map) return -1;
-    const tx = Math.floor(x / T), ty = Math.floor(y / T);
-    if (tx < 0 || ty < 0 || tx >= this.map.w || ty >= this.map.h) return -1;
-    return this.areaAt[ty * this.map.w + tx];
-  }
-
-  private canStand(x: number, y: number) {
-    const m = this.map!;
-    const x0 = Math.floor((x - BOX_HW) / T), x1 = Math.floor((x + BOX_HW - 0.001) / T);
-    const y0 = Math.floor((y - BOX_HH) / T), y1 = Math.floor((y + BOX_HH - 0.001) / T);
-    for (let ty = y0; ty <= y1; ty++) {
-      for (let tx = x0; tx <= x1; tx++) {
-        if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h || this.solid[ty * m.w + tx]) return false;
-        const ai = this.areaAt[ty * m.w + tx];
-        if (ai !== this.mArea && this.deny.has(ai)) return false;
-      }
-    }
-    return true;
-  }
-
-  private canStandStatic(x: number, y: number) {
-    const m = this.map!;
-    const x0 = Math.floor((x - BOX_HW) / T), x1 = Math.floor((x + BOX_HW - 0.001) / T);
-    const y0 = Math.floor((y - BOX_HH) / T), y1 = Math.floor((y + BOX_HH - 0.001) / T);
-    for (let ty = y0; ty <= y1; ty++)
-      for (let tx = x0; tx <= x1; tx++) if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h || this.solid[ty * m.w + tx]) return false;
-    return true;
-  }
-
-  /** Walks a remote entity along its last known direction (same rule as the server's shadow). */
-  private extrapolate(e: Ent, dt: number) {
-    const p = this.body;
-    p.x = e.tx;
-    p.y = e.ty;
-    this.moveBody(p, e.dx, e.dy, this.speed * (e.run ? this.runMul : 1) * dt, true);
-    e.tx = p.x;
-    e.ty = p.y;
-  }
-
-  private body = { x: 0, y: 0 };
-  /** world.move on the server: the same sub-steps and contact rule (see SUB_STEP_PX). */
-  private moveBody(p: { x: number; y: number }, dx: number, dy: number, dist: number, isStatic: boolean) {
-    let vx = dx, vy = dy;
-    if (vx && vy) { vx *= 0.70710678; vy *= 0.70710678; }
-    const n = Math.max(1, Math.ceil(dist / SUB_STEP_PX));
-    const step = dist / n;
-    for (let i = 0; i < n; i++) {
-      if (vx) {
-        const nx = p.x + vx * step;
-        if (this.stand(nx, p.y, isStatic)) p.x = nx;
-        else {
-          const c = contact(nx, vx, BOX_HW);
-          if ((vx > 0 ? c > p.x : c < p.x) && this.stand(c, p.y, isStatic)) p.x = c;
-        }
-      }
-      if (vy) {
-        const ny = p.y + vy * step;
-        if (this.stand(p.x, ny, isStatic)) p.y = ny;
-        else {
-          const c = contact(ny, vy, BOX_HH);
-          if ((vy > 0 ? c > p.y : c < p.y) && this.stand(p.x, c, isStatic)) p.y = c;
-        }
-      }
-      if (!isStatic) this.mArea = this.areaIndex(p.x, p.y); // room access follows the walk, as on the server
-    }
-  }
-
-  private stand(x: number, y: number, isStatic: boolean) {
-    return isStatic ? this.canStandStatic(x, y) : this.canStand(x, y);
+    return this.map ? areaIndex(this.grid, x, y) : -1;
   }
 
   /** Integrates my own movement up to now (frames, and every input at the moment it is sent). */
   private advanceLocal(now: number) {
-    const dt = Math.min(Math.max(now - this.lastLocal, 0) / 1000, MAX_ADVANCE);
-    this.lastLocal = now;
-    if (!this.map || (!this.dx && !this.dy) || dt === 0) return;
-    const p = this.body;
-    p.x = this.mx;
-    p.y = this.my;
-    const was = this.mArea;
-    this.moveBody(p, this.dx, this.dy, this.speed * (this.fast ? this.runMul : 1) * dt, false);
-    this.mx = p.x;
-    this.my = p.y;
-    this.mArea = was;
-    this.syncArea();
-  }
-
-  /** The area to name for area index ai (a desk room shows as the area around it), or -1. */
-  private shownArea(ai: number) {
-    return ai >= 0 ? this.shownOf[ai] ?? ai : -1;
+    const v = this.speed * (this.fast ? this.runMul : 1);
+    if (this.self.advance(now, this.map ? this.grid : null, this.dx, this.dy, v, this.where.area)) this.syncArea();
   }
 
   private areaName(ai: number) {
-    const i = this.shownArea(ai);
+    const i = shownArea(this.shownOf, ai);
     return this.map && i >= 0 ? areaTitle(this.map.areas[i], this.nameOf) : "";
   }
 
   private syncArea() {
     if (!this.map) return;
-    const ai = this.areaIndex(this.mx, this.my);
-    if (ai !== this.mArea) {
-      this.mArea = ai;
-      this.hooks.onArea(this.areaName(ai), ai);
-      // a desk room is part of the desks around it: no banner walking in or out of one
-      const shown = this.shownArea(ai);
-      if (shown !== this.mShown) {
-        this.mShown = shown;
-        if (shown >= 0) this.showBanner(this.areaName(ai));
-      }
-    }
+    const ai = this.areaIndex(this.self.x, this.self.y);
+    const change = this.where.enter(ai, this.shownOf);
+    if (change === SAME) return;
+    this.hooks.onArea(this.areaName(ai), ai);
+    // a desk room is part of the desks around it: no banner walking in or out of one
+    if (change === SHOWN && this.where.shown >= 0) this.showBanner(this.areaName(ai));
   }
 
   // ---- zoom / area of interest ----
   /** From hello: the server's interest grid, which bounds how far out the map may zoom. */
   setInterest(cellPx: number, aoi: number, aoiMax: number) {
-    this.cellPx = cellPx;
-    this.aoi = aoi;
-    this.aoiMax = Math.max(aoi, aoiMax);
-    this.viewCells = -1; // tell each new connection, even when it is the default
+    this.cam.setInterest(cellPx, aoi, aoiMax);
     this.layout();
   }
 
   /** Zooms by whole scale steps (positive = closer) and returns the scale in use. Public for tests. */
   zoomBy(steps: number) {
-    if (!this.app) return this.S;
+    if (!this.app) return this.cam.S;
     const { width, height } = this.app.screen;
-    this.zoom += steps;
+    this.cam.zoomBy(steps, width, height);
     this.layout();
-    if (!this.cellPx) return this.S; // limits are not known before hello: keep the remembered zoom
-    this.zoom = this.S - autoScale(width, height); // forget steps past a limit
-    writeZoom(this.zoom);
-    return this.S;
+    return this.cam.S;
   }
 
   /** Puts the camera at this screen offset (the frame keeps it on the map and within reach). */
   private panTo(camX: number, camY: number) {
     const { width: W, height: H } = this.app.screen;
-    this.panX = (W / 2 - camX) / this.S - (this.mx + this.vox);
-    this.panY = (H / 2 - camY) / this.S - (this.my + this.voy);
+    this.cam.panTo(camX, camY, W, H, this.self.x + this.self.ox, this.self.y + this.self.oy);
     this.dirty = true;
   }
 
@@ -1290,44 +1082,54 @@ export class WorldView {
     this.app.canvas.style.cursor = "";
     document.body.style.userSelect = "";
     this.dragEndAt = performance.now();
-    this.panTo(this.camX, this.camY);
+    this.panTo(this.cam.x, this.cam.y);
   }
 
   /** Camera pan in world px (tests). */
   get pan() {
-    return { x: this.panX, y: this.panY };
+    return { x: this.cam.panX, y: this.cam.panY };
   }
 
   get scale() {
-    return this.S;
+    return this.cam.S;
+  }
+
+  // Tests (window.__hq.view) read these, as they read the fields they once were.
+  get S() {
+    return this.cam.S;
+  }
+  get camX() {
+    return this.cam.x;
+  }
+  get camY() {
+    return this.cam.y;
+  }
+  get panX() {
+    return this.cam.panX;
+  }
+  set panX(v: number) {
+    this.cam.panX = v;
+  }
+  get panY() {
+    return this.cam.panY;
+  }
+  set panY(v: number) {
+    this.cam.panY = v;
+  }
+  get cellPx() {
+    return this.cam.cellPx;
+  }
+  get aoiMax() {
+    return this.cam.aoiMax;
+  }
+  /** Whether a box may stand at (x, y) on walls alone (motion.ts), as plugin sprites walk. */
+  canStandStatic(x: number, y: number) {
+    return canStandStatic(this.grid, x, y);
   }
 
   /** Smallest and largest scale for this window. */
   scaleRange(width = this.app.screen.width, height = this.app.screen.height): [number, number] {
-    const auto = autoScale(width, height);
-    // Farthest out: half the visible map must fit the largest radius the server grants, or people
-    // near the screen edge would be missing. Before hello (unknown radius) only the automatic scale.
-    const reach = this.aoiMax * this.cellPx - VIEW_PAD;
-    const lo = this.cellPx ? Math.min(auto, Math.max(1, Math.ceil(Math.max(width, height) / (2 * reach)))) : auto;
-    return [lo, Math.max(auto, MAX_SCALE)];
-  }
-
-  /**
-   * Asks the server for the interest radius that covers the visible part of the map. The server
-   * subscribes whole cells around the player's cell, so a radius of r cells reaches at least r cells
-   * of pixels from the player in every direction; asking for the distance to the farthest visible
-   * map pixel keeps the request steady while walking (no flip-flop at cell boundaries).
-   */
-  private syncView(W: number, H: number, px: number, py: number) {
-    if (!this.map || !this.cellPx) return;
-    const S = this.S, mw = this.map.w * T, mh = this.map.h * T;
-    const left = Math.max(0, -this.camX / S), right = Math.min(mw, (W - this.camX) / S);
-    const top = Math.max(0, -this.camY / S), bottom = Math.min(mh, (H - this.camY) / S);
-    const far = Math.max(px - left, right - px, py - top, bottom - py);
-    const need = Math.max(this.aoi, Math.min(this.aoiMax, Math.ceil((far + VIEW_PAD) / this.cellPx - 1e-6)));
-    if (need === (this.viewCells || this.aoi)) return;
-    this.viewCells = need;
-    this.hooks.onView?.(need);
+    return this.cam.range(width, height);
   }
 
   // ---- layout / frame ----
@@ -1335,12 +1137,7 @@ export class WorldView {
     this.dirty = true;
     if (!this.app) return;
     const { width, height } = this.app.screen;
-    // integer zoom keeps pixel art crisp; the reference view is a handheld-style screen scaled by
-    // whole numbers, then moved by the wheel within what the server's area of interest can fill
-    const auto = autoScale(width, height);
-    const [lo, hi] = this.scaleRange(width, height);
-    this.S = Math.max(lo, Math.min(hi, auto + this.zoom));
-    this.world.scale.set(this.S);
+    this.world.scale.set(this.cam.fit(width, height));
   }
 
   private frame(deltaMS: number) {
@@ -1348,55 +1145,31 @@ export class WorldView {
     const t0 = performance.now();
     const dt = Math.min(deltaMS / 1000, 0.1);
     const now = t0;
-    const S = this.S;
+    const cam = this.cam, S = cam.S;
     const { width: W, height: H } = this.app.screen;
 
     this.advanceLocal(now);
     if (!this.guided && (this.dx || this.dy) && now - this.lastBeat > HEARTBEAT_MS) this.sendDir();
-    if (this.vox || this.voy) {
-      const k = 1 - Math.exp(-dt / SELF_TAU);
-      // fading the offset moves the drawn avatar by -b; only where that would go against the held
-      // direction is it capped, below walking speed, so the avatar slows but never steps back
-      const lim = SELF_BLEND_FRAC * this.speed * Math.SQRT1_2 * dt;
-      let bx = this.vox * k, by = this.voy * k;
-      if (this.dx && Math.sign(bx) === this.dx) bx = Math.sign(bx) * Math.min(Math.abs(bx), lim);
-      if (this.dy && Math.sign(by) === this.dy) by = Math.sign(by) * Math.min(Math.abs(by), lim);
-      this.vox -= bx;
-      this.voy -= by;
-      if (Math.hypot(this.vox, this.voy) < 0.02 || Math.hypot(this.vox, this.voy) > SNAP_PX) this.vox = this.voy = 0;
-    }
-    const rx = this.mx + this.vox, ry = this.my + this.voy; // where my avatar is drawn
+    this.self.blend(dt, this.dx, this.dy, this.speed);
+    const rx = this.self.x + this.self.ox, ry = this.self.y + this.self.oy; // where my avatar is drawn
     if (now - this.nearbyAt > 150) { this.nearbyAt = now; this.updateNearby(); }
 
-    if ((this.dx || this.dy || this.guided) && (this.panX || this.panY || this.drag)) {
+    if ((this.dx || this.dy || this.guided) && (cam.panX || cam.panY || this.drag)) {
       // moving recentres the camera on me, and ends a drag in progress
       if (this.drag?.moved) {
         this.app.canvas.style.cursor = "";
         document.body.style.userSelect = "";
       }
-      this.panX = this.panY = 0;
+      cam.panX = cam.panY = 0;
       this.drag = null;
-    }
-    // The middle of the screen may go anywhere on the office but never past its edges: at the top of
-    // the office the open space sits mid-screen, clear of the toolbars, with at most half a screen of
-    // margin beyond the map. Following me, I stay in the middle; a pan stops at the office's edge.
-    const vx = Math.max(0, Math.min(this.map.w * T, rx + this.panX)), vy = Math.max(0, Math.min(this.map.h * T, ry + this.panY));
-    let cx = W / 2 - vx * S, cy = H / 2 - vy * S;
-    // Never show map farther from me than the server's largest interest radius reaches: zoomed far
-    // out next to a map edge the camera stops following the edge and shows a margin instead of
-    // people the server does not send. A no-op whenever the visible map is already within reach.
-    if (this.cellPx) {
-      const R = this.aoiMax * this.cellPx - VIEW_PAD;
-      cx = reachClamp(cx, W, S, rx, R, this.map.w * T);
-      cy = reachClamp(cy, H, S, ry, R, this.map.h * T);
     }
     let changed = this.dirty;
     this.dirty = false;
-    if (Math.round(cx) !== this.camX || Math.round(cy) !== this.camY) changed = true;
-    this.camX = Math.round(cx);
-    this.camY = Math.round(cy);
-    this.syncView(W, H, rx, ry);
-    this.world.position.set(this.camX, this.camY);
+    const mapW = this.map.w * T, mapH = this.map.h * T;
+    if (cam.follow(W, H, rx, ry, mapW, mapH)) changed = true;
+    const need = cam.view(W, H, rx, ry, mapW, mapH);
+    if (need >= 0) this.hooks.onView?.(need);
+    this.world.position.set(cam.x, cam.y);
 
     const walkRate = this.eco ? 5 : 8;
     let visible = 0;
@@ -1405,15 +1178,10 @@ export class WorldView {
       if (isMe) {
         e.x = rx; e.y = ry; e.dir = this.mdir; e.moving = !!(this.dx || this.dy);
       } else {
-        if (e.dx || e.dy) this.extrapolate(e, dt);
-        const k = Math.exp(-dt / OFFSET_TAU);
-        e.ox *= k;
-        e.oy *= k;
-        e.x = e.tx + e.ox;
-        e.y = e.ty + e.oy;
+        stepRemote(e, this.grid, dt, this.speed * (e.run ? this.runMul : 1));
       }
-      const sx = Math.round(e.x * S + this.camX);
-      const sy = Math.round(e.y * S + this.camY);
+      const sx = Math.round(e.x * S + cam.x);
+      const sy = Math.round(e.y * S + cam.y);
       const on = sx > -40 && sx < W + 40 && sy > -60 && sy < H + 60;
       if (e.spr.visible !== on) changed = true;
       e.spr.visible = on;
@@ -1455,28 +1223,28 @@ export class WorldView {
       const e = this.ents.get(id);
       if (!e || now >= bubble.until) { bubble.text.destroy(); this.emotes.delete(id); changed = true; continue; }
       bubble.text.visible = e.label.visible;
-      bubble.text.position.set(e.x * S + this.camX, e.y * S + this.camY - (26 + extraHeight(e.frames)) * S - 28);
+      bubble.text.position.set(e.x * S + cam.x, e.y * S + cam.y - (26 + extraHeight(e.frames)) * S - 28);
     }
 
     // area labels
     for (const l of this.areaLabels) {
       const a = this.map.areas[l.ai];
-      const sx = (a.x + a.w / 2) * T * S + this.camX;
-      const sy = (a.y + 0.2) * T * S + this.camY;
+      const sx = (a.x + a.w / 2) * T * S + cam.x;
+      const sy = (a.y + 0.2) * T * S + cam.y;
       l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
 
     for (const l of this.placeholderLabels) {
-      const sx = l.x * S + this.camX;
-      const sy = l.y * S + this.camY;
+      const sx = l.x * S + cam.x;
+      const sy = l.y * S + cam.y;
       l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H + 20;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
 
     for (const l of this.deskLabels) {
-      const sx = l.x * S + this.camX;
-      const sy = l.y * S + this.camY;
+      const sx = l.x * S + cam.x;
+      const sy = l.y * S + cam.y;
       l.text.visible = S >= 3 && sx > -60 && sx < W + 60 && sy > 0 && sy < H + 20;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
@@ -1496,7 +1264,7 @@ export class WorldView {
       else {
         const pulse = (now % 900) / 900;
         this.fxG.circle(this.locate.x, this.locate.y, 6 + pulse * 14).stroke({ color: 0xffb84d, width: 2, alpha: 1 - pulse });
-        const sx = this.locate.x * S + this.camX, sy = this.locate.y * S + this.camY;
+        const sx = this.locate.x * S + cam.x, sy = this.locate.y * S + cam.y;
         if (sx < 0 || sy < 0 || sx > W || sy > H) {
           const ang = Math.atan2(sy - H / 2, sx - W / 2);
           const ex = Math.max(24, Math.min(W - 24, sx)), ey = Math.max(24, Math.min(H - 24, sy));
@@ -1562,35 +1330,6 @@ export class WorldView {
       e.dot.roundRect(x, -12, 12, 9, 1).fill(0x1a1526).roundRect(x + 1.5, -10.5, 9, 6, 1).fill(0x6ec8ff).rect(x + 4, -3, 4, 2).fill(0x1a1526);
     }
     if (e.hand) e.hand.position.set(w / 2 + 3 + (e.inConv ? 9 : 0) + (e.sharing ? 15 : 0), 0);
-  }
-}
-
-/**
- * Camera offset c (screen px, one axis) moved as little as possible so the visible map stays within
- * R world px of the player at p; when the window is wider than 2R both ends cannot hold: centre on p.
- */
-function reachClamp(c: number, W: number, S: number, p: number, R: number, mapLen: number) {
-  const hi = p - R > 0 ? (R - p) * S : Infinity; // the map's near end is out of reach: c at most this
-  const lo = p + R < mapLen ? W - (p + R) * S : -Infinity; // the far end is out of reach: c at least this
-  if (lo > hi) return W / 2 - p * S;
-  return Math.min(hi, Math.max(lo, c));
-}
-
-function autoScale(width: number, height: number) {
-  return Math.max(2, Math.min(6, Math.floor(Math.min(width / VIEW_REF_W, height / VIEW_REF_H))));
-}
-function readZoom() {
-  try {
-    return Math.round(Number(localStorage.getItem("hq.zoom"))) || 0;
-  } catch {
-    return 0;
-  }
-}
-function writeZoom(z: number) {
-  try {
-    localStorage.setItem("hq.zoom", String(z));
-  } catch {
-    // storage blocked: the zoom is just not remembered
   }
 }
 
