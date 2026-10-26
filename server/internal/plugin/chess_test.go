@@ -559,6 +559,9 @@ func TestChessUndo(t *testing.T) {
 		if l, u := last(s); l != "" || u || seat(s, "w") != "Alice" || seat(s, "b") != "Bob" {
 			t.Fatalf("after an undo: no highlight, no second undo, seats kept: %v", s)
 		}
+		if s["undone"] != "w" {
+			t.Fatalf("the state names the side that undid (the views announce it): %v", s)
+		}
 	}
 
 	// the other player's undo, of a capture: the reserve comes back too
@@ -572,8 +575,8 @@ func TestChessUndo(t *testing.T) {
 	}
 	send(h, bob, `{"t":"undo","x":2,"y":3}`)
 	s = waitBoard(t, sink, alice.ID, 2, 3, "Bob undoes White's capture", func(s map[string]any) bool { return s["p"] == startPos })
-	if s["r"] != "" {
-		t.Fatalf("the reserve is restored: %v", s)
+	if s["r"] != "" || s["undone"] != "b" {
+		t.Fatalf("the reserve is restored, Black named as the side that undid: %v", s)
 	}
 	_, bobN := boardOf(sink, bob.ID, 2, 3)
 	send(h, bob, `{"t":"undo","x":2,"y":3}`) // one level only
@@ -584,7 +587,10 @@ func TestChessUndo(t *testing.T) {
 
 	// an undoer whose window is closed is not present: ignored
 	send(h, bob, `{"t":"move","x":2,"y":3,"from":12,"to":28}`)
-	waitBoard(t, sink, alice.ID, 2, 3, "e5", func(s map[string]any) bool { return s["p"].(string)[28] == 'p' })
+	s = waitBoard(t, sink, alice.ID, 2, 3, "e5", func(s map[string]any) bool { return s["p"].(string)[28] == 'p' })
+	if s["undone"] != nil {
+		t.Fatalf("the next action clears who undid: %v", s)
+	}
 	send(h, alice, `{"t":"close","x":2,"y":3}`)
 	waitBoard(t, sink, bob.ID, 2, 3, "Alice away", func(s map[string]any) bool { return seat(s, "w") == "Alice (away)" })
 	send(h, alice, `{"t":"undo","x":2,"y":3}`)
