@@ -26,6 +26,18 @@ Plugins already live by a lifecycle (`plugins/sdk/client.d.ts`: `onLoad`, `onUpd
 
 ## Impact
 
-- **Performance**: unchanged by design (same loops, one more index loop over six layers, no new allocation per frame). Measured with the `perf` scenario before and after on the same machine (Windows 11, AMD Ryzen 5 9600X, Chrome 156 headless, software GL through SwiftShader, 1440x900): see the numbers in PR #44 and below.
+- **Performance**: unchanged by design (same loops, one more index loop over six layers, no new allocation per frame), and no difference measured. The `perf` scenario ran 6 times on the commit before (98d081e) and 6 times after, interleaved, on one machine: Windows 11, AMD Ryzen 5 9600X, 62 GB, Chrome 156 headless with software GL (SwiftShader), 1440x900, the server, LiveKit and 300 WebSocket bots on the same machine, and the owner's own e2e runs sharing it during some runs. Medians before / after (ranges in brackets):
+
+  | | before | after |
+  | --- | --- | --- |
+  | Frames drawn per second, alone and standing still | 3.9 (3.8-4.0) | 3.9 (3.8-3.9) |
+  | Frames drawn per second, alone and walking | 58.0 (49.9-58.7) | 58.3 (55.3-59.0) |
+  | Normal mode with 300 bots: FPS | 52.9 (44.8-56.9) | 49.0 (43.0-56.8) |
+  | Normal mode: frame time, ms | 0.95 (0.73-1.32) | 1.03 (0.72-1.36) |
+  | Normal mode: main thread busy, % | 80.6 (78.3-96.6) | 79.9 (78.5-94.6) |
+  | Economy mode: FPS | 29.6 (29.1-29.8) | 29.5 (29.4-29.7) |
+  | Economy mode: main thread busy, % | 47.2 (43.2-61.2) | 49.3 (43.3-62.7) |
+
+  The ranges overlap on every row; on this shared machine the runs cannot tell apart differences smaller than about 10 %. Not measured: a real GPU, a phone.
 - **Maintenance**: `WorldView.ts` goes from 1,349 to about 600 lines, a third of which are the accessors the browser tests read; each concern is a module of 60 to 320 lines. A new thing drawn in the world is a new layer (AGENTS.md, conventions) instead of more fields and another block in `frame()`. The parts that node can run are unit tested (`web/test/layers.test.ts`: the layer loop and render decision, the signboard's slide, `LocalPlayer`); PixiJS text needs a DOM, so the drawing itself stays covered by the browser scenarios and the `capture-*` films.
 - **Install**: none. No new dependency, no configuration, no protocol or data change.
