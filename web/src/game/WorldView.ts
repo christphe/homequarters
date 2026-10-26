@@ -1,5 +1,6 @@
 import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
-import { BANNER_STYLE, DESK_STYLE, NOTE_STYLE, PLUGIN_NOTE_STYLE, TAG_STYLE } from "./mapText";
+import { NOTE_STYLE, PLUGIN_NOTE_STYLE, TAG_STYLE } from "./mapText";
+import { LabelLayer } from "./labelLayer";
 import { shouldRender, type ViewContext } from "./layer";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
@@ -13,10 +14,10 @@ import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } fro
 import { bakeMapCanvas } from "./art/tiles";
 import { MapLayer } from "./mapLayer";
 import { PluginLayer } from "./pluginLayer";
-import { areaTitle, deskTitle } from "./places";
+import { areaTitle } from "./places";
 import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Remote } from "./motion";
 import { Camera, zoomStore } from "./camera";
-import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
+import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, shownArea, shownAreas } from "./areas";
 
 export { bitmapFonts } from "./mapText";
 
@@ -106,13 +107,8 @@ export class WorldView {
   private owners = new Map<number, string>();
   private fxG = new Graphics();
   private hudG = new Graphics();
-  private banner = new Container();
-  private bannerG = new Graphics();
-  private bannerText: BitmapText | null = null;
-  private bannerT0 = -1e9;
-  private bannerW = 0;
-  private areaLabels: { text: BitmapText; ai: number }[] = [];
-  private deskLabels: { text: BitmapText; x: number; y: number; p: Prop; ai: number }[] = [];
+  /** Area and desk names, and the location signboard (labelLayer.ts). */
+  private labelLayer = new LabelLayer();
   private ents = new Map<number, Ent>();
   /** Sprites drawn for plugins (src/plugins): they sort with avatars. */
   readonly plugins = new PluginLayer(this.ctx.entLayer, {
@@ -235,10 +231,7 @@ export class WorldView {
     this.hoverTag.anchor.set(0.5, 1);
     this.hoverTag.visible = false;
     this.ctx.hud.addChild(this.hoverTag);
-    this.bannerText = new BitmapText({ text: "", style: BANNER_STYLE });
-    this.banner.addChild(this.bannerG, this.bannerText);
-    this.banner.visible = false;
-    this.ctx.hud.addChild(this.banner);
+    this.labelLayer.init(this.ctx);
     app.ticker.maxFPS = eco ? 30 : 0;
     app.ticker.remove(app.render, app); // frame() draws, and only when something changed
     app.ticker.add((t) => this.frame(t.deltaMS));
@@ -498,32 +491,9 @@ export class WorldView {
     this.ctx.map = map;
     this.ctx.grid = { w: map.w, h: map.h, solid: solidGrid(map), areaAt: areaGrid(map), deny: new Set(deny) };
     this.mapLayer.onMap(map);
-    this.areaLabels.forEach((l) => l.text.destroy());
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
     this.ctx.shownOf = shownAreas(map);
-    this.areaLabels = map.areas.flatMap((a, ai) => {
-      if (a.auto) return []; // the desk's own label already names it
-      const text = new BitmapText({ text: this.areaLabel(ai), style: TAG_STYLE });
-      text.anchor.set(0.5, 0);
-      text.alpha = 0.85;
-      this.ctx.hud.addChild(text);
-      return [{ text, ai }];
-    });
-    // assigned desks show their owner
-    this.deskLabels.forEach((l) => l.text.destroy());
-    this.deskLabels = map.props
-      .filter((p) => p.t === "desk" && p.assign)
-      .map((p) => {
-        const ai = deskRoom(map, p); // the desk's own room
-        const text = new BitmapText({ text: this.deskLabel(p, ai), style: DESK_STYLE });
-        text.anchor.set(0.5, 1);
-        text.alpha = 0.95;
-        this.ctx.hud.addChild(text);
-        // over the middle of the desk, whatever its width; the bottom desk of an island (another desk
-        // right above it) is labelled under its seat, where the sitter's own name tag does not reach
-        const back = map.props.some((q) => q.t === "desk" && q.up && q.y === p.y - 1 && q.x === p.x);
-        return { text, x: (p.x + (p.w ?? 2) / 2) * T, y: back ? (p.y + 2) * T + 10 : p.y * T, p, ai };
-      });
+    this.labelLayer.onMap(map);
     this.drawObjects();
     this.onProps?.(map.props);
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
@@ -545,7 +515,7 @@ export class WorldView {
     this.where.area = this.areaIndex(x, y);
     this.hooks.onArea(this.areaName(this.where.area), this.where.area);
     this.where.shown = shownArea(this.ctx.shownOf, this.where.area);
-    if (this.where.shown >= 0) this.showBanner(this.areaName(this.where.area));
+    if (this.where.shown >= 0) this.labelLayer.showBanner(this.areaName(this.where.area));
     if (!this.meEnt) {
       this.meEnt = this.makeEnt(id);
       this.ents.set(id, this.meEnt);
@@ -705,28 +675,24 @@ export class WorldView {
 
   /** Public: the text of every desk and area label on the map, as drawn (tests read it). */
   labels() {
-    return [...this.areaLabels, ...this.deskLabels].map((l) => l.text.text);
+    return this.labelLayer.labels();
   }
 
-  private areaLabel(ai: number) {
-    return areaTitle(this.ctx.map!.areas[ai], this.ctx.nameOf) + (this.ctx.grid.deny.has(ai) ? " 🔒" : "");
+  /** Tests and the art scripts: the label and banner texts. */
+  get areaLabels() {
+    return this.labelLayer.areaLabels;
   }
-
-  private deskLabel(p: Prop, ai: number) {
-    return deskTitle(p, this.ctx.nameOf) + (this.ctx.grid.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
+  get deskLabels() {
+    return this.labelLayer.deskLabels;
+  }
+  get banner() {
+    return this.labelLayer.banner;
   }
 
   private relabel() {
     if (!this.ctx.map) return;
     this.ctx.dirty = true;
-    for (const l of this.areaLabels) {
-      const s = this.areaLabel(l.ai);
-      if (l.text.text !== s) l.text.text = s;
-    }
-    for (const l of this.deskLabels) {
-      const s = this.deskLabel(l.p, l.ai);
-      if (l.text.text !== s) l.text.text = s;
-    }
+    this.labelLayer.relabel();
     if (this.meEnt) this.hooks.onArea(this.areaName(this.where.area), this.where.area);
   }
 
@@ -975,26 +941,6 @@ export class WorldView {
     if (!this.ctx.people.has(id)) releaseAvatar(id);
   }
 
-  /** Location signboard that slides in from the top when entering an area (handheld-RPG style). */
-  private showBanner(name: string) {
-    this.ctx.dirty = true;
-    const t = this.bannerText;
-    if (!t || !name) return;
-    t.text = name.toUpperCase();
-    const w = Math.round(t.width) + 40, h = 38;
-    this.bannerW = w;
-    this.bannerG
-      .clear()
-      .roundRect(0, 0, w, h, 4).fill(0x383858)
-      .roundRect(2, 2, w - 4, h - 4, 3).fill(0xa0a8e8)
-      .roundRect(4, 4, w - 8, h - 8, 2).fill(0xf8f8ff)
-      .rect(4, h - 8, w - 8, 3).fill(0xdcdcf0)
-      .rect(4, 4, w - 8, 2).fill(0xffffff);
-    // whole pixels: a centred anchor put odd-width text on half pixels and blurred it
-    t.position.set(20, Math.round((h - t.height) / 2));
-    this.bannerT0 = performance.now();
-  }
-
   // ---- movement / collision (mirrors the server) ----
   private areaIndex(x: number, y: number) {
     return this.ctx.map ? areaIndex(this.ctx.grid, x, y) : -1;
@@ -1018,7 +964,7 @@ export class WorldView {
     if (change === SAME) return;
     this.hooks.onArea(this.areaName(ai), ai);
     // a desk room is part of the desks around it: no banner walking in or out of one
-    if (change === SHOWN && this.where.shown >= 0) this.showBanner(this.areaName(ai));
+    if (change === SHOWN && this.where.shown >= 0) this.labelLayer.showBanner(this.areaName(ai));
   }
 
   // ---- zoom / area of interest ----
@@ -1199,26 +1145,10 @@ export class WorldView {
       bubble.text.position.set(e.x * S + cam.x, e.y * S + cam.y - (26 + extraHeight(e.frames)) * S - 28);
     }
 
-    // area labels
-    for (const l of this.areaLabels) {
-      const a = this.ctx.map.areas[l.ai];
-      const sx = (a.x + a.w / 2) * T * S + cam.x;
-      const sy = (a.y + 0.2) * T * S + cam.y;
-      l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H;
-      l.text.position.set(Math.round(sx), Math.round(sy));
-    }
-
     for (const l of this.placeholderLabels) {
       const sx = l.x * S + cam.x;
       const sy = l.y * S + cam.y;
       l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H + 20;
-      l.text.position.set(Math.round(sx), Math.round(sy));
-    }
-
-    for (const l of this.deskLabels) {
-      const sx = l.x * S + cam.x;
-      const sy = l.y * S + cam.y;
-      l.text.visible = S >= 3 && sx > -60 && sx < W + 60 && sy > 0 && sy < H + 20;
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
 
@@ -1246,24 +1176,12 @@ export class WorldView {
       }
     }
 
-    // location signboard animation: slide in, hold, slide out
-    {
-      const t = now - this.bannerT0;
-      const h = 38, total = 2600, slide = 260;
-      if (t < 0 || t > total) this.banner.visible = false;
-      else {
-        const k = t < slide ? t / slide : t > total - slide ? (total - t) / slide : 1;
-        const e = 1 - (1 - k) * (1 - k);
-        this.banner.visible = true;
-        this.banner.position.set(Math.round((W - this.bannerW) / 2), Math.round(-h + (h + 60) * e));
-      }
-    }
-
+    if (this.labelLayer.update(dt, now)) changed = true; // the banner animates while shown
     if (this.plugins.update(dt, now)) changed = true;
     if (this.placeHoverTag()) changed = true;
 
     // animations that redraw on their own every frame
-    if (this.emotes.size || this.dest || this.locate || this.banner.visible) changed = true;
+    if (this.emotes.size || this.dest || this.locate) changed = true;
     if (shouldRender(changed, now, this.lastRender)) {
       this.app.render();
       this.lastRender = now;
