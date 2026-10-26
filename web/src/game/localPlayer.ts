@@ -34,11 +34,17 @@ export class LocalPlayer {
   /** My area (room access) and the area named for it (the signboard). */
   readonly where = new Whereabouts();
 
-  constructor(
-    private ctx: ViewContext,
-    private hooks: Pick<ViewHooks, "sendInput" | "onArea" | "onRun" | "onGoto">,
-    private banner: (name: string) => void,
-  ) {}
+  // fields, not parameter properties: node's type stripping (web/test) cannot run those
+  private ctx: ViewContext;
+  private hooks: Pick<ViewHooks, "sendInput" | "onArea" | "onRun" | "onGoto">;
+  private banner: (name: string) => void;
+
+  /** banner: shows the signboard naming an area I walk into. */
+  constructor(ctx: ViewContext, hooks: Pick<ViewHooks, "sendInput" | "onArea" | "onRun" | "onGoto">, banner: (name: string) => void) {
+    this.ctx = ctx;
+    this.hooks = hooks;
+    this.banner = banner;
+  }
 
   /** One frame, before the camera: integrate my movement, re-send held input now and then, fade corrections in. */
   update(dt: number, now: number) {

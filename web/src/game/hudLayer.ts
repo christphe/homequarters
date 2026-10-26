@@ -21,7 +21,16 @@ export class HudLayer implements Layer {
   hover: { x: number; y: number; w: number; h: number } | null = null;
   locate: { x: number; y: number; until: number } | null = null;
 
-  constructor(private player: LocalPlayer, private input: InputController, private plugins: PluginLayer) {}
+  // fields, not parameter properties: node's type stripping (web/test) cannot run those
+  private player: Pick<LocalPlayer, "dest">;
+  private input: Pick<InputController, "mouse" | "dragging">;
+  private plugins: Pick<PluginLayer, "labelAt">;
+
+  constructor(player: Pick<LocalPlayer, "dest">, input: Pick<InputController, "mouse" | "dragging">, plugins: Pick<PluginLayer, "labelAt">) {
+    this.player = player;
+    this.input = input;
+    this.plugins = plugins;
+  }
 
   init(ctx: ViewContext) {
     this.ctx = ctx;

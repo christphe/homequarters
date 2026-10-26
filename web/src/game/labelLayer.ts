@@ -8,6 +8,17 @@ import { BANNER_STYLE, DESK_STYLE, TAG_STYLE } from "./mapText";
 import type { Layer, ViewContext } from "./layer";
 
 const T = 16;
+const BANNER_H = 38;
+const BANNER_MS = 2600; // shown this long, sliding in and out over BANNER_SLIDE_MS
+const BANNER_SLIDE_MS = 260;
+
+/** How far the signboard is slid in, t ms after it was asked for: 0 (above the screen) to 1 (fully in),
+ *  eased; -1 when it is not shown (before, or after BANNER_MS). */
+export function bannerSlide(t: number) {
+  if (t < 0 || t > BANNER_MS) return -1;
+  const k = t < BANNER_SLIDE_MS ? t / BANNER_SLIDE_MS : t > BANNER_MS - BANNER_SLIDE_MS ? (BANNER_MS - t) / BANNER_SLIDE_MS : 1;
+  return 1 - (1 - k) * (1 - k);
+}
 
 export class LabelLayer implements Layer {
   private ctx!: ViewContext;
@@ -87,7 +98,7 @@ export class LabelLayer implements Layer {
     const t = this.bannerText;
     if (!t || !name) return;
     t.text = name.toUpperCase();
-    const w = Math.round(t.width) + 40, h = 38;
+    const w = Math.round(t.width) + 40, h = BANNER_H;
     this.bannerW = w;
     this.bannerG
       .clear()
@@ -119,14 +130,11 @@ export class LabelLayer implements Layer {
       l.text.position.set(Math.round(sx), Math.round(sy));
     }
     // location signboard animation: slide in, hold, slide out
-    const t = now - this.bannerT0;
-    const h = 38, total = 2600, slide = 260;
-    if (t < 0 || t > total) this.banner.visible = false;
+    const e = bannerSlide(now - this.bannerT0);
+    if (e < 0) this.banner.visible = false;
     else {
-      const k = t < slide ? t / slide : t > total - slide ? (total - t) / slide : 1;
-      const e = 1 - (1 - k) * (1 - k);
       this.banner.visible = true;
-      this.banner.position.set(Math.round((W - this.bannerW) / 2), Math.round(-h + (h + 60) * e));
+      this.banner.position.set(Math.round((W - this.bannerW) / 2), Math.round(-BANNER_H + (BANNER_H + 60) * e));
     }
     return this.banner.visible; // it redraws on its own every frame while shown
   }
