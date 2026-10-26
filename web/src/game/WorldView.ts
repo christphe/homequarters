@@ -1,6 +1,6 @@
 import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import { BANNER_STYLE, DESK_STYLE, NOTE_STYLE, PLUGIN_NOTE_STYLE, TAG_STYLE } from "./mapText";
-import { shouldRender } from "./layer";
+import { shouldRender, type ViewContext } from "./layer";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
@@ -10,12 +10,11 @@ import { nearestUsable, objectsFor } from "./pluginObjects";
 import { ObjectPictures } from "./objectPictures";
 import { t } from "../i18n";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
-import { bakeMap } from "./mapArt";
 import { bakeMapCanvas } from "./art/tiles";
-import { depthAtlas } from "./art/objects";
+import { MapLayer } from "./mapLayer";
 import { PluginLayer } from "./pluginLayer";
-import { areaTitle, deskTitle, type NameOf } from "./places";
-import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Grid, type Remote } from "./motion";
+import { areaTitle, deskTitle } from "./places";
+import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Remote } from "./motion";
 import { Camera, zoomStore } from "./camera";
 import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
 
@@ -85,10 +84,26 @@ export interface ViewStats {
 }
 
 export class WorldView {
-  private app!: Application;
-  private world = new Container();
-  private entLayer = new Container();
-  private hud = new Container();
+  app!: Application;
+  /** What the layers share (layer.ts): the stage, the camera, the map, the people. */
+  private ctx: ViewContext = {
+    app: null as unknown as Application, // set in init(), before any layer's init
+    world: new Container(),
+    entLayer: new Container(),
+    hud: new Container(),
+    /** Scale, zoom, pan, where the world sits on screen, and the interest radius asked for (camera.ts). */
+    cam: new Camera(zoomStore(() => localStorage)),
+    dirty: true,
+    eco: false,
+    map: null,
+    grid: { w: 0, h: 0, solid: new Uint8Array(0), areaAt: new Int16Array(0), deny: new Set() },
+    shownOf: new Int16Array(0),
+    people: new Map<number, Person>(),
+    nameOf: (id) => this.owners.get(id) ?? this.ctx.people.get(id)?.n,
+    meId: 0,
+  };
+  /** Names of the members places belong to (the server's owner names); online people fill the gaps. */
+  private owners = new Map<number, string>();
   private fxG = new Graphics();
   private hudG = new Graphics();
   private banner = new Container();
@@ -100,35 +115,26 @@ export class WorldView {
   private deskLabels: { text: BitmapText; x: number; y: number; p: Prop; ai: number }[] = [];
   private ents = new Map<number, Ent>();
   /** Sprites drawn for plugins (src/plugins): they sort with avatars. */
-  readonly plugins = new PluginLayer(this.entLayer, {
+  readonly plugins = new PluginLayer(this.ctx.entLayer, {
     owner: (id) => {
       const e = this.ents.get(id);
       if (!e) return null;
-      const fast = e.id === this.meId ? this.fast : e.run;
+      const fast = e.id === this.ctx.meId ? this.fast : e.run;
       return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible };
     },
-    canStand: (x, y) => !!this.map && canStandStatic(this.grid, x, y),
+    canStand: (x, y) => !!this.ctx.map && canStandStatic(this.ctx.grid, x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
-    me: () => this.meId,
+    me: () => this.ctx.meId,
     headPoint: (id, out) => {
       const e = this.ents.get(id);
       if (!e || !e.spr.visible) return false;
       // the name tag is in screen pixels, over the drawing's real top; the sprite goes 2 px above its top
       out.x = e.x;
-      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.cam.S);
+      out.y = e.y - (24 * 0.9 + extraHeight(e.frames) + (e.text.height + 2) / this.ctx.cam.S);
       out.feetY = e.y;
       return true;
     },
   });
-  private people = new Map<number, Person>();
-  /** Names of the members places belong to (the server's owner names); online people fill the gaps. */
-  private owners = new Map<number, string>();
-  private nameOf: NameOf = (id) => this.owners.get(id) ?? this.people.get(id)?.n;
-  private map: MapData | null = null;
-  /** The map as movement sees it: walls, the area of each tile, and the rooms I may not enter. */
-  private grid: Grid = { w: 0, h: 0, solid: new Uint8Array(0), areaAt: new Int16Array(0), deny: new Set() };
-  // the area named to the player for each area: itself, or for a desk room the area it sits in
-  private shownOf = new Int16Array(0);
   /** My area (room access) and the area named for it (the signboard). */
   private where = new Whereabouts();
   private speed = 72;
@@ -136,9 +142,6 @@ export class WorldView {
   private runHeld = false; // Shift
   private runToggle = false; // "always run" (R or the HUD button)
   private dest: { x: number; y: number } | null = null;
-  private baked: HTMLCanvasElement | null = null;
-  /** Scale, zoom, pan, where the world sits on screen, and the interest radius asked for (camera.ts). */
-  private cam = new Camera(zoomStore(() => localStorage));
   private wheelAt = 0;
   private drag: { id: number; x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
   /** The mouse over the map (canvas pixels), for the name of a plugin sprite under it; null elsewhere or for touch. */
@@ -146,15 +149,12 @@ export class WorldView {
   /** A plugin sprite's label and its owner's name, shown while the mouse is over the sprite. */
   private hoverTag = new BitmapText({ text: "", style: NOTE_STYLE });
   private dragEndAt = 0;
-  private mapSprite: Sprite | null = null;
-  /** Desks and pcs drawn again over the bake, sorted with the avatars (art/objects.ts), and their atlas. */
-  private depthSprites: Sprite[] = [];
-  private depthTex: Texture | null = null;
+  /** The baked map and the desks and pcs drawn over it (mapLayer.ts). */
+  private mapLayer = new MapLayer();
   private keys = new Set<string>();
   private destroyed = false;
 
   // local player
-  meId = 0;
   private meEnt: Ent | null = null;
   /** My position, predicted and reconciled with the server (motion.ts); drawn at x+ox, y+oy. */
   private self = new LocalMotion();
@@ -171,12 +171,10 @@ export class WorldView {
   stats: ViewStats = { fps: 0, frameMs: 0, worldMsgs: 0, entities: 0, visible: 0, renders: 0 };
   private nRenders = 0;
   rendersTotal = 0; // frames drawn since start (tests)
-  private dirty = true; // something changed outside frame(): draw the next frame
   private lastRender = 0;
 
   private locate: { x: number; y: number; until: number } | null = null;
   private hover: { x: number; y: number; w: number; h: number } | null = null;
-  private eco = false;
   private guided = false;
   private guidedRun = false; // a walk-to runs; following a person goes at their pace (`self` tells)
   private nearby: Prop | null = null;
@@ -196,9 +194,25 @@ export class WorldView {
 
   constructor(private hooks: ViewHooks) {}
 
+  /** My id (0 before hello). */
+  get meId() {
+    return this.ctx.meId;
+  }
+  /** The map shown (tests read view.map). */
+  get map() {
+    return this.ctx.map;
+  }
+  /** Something changed outside frame(): draw the next frame (the art scripts set it). */
+  get dirty() {
+    return this.ctx.dirty;
+  }
+  set dirty(v: boolean) {
+    this.ctx.dirty = v;
+  }
+
   async init(host: HTMLElement, eco: boolean) {
     await document.fonts.load('16px "Jersey 10"').catch(() => []);
-    this.eco = eco;
+    this.ctx.eco = eco;
     const app = new Application();
     await app.init({
       resizeTo: host,
@@ -210,20 +224,21 @@ export class WorldView {
       powerPreference: "low-power",
       preference: "webgl",
     });
-    this.app = app;
+    this.app = this.ctx.app = app;
     host.appendChild(app.canvas);
     app.canvas.style.display = "block";
-    app.stage.addChild(this.world, this.hud);
-    this.world.addChild(this.entLayer, this.placeholderG, this.fxG);
-    this.entLayer.sortableChildren = true;
-    this.hud.addChild(this.hudG);
+    app.stage.addChild(this.ctx.world, this.ctx.hud);
+    this.ctx.world.addChild(this.ctx.entLayer, this.placeholderG, this.fxG);
+    this.ctx.entLayer.sortableChildren = true;
+    this.mapLayer.init(this.ctx);
+    this.ctx.hud.addChild(this.hudG);
     this.hoverTag.anchor.set(0.5, 1);
     this.hoverTag.visible = false;
-    this.hud.addChild(this.hoverTag);
+    this.ctx.hud.addChild(this.hoverTag);
     this.bannerText = new BitmapText({ text: "", style: BANNER_STYLE });
     this.banner.addChild(this.bannerG, this.bannerText);
     this.banner.visible = false;
-    this.hud.addChild(this.banner);
+    this.ctx.hud.addChild(this.banner);
     app.ticker.maxFPS = eco ? 30 : 0;
     app.ticker.remove(app.render, app); // frame() draws, and only when something changed
     app.ticker.add((t) => this.frame(t.deltaMS));
@@ -250,7 +265,7 @@ export class WorldView {
     const dbl = (e: MouseEvent) => {
       if (document.querySelector(".scrim, .editor") || performance.now() - this.dragEndAt < 500) return; // a drag's click is not a double-click
       const [tx, ty] = this.screenToTile(e.clientX, e.clientY);
-      if (!this.map || tx < 0 || ty < 0 || tx >= this.map.w || ty >= this.map.h) return;
+      if (!this.ctx.map || tx < 0 || ty < 0 || tx >= this.ctx.map.w || ty >= this.ctx.map.h) return;
       this.goTo(tx, ty);
     };
     app.canvas.addEventListener("dblclick", dbl);
@@ -272,8 +287,8 @@ export class WorldView {
         const { width: W, height: H } = app.screen;
         d.x = e.clientX;
         d.y = e.clientY;
-        d.camX = W / 2 - (this.self.x + this.self.ox + this.cam.panX) * this.cam.S;
-        d.camY = H / 2 - (this.self.y + this.self.oy + this.cam.panY) * this.cam.S;
+        d.camX = W / 2 - (this.self.x + this.self.ox + this.ctx.cam.panX) * this.ctx.cam.S;
+        d.camY = H / 2 - (this.self.y + this.self.oy + this.ctx.cam.panY) * this.ctx.cam.S;
       }
     };
     app.canvas.addEventListener("wheel", wheel, { passive: false });
@@ -281,7 +296,7 @@ export class WorldView {
     // double-click to run there still works. Touch keeps the browser's own gestures and the pad.
     const pdown = (e: PointerEvent) => {
       if (e.button !== 0 || e.pointerType !== "mouse" || document.querySelector(".scrim, .editor")) return;
-      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.cam.x, camY: this.cam.y, moved: false };
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, camX: this.ctx.cam.x, camY: this.ctx.cam.y, moved: false };
     };
     const pmove = (e: PointerEvent) => {
       const d = this.drag;
@@ -340,8 +355,8 @@ export class WorldView {
   }
 
   setEco(eco: boolean) {
-    this.dirty = true;
-    this.eco = eco;
+    this.ctx.dirty = true;
+    this.ctx.eco = eco;
     this.app.ticker.maxFPS = eco ? 30 : 0;
     const r = Math.min(window.devicePixelRatio || 1, eco ? 1 : 2);
     this.app.renderer.resolution = r;
@@ -479,24 +494,19 @@ export class WorldView {
 
   // ---- data ----
   setMap(map: MapData, deny: number[]) {
-    this.dirty = true;
-    this.map = map;
-    this.grid = { w: map.w, h: map.h, solid: solidGrid(map), areaAt: areaGrid(map), deny: new Set(deny) };
-    this.mapSprite?.destroy({ texture: true, textureSource: true }); // do not leak a GPU texture per edit
-    const tex = bakeMap(this.app.renderer, map);
-    this.baked = tex.source.resource as HTMLCanvasElement;
-    this.mapSprite = new Sprite(tex);
-    this.world.addChildAt(this.mapSprite, 0);
-    this.buildDepth(map);
+    this.ctx.dirty = true;
+    this.ctx.map = map;
+    this.ctx.grid = { w: map.w, h: map.h, solid: solidGrid(map), areaAt: areaGrid(map), deny: new Set(deny) };
+    this.mapLayer.onMap(map);
     this.areaLabels.forEach((l) => l.text.destroy());
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
-    this.shownOf = shownAreas(map);
+    this.ctx.shownOf = shownAreas(map);
     this.areaLabels = map.areas.flatMap((a, ai) => {
       if (a.auto) return []; // the desk's own label already names it
       const text = new BitmapText({ text: this.areaLabel(ai), style: TAG_STYLE });
       text.anchor.set(0.5, 0);
       text.alpha = 0.85;
-      this.hud.addChild(text);
+      this.ctx.hud.addChild(text);
       return [{ text, ai }];
     });
     // assigned desks show their owner
@@ -508,7 +518,7 @@ export class WorldView {
         const text = new BitmapText({ text: this.deskLabel(p, ai), style: DESK_STYLE });
         text.anchor.set(0.5, 1);
         text.alpha = 0.95;
-        this.hud.addChild(text);
+        this.ctx.hud.addChild(text);
         // over the middle of the desk, whatever its width; the bottom desk of an island (another desk
         // right above it) is labelled under its seat, where the sitter's own name tag does not reach
         const back = map.props.some((q) => q.t === "desk" && q.up && q.y === p.y - 1 && q.x === p.x);
@@ -521,20 +531,20 @@ export class WorldView {
     if (this.meEnt) {
       this.where.area = this.areaIndex(this.self.x, this.self.y);
       this.hooks.onArea(this.areaName(this.where.area), this.where.area);
-      this.where.shown = shownArea(this.shownOf, this.where.area);
+      this.where.shown = shownArea(this.ctx.shownOf, this.where.area);
     }
     this.layout();
   }
 
   setMe(id: number, x: number, y: number, speed: number, runMul = 2) {
-    this.meId = id;
-    this.cam.panX = this.cam.panY = 0;
+    this.ctx.meId = id;
+    this.ctx.cam.panX = this.ctx.cam.panY = 0;
     this.self.reset(x, y);
     this.speed = speed;
     this.runMul = runMul;
     this.where.area = this.areaIndex(x, y);
     this.hooks.onArea(this.areaName(this.where.area), this.where.area);
-    this.where.shown = shownArea(this.shownOf, this.where.area);
+    this.where.shown = shownArea(this.ctx.shownOf, this.where.area);
     if (this.where.shown >= 0) this.showBanner(this.areaName(this.where.area));
     if (!this.meEnt) {
       this.meEnt = this.makeEnt(id);
@@ -548,32 +558,32 @@ export class WorldView {
   }
 
   setPeople(people: Map<number, Person>) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     // someone who left the office frees their look (once their sprite is gone too); leaving the screen does not
-    for (const id of this.people.keys()) if (!people.has(id) && !this.ents.has(id)) releaseAvatar(id);
-    this.people = people;
+    for (const id of this.ctx.people.keys()) if (!people.has(id) && !this.ents.has(id)) releaseAvatar(id);
+    this.ctx.people = people;
     for (const e of this.ents.values()) this.refreshEnt(e);
     this.relabel(); // an online person names a place the server has not named yet (an editor preview)
   }
 
   setSpeaking(ids: Set<number>) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     for (const e of this.ents.values()) e.speaking = ids.has(e.id);
   }
 
   setInConversation(ids: Set<number>) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     for (const e of this.ents.values()) e.inConv = ids.has(e.id);
   }
 
   setSharing(ids: Set<number>) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     for (const e of this.ents.values()) e.sharing = ids.has(e.id);
   }
 
   // ---- map editor support ----
   currentMap() {
-    return this.map;
+    return this.ctx.map;
   }
   /** The map editor opened or closed: it shows objects of plugins that are not running. */
   setEditing(on: boolean) {
@@ -583,48 +593,48 @@ export class WorldView {
   }
   /** Re-render/re-collide with an unsaved draft (deny rules are kept). */
   previewMap(map: MapData) {
-    this.setMap(map, [...this.grid.deny]);
+    this.setMap(map, [...this.ctx.grid.deny]);
   }
   /** Shows the label of the plugin sprite under the mouse (and its owner's name), or hides it; true when it changed. */
   private placeHoverTag(): boolean {
     const tag = this.hoverTag;
     const m = !this.mouse || this.drag?.moved || document.querySelector(".scrim") ? null : this.mouse;
-    const hit = m ? this.plugins.labelAt((m.x - this.cam.x) / this.cam.S, (m.y - this.cam.y) / this.cam.S) : null;
+    const hit = m ? this.plugins.labelAt((m.x - this.ctx.cam.x) / this.ctx.cam.S, (m.y - this.ctx.cam.y) / this.ctx.cam.S) : null;
     if (!hit) {
       if (!tag.visible) return false;
       tag.visible = false;
       return true;
     }
-    const owner = hit.owner ? this.people.get(hit.owner)?.n : undefined;
+    const owner = hit.owner ? this.ctx.people.get(hit.owner)?.n : undefined;
     const text = owner ? hit.text + "\n(" + owner + ")" : hit.text;
-    const x = Math.round(this.cam.x + hit.x * this.cam.S), y = Math.round(this.cam.y + hit.top * this.cam.S - 2);
+    const x = Math.round(this.ctx.cam.x + hit.x * this.ctx.cam.S), y = Math.round(this.ctx.cam.y + hit.top * this.ctx.cam.S - 2);
     if (tag.visible && tag.text === text && tag.x === x && tag.y === y) return false;
     tag.text = text;
     tag.position.set(x, y);
-    if (!tag.visible) this.hud.addChild(tag); // above the name tags added since
+    if (!tag.visible) this.ctx.hud.addChild(tag); // above the name tags added since
     tag.visible = true;
     return true;
   }
   /** Tests: where world point (x, y) is in the page, and the hover tag's text ("" while hidden). */
   pageOf(x: number, y: number): { x: number; y: number } {
     const r = this.app.canvas.getBoundingClientRect();
-    return { x: r.left + this.cam.x + x * this.cam.S, y: r.top + this.cam.y + y * this.cam.S };
+    return { x: r.left + this.ctx.cam.x + x * this.ctx.cam.S, y: r.top + this.ctx.cam.y + y * this.ctx.cam.S };
   }
   hoverText(): string {
     return this.hoverTag.visible ? this.hoverTag.text : "";
   }
   screenToTile(clientX: number, clientY: number): [number, number] {
     const r = this.app.canvas.getBoundingClientRect();
-    const wx = (clientX - r.left - this.cam.x) / this.cam.S;
-    const wy = (clientY - r.top - this.cam.y) / this.cam.S;
+    const wx = (clientX - r.left - this.ctx.cam.x) / this.ctx.cam.S;
+    const wy = (clientY - r.top - this.ctx.cam.y) / this.ctx.cam.S;
     return [Math.floor(wx / T), Math.floor(wy / T)];
   }
   setHover(h: { x: number; y: number; w: number; h: number } | null) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     this.hover = h;
   }
   teleport(x: number, y: number) {
-    this.cam.panX = this.cam.panY = 0;
+    this.ctx.cam.panX = this.ctx.cam.panY = 0;
     this.self.reset(x, y);
     this.dx = this.dy = 0;
     this.keys.clear();
@@ -649,7 +659,7 @@ export class WorldView {
 
   /** The server refused or finished a walk-to. */
   clearDest() {
-    this.dirty = true;
+    this.ctx.dirty = true;
     this.dest = null;
   }
 
@@ -660,7 +670,7 @@ export class WorldView {
 
   /** The baked office picture (shared with the minimap, never re-rendered for it). */
   mapImage() {
-    return this.baked;
+    return this.mapLayer.baked;
   }
 
   applySelf(m: SelfPosition) {
@@ -682,8 +692,8 @@ export class WorldView {
   }
 
   setDeny(deny: number[]) {
-    this.dirty = true;
-    this.grid.deny = new Set(deny);
+    this.ctx.dirty = true;
+    this.ctx.grid.deny = new Set(deny);
     this.relabel();
   }
 
@@ -699,16 +709,16 @@ export class WorldView {
   }
 
   private areaLabel(ai: number) {
-    return areaTitle(this.map!.areas[ai], this.nameOf) + (this.grid.deny.has(ai) ? " 🔒" : "");
+    return areaTitle(this.ctx.map!.areas[ai], this.ctx.nameOf) + (this.ctx.grid.deny.has(ai) ? " 🔒" : "");
   }
 
   private deskLabel(p: Prop, ai: number) {
-    return deskTitle(p, this.nameOf) + (this.grid.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
+    return deskTitle(p, this.ctx.nameOf) + (this.ctx.grid.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
   }
 
   private relabel() {
-    if (!this.map) return;
-    this.dirty = true;
+    if (!this.ctx.map) return;
+    this.ctx.dirty = true;
     for (const l of this.areaLabels) {
       const s = this.areaLabel(l.ai);
       if (l.text.text !== s) l.text.text = s;
@@ -721,7 +731,7 @@ export class WorldView {
   }
 
   showEmote(id: number, kind: number) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     if (kind === DANCE) {
       const e = this.ents.get(id);
       if (e) e.danceUntil = performance.now() + 2400;
@@ -732,7 +742,7 @@ export class WorldView {
     this.emotes.get(id)?.text.destroy();
     const text = new Text({ text: emoji, style: { fontSize: 32 } });
     text.anchor.set(0.5, 1);
-    this.hud.addChild(text);
+    this.ctx.hud.addChild(text);
     this.emotes.set(id, { text, until: performance.now() + 2500 });
   }
 
@@ -742,7 +752,7 @@ export class WorldView {
   }
 
   private updateNearby() {
-    const best = nearestUsable(this.map?.props ?? [], this.objSpecs, this.self.x, this.self.y, 20);
+    const best = nearestUsable(this.ctx.map?.props ?? [], this.objSpecs, this.self.x, this.self.y, 20);
     if (best !== this.nearby) { this.nearby = best; this.hooks.onNearby?.(best); }
   }
 
@@ -756,14 +766,14 @@ export class WorldView {
 
   /** Redraws plugin objects (and, in the editor, placeholders for those of plugins not running). */
   private drawObjects() {
-    this.dirty = true;
+    this.ctx.dirty = true;
     for (const s of this.objSprites) s.destroy(); // their textures are shared (objPictures)
     this.objSprites = [];
     this.placeholderG.clear();
     for (const l of this.placeholderLabels) l.text.destroy();
     this.placeholderLabels = [];
-    if (!this.map) return;
-    const drawn = objectsFor(this.map.props, this.objSpecs);
+    if (!this.ctx.map) return;
+    const drawn = objectsFor(this.ctx.map.props, this.objSpecs);
     for (const { prop, spec } of drawn) {
       const sprite = spec.sprite;
       if (!sprite) continue; // the plugin's browser code draws it (hq.spawn)
@@ -774,19 +784,19 @@ export class WorldView {
       spr.anchor.set(0, 1);
       spr.position.set(prop.x * T, (prop.y + h) * T);
       spr.zIndex = (prop.y + h) * T;
-      this.entLayer.addChild(spr);
+      this.ctx.entLayer.addChild(spr);
       this.objSprites.push(spr);
       void this.objPictures.frame(spec.plugin, sprite, spec.frame).then((tex) => {
         if (!tex || spr.destroyed) return;
         spr.texture = tex;
-        this.dirty = true;
+        this.ctx.dirty = true;
       });
     }
     if (!this.editing) return;
     const label = (text: string, style: TextStyle, p: Prop, w: number, h: number) => {
       const b = new BitmapText({ text, style });
       b.anchor.set(0.5, 0.5);
-      this.hud.addChild(b);
+      this.ctx.hud.addChild(b);
       this.placeholderLabels.push({ text: b, x: (p.x + w / 2) * T, y: (p.y + h / 2) * T });
     };
     // objects the plugin draws itself: a solid labelled box of their size, so the editor can find them
@@ -799,7 +809,7 @@ export class WorldView {
     if (plugin.length > 0) this.placeholderG.fill({ color: 0x9fe0ff, alpha: 0.15 }).stroke({ color: 0x9fe0ff, width: 1 });
     // objects of plugins that are not running: a dashed box with their type
     const shown = new Set(drawn.map((o) => o.prop));
-    for (const p of this.map.props) {
+    for (const p of this.ctx.map.props) {
       if (!isPluginProp(p.t) || shown.has(p)) continue;
       const [w, h] = propSize(p);
       dashedRect(this.placeholderG, p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
@@ -809,16 +819,16 @@ export class WorldView {
   }
 
   showLocation(x: number, y: number) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     this.locate = { x, y, until: performance.now() + 5000 };
   }
 
   applyWorld(m: WorldDelta) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     this.nWorld++;
     if (m.m) {
       for (const [id, x, y, d] of m.m) {
-        if (id === this.meId) continue;
+        if (id === this.ctx.meId) continue;
         const dx = ((d >> 2) & 3) - 1;
         const dy = ((d >> 4) & 3) - 1;
         let e = this.ents.get(id);
@@ -837,7 +847,7 @@ export class WorldView {
         e.moving = dx !== 0 || dy !== 0;
       }
     }
-    if (m.l) for (const id of m.l) if (id !== this.meId) this.removeEnt(id);
+    if (m.l) for (const id of m.l) if (id !== this.ctx.meId) this.removeEnt(id);
   }
 
   /** Server reconciliation (motion.ts, LocalMotion.ack). */
@@ -846,7 +856,7 @@ export class WorldView {
   }
 
   clearRemote() {
-    for (const id of [...this.ents.keys()]) if (id !== this.meId) this.removeEnt(id);
+    for (const id of [...this.ents.keys()]) if (id !== this.ctx.meId) this.removeEnt(id);
   }
 
   position() {
@@ -860,48 +870,26 @@ export class WorldView {
 
   /** Tests: the areas I may not enter. */
   get deny() {
-    return this.grid.deny;
-  }
-
-  /** Rebuilt with the bake, never touched per frame: the sort they join already runs as avatars move. */
-  private buildDepth(map: MapData) {
-    for (const s of this.depthSprites) s.destroy();
-    this.depthSprites = [];
-    this.depthTex?.destroy(true);
-    this.depthTex = null;
-    if (!this.baked) return;
-    const { canvas, pieces } = depthAtlas(map, this.baked);
-    if (!pieces.length) return;
-    const tex = Texture.from(canvas);
-    tex.source.scaleMode = "nearest";
-    this.depthTex = tex;
-    for (const p of pieces) {
-      const spr = new Sprite(new Texture({ source: tex.source, frame: new Rectangle(p.sx, p.sy, p.w, p.h) }));
-      spr.position.set(p.x, p.y);
-      spr.zIndex = p.z;
-      spr.label = "depth-" + p.t;
-      this.entLayer.addChild(spr);
-      this.depthSprites.push(spr);
-    }
+    return this.ctx.grid.deny;
   }
 
   /** Tests: how many depth sprites stand for desks and for pcs. */
   debugDepth() {
-    const n = (t: string) => this.depthSprites.filter((s) => s.label === "depth-" + t).length;
-    return { desks: n("desk"), pcs: n("pc") };
+    return this.mapLayer.debugDepth();
   }
 
   /** Tests: a hash of the world's pixels over rect (world px, 1:1), with or without the depth sprites and
    * the people (avatars, pets, plugin sprites, rings and effects). */
   async debugWorldPixels(o: { depth: boolean; ents: boolean; rect: { x: number; y: number; w: number; h: number } }) {
-    const keep = new Set<Container>([...this.objSprites, ...(o.depth ? this.depthSprites : [])]);
-    const depth = new Set<Container>(this.depthSprites);
+    const depthSprites = this.mapLayer.depthSprites;
+    const keep = new Set<Container>([...this.objSprites, ...(o.depth ? depthSprites : [])]);
+    const depth = new Set<Container>(depthSprites);
     const shown: [Container, boolean][] = [];
     const set = (c: Container, v: boolean) => { shown.push([c, c.visible]); c.visible = v; };
-    for (const c of this.entLayer.children) set(c, keep.has(c) || (o.ents && !depth.has(c)));
-    for (const c of this.world.children) if (c !== this.mapSprite && c !== this.entLayer) set(c, o.ents && c.visible);
+    for (const c of this.ctx.entLayer.children) set(c, keep.has(c) || (o.ents && !depth.has(c)));
+    for (const c of this.ctx.world.children) if (c !== this.mapLayer.sprite && c !== this.ctx.entLayer) set(c, o.ents && c.visible);
     try {
-      const { pixels } = this.app.renderer.extract.pixels({ target: this.world, frame: new Rectangle(o.rect.x, o.rect.y, o.rect.w, o.rect.h), resolution: 1 });
+      const { pixels } = this.app.renderer.extract.pixels({ target: this.ctx.world, frame: new Rectangle(o.rect.x, o.rect.y, o.rect.w, o.rect.h), resolution: 1 });
       let h = 0x811c9dc5;
       for (let i = 0; i < pixels.length; i++) h = Math.imul(h ^ pixels[i], 0x01000193);
       return (h >>> 0).toString(16) + ":" + pixels.length;
@@ -920,22 +908,22 @@ export class WorldView {
   }
 
   debugEntities() {
-    return [...this.ents.values()].filter((e) => e.id !== this.meId).map((e) => ({ id: e.id, x: e.x, y: e.y }));
+    return [...this.ents.values()].filter((e) => e.id !== this.ctx.meId).map((e) => ({ id: e.id, x: e.x, y: e.y }));
   }
 
   // ---- entities ----
   private makeEnt(id: number): Ent {
-    const p = this.people.get(id);
+    const p = this.ctx.people.get(id);
     const frames = avatarFramesFor(id, p?.av ?? DEFAULT_AV);
     const spr = new Sprite(frames[0][0]);
     spr.anchor.set(0.5, FEET_Y / CELL_H);
-    this.entLayer.addChild(spr);
+    this.ctx.entLayer.addChild(spr);
     const label = new Container();
     const dot = new Graphics();
     const text = new BitmapText({ text: p?.n ?? "…", style: TAG_STYLE });
     text.anchor.set(0.5, 1);
     label.addChild(dot, text);
-    this.hud.addChild(label);
+    this.ctx.hud.addChild(label);
     const e: Ent = {
       id, key: "", frames, spr, label, text, dot, ring: null, hand: null, danceUntil: 0, tx: 0, ty: 0, ox: 0, oy: 0, dx: 0, dy: 0, x: 0, y: 0, dir: 0, moving: false, run: false,
       speaking: false, sharing: false, inConv: false, status: p?.s ?? "available", name: p?.n ?? "", drawnStatus: "", drawnConv: false, drawnShare: false,
@@ -945,8 +933,8 @@ export class WorldView {
   }
 
   private refreshEnt(e: Ent) {
-    this.dirty = true;
-    const p = this.people.get(e.id);
+    this.ctx.dirty = true;
+    const p = this.ctx.people.get(e.id);
     if (!p) return;
     const frames = avatarFramesFor(e.id, p.av);
     if (frames !== e.frames) {
@@ -975,7 +963,7 @@ export class WorldView {
   }
 
   private removeEnt(id: number) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     const e = this.ents.get(id);
     if (!e) return;
     e.spr.destroy();
@@ -984,12 +972,12 @@ export class WorldView {
     this.ents.delete(id);
     this.emotes.get(id)?.text.destroy();
     this.emotes.delete(id);
-    if (!this.people.has(id)) releaseAvatar(id);
+    if (!this.ctx.people.has(id)) releaseAvatar(id);
   }
 
   /** Location signboard that slides in from the top when entering an area (handheld-RPG style). */
   private showBanner(name: string) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     const t = this.bannerText;
     if (!t || !name) return;
     t.text = name.toUpperCase();
@@ -1009,24 +997,24 @@ export class WorldView {
 
   // ---- movement / collision (mirrors the server) ----
   private areaIndex(x: number, y: number) {
-    return this.map ? areaIndex(this.grid, x, y) : -1;
+    return this.ctx.map ? areaIndex(this.ctx.grid, x, y) : -1;
   }
 
   /** Integrates my own movement up to now (frames, and every input at the moment it is sent). */
   private advanceLocal(now: number) {
     const v = this.speed * (this.fast ? this.runMul : 1);
-    if (this.self.advance(now, this.map ? this.grid : null, this.dx, this.dy, v, this.where.area)) this.syncArea();
+    if (this.self.advance(now, this.ctx.map ? this.ctx.grid : null, this.dx, this.dy, v, this.where.area)) this.syncArea();
   }
 
   private areaName(ai: number) {
-    const i = shownArea(this.shownOf, ai);
-    return this.map && i >= 0 ? areaTitle(this.map.areas[i], this.nameOf) : "";
+    const i = shownArea(this.ctx.shownOf, ai);
+    return this.ctx.map && i >= 0 ? areaTitle(this.ctx.map.areas[i], this.ctx.nameOf) : "";
   }
 
   private syncArea() {
-    if (!this.map) return;
+    if (!this.ctx.map) return;
     const ai = this.areaIndex(this.self.x, this.self.y);
-    const change = this.where.enter(ai, this.shownOf);
+    const change = this.where.enter(ai, this.ctx.shownOf);
     if (change === SAME) return;
     this.hooks.onArea(this.areaName(ai), ai);
     // a desk room is part of the desks around it: no banner walking in or out of one
@@ -1036,24 +1024,24 @@ export class WorldView {
   // ---- zoom / area of interest ----
   /** From hello: the server's interest grid, which bounds how far out the map may zoom. */
   setInterest(cellPx: number, aoi: number, aoiMax: number) {
-    this.cam.setInterest(cellPx, aoi, aoiMax);
+    this.ctx.cam.setInterest(cellPx, aoi, aoiMax);
     this.layout();
   }
 
   /** Zooms by whole scale steps (positive = closer) and returns the scale in use. Public for tests. */
   zoomBy(steps: number) {
-    if (!this.app) return this.cam.S;
+    if (!this.app) return this.ctx.cam.S;
     const { width, height } = this.app.screen;
-    this.cam.zoomBy(steps, width, height);
+    this.ctx.cam.zoomBy(steps, width, height);
     this.layout();
-    return this.cam.S;
+    return this.ctx.cam.S;
   }
 
   /** Puts the camera at this screen offset (the frame keeps it on the map and within reach). */
   private panTo(camX: number, camY: number) {
     const { width: W, height: H } = this.app.screen;
-    this.cam.panTo(camX, camY, W, H, this.self.x + this.self.ox, this.self.y + this.self.oy);
-    this.dirty = true;
+    this.ctx.cam.panTo(camX, camY, W, H, this.self.x + this.self.ox, this.self.y + this.self.oy);
+    this.ctx.dirty = true;
   }
 
   /** Ends a drag, wherever it is. */
@@ -1067,70 +1055,70 @@ export class WorldView {
     this.app.canvas.style.cursor = "";
     document.body.style.userSelect = "";
     this.dragEndAt = performance.now();
-    this.panTo(this.cam.x, this.cam.y);
+    this.panTo(this.ctx.cam.x, this.ctx.cam.y);
   }
 
   /** Camera pan in world px (tests). */
   get pan() {
-    return { x: this.cam.panX, y: this.cam.panY };
+    return { x: this.ctx.cam.panX, y: this.ctx.cam.panY };
   }
 
   get scale() {
-    return this.cam.S;
+    return this.ctx.cam.S;
   }
 
   // Tests (window.__hq.view) read these, as they read the fields they once were.
   get S() {
-    return this.cam.S;
+    return this.ctx.cam.S;
   }
   get camX() {
-    return this.cam.x;
+    return this.ctx.cam.x;
   }
   get camY() {
-    return this.cam.y;
+    return this.ctx.cam.y;
   }
   get panX() {
-    return this.cam.panX;
+    return this.ctx.cam.panX;
   }
   set panX(v: number) {
-    this.cam.panX = v;
+    this.ctx.cam.panX = v;
   }
   get panY() {
-    return this.cam.panY;
+    return this.ctx.cam.panY;
   }
   set panY(v: number) {
-    this.cam.panY = v;
+    this.ctx.cam.panY = v;
   }
   get cellPx() {
-    return this.cam.cellPx;
+    return this.ctx.cam.cellPx;
   }
   get aoiMax() {
-    return this.cam.aoiMax;
+    return this.ctx.cam.aoiMax;
   }
   /** Whether a box may stand at (x, y) on walls alone (motion.ts), as plugin sprites walk. */
   canStandStatic(x: number, y: number) {
-    return canStandStatic(this.grid, x, y);
+    return canStandStatic(this.ctx.grid, x, y);
   }
 
   /** Smallest and largest scale for this window. */
   scaleRange(width = this.app.screen.width, height = this.app.screen.height): [number, number] {
-    return this.cam.range(width, height);
+    return this.ctx.cam.range(width, height);
   }
 
   // ---- layout / frame ----
   private layout() {
-    this.dirty = true;
+    this.ctx.dirty = true;
     if (!this.app) return;
     const { width, height } = this.app.screen;
-    this.world.scale.set(this.cam.fit(width, height));
+    this.ctx.world.scale.set(this.ctx.cam.fit(width, height));
   }
 
   private frame(deltaMS: number) {
-    if (this.destroyed || !this.map) return;
+    if (this.destroyed || !this.ctx.map) return;
     const t0 = performance.now();
     const dt = Math.min(deltaMS / 1000, 0.1);
     const now = t0;
-    const cam = this.cam, S = cam.S;
+    const cam = this.ctx.cam, S = cam.S;
     const { width: W, height: H } = this.app.screen;
 
     this.advanceLocal(now);
@@ -1148,22 +1136,22 @@ export class WorldView {
       cam.panX = cam.panY = 0;
       this.drag = null;
     }
-    let changed = this.dirty;
-    this.dirty = false;
-    const mapW = this.map.w * T, mapH = this.map.h * T;
+    let changed = this.ctx.dirty;
+    this.ctx.dirty = false;
+    const mapW = this.ctx.map.w * T, mapH = this.ctx.map.h * T;
     if (cam.follow(W, H, rx, ry, mapW, mapH)) changed = true;
     const need = cam.view(W, H, rx, ry, mapW, mapH);
     if (need >= 0) this.hooks.onView?.(need);
-    this.world.position.set(cam.x, cam.y);
+    this.ctx.world.position.set(cam.x, cam.y);
 
-    const walkRate = this.eco ? 5 : 8;
+    const walkRate = this.ctx.eco ? 5 : 8;
     let visible = 0;
     for (const e of this.ents.values()) {
-      const isMe = e.id === this.meId;
+      const isMe = e.id === this.ctx.meId;
       if (isMe) {
         e.x = rx; e.y = ry; e.dir = this.mdir; e.moving = !!(this.dx || this.dy);
       } else {
-        stepRemote(e, this.grid, dt, this.speed * (e.run ? this.runMul : 1));
+        stepRemote(e, this.ctx.grid, dt, this.speed * (e.run ? this.runMul : 1));
       }
       const sx = Math.round(e.x * S + cam.x);
       const sy = Math.round(e.y * S + cam.y);
@@ -1196,7 +1184,7 @@ export class WorldView {
       e.label.position.set(sx, ly);
       if (e.drawnStatus !== e.status || e.drawnConv !== e.inConv || e.drawnShare !== e.sharing) this.drawDot(e);
       if (e.speaking) {
-        if (!e.ring) { e.ring = new Graphics(); this.world.addChildAt(e.ring, 1); }
+        if (!e.ring) { e.ring = new Graphics(); this.ctx.world.addChildAt(e.ring, 1); }
         e.ring.clear().ellipse(0, 0, 9, 4).stroke({ color: 0x3cc9b0, width: 1.5 });
         e.ring.position.set(Math.round(e.x), Math.round(e.y) - 1);
         e.ring.visible = true;
@@ -1213,7 +1201,7 @@ export class WorldView {
 
     // area labels
     for (const l of this.areaLabels) {
-      const a = this.map.areas[l.ai];
+      const a = this.ctx.map.areas[l.ai];
       const sx = (a.x + a.w / 2) * T * S + cam.x;
       const sy = (a.y + 0.2) * T * S + cam.y;
       l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H;
@@ -1302,7 +1290,7 @@ export class WorldView {
   }
 
   private drawDot(e: Ent) {
-    this.dirty = true;
+    this.ctx.dirty = true;
     e.drawnStatus = e.status;
     e.drawnConv = e.inConv;
     e.drawnShare = e.sharing;
