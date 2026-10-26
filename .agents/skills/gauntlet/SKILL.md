@@ -13,7 +13,7 @@ Write `.gauntlet/<slug>.md` (git-ignored) before touching code:
 
 - **Target**: the user's words, then **acceptance criteria as observable behaviour**: what a person sees or a test measures ("the pet walks the owner's trail ~20 px behind and never cuts a corner"), never "works" or "looks good".
 - **Baseline**: `git rev-parse HEAD`.
-- **Seams**: the Go test, browser scenario or capture that will observe each criterion.
+- **Seams**: the Go test, web or plugin unit test (`web/test`), browser scenario or capture that will observe each criterion. Rules and logic go in a unit test (extract a pure function when they are tangled with the DOM, a socket or a timer); a browser scenario checks the wiring: real controls, what the page draws, iframes, sync between pages, and each feature at least once through its real controls with its panel open.
 
 Done when every criterion names its seam.
 
