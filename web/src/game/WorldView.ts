@@ -1,15 +1,12 @@
-import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
-import { NOTE_STYLE, PLUGIN_NOTE_STYLE, TAG_STYLE } from "./mapText";
+import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
+import { NOTE_STYLE, TAG_STYLE } from "./mapText";
 import { LabelLayer } from "./labelLayer";
 import { shouldRender, type ViewContext } from "./layer";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
 import { isBusyKey, isHomeKey } from "./home";
-import { isPluginProp, propSize } from "./props";
-import { nearestUsable, objectsFor } from "./pluginObjects";
-import { ObjectPictures } from "./objectPictures";
-import { t } from "../i18n";
+import { ObjectLayer } from "./objectLayer";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { bakeMapCanvas } from "./art/tiles";
 import { MapLayer } from "./mapLayer";
@@ -173,16 +170,8 @@ export class WorldView {
   private hover: { x: number; y: number; w: number; h: number } | null = null;
   private guided = false;
   private guidedRun = false; // a walk-to runs; following a person goes at their pace (`self` tells)
-  private nearby: Prop | null = null;
-  /** Map objects of the running plugins, the sprites drawn for them and their pictures (by URL). */
-  private objSpecs: PluginObjectSpec[] = [];
-  private objSprites: Sprite[] = [];
-  private objPictures = new ObjectPictures();
-  /** The map editor is open: objects of plugins not running show as dashed placeholders. */
-  private editing = false;
-  private placeholderG = new Graphics();
-  private placeholderLabels: { text: BitmapText; x: number; y: number }[] = [];
-  private nearbyAt = 0;
+  /** Plugin map objects, editor placeholders and the object within reach (objectLayer.ts). */
+  private objects = new ObjectLayer(this.self, (prop) => this.hooks.onNearby?.(prop));
   /** The props of the map shown changed (a new map or an editor draft): plugins hear of their objects. */
   onProps: ((props: Prop[]) => void) | null = null;
   private emotes = new Map<number, { text: Text; until: number }>();
@@ -224,9 +213,11 @@ export class WorldView {
     host.appendChild(app.canvas);
     app.canvas.style.display = "block";
     app.stage.addChild(this.ctx.world, this.ctx.hud);
-    this.ctx.world.addChild(this.ctx.entLayer, this.placeholderG, this.fxG);
+    this.ctx.world.addChild(this.ctx.entLayer);
     this.ctx.entLayer.sortableChildren = true;
     this.mapLayer.init(this.ctx);
+    this.objects.init(this.ctx);
+    this.ctx.world.addChild(this.fxG);
     this.ctx.hud.addChild(this.hudG);
     this.hoverTag.anchor.set(0.5, 1);
     this.hoverTag.visible = false;
@@ -494,7 +485,7 @@ export class WorldView {
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
     this.ctx.shownOf = shownAreas(map);
     this.labelLayer.onMap(map);
-    this.drawObjects();
+    this.objects.onMap(map);
     this.onProps?.(map.props);
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
@@ -557,9 +548,7 @@ export class WorldView {
   }
   /** The map editor opened or closed: it shows objects of plugins that are not running. */
   setEditing(on: boolean) {
-    if (this.editing === on) return;
-    this.editing = on;
-    this.drawObjects();
+    this.objects.setEditing(on);
   }
   /** Re-render/re-collide with an unsaved draft (deny rules are kept). */
   previewMap(map: MapData) {
@@ -713,75 +702,21 @@ export class WorldView {
   }
 
   interact() {
-    this.updateNearby();
-    if (this.nearby) this.hooks.onInteract?.(this.nearby);
-  }
-
-  private updateNearby() {
-    const best = nearestUsable(this.ctx.map?.props ?? [], this.objSpecs, this.self.x, this.self.y, 20);
-    if (best !== this.nearby) { this.nearby = best; this.hooks.onNearby?.(best); }
+    this.objects.updateNearby();
+    if (this.objects.nearby) this.hooks.onInteract?.(this.objects.nearby);
   }
 
   /** The map objects of the running plugins (PluginManager): drawn on the map, and X uses them. */
   setPluginObjects(specs: PluginObjectSpec[]) {
-    this.objSpecs = specs;
-    this.drawObjects();
-    this.objPictures.keepOnly(new Set(specs.map((s) => s.plugin))); // after their sprites are gone
-    this.updateNearby();
+    this.objects.setSpecs(specs);
   }
 
-  /** Redraws plugin objects (and, in the editor, placeholders for those of plugins not running). */
-  private drawObjects() {
-    this.ctx.dirty = true;
-    for (const s of this.objSprites) s.destroy(); // their textures are shared (objPictures)
-    this.objSprites = [];
-    this.placeholderG.clear();
-    for (const l of this.placeholderLabels) l.text.destroy();
-    this.placeholderLabels = [];
-    if (!this.ctx.map) return;
-    const drawn = objectsFor(this.ctx.map.props, this.objSpecs);
-    for (const { prop, spec } of drawn) {
-      const sprite = spec.sprite;
-      if (!sprite) continue; // the plugin's browser code draws it (hq.spawn)
-      const [, h] = propSize(prop);
-      // bottom-left of the footprint, sorted by its bottom edge: an avatar north of the table it
-      // stands on stays behind it
-      const spr = new Sprite(Texture.EMPTY);
-      spr.anchor.set(0, 1);
-      spr.position.set(prop.x * T, (prop.y + h) * T);
-      spr.zIndex = (prop.y + h) * T;
-      this.ctx.entLayer.addChild(spr);
-      this.objSprites.push(spr);
-      void this.objPictures.frame(spec.plugin, sprite, spec.frame).then((tex) => {
-        if (!tex || spr.destroyed) return;
-        spr.texture = tex;
-        this.ctx.dirty = true;
-      });
-    }
-    if (!this.editing) return;
-    const label = (text: string, style: TextStyle, p: Prop, w: number, h: number) => {
-      const b = new BitmapText({ text, style });
-      b.anchor.set(0.5, 0.5);
-      this.ctx.hud.addChild(b);
-      this.placeholderLabels.push({ text: b, x: (p.x + w / 2) * T, y: (p.y + h / 2) * T });
-    };
-    // objects the plugin draws itself: a solid labelled box of their size, so the editor can find them
-    const plugin = drawn.filter((o) => !o.spec.sprite);
-    for (const { prop: p, spec } of plugin) {
-      const [w, h] = propSize(p);
-      this.placeholderG.rect(p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
-      label(t("editor.pluginDraws", { label: spec.label }), PLUGIN_NOTE_STYLE, p, w, h);
-    }
-    if (plugin.length > 0) this.placeholderG.fill({ color: 0x9fe0ff, alpha: 0.15 }).stroke({ color: 0x9fe0ff, width: 1 });
-    // objects of plugins that are not running: a dashed box with their type
-    const shown = new Set(drawn.map((o) => o.prop));
-    for (const p of this.ctx.map.props) {
-      if (!isPluginProp(p.t) || shown.has(p)) continue;
-      const [w, h] = propSize(p);
-      dashedRect(this.placeholderG, p.x * T + 0.5, p.y * T + 0.5, w * T - 1, h * T - 1);
-      label(t("editor.pluginMissing", { type: p.t }), NOTE_STYLE, p, w, h);
-    }
-    this.placeholderG.stroke({ color: 0xffe9a8, width: 1 });
+  /** Tests: the sprites drawn for plugin objects, and the editor's placeholder labels. */
+  get objSprites() {
+    return this.objects.sprites;
+  }
+  get placeholderLabels() {
+    return this.objects.placeholderLabels;
   }
 
   showLocation(x: number, y: number) {
@@ -1071,7 +1006,6 @@ export class WorldView {
     if (!this.guided && (this.dx || this.dy) && now - this.lastBeat > HEARTBEAT_MS) this.sendDir();
     this.self.blend(dt, this.dx, this.dy, this.speed);
     const rx = this.self.x + this.self.ox, ry = this.self.y + this.self.oy; // where my avatar is drawn
-    if (now - this.nearbyAt > 150) { this.nearbyAt = now; this.updateNearby(); }
 
     if ((this.dx || this.dy || this.guided) && (cam.panX || cam.panY || this.drag)) {
       // moving recentres the camera on me, and ends a drag in progress
@@ -1145,12 +1079,7 @@ export class WorldView {
       bubble.text.position.set(e.x * S + cam.x, e.y * S + cam.y - (26 + extraHeight(e.frames)) * S - 28);
     }
 
-    for (const l of this.placeholderLabels) {
-      const sx = l.x * S + cam.x;
-      const sy = l.y * S + cam.y;
-      l.text.visible = sx > -100 && sx < W + 100 && sy > -20 && sy < H + 20;
-      l.text.position.set(Math.round(sx), Math.round(sy));
-    }
+    if (this.objects.update(dt, now)) changed = true;
 
     // locate marker
     this.fxG.clear();
@@ -1221,20 +1150,5 @@ export class WorldView {
       e.dot.roundRect(x, -12, 12, 9, 1).fill(0x1a1526).roundRect(x + 1.5, -10.5, 9, 6, 1).fill(0x6ec8ff).rect(x + 4, -3, 4, 2).fill(0x1a1526);
     }
     if (e.hand) e.hand.position.set(w / 2 + 3 + (e.inConv ? 9 : 0) + (e.sharing ? 15 : 0), 0);
-  }
-}
-
-/** A dashed rectangle outline (2 px dashes) for the caller to stroke. */
-function dashedRect(g: Graphics, x: number, y: number, w: number, h: number) {
-  const DASH = 2;
-  for (let i = 0; i < w; i += DASH * 2) {
-    const e = Math.min(i + DASH, w);
-    g.moveTo(x + i, y).lineTo(x + e, y);
-    g.moveTo(x + i, y + h).lineTo(x + e, y + h);
-  }
-  for (let i = 0; i < h; i += DASH * 2) {
-    const e = Math.min(i + DASH, h);
-    g.moveTo(x, y + i).lineTo(x, y + e);
-    g.moveTo(x + w, y + i).lineTo(x + w, y + e);
   }
 }
