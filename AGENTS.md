@@ -34,7 +34,7 @@ Two products are released separately from this repository, each with its own cha
 | `server/internal/httpapi` | routes, admin API (`admin.go`), WebSocket session, rate limits, Prometheus metrics |
 | `server/internal/config` | environment configuration and production guard rails |
 | `server/internal/plugin` | operator-installed plugins: catalog, TypeScript compiled by esbuild and run by QuickJS, limits ([`docs/plugins.md`](docs/plugins.md)) |
-| `web/src/game` | PixiJS world (`WorldView.ts`), avatar textures, map texture |
+| `web/src/game` | PixiJS world: `WorldView.ts` orchestrates layers (`layer.ts`; `mapLayer`, `avatarLayer`, `objectLayer`, `pluginLayer`, `hudLayer`, `labelLayer`), `localPlayer.ts`, `input.ts`, `camera.ts`; avatar textures, map texture |
 | `web/src/game/art` | pure-canvas painters: `pixel.ts` helpers, `tiles.ts` floors/walls/props/map baker, `characters.ts` sprites |
 | `web/src/theme-gba.css` | dialog-window UI skin layered over `styles.css` |
 | `web/dev` | server-free art preview page and its map fixture |
@@ -98,6 +98,7 @@ Art (output goes to `site/assets/`; details in `docs/art-style.md`):
 
 - Go: standard library first, `gofmt`, table-driven tests where natural, no dependency for what a few lines do. Keep `internal/media` the only package that speaks to LiveKit.
 - TypeScript: `strict` is on; keep `tsc --noEmit` clean. Prefer small modules; keep hot paths allocation-light.
+- Something new drawn in the world goes in a layer of its own (`web/src/game/layer.ts`, [decision 0033](docs/decisions/0033-world-view-layers.md)): `init` adds its Containers, events are direct calls from `WorldView`, `update(dt, now)` returns whether anything on screen changed (never draw unconditionally) and allocates nothing, and it takes its place in WorldView's `layers` array. Sprites that sort with people go in the shared `entLayer`; `frame()` itself draws nothing.
 - Web Audio: create (or resume) an `AudioContext` inside the click that needs it; made after an `await` it may stay suspended and silent. A node that processes mono sets `channelCount = 1` with `channelCountMode = "explicit"`, or a stereo microphone loses half its signal. Playback the user hears goes to the chosen speaker (`setSinkId`).
 - Toasts sit above dialogs (`.toast` z-index over `.scrim`) so a message raised from a dialog shows.
 - Validate all external input: WebSocket messages, avatars, maps, uploads. Enforce size and rate limits.
@@ -132,7 +133,7 @@ Other agents or people may be working in the same tree at the same time.
 - LiveKit's client may use a single peer connection; read RTP stats from `room.engine.pcManager.subscriber?.pc ?? publisher.pc` (see `rtpBytes` in `e2e/lib.mjs`).
 - Editing client files while the Vite dev server runs can trigger a full reload and break a running E2E script; rerun it.
 - Avatar sheet cells are 18x30 px (16x24 body plus a 1 px outline margin and 4 rows on top for hats and tall hair). The outline is applied per cell so nothing bleeds between rows; keep it that way. `e2e/art.mjs` crops rows 4-28 when it reuses cells. Name tags follow the drawing's real top (`AvatarFrames.tall`), not the cell height.
-- The camera uses integer zoom (`VIEW_REF_W/H` in `WorldView.ts`). Keep the server's area of interest large enough to cover the visible world at the smallest zoom.
+- The camera uses integer zoom (`VIEW_REF_W/H` in `camera.ts`). Keep the server's area of interest large enough to cover the visible world at the smallest zoom.
 - Tests that need real media use Chrome flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`. The fake microphone is a beep: it proves audio flows, not how well noise suppression cleans a voice.
 - On Windows, headless Chrome's fake camera track ends as soon as it starts unless the GPU is off: `launch()` in `e2e/lib.mjs` adds `--disable-gpu` there. LiveKit in Docker Desktop carries video RTP when its RTC ports are published with the same numbers inside and out and it advertises 127.0.0.1 (`--node-ip 127.0.0.1`, as `deploy/docker-compose.local.yml` and `e2e/livekit.mjs` do): the whole serial suite passed against the dev container (2026-10-25), and the video RTP checks of `proximity` and `spotlight` passed with three shard containers at once (2026-10-25). LiveKit's Windows binary on the host (`livekit-server.exe` with its own `port` and `rtc` ports in a config) also works. Vite may listen on `::1` only: open `http://localhost`, not `127.0.0.1`.
 - Load generators must run **outside** the machine being measured.
