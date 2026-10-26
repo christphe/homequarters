@@ -58,6 +58,7 @@ cd server && go vet ./... && go test -race ./...
 scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, race tests, tsc, build, web lint, browser suite (E2E_VIEWPORT=small, CI's 800x450)
 node scripts/lint-web.mjs                # static web rules (effects return a cleanup or nothing, i18n)
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
+node --test 'web/test/*.test.ts'          # web and plugin unit tests, in about a second (Node 24 strips the types; type-checked by web/tsconfig.test.json)
 cd e2e && node run.mjs                    # real Chrome + real LiveKit; takes an e2e slot, builds, starts its own server (fresh database) and LiveKit
 cd e2e && E2E_PARALLELISM=2 node run.mjs   # the whole suite as 2 shards at once, each with its own server, LiveKit and Chrome (gauntlet.sh passes it on)
 cd e2e && node run.mjs --shard 2/4         # one of 4 duration-balanced shards (e2e/shards.mjs); CI runs one job per shard
@@ -126,6 +127,7 @@ Other agents or people may be working in the same tree at the same time.
 
 - The browser exposes `window.__hq` (view, media, state, session, `cachedLooks()` for the avatar texture cache size, `chimes` for the last chimes played, `autoOff` whose `grace` a test may shorten, `session.plugins.dropNext(plugin, n)` to lose the next n messages a plugin sends to the server) for tests. Drive movement with `view.setDirection`, not synthetic key events.
 - `window.__hq` shortcuts are for setup; every feature also needs one check through its real controls with its panel open (the chat crash hid behind API-only sends).
+- Rules and logic in unit tests, the browser suite for wiring. A game's rules, who may press a button, what a view announces or sends: a Go test or a `web/test` unit test (extract a pure module when the logic sits in a DOM script, as `plugins/bundled/hq-chess/public/sync.ts` does for the board view). A browser scenario checks what only a browser shows (real controls, pixels, iframes, sync between pages) and should not repeat a rule a unit test covers: each such check costs seconds in every run. A test importing a `web/src` module whose imports leave out `.ts` imports `web/test/tsResolve.ts` first, then the module with `await import()`.
 - `node run.mjs capture-plugin-pet` writes frames (pets of the bundled plugin walking, the hover tag, its modal) and a contact sheet (with ffmpeg) to a fresh folder under `/tmp/hq-capture`; copy it for new `capture-*` scenarios. They are not in the default suite.
 - LiveKit's client may use a single peer connection; read RTP stats from `room.engine.pcManager.subscriber?.pc ?? publisher.pc` (see `rtpBytes` in `e2e/lib.mjs`).
 - Editing client files while the Vite dev server runs can trigger a full reload and break a running E2E script; rerun it.

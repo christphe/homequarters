@@ -7,10 +7,11 @@ export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social
 // Seconds per scenario, measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
 // scenario grows; a scenario missing here counts as UNKNOWN seconds.
 export const DURATIONS = {
-  proximity: 39, consent: 43, rooms: 110, access: 1, editor: 56, social: 71, admin: 32, plugins: 76, chess: 67, a11y: 72,
+  proximity: 39, consent: 43, rooms: 110, access: 1, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
   security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
   update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
-  cards: 150, // an estimate (about 2.5 min on a Windows desktop) until a CI run measures it
+  cards: 32, // measured alone on a Windows 11 desktop (2026-10-26, after the rules moved to unit tests), not in CI
+  chess: 34, // the same (it was 67 in CI with checks now in web/test/chessView.test.ts and chess_test.go)
   depth: 60, // an estimate (two layout switches and an editor save) until a CI run measures it
 };
 export const UNKNOWN = 60;
