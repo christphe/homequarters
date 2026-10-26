@@ -1,10 +1,11 @@
 import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
-import { NOTE_STYLE, TAG_STYLE } from "./mapText";
+import { TAG_STYLE } from "./mapText";
 import { LabelLayer } from "./labelLayer";
 import { shouldRender, type ViewContext } from "./layer";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { InputController } from "./input";
+import { HudLayer } from "./hudLayer";
 import { ObjectLayer } from "./objectLayer";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
 import { bakeMapCanvas } from "./art/tiles";
@@ -98,8 +99,6 @@ export class WorldView {
   };
   /** Names of the members places belong to (the server's owner names); online people fill the gaps. */
   private owners = new Map<number, string>();
-  private fxG = new Graphics();
-  private hudG = new Graphics();
   /** Area and desk names, and the location signboard (labelLayer.ts). */
   private labelLayer = new LabelLayer();
   private ents = new Map<number, Ent>();
@@ -128,8 +127,8 @@ export class WorldView {
   private player: LocalPlayer;
   /** Keys, wheel, drag and the mouse over the map (input.ts). */
   private input: InputController;
-  /** A plugin sprite's label and its owner's name, shown while the mouse is over the sprite. */
-  private hoverTag = new BitmapText({ text: "", style: NOTE_STYLE });
+  /** Markers: hover rectangle, destination, locate pulse, hover tag (hudLayer.ts). */
+  private hudLayer: HudLayer;
   /** The baked map and the desks and pcs drawn over it (mapLayer.ts). */
   private mapLayer = new MapLayer();
   private destroyed = false;
@@ -147,8 +146,6 @@ export class WorldView {
   rendersTotal = 0; // frames drawn since start (tests)
   private lastRender = 0;
 
-  private locate: { x: number; y: number; until: number } | null = null;
-  private hover: { x: number; y: number; w: number; h: number } | null = null;
   /** Plugin map objects, editor placeholders and the object within reach (objectLayer.ts). */
   private objects: ObjectLayer;
   /** The props of the map shown changed (a new map or an editor draft): plugins hear of their objects. */
@@ -160,6 +157,7 @@ export class WorldView {
     this.player = new LocalPlayer(this.ctx, hooks, (name) => this.labelLayer.showBanner(name));
     this.objects = new ObjectLayer(this.player.self, (prop) => hooks.onNearby?.(prop));
     this.input = new InputController(this.ctx, this.player, hooks, this);
+    this.hudLayer = new HudLayer(this.player, this.input, this.plugins);
   }
 
   /** My id (0 before hello). */
@@ -200,11 +198,7 @@ export class WorldView {
     this.ctx.entLayer.sortableChildren = true;
     this.mapLayer.init(this.ctx);
     this.objects.init(this.ctx);
-    this.ctx.world.addChild(this.fxG);
-    this.ctx.hud.addChild(this.hudG);
-    this.hoverTag.anchor.set(0.5, 1);
-    this.hoverTag.visible = false;
-    this.ctx.hud.addChild(this.hoverTag);
+    this.hudLayer.init(this.ctx);
     this.labelLayer.init(this.ctx);
     app.ticker.maxFPS = eco ? 30 : 0;
     app.ticker.remove(app.render, app); // frame() draws, and only when something changed
@@ -348,34 +342,13 @@ export class WorldView {
   previewMap(map: MapData) {
     this.setMap(map, [...this.ctx.grid.deny]);
   }
-  /** Shows the label of the plugin sprite under the mouse (and its owner's name), or hides it; true when it changed. */
-  private placeHoverTag(): boolean {
-    const tag = this.hoverTag;
-    const mouse = this.input.mouse;
-    const m = !mouse || this.input.dragging || document.querySelector(".scrim") ? null : mouse;
-    const hit = m ? this.plugins.labelAt((m.x - this.ctx.cam.x) / this.ctx.cam.S, (m.y - this.ctx.cam.y) / this.ctx.cam.S) : null;
-    if (!hit) {
-      if (!tag.visible) return false;
-      tag.visible = false;
-      return true;
-    }
-    const owner = hit.owner ? this.ctx.people.get(hit.owner)?.n : undefined;
-    const text = owner ? hit.text + "\n(" + owner + ")" : hit.text;
-    const x = Math.round(this.ctx.cam.x + hit.x * this.ctx.cam.S), y = Math.round(this.ctx.cam.y + hit.top * this.ctx.cam.S - 2);
-    if (tag.visible && tag.text === text && tag.x === x && tag.y === y) return false;
-    tag.text = text;
-    tag.position.set(x, y);
-    if (!tag.visible) this.ctx.hud.addChild(tag); // above the name tags added since
-    tag.visible = true;
-    return true;
-  }
   /** Tests: where world point (x, y) is in the page, and the hover tag's text ("" while hidden). */
   pageOf(x: number, y: number): { x: number; y: number } {
     const r = this.app.canvas.getBoundingClientRect();
     return { x: r.left + this.ctx.cam.x + x * this.ctx.cam.S, y: r.top + this.ctx.cam.y + y * this.ctx.cam.S };
   }
   hoverText(): string {
-    return this.hoverTag.visible ? this.hoverTag.text : "";
+    return this.hudLayer.hoverText();
   }
   screenToTile(clientX: number, clientY: number): [number, number] {
     const r = this.app.canvas.getBoundingClientRect();
@@ -384,8 +357,7 @@ export class WorldView {
     return [Math.floor(wx / T), Math.floor(wy / T)];
   }
   setHover(h: { x: number; y: number; w: number; h: number } | null) {
-    this.ctx.dirty = true;
-    this.hover = h;
+    this.hudLayer.setHover(h);
   }
   teleport(x: number, y: number) {
     this.player.teleport(x, y);
@@ -489,8 +461,15 @@ export class WorldView {
   }
 
   showLocation(x: number, y: number) {
-    this.ctx.dirty = true;
-    this.locate = { x, y, until: performance.now() + 5000 };
+    this.hudLayer.showLocation(x, y);
+  }
+
+  /** Tests: the spot located (cleared when its pulse ends; tests clear it to wait for the next one). */
+  get locate() {
+    return this.hudLayer.locate;
+  }
+  set locate(v: { x: number; y: number; until: number } | null) {
+    this.hudLayer.locate = v;
   }
 
   applyWorld(m: WorldDelta) {
@@ -798,37 +777,12 @@ export class WorldView {
 
     if (this.objects.update(dt, now)) changed = true;
 
-    // locate marker
-    this.fxG.clear();
-    if (this.hover) this.fxG.rect(this.hover.x * T, this.hover.y * T, this.hover.w * T, this.hover.h * T).stroke({ color: 0xffb84d, width: 1 }).fill({ color: 0xffb84d, alpha: 0.18 });
-    const dest = player.dest;
-    if (dest) {
-      const k = (now % 700) / 700;
-      const r = 3 + k * 3;
-      this.fxG.poly([dest.x, dest.y - r, dest.x + r, dest.y, dest.x, dest.y + r, dest.x - r, dest.y]).stroke({ color: 0x3cc9b0, width: 1, alpha: 1 - k * 0.6 });
-      this.fxG.circle(dest.x, dest.y, 1.5).fill(0x3cc9b0);
-    }
-    this.hudG.clear();
-    if (this.locate) {
-      if (now > this.locate.until) { this.locate = null; changed = true; }
-      else {
-        const pulse = (now % 900) / 900;
-        this.fxG.circle(this.locate.x, this.locate.y, 6 + pulse * 14).stroke({ color: 0xffb84d, width: 2, alpha: 1 - pulse });
-        const sx = this.locate.x * S + cam.x, sy = this.locate.y * S + cam.y;
-        if (sx < 0 || sy < 0 || sx > W || sy > H) {
-          const ang = Math.atan2(sy - H / 2, sx - W / 2);
-          const ex = Math.max(24, Math.min(W - 24, sx)), ey = Math.max(24, Math.min(H - 24, sy));
-          this.hudG.poly([ex + Math.cos(ang) * 14, ey + Math.sin(ang) * 14, ex + Math.cos(ang + 2.5) * 10, ey + Math.sin(ang + 2.5) * 10, ex + Math.cos(ang - 2.5) * 10, ey + Math.sin(ang - 2.5) * 10]).fill(0xffb84d);
-        }
-      }
-    }
-
     if (this.labelLayer.update(dt, now)) changed = true; // the banner animates while shown
     if (this.plugins.update(dt, now)) changed = true;
-    if (this.placeHoverTag()) changed = true;
+    if (this.hudLayer.update(dt, now)) changed = true;
 
     // animations that redraw on their own every frame
-    if (this.emotes.size || player.dest || this.locate) changed = true;
+    if (this.emotes.size) changed = true;
     if (shouldRender(changed, now, this.lastRender)) {
       this.app.render();
       this.lastRender = now;
