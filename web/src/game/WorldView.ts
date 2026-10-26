@@ -1,4 +1,6 @@
-import { Application, BitmapText, Cache, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
+import { Application, BitmapText, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
+import { BANNER_STYLE, DESK_STYLE, NOTE_STYLE, PLUGIN_NOTE_STYLE, TAG_STYLE } from "./mapText";
+import { shouldRender } from "./layer";
 import type { Ack, AvatarSpec, MapData, Person, PluginObjectSpec, Prop, SelfPosition, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { MOVE_KEYS, codeOf, digitOf, learnKey } from "../keys";
@@ -17,28 +19,11 @@ import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Grid
 import { Camera, zoomStore } from "./camera";
 import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "./areas";
 
+export { bitmapFonts } from "./mapText";
+
 const T = 16;
 const WHEEL_GAP_MS = 120; // at most one zoom step per this long, so a trackpad or a free-spinning wheel does not race through every level
 const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
-// Jersey 10 is drawn on a 10 px grid and has a small x-height: map text uses twice its grid (20 px,
-// 30 for the area banner), which stays crisp and reads like the interface.
-const FONT = '"Jersey 10", ui-monospace, Menlo, monospace';
-// One TextStyle per look, shared by every BitmapText that wears it: Pixi keys a stroked bitmap font
-// (its own glyph atlas, never freed) by the TextStyle instance, so a style per label made a font per label.
-// Never destroy a text with { style: true } (or destroy(true)): it would break every label sharing the style.
-const OUTLINE = { color: 0x1a1526, width: 3 };
-const TAG_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 20, fill: 0xffffff, stroke: OUTLINE });
-const DESK_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 20, fill: 0xffe9a8, stroke: OUTLINE });
-const NOTE_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 18, fill: 0xffe9a8, align: "center", stroke: OUTLINE });
-const PLUGIN_NOTE_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 18, fill: 0x9fe0ff, align: "center", stroke: OUTLINE });
-// no outline: on the light plate it only smeared the pixel letters
-const BANNER_STYLE = new TextStyle({ fontFamily: FONT, fontSize: 30, fill: 0x383858 });
-/** For tests: how many bitmap fonts Pixi holds (it keeps them in its asset cache under keys holding "-bitmap"). */
-export const bitmapFonts = () => [...(Cache as unknown as { _cache: Map<unknown, unknown> })._cache.keys()].filter((k) => typeof k === "string" && k.includes("-bitmap")).length;
-// Render on demand: a frame is drawn only when something on screen changed, plus this slow
-// heartbeat as a safety net. An office is mostly people standing still; redrawing an unchanged
-// scene 60 times a second kept the GPU awake for nothing.
-const IDLE_RENDER_MS = 250;
 const HEARTBEAT_MS = 400; // re-send held input so the server can correct drift
 const STATUS_COLOR: Record<string, number> = { available: 0x5ec26a, busy: 0xe5584f, away: 0xf2d14b, offline: 0x8e8e9a, invisible: 0x8e8e9a };
 // Name tags sit where they always did (just over a plain head, whose drawing rises 22 px above the feet),
@@ -1286,12 +1271,12 @@ export class WorldView {
       }
     }
 
-    if (this.plugins.step(deltaMS, now)) changed = true;
+    if (this.plugins.update(dt, now)) changed = true;
     if (this.placeHoverTag()) changed = true;
 
     // animations that redraw on their own every frame
     if (this.emotes.size || this.dest || this.locate || this.banner.visible) changed = true;
-    if (changed || now - this.lastRender >= IDLE_RENDER_MS) {
+    if (shouldRender(changed, now, this.lastRender)) {
       this.app.render();
       this.lastRender = now;
       this.nRenders++;
