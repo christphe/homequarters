@@ -11,17 +11,16 @@ import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } fro
 import { bakeMapCanvas } from "./art/tiles";
 import { MapLayer } from "./mapLayer";
 import { PluginLayer } from "./pluginLayer";
-import { areaTitle } from "./places";
-import { LocalMotion, canStandStatic, retarget, solidGrid, stepRemote, type Remote } from "./motion";
+import { LocalPlayer } from "./localPlayer";
+import { canStandStatic, retarget, solidGrid, stepRemote, type Remote } from "./motion";
 import { Camera, zoomStore } from "./camera";
-import { SAME, SHOWN, Whereabouts, areaGrid, areaIndex, shownArea, shownAreas } from "./areas";
+import { areaGrid, shownAreas } from "./areas";
 
 export { bitmapFonts } from "./mapText";
 
 const T = 16;
 const WHEEL_GAP_MS = 120; // at most one zoom step per this long, so a trackpad or a free-spinning wheel does not race through every level
 const DRAG_PX = 4; // a mouse press moving less than this is a click, not a drag
-const HEARTBEAT_MS = 400; // re-send held input so the server can correct drift
 const STATUS_COLOR: Record<string, number> = { available: 0x5ec26a, busy: 0xe5584f, away: 0xf2d14b, offline: 0x8e8e9a, invisible: 0x8e8e9a };
 // Name tags sit where they always did (just over a plain head, whose drawing rises 22 px above the feet),
 // plus whatever a hat or tall hair adds on top.
@@ -112,8 +111,8 @@ export class WorldView {
     owner: (id) => {
       const e = this.ents.get(id);
       if (!e) return null;
-      const fast = e.id === this.ctx.meId ? this.fast : e.run;
-      return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.runMul : 1) * this.speed, visible: e.spr.visible };
+      const fast = e.id === this.ctx.meId ? this.player.fast : e.run;
+      return { x: e.x, y: e.y, dir: e.dir, v: (fast ? this.player.runMul : 1) * this.player.speed, visible: e.spr.visible };
     },
     canStand: (x, y) => !!this.ctx.map && canStandStatic(this.ctx.grid, x, y),
     avatars: () => [...this.ents.values()].filter((e) => e.spr.visible).map((e) => ({ id: e.id, name: e.name, x: Math.round(e.x), y: Math.round(e.y), dir: e.dir, moving: e.moving })),
@@ -128,13 +127,8 @@ export class WorldView {
       return true;
     },
   });
-  /** My area (room access) and the area named for it (the signboard). */
-  private where = new Whereabouts();
-  private speed = 72;
-  private runMul = 2;
-  private runHeld = false; // Shift
-  private runToggle = false; // "always run" (R or the HUD button)
-  private dest: { x: number; y: number } | null = null;
+  /** Me: held direction, running, server-steered walks, my predicted position and area (localPlayer.ts). */
+  private player: LocalPlayer;
   private wheelAt = 0;
   private drag: { id: number; x: number; y: number; camX: number; camY: number; moved: boolean } | null = null;
   /** The mouse over the map (canvas pixels), for the name of a plugin sprite under it; null elsewhere or for touch. */
@@ -149,12 +143,6 @@ export class WorldView {
 
   // local player
   private meEnt: Ent | null = null;
-  /** My position, predicted and reconciled with the server (motion.ts); drawn at x+ox, y+oy. */
-  private self = new LocalMotion();
-  private dx = 0;
-  private dy = 0;
-  private mdir = 0;
-  private lastBeat = 0;
 
   // stats
   private nFrames = 0;
@@ -168,16 +156,17 @@ export class WorldView {
 
   private locate: { x: number; y: number; until: number } | null = null;
   private hover: { x: number; y: number; w: number; h: number } | null = null;
-  private guided = false;
-  private guidedRun = false; // a walk-to runs; following a person goes at their pace (`self` tells)
   /** Plugin map objects, editor placeholders and the object within reach (objectLayer.ts). */
-  private objects = new ObjectLayer(this.self, (prop) => this.hooks.onNearby?.(prop));
+  private objects: ObjectLayer;
   /** The props of the map shown changed (a new map or an editor draft): plugins hear of their objects. */
   onProps: ((props: Prop[]) => void) | null = null;
   private emotes = new Map<number, { text: Text; until: number }>();
   private cleanup: (() => void)[] = [];
 
-  constructor(private hooks: ViewHooks) {}
+  constructor(private hooks: ViewHooks) {
+    this.player = new LocalPlayer(this.ctx, hooks, (name) => this.labelLayer.showBanner(name));
+    this.objects = new ObjectLayer(this.player.self, (prop) => hooks.onNearby?.(prop));
+  }
 
   /** My id (0 before hello). */
   get meId() {
@@ -231,7 +220,7 @@ export class WorldView {
 
     const kd = (e: KeyboardEvent) => this.key(e, true);
     const ku = (e: KeyboardEvent) => this.key(e, false);
-    const blur = () => { this.releaseKeys(); this.setRunHeld(false); this.stopDrag(); };
+    const blur = () => { this.releaseKeys(); this.player.setRunHeld(false); this.stopDrag(); };
     const vis = () => {
       if (document.hidden) {
         this.releaseKeys();
@@ -271,8 +260,9 @@ export class WorldView {
         const { width: W, height: H } = app.screen;
         d.x = e.clientX;
         d.y = e.clientY;
-        d.camX = W / 2 - (this.self.x + this.self.ox + this.ctx.cam.panX) * this.ctx.cam.S;
-        d.camY = H / 2 - (this.self.y + this.self.oy + this.ctx.cam.panY) * this.ctx.cam.S;
+        const self = this.player.self;
+        d.camX = W / 2 - (self.x + self.ox + this.ctx.cam.panX) * this.ctx.cam.S;
+        d.camY = H / 2 - (self.y + self.oy + this.ctx.cam.panY) * this.ctx.cam.S;
       }
     };
     app.canvas.addEventListener("wheel", wheel, { passive: false });
@@ -365,7 +355,7 @@ export class WorldView {
     const el = e.target as HTMLElement | null;
     if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
     if (e.key === "Shift") {
-      this.setRunHeld(down);
+      this.player.setRunHeld(down);
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -424,56 +414,41 @@ export class WorldView {
 
   /** Public so tests can drive movement without synthesising key events. */
   setDirection(dx: number, dy: number) {
-    if (dx || dy) { this.guided = false; this.dest = null; }
-    if (dx === this.dx && dy === this.dy) return;
-    this.advanceLocal(performance.now()); // the old direction holds until this very moment, as on the server
-    this.dx = dx;
-    this.dy = dy;
-    if (dx < 0) this.mdir = 1;
-    else if (dx > 0) this.mdir = 2;
-    else if (dy < 0) this.mdir = 3;
-    else if (dy > 0) this.mdir = 0;
-    this.sendDir();
-  }
-
-  private sendDir() {
-    this.advanceLocal(performance.now());
-    this.hooks.sendInput(this.self.record(), this.dx, this.dy, this.running);
-    this.lastBeat = performance.now();
+    this.player.setDirection(dx, dy);
   }
 
   // ---- running ----
   /** Shift inverts "always run", so either habit works. */
   get running() {
-    return this.runHeld !== this.runToggle;
+    return this.player.running;
   }
-  /** Whether my avatar goes at run speed now, as the server moves it. */
-  private get fast() {
-    return this.running || (this.guided && this.guidedRun);
-  }
-  private setRunHeld(on: boolean) {
-    if (on === this.runHeld) return;
-    this.advanceLocal(performance.now());
-    const was = this.running;
-    this.runHeld = on;
-    if (was !== this.running) this.runChanged();
+  /** Tests: whether my avatar goes at run speed now, as the server moves it. */
+  get fast() {
+    return this.player.fast;
   }
   /** Public: the HUD button and tests switch "always run". */
-  toggleRun(on = !this.runToggle) {
-    if (on === this.runToggle) return;
-    this.advanceLocal(performance.now());
-    this.runToggle = on;
-    this.runChanged();
-  }
-  private runChanged() {
-    this.hooks.onRun?.(this.running);
-    if (this.dx || this.dy || this.guided) this.sendDir(); // a stopped avatar sends it with its next input
+  toggleRun(on?: boolean) {
+    this.player.toggleRun(on);
   }
 
   /** Run to a tile; the server finds the path (walls, locked rooms) and steers. */
   goTo(tx: number, ty: number) {
-    this.dest = { x: tx * T + T / 2, y: ty * T + T / 2 };
-    this.hooks.onGoto?.(tx, ty);
+    this.player.goTo(tx, ty);
+  }
+
+  /** Tests: the direction held, and whether the server steers me. */
+  get dx() {
+    return this.player.dx;
+  }
+  get dy() {
+    return this.player.dy;
+  }
+  get guided() {
+    return this.player.guided;
+  }
+  /** Tests: where a walk-to is heading (world px), as destination(). */
+  get dest() {
+    return this.player.dest;
   }
 
   // ---- data ----
@@ -489,24 +464,13 @@ export class WorldView {
     this.onProps?.(map.props);
     // a new map may put a room under me (a desk just taken) or move area indexes: recount where I
     // stand, as the server does on a reload
-    if (this.meEnt) {
-      this.where.area = this.areaIndex(this.self.x, this.self.y);
-      this.hooks.onArea(this.areaName(this.where.area), this.where.area);
-      this.where.shown = shownArea(this.ctx.shownOf, this.where.area);
-    }
+    if (this.meEnt) this.player.recount();
     this.layout();
   }
 
   setMe(id: number, x: number, y: number, speed: number, runMul = 2) {
     this.ctx.meId = id;
-    this.ctx.cam.panX = this.ctx.cam.panY = 0;
-    this.self.reset(x, y);
-    this.speed = speed;
-    this.runMul = runMul;
-    this.where.area = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.where.area), this.where.area);
-    this.where.shown = shownArea(this.ctx.shownOf, this.where.area);
-    if (this.where.shown >= 0) this.labelLayer.showBanner(this.areaName(this.where.area));
+    this.player.setMe(x, y, speed, runMul);
     if (!this.meEnt) {
       this.meEnt = this.makeEnt(id);
       this.ents.set(id, this.meEnt);
@@ -514,7 +478,7 @@ export class WorldView {
     this.meEnt.x = x;
     this.meEnt.y = y;
     // A reconnect must never leave the player "stuck walking".
-    this.dx = this.dy = 0;
+    this.player.dx = this.player.dy = 0;
     this.keys.clear();
   }
 
@@ -593,38 +557,26 @@ export class WorldView {
     this.hover = h;
   }
   teleport(x: number, y: number) {
-    this.ctx.cam.panX = this.ctx.cam.panY = 0;
-    this.self.reset(x, y);
-    this.dx = this.dy = 0;
+    this.player.teleport(x, y);
     this.keys.clear();
-    this.where.area = this.areaIndex(x, y);
-    this.hooks.onArea(this.areaName(this.where.area), this.where.area);
   }
 
   /** The server steers me (a walk-to when run, else following a person) or stopped steering. */
   setGuided(on: boolean, run = true) {
-    this.advanceLocal(performance.now()); // the old pace holds until this very moment
-    this.guided = on;
-    this.guidedRun = on && run;
-    if (on) {
-      this.keys.clear();
-      return;
-    }
-    this.dest = null;
-    // the server stopped steering: hand control back to whatever keys are held now
-    this.dx = this.dy = 0;
-    this.applyKeys();
+    this.player.setGuided(on, run);
+    if (on) this.keys.clear();
+    else this.applyKeys(); // the server stopped steering: hand control back to whatever keys are held now
   }
 
   /** The server refused or finished a walk-to. */
   clearDest() {
     this.ctx.dirty = true;
-    this.dest = null;
+    this.player.dest = null;
   }
 
   /** Where a walk-to is heading (world px), for the minimap. */
   destination() {
-    return this.dest;
+    return this.player.dest;
   }
 
   /** The baked office picture (shared with the minimap, never re-rendered for it). */
@@ -633,21 +585,7 @@ export class WorldView {
   }
 
   applySelf(m: SelfPosition) {
-    this.mdir = m.d;
-    if (m.tp) {
-      this.self.restart(performance.now());
-      this.teleport(m.x, m.y);
-    } else {
-      // a server-steered walk: my avatar runs on between these 15 Hz positions (advanceLocal), and the
-      // gap to each one fades in instead of jumping there, so it moves smoothly and its followers too
-      this.advanceLocal(performance.now());
-      if (this.guided) this.guidedRun = m.r; // a follower runs while the person it follows runs
-      this.self.correct(m.x, m.y);
-      this.dx = m.dx;
-      this.dy = m.dy;
-      this.where.area = this.areaIndex(m.x, m.y);
-      this.hooks.onArea(this.areaName(this.where.area), this.where.area);
-    }
+    if (this.player.applySelf(m)) this.keys.clear(); // a teleport
   }
 
   setDeny(deny: number[]) {
@@ -682,7 +620,7 @@ export class WorldView {
     if (!this.ctx.map) return;
     this.ctx.dirty = true;
     this.labelLayer.relabel();
-    if (this.meEnt) this.hooks.onArea(this.areaName(this.where.area), this.where.area);
+    if (this.meEnt) this.player.tellArea();
   }
 
   showEmote(id: number, kind: number) {
@@ -753,7 +691,7 @@ export class WorldView {
 
   /** Server reconciliation (motion.ts, LocalMotion.ack). */
   applyAck(a: Ack) {
-    if (this.self.ack(a.s, a.x, a.y)) this.syncArea();
+    this.player.ack(a.s, a.x, a.y);
   }
 
   clearRemote() {
@@ -761,12 +699,12 @@ export class WorldView {
   }
 
   position() {
-    return { x: this.self.x, y: this.self.y };
+    return { x: this.player.self.x, y: this.player.self.y };
   }
 
   /** Tests: the area index I am in (room access). */
   get mArea() {
-    return this.where.area;
+    return this.player.where.area;
   }
 
   /** Tests: the areas I may not enter. */
@@ -876,32 +814,6 @@ export class WorldView {
     if (!this.ctx.people.has(id)) releaseAvatar(id);
   }
 
-  // ---- movement / collision (mirrors the server) ----
-  private areaIndex(x: number, y: number) {
-    return this.ctx.map ? areaIndex(this.ctx.grid, x, y) : -1;
-  }
-
-  /** Integrates my own movement up to now (frames, and every input at the moment it is sent). */
-  private advanceLocal(now: number) {
-    const v = this.speed * (this.fast ? this.runMul : 1);
-    if (this.self.advance(now, this.ctx.map ? this.ctx.grid : null, this.dx, this.dy, v, this.where.area)) this.syncArea();
-  }
-
-  private areaName(ai: number) {
-    const i = shownArea(this.ctx.shownOf, ai);
-    return this.ctx.map && i >= 0 ? areaTitle(this.ctx.map.areas[i], this.ctx.nameOf) : "";
-  }
-
-  private syncArea() {
-    if (!this.ctx.map) return;
-    const ai = this.areaIndex(this.self.x, this.self.y);
-    const change = this.where.enter(ai, this.ctx.shownOf);
-    if (change === SAME) return;
-    this.hooks.onArea(this.areaName(ai), ai);
-    // a desk room is part of the desks around it: no banner walking in or out of one
-    if (change === SHOWN && this.where.shown >= 0) this.labelLayer.showBanner(this.areaName(ai));
-  }
-
   // ---- zoom / area of interest ----
   /** From hello: the server's interest grid, which bounds how far out the map may zoom. */
   setInterest(cellPx: number, aoi: number, aoiMax: number) {
@@ -921,7 +833,8 @@ export class WorldView {
   /** Puts the camera at this screen offset (the frame keeps it on the map and within reach). */
   private panTo(camX: number, camY: number) {
     const { width: W, height: H } = this.app.screen;
-    this.ctx.cam.panTo(camX, camY, W, H, this.self.x + this.self.ox, this.self.y + this.self.oy);
+    const self = this.player.self;
+    this.ctx.cam.panTo(camX, camY, W, H, self.x + self.ox, self.y + self.oy);
     this.ctx.dirty = true;
   }
 
@@ -1002,12 +915,11 @@ export class WorldView {
     const cam = this.ctx.cam, S = cam.S;
     const { width: W, height: H } = this.app.screen;
 
-    this.advanceLocal(now);
-    if (!this.guided && (this.dx || this.dy) && now - this.lastBeat > HEARTBEAT_MS) this.sendDir();
-    this.self.blend(dt, this.dx, this.dy, this.speed);
-    const rx = this.self.x + this.self.ox, ry = this.self.y + this.self.oy; // where my avatar is drawn
+    const player = this.player;
+    player.update(dt, now);
+    const rx = player.rx, ry = player.ry; // where my avatar is drawn
 
-    if ((this.dx || this.dy || this.guided) && (cam.panX || cam.panY || this.drag)) {
+    if (player.steering && (cam.panX || cam.panY || this.drag)) {
       // moving recentres the camera on me, and ends a drag in progress
       if (this.drag?.moved) {
         this.app.canvas.style.cursor = "";
@@ -1029,9 +941,9 @@ export class WorldView {
     for (const e of this.ents.values()) {
       const isMe = e.id === this.ctx.meId;
       if (isMe) {
-        e.x = rx; e.y = ry; e.dir = this.mdir; e.moving = !!(this.dx || this.dy);
+        e.x = rx; e.y = ry; e.dir = player.mdir; e.moving = !!(player.dx || player.dy);
       } else {
-        stepRemote(e, this.ctx.grid, dt, this.speed * (e.run ? this.runMul : 1));
+        stepRemote(e, this.ctx.grid, dt, player.speed * (e.run ? player.runMul : 1));
       }
       const sx = Math.round(e.x * S + cam.x);
       const sy = Math.round(e.y * S + cam.y);
@@ -1042,7 +954,7 @@ export class WorldView {
       if (e.ring) e.ring.visible = on && e.speaking;
       if (!on) continue;
       visible++;
-      const fast = isMe ? this.fast : e.run;
+      const fast = isMe ? player.fast : e.run;
       let phase = e.moving ? [1, 0, 2, 0][Math.floor((now / 1000) * walkRate * (fast ? 1.6 : 1)) & 3] : 0;
       let dir = e.dir;
       let hop = 0;
@@ -1084,11 +996,12 @@ export class WorldView {
     // locate marker
     this.fxG.clear();
     if (this.hover) this.fxG.rect(this.hover.x * T, this.hover.y * T, this.hover.w * T, this.hover.h * T).stroke({ color: 0xffb84d, width: 1 }).fill({ color: 0xffb84d, alpha: 0.18 });
-    if (this.dest) {
+    const dest = player.dest;
+    if (dest) {
       const k = (now % 700) / 700;
       const r = 3 + k * 3;
-      this.fxG.poly([this.dest.x, this.dest.y - r, this.dest.x + r, this.dest.y, this.dest.x, this.dest.y + r, this.dest.x - r, this.dest.y]).stroke({ color: 0x3cc9b0, width: 1, alpha: 1 - k * 0.6 });
-      this.fxG.circle(this.dest.x, this.dest.y, 1.5).fill(0x3cc9b0);
+      this.fxG.poly([dest.x, dest.y - r, dest.x + r, dest.y, dest.x, dest.y + r, dest.x - r, dest.y]).stroke({ color: 0x3cc9b0, width: 1, alpha: 1 - k * 0.6 });
+      this.fxG.circle(dest.x, dest.y, 1.5).fill(0x3cc9b0);
     }
     this.hudG.clear();
     if (this.locate) {
@@ -1110,7 +1023,7 @@ export class WorldView {
     if (this.placeHoverTag()) changed = true;
 
     // animations that redraw on their own every frame
-    if (this.emotes.size || this.dest || this.locate) changed = true;
+    if (this.emotes.size || player.dest || this.locate) changed = true;
     if (shouldRender(changed, now, this.lastRender)) {
       this.app.render();
       this.lastRender = now;
