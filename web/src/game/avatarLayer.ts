@@ -52,7 +52,12 @@ export class AvatarLayer implements Layer {
   /** People drawn on screen in the last frame (stats). */
   visible = 0;
 
-  constructor(private player: LocalPlayer) {}
+  // fields, not parameter properties: node's type stripping (web/test) cannot run those
+  private player: LocalPlayer;
+
+  constructor(player: LocalPlayer) {
+    this.player = player;
+  }
 
   init(ctx: ViewContext) {
     this.ctx = ctx;

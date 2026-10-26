@@ -29,7 +29,18 @@ export class InputController {
   private dragEndAt = 0;
   private cleanup: (() => void)[] = [];
 
-  constructor(private ctx: ViewContext, private player: LocalPlayer, private hooks: ViewHooks, private view: InputHost) {}
+  // fields, not parameter properties: node's type stripping (web/test) cannot run those
+  private ctx: ViewContext;
+  private player: LocalPlayer;
+  private hooks: ViewHooks;
+  private view: InputHost;
+
+  constructor(ctx: ViewContext, player: LocalPlayer, hooks: ViewHooks, view: InputHost) {
+    this.ctx = ctx;
+    this.player = player;
+    this.hooks = hooks;
+    this.view = view;
+  }
 
   /** Listens on the window and the map's canvas (ctx.app exists). */
   init() {

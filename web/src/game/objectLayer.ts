@@ -26,8 +26,15 @@ export class ObjectLayer implements Layer {
   nearby: Prop | null = null;
   private nearbyAt = 0;
 
+  // fields, not parameter properties: node's type stripping (web/test) cannot run those
+  private me: { readonly x: number; readonly y: number };
+  private onNearby: (prop: Prop | null) => void;
+
   /** me: my position (the LocalMotion the view keeps); onNearby: told when the object within reach changes. */
-  constructor(private me: { readonly x: number; readonly y: number }, private onNearby: (prop: Prop | null) => void) {}
+  constructor(me: { readonly x: number; readonly y: number }, onNearby: (prop: Prop | null) => void) {
+    this.me = me;
+    this.onNearby = onNearby;
+  }
 
   init(ctx: ViewContext) {
     this.ctx = ctx;
