@@ -461,6 +461,9 @@ export class WorldView {
   get meId() {
     return this.ctx.meId;
   }
+  set meId(v: number) {
+    this.ctx.meId = v;
+  }
   get map() {
     return this.ctx.map;
   }

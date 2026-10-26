@@ -11,7 +11,7 @@ import { check, summary, resetChecks, launch, joinAs, sleep, waitFor, walkTo, AP
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BOTS = Number(process.env.PERF_BOTS ?? 300);
 const SECONDS = Number(process.env.PERF_SECONDS ?? 30);
-const LOADGEN = path.join(root, "bin", process.platform === "win32" ? "loadgen.exe" : "loadgen"); // go build -o bin/loadgen[.exe] ./cmd/loadgen
+const LOADGEN = path.join(root, "bin", process.platform === "win32" ? "loadgen.exe" : "loadgen"); // (cd server && go build -o ../bin/loadgen.exe ./cmd/loadgen) on Windows
 const GPU_ARGS = process.env.PERF_SOFTWARE_GL ? [] : ["--use-gl=angle", "--use-angle=metal", "--ignore-gpu-blocklist", "--enable-gpu-rasterization"];
 
 const WALK_PTS = [[20, 28], [34, 30], [12, 24], [30, 20], [8, 32], [36, 26]];
@@ -108,6 +108,7 @@ export async function run(ctx) {
     await alone.close();
   }
   const bots = spawn(LOADGEN, ["-url", API, "-n", String(BOTS), "-region", "distributed", "-duration", String(SECONDS * 3 + 60) + "s", "-warmup", "1s", "-probes", "0"], { stdio: "ignore" });
+  bots.on("error", (e) => console.log("# load generator did not start (" + LOADGEN + "): " + e.message));
   await sleep(Math.max(8000, BOTS * 40));
   const browser = await launch(GPU_ARGS, { waitEmpty: false });
   const results = [];
