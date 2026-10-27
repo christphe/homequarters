@@ -121,6 +121,7 @@ export function MediaDialog({ onClose, mode = "enable" }: { onClose: () => void;
       stop();
     };
     // spkId is read for the check only: choosing a speaker does not restart the preview
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- spkId, see above
   }, [camOn, micId, camId, stop, refreshDevices, tellGone]);
 
   const opts = (kind: MediaDeviceKind) => devices.filter((d) => d.kind === kind);

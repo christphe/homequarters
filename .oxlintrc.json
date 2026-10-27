@@ -1,0 +1,40 @@
+// Oxlint for the web client and the plugins, run by scripts/oxlint.mjs (a gauntlet gate and a CI step).
+// The type-aware rules (oxlint-tsgolint) read each file's nearest tsconfig.json with TypeScript 7.
+{
+  "$schema": "./web/node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "promise"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    // promises: a forgotten await, or an async function where a callback's result is dropped
+    "typescript/no-floating-promises": "error",
+    // JSX handlers may be async (React drops the result); their own errors are the handler's job
+    "typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }],
+    "typescript/await-thenable": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-implied-eval": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/no-array-delete": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/require-array-sort-compare": ["error", { "ignoreStringArrays": true }],
+    // a new protocol message or plugin command is handled, or the switch says where it goes (default)
+    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }],
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "no-eval": "error",
+    "no-new-func": "error",
+
+    // [...str] counts code points on purpose (names are limited in code points, like the server does)
+    "typescript/no-misused-spread": "off",
+    // the art code draws with comma expressions: cond && (R(...), R(...))
+    "no-unused-expressions": "off",
+    "unicorn/no-useless-spread": "off",
+    // React Compiler rules: this client does not use the compiler, and reads refs in render on purpose
+    "react/refs": "off",
+    "react/set-state-in-effect": "off"
+  },
+  "overrides": [
+    // tests spell coordinates as column * T + offset, column 0 included
+    { "files": ["web/test/**"], "rules": { "oxc/erasing-op": "off" } }
+  ],
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "plugins/installed/**"]
+}

@@ -290,6 +290,7 @@ export class WorldView {
     this.banner.visible = false;
     this.hud.addChild(this.banner);
     app.ticker.maxFPS = eco ? 30 : 0;
+    // oxlint-disable-next-line typescript/unbound-method -- the ticker calls it with app as this
     app.ticker.remove(app.render, app); // frame() draws, and only when something changed
     app.ticker.add((t) => this.frame(t.deltaMS));
     this.layout();

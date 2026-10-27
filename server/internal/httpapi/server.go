@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -636,8 +635,6 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
-
-var errBadOrigin = errors.New("origin not allowed")
 
 type inviteReq struct {
 	Role    string `json:"role"`

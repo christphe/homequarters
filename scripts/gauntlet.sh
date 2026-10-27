@@ -42,13 +42,15 @@ gate() {
 
 gate gofmt bash -c 'test -z "$(cd server && gofmt -l .)"'
 gate go-vet bash -c 'cd server && go vet ./...'
+gate staticcheck bash -c 'cd server && go tool staticcheck ./...'
 gate go-test-race bash -c 'cd server && go test -race -count=1 ./...'
 gate tsc bash -c 'cd web && pnpm exec tsc --noEmit'
 gate tsc-tests bash -c 'cd web && pnpm exec tsc -p tsconfig.test.json --noEmit'
 gate vite-build bash -c 'cd web && pnpm exec vite build'
 gate web-lint node scripts/lint-web.mjs
-# plugin code is TypeScript type-checked against plugins/sdk/*.d.ts: the sample and the suite's test plugin
-gate plugin-types bash -c 'cd web && for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../plugins/bundled/hq-cards ../plugins/bundled/hq-cards/public ../plugins/bundled/hq-card-pouilleux ../plugins/bundled/hq-card-lastcard ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done'
+gate oxlint node scripts/oxlint.mjs
+# every plugin tsconfig.json under plugins/ and e2e/fixtures/plugins/, type-checked against plugins/sdk/*.d.ts
+gate plugin-types node scripts/check-plugin-types.mjs
 gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs e2e/slots.test.mjs"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then

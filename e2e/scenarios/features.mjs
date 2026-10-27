@@ -156,6 +156,8 @@ export async function run(ctx) {
     const cookie = (await a.ctx.cookies()).find((c) => c.name === "hq_session").value;
     await close(a); await close(b);
     check("Escape closes both boards", !(await a.page.$("canvas.whiteboard")) && !(await b.page.$("canvas.whiteboard")));
+    // while the server is down on purpose, Chrome logs each refused reconnection of the open pages
+    const before = [a.logs.length, b.logs.length];
     await ctx.stopServer(); await ctx.startServer();
     await a.page.reload();
     await waitFor(() => read(a, () => window.__hq?.state?.conn === "open"), { what: "reconnected after restart" });
@@ -165,7 +167,9 @@ export async function run(ctx) {
     check("whiteboard survives graceful restart without waiting for debounce", true);
     const fullMap = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json();
     check("interactive note edits persist across restart", fullMap.props.find((p) => p.t === "note" && p.x === 4 && p.y === 5).data === "A saved team note");
-    check("new flows have no browser runtime errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | "));
+    const refused = /^WebSocket connection to '\S+\/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED$/;
+    const errors = [a, b].flatMap((p, i) => p.logs.filter((l, j) => !(j >= before[i] && refused.test(l))));
+    check("new flows have no browser runtime errors", errors.length === 0, errors.join(" | "));
     return summary();
   } finally { await browser.close(); }
 }
