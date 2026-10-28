@@ -377,6 +377,7 @@ const en = {
   "settings.videoLimit": "Simultaneous videos",
   "settings.debug": "Show metrics",
   "hud.you": "you",
+  "people.adminTag": "admin",
   "settings.profile": "Profile",
   "settings.device": "Use this account on another machine",
   "settings.deviceNew": "Create a sign-in link",

@@ -180,8 +180,6 @@ type Player struct {
 // tile is a map cell coordinate.
 type tile struct{ x, y int16 }
 
-func (p *Player) connected() bool { return p.out != nil }
-
 // KickReason says why the server closed a live connection.
 type KickReason uint8
 

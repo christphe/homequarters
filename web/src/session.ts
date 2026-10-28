@@ -301,6 +301,8 @@ class Session {
           } else { void spotlightMedia.leave(); }
         }
         break;
+      case "pong":
+        break; // socket.ts measures the round trip and never passes it on
     }
   }
 

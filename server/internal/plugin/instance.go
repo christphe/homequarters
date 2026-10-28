@@ -508,6 +508,10 @@ type playerJSON struct {
 	Role string `json:"role"`
 }
 
+// A literal, not playerJSON(p): the fields are an allow-list of what plugins see, so a field added
+// to Player must not reach them by itself.
+//
+//lint:ignore S1016 see above
 func jsPlayer(p Player) playerJSON { return playerJSON{p.ID, p.Name, p.Role} }
 
 func (in *instance) online(id uint32) bool {

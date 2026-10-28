@@ -55,8 +55,11 @@ Two products are released separately from this repository, each with its own cha
 ~~~bash
 ./scripts/dev.sh                          # LiveKit (dev) + Go server + Vite; logs in .run/
 cd server && go vet ./... && go test -race ./...
-scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, race tests, tsc, build, web lint, browser suite (E2E_VIEWPORT=small, CI's 800x450)
-node scripts/lint-web.mjs                # static web rules (effects return a cleanup or nothing, i18n)
+scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, staticcheck, race tests, tsc, build, protocol docs, oxlint, plugin types, browser suite (E2E_VIEWPORT=small, CI's 800x450)
+node scripts/oxlint.mjs                  # Oxlint, type-aware, on web/ and the plugins (.oxlintrc.json; decision 0033), with the project's rules in scripts/oxlint-hq.mjs (effects return a cleanup or nothing, UI text through t(), dialogs through Modal, no fetch in web/src/ui)
+node scripts/check-protocol-docs.mjs     # docs/protocol.md lists every message of ws.go's dispatch and of protocol.ts
+node scripts/check-plugin-types.mjs      # tsc on every plugin tsconfig.json under plugins/ and e2e/fixtures/plugins/
+cd server && go tool staticcheck ./...   # staticcheck, the version pinned in go.mod
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
 cd e2e && node run.mjs                    # real Chrome + real LiveKit; takes an e2e slot, builds, starts its own server (fresh database) and LiveKit
 cd e2e && E2E_PARALLELISM=2 node run.mjs   # the whole suite as 2 shards at once, each with its own server, LiveKit and Chrome (gauntlet.sh passes it on)
@@ -95,8 +98,8 @@ Art (output goes to `site/assets/`; details in `docs/art-style.md`):
 
 ## Conventions
 
-- Go: standard library first, `gofmt`, table-driven tests where natural, no dependency for what a few lines do. Keep `internal/media` the only package that speaks to LiveKit.
-- TypeScript: `strict` is on; keep `tsc --noEmit` clean. Prefer small modules; keep hot paths allocation-light.
+- Go: standard library first, `gofmt`, staticcheck clean (a `//lint:ignore` says why), table-driven tests where natural, no dependency for what a few lines do. Keep `internal/media` the only package that speaks to LiveKit.
+- TypeScript: `strict` is on; keep `tsc --noEmit` and `node scripts/oxlint.mjs` clean (a disable comment says why). Prefer small modules; keep hot paths allocation-light.
 - Web Audio: create (or resume) an `AudioContext` inside the click that needs it; made after an `await` it may stay suspended and silent. A node that processes mono sets `channelCount = 1` with `channelCountMode = "explicit"`, or a stereo microphone loses half its signal. Playback the user hears goes to the chosen speaker (`setSinkId`).
 - Toasts sit above dialogs (`.toast` z-index over `.scrim`) so a message raised from a dialog shows.
 - Validate all external input: WebSocket messages, avatars, maps, uploads. Enforce size and rate limits.

@@ -64,7 +64,7 @@ function People({ onDm }: { onDm: (id: number) => void }) {
             <AvatarCanvas av={p.av} size={2} />
             <div className="who">
               <span className="nm">{p.n}{p.id === me && <em> ({t("hud.you")})</em>}{p.h === 1 && <span role="img" aria-label={t("hand.raised")}> ✋</span>}</span>
-              <span className="st"><i className="dot" style={{ background: statusColor[p.s] }} />{t(("status." + p.s) as Key)}{p.r === "admin" ? " · admin" : ""}</span>
+              <span className="st"><i className="dot" style={{ background: statusColor[p.s] }} />{t(("status." + p.s) as Key)}{p.r === "admin" ? " · " + t("people.adminTag") : ""}</span>
               {p.m && <span className="note">{p.m}</span>}
             </div>
             {p.id !== me && p.s !== "offline" && (

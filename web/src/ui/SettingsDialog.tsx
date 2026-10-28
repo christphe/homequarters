@@ -8,6 +8,7 @@ import { AppearanceDialog } from "./AppearanceDialog";
 import { NoiseDialog } from "./NoiseDialog";
 import { MediaDialog } from "./MediaDialog";
 import { GearIcon } from "./Icons";
+import { request } from "../net/http";
 import { askNotifyPermission } from "../notify";
 import { askOsIdle, IDLE_SETTINGS_URL, osIdleSupported } from "../osIdle";
 import { t } from "../i18n";
@@ -27,14 +28,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [noiseOpen, setNoiseOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
   const makeDeviceLink = async () => {
-    const r = await fetch("/api/account-link", { method: "POST" });
+    const r = await request<{ url: string }>("POST", "/api/account-link");
     if (!r.ok) return toast(t("settings.deviceError"));
-    const { url } = (await r.json()) as { url: string };
-    setDeviceLink(location.origin + url);
+    setDeviceLink(location.origin + r.json.url);
   };
   const saveProfile = async (look = avatar) => {
     const n = name.trim() || myName;
-    const r = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n, avatar: look }) });
+    const r = await request("PUT", "/api/profile", { name: n, avatar: look });
     if (!r.ok) return toast(t("settings.profileError"));
     setAvatar(look);
     saveAvatar(look);
@@ -43,8 +43,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   };
   // the session ends on the server; the reload stops the call and capture and shows the sign-in screen
   const signOut = async () => {
-    const r = await fetch("/api/signout", { method: "POST" }).catch(() => null);
-    if (r?.ok) location.reload();
+    const r = await request("POST", "/api/signout");
+    if (r.ok) location.reload();
     else toast(t("settings.signOutFailed"));
   };
   return (

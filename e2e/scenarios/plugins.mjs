@@ -625,10 +625,15 @@ export async function run(ctx) {
     check("a Map or an ArrayBuffer posted past the SDK reaches the view as {} (the page relays its JSON copy)", rawOut === "raw big={} buf={}", rawOut);
     // 100 messages in one second each way: at most 30 go through, and nothing stops
     await view.evaluate(() => { for (let i = 0; i < 100; i++) hqView.send({ t: "flood" }); });
+    // each message from the view redraws the modal, and a redraw frees the old buttons' callbacks: a click
+    // on a button being replaced is lost, so click once the count has settled (it shows 0 until the flood arrives)
+    let lastFrom = "";
+    await waitFor(async () => { const now = /From the view: (\d+)/.exec(await modalText())?.[1] ?? ""; const settled = Number(now) >= 1 && now === lastFrom; lastFrom = now; return settled; }, { every: 400, what: "the view's flood counted" });
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Flood the view"), { what: "Flood the view" });
     await sleep(1500);
-    const fromView = Number(/From the view: (\d+)/.exec(await modalText())?.[1] ?? -1);
-    const toView = Number(/flood (\d+)/.exec(await view.evaluate(() => document.getElementById("out")?.textContent ?? ""))?.[1] ?? -1);
+    // under load the view may print its count after the second is over: wait for it rather than read once
+    const counts = async () => [Number(/From the view: (\d+)/.exec(await modalText())?.[1] ?? -1), Number(/flood (\d+)/.exec(await view.evaluate(() => document.getElementById("out")?.textContent ?? ""))?.[1] ?? -1)];
+    const [fromView, toView] = (await waitFor(async () => { const c = await counts(); return c.every((n) => n >= 1) ? c : null; }, { timeout: 10000, what: "both flood counts" }).catch(() => null)) ?? (await counts());
     check("100 view messages in a second: at most 30 reach the client code", fromView >= 1 && fromView <= 30, "got " + fromView);
     check("100 hq.ui.post in a second: at most 30 reach the view", toView >= 1 && toView <= 30, "got " + toView);
     const dropped = ["from the view", "to the view"].map((dir) => warnings.some((w) => w.includes("view message dropped: more than 30 a second " + dir)));

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast, useStore } from "../store";
 import { hasKey, t, type Key } from "../i18n";
 import { Modal } from "./Modal";
+import { request as api } from "../net/http";
 import { GearIcon, InfoIcon } from "./Icons";
 
 type Tab = "members" | "invites" | "activity" | "announce" | "office" | "plugins";
@@ -10,11 +11,6 @@ interface PluginSetting { key: string; label: string; min: number; max: number; 
 interface Member { id: number; name: string; role: "admin" | "member"; joinedAt: number; email?: string }
 interface InviteRow { id: number; role: string; maxUses: number; uses: number; expiresAt: number; createdAt: number; createdBy: string; status: string }
 interface AuditRow { id: number; actor: string; action: string; target: string; detail: string; at: number }
-
-async function api<T>(method: string, path: string, body?: unknown): Promise<{ ok: boolean; status: number; json: T & { error?: string } }> {
-  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
-  return { ok: r.ok, status: r.status, json: (await r.json().catch(() => ({}))) as T & { error?: string } };
-}
 
 const when = (sec: number) => new Date(sec * 1000).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" });
 
@@ -289,7 +285,7 @@ function PluginSettings({ plugin, onClose, onSaved }: { plugin: PluginRow; onClo
       if (!r.ok) {
         setBusy(false);
         onSaved();
-        return toast(t("admin.plugins.settings.failed", { name: s.label, error: r.json.error ?? String(r.status) }));
+        return toast(t("admin.plugins.settings.failed", { name: s.label, error: r.json.error ?? (r.status ? String(r.status) : t("admin.error")) }));
       }
     }
     setBusy(false);
@@ -342,7 +338,7 @@ function Plugins() {
     const r = await api<{ state: string }>("PUT", "/api/admin/plugins/" + encodeURIComponent(p.name), { enabled });
     setBusy("");
     if (r.ok) toast(t(enabled ? "admin.plugins.enabled" : "admin.plugins.disabled", { name: p.title }));
-    else toast(t("admin.plugins.failed", { name: p.title, error: r.json.error ?? String(r.status) }));
+    else toast(t("admin.plugins.failed", { name: p.title, error: r.json.error ?? (r.status ? String(r.status) : t("admin.error")) }));
     void load();
   };
   if (!rows) return <p className="muted" role="status">{t("admin.loading")}</p>;

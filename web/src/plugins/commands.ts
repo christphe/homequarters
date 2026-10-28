@@ -278,6 +278,7 @@ function parseOne(c: unknown): Cmd {
       return { op: "follow", id, player: opt(o.player, (v) => num(v, "player", 1, 2 ** 32 - 1, true)), sprite, gap: opt(o.gap, (v) => num(v, "gap", 0, 200)), beside: opt(o.beside, (v) => num(v, "beside", 0, 120)), roam: opt(o.roam, (v) => num(v, "roam", 0, 48)) };
     }
     case "label": {
+      // oxlint-disable-next-line no-control-regex -- refusing control characters is the point
       if (o.text !== null && (typeof o.text !== "string" || /[\u0000-\u001f\u007f]/.test(o.text))) throw new Bad("text must be one line of text or null");
       const text = o.text === null ? null : str(o.text, "text", LIMITS.hoverLabel);
       return { op: "label", id: str(o.id, "id"), text, owner: opt(o.owner, (v) => num(v, "owner", 1, 2 ** 32 - 1, true)) };

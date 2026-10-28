@@ -162,7 +162,7 @@ export class MediaManager {
       throw e;
     }
     if (gen !== this.gen) {
-      room.disconnect(true);
+      void room.disconnect(true);
       return;
     }
     this.setPlaybackState("live");

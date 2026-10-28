@@ -4,6 +4,8 @@ Lens: does the diff keep the rules in `AGENTS.md` ("Invariants", "Administration
 
 Inputs: the brief, the diff, the gate output.
 
+Some of these are gates now (decision 0033): with the `oxlint` and `protocol-docs` gates green, string literals shown in JSX (text, `{"..."}`, ternaries) and in `aria-label`/`title`/`placeholder`/`alt` go through `t()`, dialogs are `Modal`, effects return a cleanup or nothing, the UI makes requests through `request()` and imports no `pixi.js`, and `docs/protocol.md` lists every message the server dispatches and every one `protocol.ts` types. Spend the review on what they cannot see: strings built in `.ts` files, passed as props or to `toast()`, names of interactive elements, animation driven through React state, messages the server sends that `protocol.ts` does not type, protocol fields and world tests.
+
 For each changed file, check every invariant it can touch:
 
 - **Authority**: positions, speed, access and membership decided on the server; the client sends intent.

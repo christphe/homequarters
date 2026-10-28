@@ -25,14 +25,15 @@ const anims: HQ.Anims = {};
 });
 
 let started = false;
-hq.onLoad(async () => {
+hq.onLoad(() => void load());
+async function load() {
   hq.loadSprite("drawn", await sheet(), { frameW: CELL, frameH: CELL, anims });
   // not an image: refused when the page decodes it, and the plugin goes on
   hq.loadSprite("bogus", new Blob(["not a picture"], { type: "text/plain" }), { frameW: CELL, frameH: CELL });
   hq.ui.slot("open", "sidebar", {
     onClick: () => hq.ui.modal({ title: "Drawn sheet" }, [hq.ui.sprite({ sheet: "drawn", frame: [0, 0, CELL, CELL], scale: 3, alt: "A drawn creature" })]),
   });
-});
+}
 
 hq.onUpdate((_dt, world) => {
   if (started || !world.me) return;

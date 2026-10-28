@@ -25,6 +25,9 @@ jobs:
       - name: Vet
         working-directory: server
         run: go vet ./...
+      - name: Staticcheck (the version pinned in go.mod)
+        working-directory: server
+        run: go tool staticcheck ./...
       - name: Test (race detector)
         working-directory: server
         run: go test -race -count=1 ./...
@@ -35,7 +38,7 @@ jobs:
           go build ./cmd/loadgen
       - name: Build the media benchmark tool
         working-directory: bench/mediagen
-        run: go vet ./... && go build -o /dev/null .
+        run: go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@$(cd ../../server && go list -m -f '{{.Version}}' honnef.co/go/tools) ./... && go build -o /dev/null .
 
   web:
     runs-on: ubuntu-latest
@@ -53,8 +56,10 @@ jobs:
         working-directory: web
       - run: pnpm exec tsc --noEmit
         working-directory: web
-      - name: Web lint (bug classes tsc misses)
-        run: node scripts/lint-web.mjs
+      - name: Oxlint, type-aware (web client and plugins), with the project's own rules
+        run: node scripts/oxlint.mjs && node --test scripts/oxlint-hq.test.mjs
+      - name: docs/protocol.md lists every WebSocket message
+        run: node scripts/check-protocol-docs.mjs && node --test scripts/check-protocol-docs.test.mjs
       - name: Web unit tests (pure game logic)
         run: node --test 'web/test/*.test.ts'
       - name: E2E shard assignment and slots
@@ -62,9 +67,8 @@ jobs:
       - name: Type-check the web unit tests
         run: pnpm exec tsc -p tsconfig.test.json --noEmit
         working-directory: web
-      - name: Type-check the plugins against plugins/sdk (the sample and the e2e test plugin)
-        run: for p in ../plugins/bundled/hq-pets ../plugins/bundled/hq-pets/public ../plugins/bundled/hq-chess ../plugins/bundled/hq-chess/public ../plugins/bundled/hq-cards ../plugins/bundled/hq-cards/public ../plugins/bundled/hq-card-pouilleux ../plugins/bundled/hq-card-lastcard ../e2e/fixtures/plugins/installed/ui-demo ../e2e/fixtures/plugins/installed/ui-demo/public ../e2e/fixtures/plugins/installed/critters ../e2e/fixtures/plugins/installed/drawn-sheet/public ../e2e/fixtures/plugins/installed/drawn-pet ../e2e/fixtures/plugins/installed/drawn-pet/public; do pnpm exec tsc -p "$p" || exit 1; done
-        working-directory: web
+      - name: Type-check every plugin against plugins/sdk (each tsconfig.json under plugins/ and e2e/fixtures/plugins/)
+        run: node scripts/check-plugin-types.mjs
       - name: Build and check the docs site (links, SEO metadata, sitemap, llms.txt)
         run: pnpm install --frozen-lockfile && node build.mjs && node check.mjs
         working-directory: site

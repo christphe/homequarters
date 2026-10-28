@@ -1,0 +1,59 @@
+// Oxlint for the web client and the plugins, run by scripts/oxlint.mjs (a gauntlet gate and a CI step).
+// The type-aware rules (oxlint-tsgolint) read each file's nearest tsconfig.json with TypeScript 7.
+{
+  "$schema": "./web/node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "promise"],
+  // the project's own rules: scripts/oxlint-hq.mjs
+  "jsPlugins": ["./scripts/oxlint-hq.mjs"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    // promises: a forgotten await, or an async function where a callback's result is dropped
+    "typescript/no-floating-promises": "error",
+    // JSX handlers may be async (React drops the result): the UI's requests go through request(), which never throws
+    "typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }],
+    "typescript/await-thenable": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-implied-eval": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/no-array-delete": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/require-array-sort-compare": ["error", { "ignoreStringArrays": true }],
+    // a new protocol message or plugin command is handled, or the switch says where it goes (default)
+    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }],
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "no-eval": "error",
+    "no-new-func": "error",
+    "hq/effect-cleanup": "error",
+
+    // [...str] counts code points on purpose (names are limited in code points, like the server does)
+    "typescript/no-misused-spread": "off",
+    // the art code draws with comma expressions: cond && (R(...), R(...))
+    "no-unused-expressions": "off",
+    "unicorn/no-useless-spread": "off",
+    // React Compiler rules: this client does not use the compiler, and reads refs in render on purpose
+    "react/refs": "off",
+    "react/set-state-in-effect": "off"
+  },
+  "overrides": [
+    // tests spell coordinates as column * T + offset, column 0 included
+    { "files": ["web/test/**"], "rules": { "oxc/erasing-op": "off" } },
+    // the gauntlet critics' UI invariants (AGENTS.md): text through the i18n dictionary, dialogs through Modal
+    { "files": ["web/src/**/*.tsx"], "rules": { "hq/ui-text": "error", "hq/dialog-through-modal": "error" } },
+    { "files": ["web/src/ui/Modal.tsx"], "rules": { "hq/dialog-through-modal": "off" } },
+    {
+      "files": ["web/src/ui/**"],
+      "rules": {
+        // a request that fails on the network would reject: request() turns it into the caller's error path
+        "no-restricted-globals": ["error", { "name": "fetch", "message": "Use request() from web/src/net/http.ts: it never throws, a network failure is status 0." }],
+        "no-restricted-properties": ["error",
+          { "object": "window", "property": "fetch", "message": "Use request() from web/src/net/http.ts." },
+          { "object": "globalThis", "property": "fetch", "message": "Use request() from web/src/net/http.ts." },
+          { "object": "self", "property": "fetch", "message": "Use request() from web/src/net/http.ts." }],
+        // PixiJS owns the world and its ticker; React renders the UI around it
+        "no-restricted-imports": ["error", { "patterns": [{ "group": ["pixi.js", "pixi.js/*", "@pixi/*"], "message": "The world is drawn in web/src/game (PixiJS); React components stay out of it." }] }]
+      }
+    }
+  ],
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "plugins/installed/**"]
+}

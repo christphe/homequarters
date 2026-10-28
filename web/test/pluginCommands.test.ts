@@ -49,7 +49,7 @@ test("accepts every command", () => {
     { op: "send", d: { t: "sync" } },
   ];
   const got = parseBatch(all);
-  assert.ok(Array.isArray(got), String(got));
+  assert.ok(Array.isArray(got), JSON.stringify(got));
   assert.equal(got.length, all.length);
 });
 
@@ -134,7 +134,7 @@ test("a blank button label is refused (it would have no accessible name)", () =>
 
 test("a button may be disabled: shown, named, not pressable (hq-chess's taken seats)", () => {
   const ok = parseBatch([{ op: "modal", title: "t", content: [{ type: "button", label: "White: Ann (away)", click: "c1", disabled: true }] }]);
-  assert.ok(Array.isArray(ok) && ok[0].op === "modal", String(ok));
+  assert.ok(Array.isArray(ok) && ok[0].op === "modal", JSON.stringify(ok));
   const b = ok[0].op === "modal" ? ok[0].content[0] : null;
   assert.ok(b?.type === "button" && b.disabled === true);
   assert.equal(typeof parseBatch([{ op: "modal", title: "t", content: [{ type: "button", label: "b", disabled: "yes" }] }]), "string");
@@ -153,7 +153,7 @@ test("a sheet cut into too many frames is refused", () => {
 
 test("a slot without a label is named after its plugin (the side panel entry)", () => {
   const ok = parseBatch([{ op: "slot", id: "config", anchor: "sidebar", click: "c1" }]);
-  assert.ok(Array.isArray(ok) && ok[0].op === "slot" && ok[0].label === undefined, String(ok));
+  assert.ok(Array.isArray(ok) && ok[0].op === "slot" && ok[0].label === undefined, JSON.stringify(ok));
 });
 
 test("spawn without a position keeps an existing sprite where it is", () => {
@@ -164,7 +164,7 @@ test("spawn without a position keeps an existing sprite where it is", () => {
 
 test("a sheet asked for by metadata: another plugin draws it (hq.provideSheet)", () => {
   const ok = parseBatch([{ op: "provide" }, { op: "sprite", key: "g0", provided: { from: "drawer", metadata: { kind: 25, alt: false } }, anims: {} }]);
-  assert.ok(Array.isArray(ok), String(ok));
+  assert.ok(Array.isArray(ok), JSON.stringify(ok));
   const s = (ok as { op: string; provided?: { from: string; metadata: unknown } }[])[1];
   assert.deepEqual(s.provided, { from: "drawer", metadata: { kind: 25, alt: false } });
   const bad = [

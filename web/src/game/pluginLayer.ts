@@ -163,7 +163,7 @@ export class PluginLayer {
           // under that plugin's name)
           const base = c.from ? g.base.replace(/\/plugins\/[^/]+\/assets\/$/, "/plugins/" + c.from + "/assets/") : g.base;
           if (c.provided) this.askProvider(g, sheet);
-          else this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH);
+          else void this.load(g, sheet, c.image ?? base + c.url, c.frameW, c.frameH); // load() reports its own failures
           break;
         }
         case "spawn": {
