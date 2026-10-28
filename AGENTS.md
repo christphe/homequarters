@@ -55,9 +55,9 @@ Two products are released separately from this repository, each with its own cha
 ~~~bash
 ./scripts/dev.sh                          # LiveKit (dev) + Go server + Vite; logs in .run/
 cd server && go vet ./... && go test -race ./...
-scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, staticcheck, race tests, tsc, build, web lint, oxlint, plugin types, browser suite (E2E_VIEWPORT=small, CI's 800x450)
-node scripts/lint-web.mjs                # static web rules (effects return a cleanup or nothing, i18n)
-node scripts/oxlint.mjs                  # Oxlint, type-aware, on web/ and the plugins (.oxlintrc.json; decision 0033)
+scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, staticcheck, race tests, tsc, build, protocol docs, oxlint, plugin types, browser suite (E2E_VIEWPORT=small, CI's 800x450)
+node scripts/oxlint.mjs                  # Oxlint, type-aware, on web/ and the plugins (.oxlintrc.json; decision 0033), with the project's rules in scripts/oxlint-hq.mjs (effects return a cleanup or nothing, UI text through t(), dialogs through Modal, no fetch in web/src/ui)
+node scripts/check-protocol-docs.mjs     # docs/protocol.md lists every message of ws.go's dispatch and of protocol.ts
 node scripts/check-plugin-types.mjs      # tsc on every plugin tsconfig.json under plugins/ and e2e/fixtures/plugins/
 cd server && go tool staticcheck ./...   # staticcheck, the version pinned in go.mod
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build

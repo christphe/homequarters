@@ -3,6 +3,7 @@ import { AvatarEditor } from "./AvatarEditor";
 import { loadMe } from "../me";
 import { saveAvatar, setState, useStore } from "../store";
 import { hasKey, t, type Key } from "../i18n";
+import { request } from "../net/http";
 
 export function JoinScreen() {
   const signsIn = useStore((s) => s.auth.providers.length > 0);
@@ -42,7 +43,7 @@ function SignInScreen() {
           <button type="button" className="btn signin-out" onClick={() => {
             // a fresh start: drop the previous person's error and login hint, keep an invite
             history.replaceState(null, "", location.pathname + (invite ? "?invite=" + encodeURIComponent(invite) : ""));
-            void fetch("/api/signout", { method: "POST" }).then(() => loadMe());
+            void request("POST", "/api/signout").then(() => loadMe());
           }}>
             {t("signin.notMe", { name: link.name })}
           </button>
@@ -70,10 +71,10 @@ function ProfileForm() {
     setBusy(true);
     setErr("");
     try {
-      const r = await fetch("/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), avatar: av, invite }) });
+      const r = await request<{ code?: string }>("POST", "/api/join", { name: name.trim(), avatar: av, invite });
       if (signup && (r.status === 403 || r.status === 409)) {
         // back to the sign-in buttons, saying why: expired, invite used up, or the account already has a member
-        const code = ((await r.json().catch(() => ({}))) as { code?: string }).code ?? "expired";
+        const code = r.json.code ?? "expired";
         history.replaceState(null, "", location.pathname);
         await loadMe(t((hasKey("signin.err." + code) ? "signin.err." + code : "signin.err.expired") as Key));
         return;

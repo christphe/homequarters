@@ -625,6 +625,10 @@ export async function run(ctx) {
     check("a Map or an ArrayBuffer posted past the SDK reaches the view as {} (the page relays its JSON copy)", rawOut === "raw big={} buf={}", rawOut);
     // 100 messages in one second each way: at most 30 go through, and nothing stops
     await view.evaluate(() => { for (let i = 0; i < 100; i++) hqView.send({ t: "flood" }); });
+    // each message from the view redraws the modal, and a redraw frees the old buttons' callbacks: a click
+    // on a button being replaced is lost, so click once the count has settled (it shows 0 until the flood arrives)
+    let lastFrom = "";
+    await waitFor(async () => { const now = /From the view: (\d+)/.exec(await modalText())?.[1] ?? ""; const settled = Number(now) >= 1 && now === lastFrom; lastFrom = now; return settled; }, { every: 400, what: "the view's flood counted" });
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Flood the view"), { what: "Flood the view" });
     await sleep(1500);
     // under load the view may print its count after the second is over: wait for it rather than read once

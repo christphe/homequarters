@@ -47,11 +47,11 @@ gate go-test-race bash -c 'cd server && go test -race -count=1 ./...'
 gate tsc bash -c 'cd web && pnpm exec tsc --noEmit'
 gate tsc-tests bash -c 'cd web && pnpm exec tsc -p tsconfig.test.json --noEmit'
 gate vite-build bash -c 'cd web && pnpm exec vite build'
-gate web-lint node scripts/lint-web.mjs
+gate protocol-docs node scripts/check-protocol-docs.mjs
 gate oxlint node scripts/oxlint.mjs
 # every plugin tsconfig.json under plugins/ and e2e/fixtures/plugins/, type-checked against plugins/sdk/*.d.ts
 gate plugin-types node scripts/check-plugin-types.mjs
-gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs e2e/slots.test.mjs"
+gate web-unit bash -c "node --test 'web/test/*.test.ts' e2e/shards.test.mjs e2e/slots.test.mjs scripts/oxlint-hq.test.mjs scripts/check-protocol-docs.test.mjs"
 gate site-build bash -c 'cd site && node build.mjs && node check.mjs'
 if [ -z "${GAUNTLET_SKIP_E2E:-}" ]; then
   gate e2e bash -c 'cd e2e && E2E_VIEWPORT=small node run.mjs "$@"' _ "$@"

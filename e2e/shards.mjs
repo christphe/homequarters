@@ -2,7 +2,7 @@
 // E2E_PARALLELISM=N shards on one machine (see parallel.mjs). Pure: no dependency, no I/O.
 
 // The whole suite, in the order a single run executes it.
-export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "cards", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth"];
+export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "cards", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline"];
 
 // Seconds per scenario, measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
 // scenario grows; a scenario missing here counts as UNKNOWN seconds.
@@ -12,6 +12,7 @@ export const DURATIONS = {
   update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
   cards: 150, // an estimate (about 2.5 min on a Windows desktop) until a CI run measures it
   depth: 60, // an estimate (two layout switches and an editor save) until a CI run measures it
+  offline: 50, // an estimate (one page, eight failed requests, each after the previous toast has gone) until a CI run measures it
 };
 export const UNKNOWN = 60;
 

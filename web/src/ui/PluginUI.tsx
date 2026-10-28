@@ -3,6 +3,7 @@ import { session } from "../session";
 import { toast, useStore, type PluginSlot } from "../store";
 import { t } from "../i18n";
 import { Modal } from "./Modal";
+import { request } from "../net/http";
 import { PluginViewFrame } from "./PluginViewFrame";
 import type { Anchor, SpriteSpec, UINode } from "../plugins/commands";
 
@@ -292,18 +293,18 @@ function AppTokenField({ plugin }: { plugin: string }) {
   const [fresh, setFresh] = useState("");
   const path = "/api/plugins/" + encodeURIComponent(plugin) + "/token";
   const load = useCallback(async () => {
-    const r = await fetch(path);
-    if (r.ok) setInfo(await r.json());
+    const r = await request<{ exists: boolean; createdAt: number }>("GET", path);
+    if (r.ok) setInfo(r.json);
   }, [path]);
   useEffect(() => { void load(); }, [load]);
   const create = async () => {
-    const r = await fetch(path, { method: "POST" });
+    const r = await request<{ token: string }>("POST", path);
     if (!r.ok) return toast(t("plugins.token.error"));
-    setFresh(((await r.json()) as { token: string }).token);
+    setFresh(r.json.token);
     void load();
   };
   const revoke = async () => {
-    const r = await fetch(path, { method: "DELETE" });
+    const r = await request("DELETE", path);
     if (!r.ok) return toast(t("plugins.token.error"));
     setFresh("");
     toast(t("plugins.token.revoked"));

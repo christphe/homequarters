@@ -56,10 +56,10 @@ jobs:
         working-directory: web
       - run: pnpm exec tsc --noEmit
         working-directory: web
-      - name: Web lint (bug classes tsc misses)
-        run: node scripts/lint-web.mjs
-      - name: Oxlint, type-aware (web client and plugins)
-        run: node scripts/oxlint.mjs
+      - name: Oxlint, type-aware (web client and plugins), with the project's own rules
+        run: node scripts/oxlint.mjs && node --test scripts/oxlint-hq.test.mjs
+      - name: docs/protocol.md lists every WebSocket message
+        run: node scripts/check-protocol-docs.mjs && node --test scripts/check-protocol-docs.test.mjs
       - name: Web unit tests (pure game logic)
         run: node --test 'web/test/*.test.ts'
       - name: E2E shard assignment and slots

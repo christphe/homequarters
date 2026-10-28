@@ -5,6 +5,7 @@ import { eraseAt, isPluginProp } from "../game/props";
 import type { MapData, PluginObjectSpec } from "../net/protocol";
 import { toast, useStore } from "../store";
 import { t } from "../i18n";
+import { request } from "../net/http";
 
 type Tool = "wall" | "prop" | "erase" | "room" | "unroom" | "desk" | "content";
 const INTERACTIVE = ["note", "embed", "image", "portal", "whiteboard", "spotlight"];
@@ -41,13 +42,12 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
     const m = session.view?.currentMap();
     if (m) {
       original.current = cloneMap(m);
-      void fetch("/api/admin/map").then(async (r) => {
-        if (!r.ok) throw new Error("map unavailable");
-        const full = await r.json() as MapData;
+      void request<MapData>("GET", "/api/admin/map").then((r) => {
         if (cancelled) return;
-        draft.current = { ...cloneMap(m), ...full, tile: 16, solid: m.solid };
+        if (!r.ok) return toast(t("editor.loadError"));
+        draft.current = { ...cloneMap(m), ...r.json, tile: 16, solid: m.solid };
         setReady(true);
-      }).catch(() => { if (!cancelled) toast(t("editor.loadError")); });
+      });
     }
     return () => {
       cancelled = true;
@@ -178,10 +178,9 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
 
   const save = async () => {
     const d = draft.current!;
-    const r = await fetch("/api/map", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(toWire(d)) });
+    const r = await request("PUT", "/api/map", toWire(d));
     if (!r.ok) {
-      const j = (await r.json().catch(() => ({}))) as { error?: string };
-      toast(`${t("editor.saveError")}: ${j.error ?? r.status}`);
+      toast(r.status ? `${t("editor.saveError")}: ${r.json.error ?? r.status}` : t("editor.saveError"));
       return;
     }
     original.current = cloneMap(d); // now the saved version
