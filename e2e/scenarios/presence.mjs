@@ -226,6 +226,39 @@ export async function run(ctx) {
     await a.page.mouse.click(box.x, box.y);
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === 4 && Math.floor(p.y / 16) === 30; }, { timeout: 20000, what: "minimap walk" });
     check("clicking the minimap runs there", dist(start, await pos(a)) > 16);
+    // the browser zoom or a move to another screen changes the pixel ratio: the picture must still fill
+    // the canvas (it once stayed at the old size in a corner, and people's dots piled up around it)
+    const vp = a.page.viewport();
+    // the colours of a 10x10 grid, to compare the picture before and after a round trip through ratio 2
+    const grid = () => read(a, () => {
+      const c = document.querySelector(".minimap canvas"), g = c.getContext("2d"), out = [];
+      for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) out.push([...g.getImageData(Math.floor((i + 0.5) * c.width / 10), Math.floor((j + 0.5) * c.height / 10), 1, 1).data]);
+      return out;
+    });
+    const before = await grid();
+    await a.page.setViewport({ ...vp, deviceScaleFactor: 2 });
+    await waitFor(() => read(a, () => window.devicePixelRatio === 2), { what: "pixel ratio 2" });
+    await sleep(800); // a few minimap redraws (every 250 ms)
+    const fill = await read(a, () => {
+      const c = document.querySelector(".minimap canvas"), g = c.getContext("2d"), m = window.__hq.view.currentMap();
+      let holes = 0;
+      for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) if (g.getImageData(Math.floor((i + 0.5) * c.width / 10), Math.floor((j + 0.5) * c.height / 10), 1, 1).data[3] < 255) holes++;
+      return { holes, size: `${c.width}x${c.height}`, want: `400x${Math.round(Math.round(m.h * 16 * 200 / (m.w * 16)) * 2)}` };
+    });
+    check("after the pixel ratio changes, the minimap's office picture fills its whole canvas", fill.holes === 0 && fill.size === fill.want, JSON.stringify(fill));
+    // the other way: a minimap opened at ratio 2 (hidden and shown again) going back to 1 must not show
+    // its larger picture cropped to the top-left quarter
+    await a.page.keyboard.press("m");
+    await a.page.keyboard.press("m");
+    await waitFor(() => read(a, () => !!document.querySelector(".minimap canvas")), { what: "minimap shown again" });
+    await sleep(800);
+    await a.page.setViewport(vp);
+    await waitFor(() => read(a, () => window.devicePixelRatio === 1), { what: "pixel ratio 1" });
+    await sleep(800);
+    const back = await grid();
+    // a few points may differ where a dot or a head count sits; a picture at the wrong size differs almost everywhere
+    const same = before.filter((p, i) => p.every((v, k) => Math.abs(v - back[i][k]) <= 8)).length;
+    check("a minimap opened at ratio 2, back at ratio 1, shows the same picture as before", same >= 95, `${same}/100 points unchanged`);
     await a.page.keyboard.press("m");
 
     // ---- keyboard help and an administrator announcement ----
