@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - patch
+## [0.5.1] - 2026-11-03
 
 ### Fixed
 - The minimap no longer shrinks into a corner with trails of people around it after the browser zoom or the screen changes (#46)
