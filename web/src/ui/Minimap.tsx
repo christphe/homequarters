@@ -39,8 +39,10 @@ export function Minimap() {
       const s = W / (map.w * 16);
       const h = Math.round(map.h * 16 * s);
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px"; }
-      if (thumbOf !== img || !thumb) {
+      // the pixel ratio changes with the browser zoom or another screen, the height with the map
+      if (c.width !== Math.round(W * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px"; }
+      // a thumbnail of another size would cover part of the canvas and leave the rest uncleared
+      if (thumbOf !== img || !thumb || thumb.width !== c.width || thumb.height !== c.height) {
         thumb = document.createElement("canvas");
         thumb.width = c.width;
         thumb.height = c.height;
