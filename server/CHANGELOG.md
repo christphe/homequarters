@@ -3,6 +3,7 @@
 ## [Unreleased] - patch
 
 ### Fixed
+- The minimap no longer shrinks into a corner with trails of people around it after the browser zoom or the screen changes (#46)
 - When the connection drops, saving the profile, creating a sign-in link, the administration panels (turning a plugin on or off included), opening and saving the map editor, and creating or revoking an app token now say it did not work instead of doing nothing (#45)
 
 ## [0.5.0] - 2026-10-25
