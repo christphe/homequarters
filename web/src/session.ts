@@ -11,6 +11,7 @@ import { media, spotlightMedia } from "./media/MediaManager";
 import { autoOff, startAutoOff } from "./media/autoOffState";
 import { getState, setState, toast, type ChatMsg } from "./store";
 import { t } from "./i18n";
+import { soundLog } from "./audioOut";
 import { chime, chimeLog, desktopNotify } from "./notify";
 import { convChange } from "./convChime";
 import { isOutdated, pageVersion } from "./version";
@@ -94,7 +95,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, bitmapFonts, chimes: chimeLog, get state() { return getState(); }, session: this, plugins: this.plugins };
+    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, bitmapFonts, chimes: chimeLog, sounds: soundLog, get state() { return getState(); }, session: this, plugins: this.plugins };
   }
 
   private applyAutoStatus(inactive: boolean) {
