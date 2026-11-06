@@ -110,8 +110,7 @@ export function playCue(cue: Cue) {
     el.currentTime = 0;
     try {
       await el.play();
-      unlocked.add(el);
-      if (unlocked.size === Object.keys(TUNES).length) stopListening();
+      settle(el);
       record(cue, "played", el);
     } catch (e) {
       record(cue, e instanceof DOMException && e.name === "NotAllowedError" ? "blocked" : "failed", el);
@@ -119,8 +118,13 @@ export function playCue(cue: Cue) {
   })();
 }
 
-/** Inside a key or pointer press: each element plays once, muted, so the browser lets it play later. */
+/**
+ * Inside a key or pointer press: each element plays once, muted, so the browser lets it play later. An
+ * element the engine cannot play at all (no WAV support, a decoding error) is given up, so a press never
+ * keeps retrying it; only a refusal (NotAllowedError) is tried again at the next press.
+ */
 function unlock() {
+  if (!getState().settings.sounds) return; // sounds off: nothing to prepare, nothing played
   for (const cue of Object.keys(TUNES) as Cue[]) {
     const el = element(cue);
     if (unlocked.has(el) || !el.paused) continue;
@@ -132,12 +136,20 @@ function unlock() {
           el.currentTime = 0;
           el.muted = false;
         }
-        unlocked.add(el);
-        if (unlocked.size === Object.keys(TUNES).length) stopListening();
+        settle(el);
       },
-      () => { el.muted = false; },
+      (e: unknown) => {
+        el.muted = false;
+        if (!(e instanceof DOMException && e.name === "NotAllowedError")) settle(el);
+      },
     );
   }
+}
+
+/** This element needs no more presses: the listeners go once none does. */
+function settle(el: SinkAudio) {
+  unlocked.add(el);
+  if (unlocked.size === Object.keys(TUNES).length) stopListening();
 }
 
 const opts = { capture: true, passive: true } as const;
