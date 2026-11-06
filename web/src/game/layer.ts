@@ -1,4 +1,4 @@
-// The contract every part of the world view follows (docs/decisions/0033-world-view-layers.md), the
+// The contract every part of the world view follows (docs/decisions/0034-world-view-layers.md), the
 // lifecycle plugins already have (plugins/sdk/client.d.ts: onLoad, onUpdate, onObjectInit/Destroy):
 //   init(ctx)          once, when the PixiJS application exists: create Containers, add them to the stage
 //                      (events and update come only after it: the session starts after `await view.init`)

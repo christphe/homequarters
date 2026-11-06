@@ -1,5 +1,5 @@
 // The PixiJS world view: the orchestrator of the layers that draw the office (layer.ts and
-// docs/decisions/0033-world-view-layers.md). It owns the application and the ViewContext, hands events to the
+// docs/decisions/0034-world-view-layers.md). It owns the application and the ViewContext, hands events to the
 // layers as direct calls, and on each frame advances me, places the camera, updates every layer in a
 // fixed order and draws only when one of them changed (render on demand). Nothing here draws itself.
 import { Application, Container, Rectangle } from "pixi.js";

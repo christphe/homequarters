@@ -1,4 +1,4 @@
-# 0033: The world view as layers with one lifecycle, rendering on demand
+# 0034: The world view as layers with one lifecycle, rendering on demand
 
 Date: 2026-10-26. Status: accepted.
 
