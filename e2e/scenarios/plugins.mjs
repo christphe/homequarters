@@ -407,9 +407,7 @@ export async function run(ctx) {
     await waitFor(async () => (await creatureOf(mia, rem.id))?.mode === "follow", { what: "pet following again" });
     check("Call brings it back to following its owner, walking, never jumping", callBack.frames > 20 && callBack.maxJump < 12, JSON.stringify(callBack));
 
-    // ---- assets from outside
-    check("the plugin's server code is never served", (await fetch(`${API}/plugins/${PLUGIN}/assets/main.ts`)).status === 404 && (await fetch(`${API}/plugins/${PLUGIN}/assets/..%2Fmain.ts`)).status === 404 && (await fetch(`${API}/plugins/${PLUGIN}/main.ts`)).status === 404);
-    check("its public/ files are", (await fetch(`${API}/plugins/${PLUGIN}/assets/pets.png`)).status === 200 && (await fetch(`${API}/plugins/${PLUGIN}/assets/pets-tint.png`)).status === 200);
+    // (what is served of a plugin, running or off, and never its server code: httpapi/plugins_test.go)
 
     // ---- the iframe is a sandbox
     const f = pluginFrame(mia);
@@ -437,7 +435,6 @@ export async function run(ctx) {
     await waitFor(async () => (await creatures(mia)) === null && (await creatures(rem)) === null, { what: "creatures removed" });
     check("disabling removes the plugin's code and creatures from every page without a reload", true);
     check("and its button tab", await read(rem, () => !document.querySelector('.side .tabs button[aria-label="Plugins"]')));
-    check("its assets answer 404", (await fetch(`${API}/plugins/${PLUGIN}/assets/pets.png`)).status === 404);
 
     // ---- a plugin breaking a limit is stopped on that page only
     await setEnabled(admin, true);

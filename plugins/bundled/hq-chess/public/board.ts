@@ -13,9 +13,11 @@
 // and drops, Escape cancels; a live region says what is under the cursor and every change. The last
 // action's squares are tinted (a move: where it started and where it went; a place: where it went; a stash:
 // where it started). The canvas takes the largest whole scale its view allows (the window is full screen).
-import { START, changeBetween, move, place, seatOf, sideOf, squareName, toReserve, PIECE_NAMES, PROMOTIONS, type Board, type Last, type Position, type Side } from "./game";
-import type { Promotion, ViewIn, ViewOut } from "./messages";
-import { SMALL_H, SMALL_W, paintPiece } from "./pieces";
+// What it shows, says and sends, without the canvas, is public/sync.ts (unit-tested in web/test/chessView.test.ts).
+import { sideOf, squareName, PIECE_NAMES, PROMOTIONS, type Side } from "./game.ts";
+import type { Promotion, ViewIn, ViewOut } from "./messages.ts";
+import { SMALL_H, SMALL_W, paintPiece } from "./pieces.ts";
+import { BoardSync, CONFIRM_MS, type Spot, type Src } from "./sync.ts";
 
 const SQ = 16;
 const BOARD = SQ * 8;
@@ -35,22 +37,9 @@ const COLOURS = {
   lastDark: "#8f9a48",
 };
 
-let boardId = ""; // which board the window shows: the same view is reused for another one
-let synced = false; // a first state of this board came: later changes are announced
-let shown: Position = { p: START, r: "" }; // what the canvas draws: the server's position, or mine until it confirms it
-let server: Position = { p: START, r: "" }; // the last position the server sent
-let last: Last | null = null; // the squares tinted: the last action, the server's or my own until it confirms it
-let serverLast: Last | null = null;
+// the board shown (the server's position, or my action until it confirms it), my side, the last action
+const sync = new BoardSync();
 let unconfirmed = 0; // timer: my action was not answered by a state yet
-const CONFIRM_MS = 1000; // an action lost on the way (a budget, a full queue) is undone after this
-let me = 0;
-let mine: Side | null = null;
-let flipped = false;
-
-// Where a piece is picked up from: a square, or index i of the reserve string.
-type Src = { k: "sq"; sq: number } | { k: "res"; i: number };
-// Where the pointer or the cursor is: a square, or a strip (j: its cell, null past its last piece).
-type Spot = { k: "sq"; sq: number } | { k: "res"; side: Side; j: number | null };
 
 // held: a piece picked up (pointer or keyboard); drag: where the pointer is while dragging, in canvas pixels
 let held: { src: Src; by: "drag" | "click" | "key" } | null = null;
@@ -104,14 +93,14 @@ function pieceName(piece: string): string {
 /** The reserve indices holding a side's pieces, in capture order. */
 function slots(side: Side): number[] {
   const out: number[] = [];
-  for (let i = 0; i < shown.r.length; i++) if (sideOf(shown.r[i]) === side) out.push(i);
+  for (let i = 0; i < sync.shown.r.length; i++) if (sideOf(sync.shown.r[i]) === side) out.push(i);
   return out;
 }
 /** Rows of each strip: one, or two once a side has more than 16 pieces in the reserve. */
 const rows = () => Math.max(1, Math.ceil(Math.max(slots("w").length, slots("b").length) / PER_ROW));
 const stripH = () => rows() * CELL + 2 * PAD;
 const boardY = () => stripH();
-const topSide = (): Side => (flipped ? "w" : "b");
+const topSide = (): Side => (sync.flipped ? "w" : "b");
 const stripY = (side: Side) => (side === topSide() ? 0 : boardY() + BOARD);
 /** The top-left corner of cell j of a side's strip. */
 function cellXY(side: Side, j: number): { x: number; y: number } {
@@ -119,9 +108,9 @@ function cellXY(side: Side, j: number): { x: number; y: number } {
 }
 
 // screen cell (column, row from the top) <-> square (0 = a8 ... 63 = h1)
-const squareAt = (col: number, row: number) => (flipped ? 63 - (row * 8 + col) : row * 8 + col);
+const squareAt = (col: number, row: number) => (sync.flipped ? 63 - (row * 8 + col) : row * 8 + col);
 const cellOf = (sq: number) => {
-  const i = flipped ? 63 - sq : sq;
+  const i = sync.flipped ? 63 - sq : sq;
   return { col: i % 8, row: Math.floor(i / 8) };
 };
 const squareXY = (sq: number) => {
@@ -148,10 +137,8 @@ window.addEventListener("resize", () => {
 
 // ---- what is where ----
 
-function pieceOf(src: Src): string {
-  return src.k === "sq" ? shown.p[src.sq] : (shown.r[src.i] ?? ".");
-}
-const canHold = (src: Src) => mine !== null && sideOf(pieceOf(src)) === mine;
+const pieceOf = (src: Src) => sync.pieceOf(src);
+const canHold = (src: Src) => sync.canHold(src);
 const sameSrc = (a: Src, b: Src) => (a.k === "sq" ? b.k === "sq" && a.sq === b.sq : b.k === "res" && a.i === b.i);
 /** The piece under a spot, as a source, or null. */
 function srcOf(spot: Spot): Src | null {
@@ -215,7 +202,7 @@ function draw(): void {
         ctx.fillRect(x, y, CELL, CELL);
         if (lifted) return;
       }
-      paintPiece(shown.r[i], x, y, set, true);
+      paintPiece(sync.shown.r[i], x, y, set, true);
     });
   }
   // the squares
@@ -224,7 +211,7 @@ function draw(): void {
     for (let col = 0; col < 8; col++) {
       const sq = squareAt(col, row);
       ctx.fillStyle = (row + col) % 2 === 0 ? COLOURS.light : COLOURS.dark;
-      if (last && (sq === last.from || sq === last.to)) ctx.fillStyle = (row + col) % 2 === 0 ? COLOURS.lastLight : COLOURS.lastDark;
+      if (sync.last && (sq === sync.last.from || sq === sync.last.to)) ctx.fillStyle = (row + col) % 2 === 0 ? COLOURS.lastLight : COLOURS.lastDark;
       if (held && held.src.k === "sq" && sq === held.src.sq) ctx.fillStyle = COLOURS.from;
       ctx.fillRect(col * SQ, by + row * SQ, SQ, SQ);
     }
@@ -248,7 +235,7 @@ function draw(): void {
   }
   // the pieces (a pawn waiting for its promotion already stands on its new square)
   for (let sq = 0; sq < 64; sq++) {
-    const piece = shown.p[sq];
+    const piece = sync.shown.p[sq];
     if (piece === "." || (lifted && held!.src.k === "sq" && held!.src.sq === sq)) continue;
     if (chooser && (sq === chooser.from || sq === chooser.to)) continue;
     const { x, y } = squareXY(sq);
@@ -256,7 +243,7 @@ function draw(): void {
   }
   if (chooser) {
     const { x, y } = squareXY(chooser.to);
-    paintPiece(shown.p[chooser.from], x + 2, y + 2, set);
+    paintPiece(sync.shown.p[chooser.from], x + 2, y + 2, set);
     drawChooser(chooser);
   }
   if (held && lifted) {
@@ -276,7 +263,7 @@ function drawChooser(c: { to: number; choice: number }): void {
   const { x, y } = chooserBox(c.to);
   ctx.fillStyle = "#1a1526";
   ctx.fillRect(x, y, 42, 12);
-  const white = mine === "w";
+  const white = sync.mine === "w";
   PROMOTIONS.forEach((p, i) => {
     const cx = x + 1 + i * 10;
     ctx.fillStyle = i === c.choice ? COLOURS.from : COLOURS.choice;
@@ -297,45 +284,30 @@ function choiceAt(x: number, y: number): number {
 
 /** Plays my action on the canvas at once and sends it; the next state confirms or corrects it. */
 function act(out: ViewOut): void {
-  const b: Board = { p: shown.p, r: shown.r, w: null, b: null };
-  b[mine!] = { id: me, name: "" };
-  const ok =
-    out.t === "move" ? move(b, me, out.from, out.to, out.promote) : out.t === "place" ? place(b, me, out.piece, out.to) : toReserve(b, me, out.from);
-  if (!ok) return;
-  const before = shown;
-  shown = { p: b.p, r: b.r };
-  last = b.m ?? null;
+  const done = sync.act(out);
+  if (!done) return;
   hqView.send(out);
   // the server answers every action of mine with a state, applied or refused; without one, it was lost
   clearTimeout(unconfirmed);
   unconfirmed = setTimeout(() => {
-    if (shown.p === server.p && shown.r === server.r) return;
-    shown = server;
-    last = serverLast;
-    say("Move not received: the board shows the last position again");
+    const lost = sync.expire();
+    if (!lost) return;
+    say(lost);
     draw();
   }, CONFIRM_MS);
-  const text = changeBetween(before, shown);
-  if (text) say(text);
+  if (done.say) say(done.say);
 }
-
-const lastRank = (sq: number) => (mine === "w" ? sq < 8 : sq >= 56);
 
 /** Drops the held piece on a spot (null: back where it was). */
 function drop(to: Spot | null): void {
   const h = held;
   held = null;
   drag = null;
-  if (h && to && canHold(h.src)) {
-    const piece = pieceOf(h.src);
-    if (h.src.k === "sq" && to.k === "sq" && to.sq !== h.src.sq) {
-      if (piece.toLowerCase() === "p" && lastRank(to.sq)) {
-        chooser = { from: h.src.sq, to: to.sq, choice: 0 };
-        say(`${sideName(mine!)}: pawn ${squareName(h.src.sq)} to ${squareName(to.sq)}. Becomes a queen: left and right arrows choose, Enter confirms, Escape keeps the pawn`);
-      } else act({ t: "move", from: h.src.sq, to: to.sq });
-    } else if (h.src.k === "sq" && to.k === "res") act({ t: "stash", from: h.src.sq });
-    else if (h.src.k === "res" && to.k === "sq") act({ t: "place", piece, to: to.sq });
-  }
+  const d = h ? sync.dropOf(h.src, to) : null;
+  if (d?.t === "promote") {
+    chooser = { from: d.from, to: d.to, choice: 0 };
+    say(`${sideName(sync.mine!)}: pawn ${squareName(d.from)} to ${squareName(d.to)}. Becomes a queen: left and right arrows choose, Enter confirms, Escape keeps the pawn`);
+  } else if (d) act(d);
   draw();
 }
 
@@ -343,7 +315,7 @@ function drop(to: Spot | null): void {
 function choose(p: Promotion | null): void {
   const c = chooser;
   chooser = null;
-  if (c && shown.p[c.from].toLowerCase() === "p" && sideOf(shown.p[c.from]) === mine) {
+  if (c && sync.isMyPawn(c.from)) {
     act(p ? { t: "move", from: c.from, to: c.to, promote: p } : { t: "move", from: c.from, to: c.to });
   }
   draw();
@@ -420,10 +392,10 @@ function cursorSpot(): Spot {
 }
 
 function describeCursor(): string {
-  if (cursor.k === "sq") return `${squareName(cursor.sq)}, ${pieceName(shown.p[cursor.sq])}`;
+  if (cursor.k === "sq") return `${squareName(cursor.sq)}, ${pieceName(sync.shown.p[cursor.sq])}`;
   const s = slots(cursor.side);
   const head = `${sideName(cursor.side)} reserve`;
-  return cursor.j < s.length ? `${head}, ${cursor.j + 1} of ${s.length}, ${nameOf(shown.r[s[cursor.j]])}` : `${head}, empty`;
+  return cursor.j < s.length ? `${head}, ${cursor.j + 1} of ${s.length}, ${nameOf(sync.shown.r[s[cursor.j]])}` : `${head}, empty`;
 }
 
 /** Moves the cursor one step: over the squares, and from the edge rows into the strips and back. */
@@ -488,7 +460,7 @@ canvas.addEventListener("keydown", (ev) => {
     } else if (src && canHold(src)) {
       held = { src, by: "key" };
       say(`${pieceName(pieceOf(src))} ${where(src)} picked up`);
-    } else say(mine ? `${describeCursor()}: not one of your pieces` : `${describeCursor()}: take a seat to play`);
+    } else say(sync.mine ? `${describeCursor()}: not one of your pieces` : `${describeCursor()}: take a seat to play`);
     draw();
   } else if (ev.key === "Escape" && held) {
     ev.preventDefault();
@@ -507,54 +479,24 @@ canvas.addEventListener("blur", () => {
 
 // ---- states from the page ----
 
-const validPos = (s: { p?: unknown; r?: unknown }) =>
-  typeof s.p === "string" && s.p.length === 64 && typeof s.r === "string" && s.r.length <= 30;
-const squareOrNone = (v: unknown) => v === undefined || (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 63);
-const lastOf = (m: unknown): Last | null => {
-  if (typeof m !== "object" || m === null) return null;
-  const { from, to } = m as Last;
-  return squareOrNone(from) && squareOrNone(to) ? { from, to } : null;
-};
-
 hqView.onMessage<ViewIn>((m) => {
-  if (!m || typeof m !== "object" || !m.s || !validPos(m.s) || typeof m.id !== "string") return;
-  if (m.id !== boardId) {
-    // another board in the same view: nothing of the previous one carries over
-    boardId = m.id;
-    synced = false;
+  const got = sync.receive(m);
+  if (!got) return;
+  // another board in the same view: nothing of the previous one carries over
+  if (got.switched) {
     held = null;
     drag = null;
     chooser = null;
-    last = serverLast = null;
-    clearTimeout(unconfirmed);
   }
-  const before = shown;
-  const s = m.s;
-  me = m.me;
-  const side = seatOf({ p: s.p, w: s.w, b: s.b, r: s.r }, m.me);
-  if (side !== mine || flipped !== (side === "b")) {
-    mine = side;
-    const turn = flipped !== (side === "b");
-    flipped = side === "b";
-    if (turn) cursor = { k: "sq", sq: flipped ? 12 : 52 }; // my pawn in front of my king
-  }
+  if (got.turned) cursor = { k: "sq", sq: sync.flipped ? 12 : 52 }; // my pawn in front of my king
   clearTimeout(unconfirmed);
-  shown = server = { p: s.p, r: s.r };
-  last = serverLast = lastOf(s.m);
-  // somebody else's action (mine was said when I made it, and the server's copy matches what I show), or an undo
-  const moved = before.p !== shown.p || before.r !== shown.r;
-  if (synced && moved && (s.undone === "w" || s.undone === "b")) say(`${sideName(s.undone)} undid the last move`);
-  else if (synced) {
-    const text = changeBetween(before, shown);
-    if (text) say(text);
-  }
-  synced = true;
+  if (got.say) say(got.say);
   // a held reserve piece is found by its index: any change of the reserve lets it go
-  if (held && (!canHold(held.src) || (held.src.k === "res" && before.r !== shown.r))) {
+  if (held && (!canHold(held.src) || (held.src.k === "res" && got.reserveChanged))) {
     held = null;
     drag = null;
   }
-  if (chooser && !(shown.p[chooser.from].toLowerCase() === "p" && sideOf(shown.p[chooser.from]) === mine)) chooser = null;
+  if (chooser && !sync.isMyPawn(chooser.from)) chooser = null;
   draw();
 });
 
