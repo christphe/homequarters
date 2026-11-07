@@ -130,3 +130,16 @@ test("closing: green, red, skipped, tree changed, interrupted", () => {
   assert.deepEqual(c({ treeAfter: "u" }), { lines: ["FAIL working tree changed during gates; rerun on the final tree", "GATES RED: 1 failed"], fails: 1 });
   assert.deepEqual(c({ interrupted: true }), { lines: ["interrupted", "GATES RED: 1 failed"], fails: 1 });
 });
+
+test("no file names a test of web/test, a plugin's test/ or tools/fdash/test that does not exist", () => {
+  // docs/status.md and the design notes keep their history; everything else follows the files
+  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\.test\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
+  const missing: string[] = [];
+  for (const line of out.split("\n").filter(Boolean)) {
+    const [file, , ref] = line.split(":");
+    // a path from the root, from the file's folder, or a plugin's own (hq-cards/test/controls.test.ts)
+    const candidates = [path.join(root, ref), path.join(root, path.dirname(file), ref), path.join(root, "plugins/bundled", ref)];
+    if (!candidates.some((c) => fs.existsSync(c))) missing.push(`${file} names ${ref}`);
+  }
+  assert.deepEqual(missing, []);
+});

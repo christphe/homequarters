@@ -18,6 +18,7 @@ test("parseArgs: default task, flags, jobs from the CPUs or FDASH_JOBS, refusals
   assert.equal(parseArgs(["run", "--jobs=4"], { FDASH_JOBS: "2" }, 8).jobs, 4);
   assert.equal(parseArgs(["run"], { FDASH_JOBS: "2" }, 8).jobs, 2);
   assert.equal(parseArgs(["list"], {}, 8).cmd, "list");
+  assert.equal(parseArgs(["--help"], {}, 8).cmd, "help");
   for (const bad of ["0", "-1", "abc", "1.5", ""]) assert.throws(() => parseArgs(["run"], { FDASH_JOBS: bad }, 8), /FDASH_JOBS/);
   assert.throws(() => parseArgs(["run", "--jobs"], {}, 8), /--jobs/);
   assert.throws(() => parseArgs(["run", "--jobs", "0"], {}, 8), /--jobs/);
@@ -52,7 +53,10 @@ test("the command line end to end", () => {
   assert.match(r.stdout, /^ {5}last words$/m);
   const nope = spawnSync(node, [cli, "run", "nope"], { cwd: root, encoding: "utf8" });
   assert.equal(nope.status, 2);
-  assert.match(nope.stderr, /nope/);
+  assert.match(nope.stderr, /no task named nope \(fdash list/);
+  const help = spawnSync(node, [cli, "--help"], { cwd: root, encoding: "utf8" });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /^usage: fdash run/);
   const list = spawnSync(node, [cli, "list"], { cwd: root, encoding: "utf8" });
   assert.deepEqual(list.stdout.trim().split(/\r?\n/), ["default: ok, bad", "ok", "bad"]);
   const none = spawnSync(node, [cli, "list"], { cwd: os.tmpdir(), encoding: "utf8" });
@@ -81,4 +85,18 @@ test("fdash imports only node: modules and its own files, and names nothing of t
       assert.ok(target.startsWith(top + path.sep), `${path.relative(top, f)} imports ${spec}, outside fdash`);
     }
   }
+});
+
+test("a command missing from PATH fails its task without crashing the run", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-cli-"));
+  fs.writeFileSync(path.join(root, "fdash.json"), JSON.stringify({ tasks: {
+    default: { tasks: ["missing", "ok"] },
+    missing: { run: [["fdash-no-such-command-xyz"]] },
+    ok: { run: [[process.execPath, "-e", "setTimeout(() => {}, 300)"]] },
+  } }));
+  const r = spawnSync(process.execPath, [cli, "run"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /^FAIL missing /m);
+  assert.match(r.stdout, /^PASS ok$/m);
+  assert.doesNotMatch(r.stderr, /EBADF|Error/, r.stderr);
 });

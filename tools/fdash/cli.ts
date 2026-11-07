@@ -9,9 +9,10 @@ import { run, type Result } from "./run.ts";
 export const USAGE = `usage: fdash run [task ...] [--skip task]... [--jobs N] [--force] [-- extra args]
        fdash list
 Runs the tasks of ${WORKSPACE_FILE} and its projects' ${CONFIG_FILE}, or of a single ${CONFIG_FILE} (the task "default" when none is named). FDASH_JOBS sets --jobs;
-FDASH_CACHE_DIR moves the cache (default .fdash/cache next to ${CONFIG_FILE}).`;
+FDASH_CACHE_DIR moves the cache (default .fdash/cache at the root); FDASH_LOG_DIR keeps the
+commands' logs in that folder instead of a temporary one.`;
 
-export type Args = { cmd: "run" | "list"; tasks: string[]; skip: string[]; jobs: number; force: boolean; extra: string[] };
+export type Args = { cmd: "run" | "list" | "help"; tasks: string[]; skip: string[]; jobs: number; force: boolean; extra: string[] };
 
 function positive(v: string | undefined, what: string): number {
   if (v === undefined || !/^[1-9]\d*$/.test(v)) throw new Error(`${what} must be a positive integer, got ${JSON.stringify(v ?? "")}`);
@@ -21,6 +22,7 @@ function positive(v: string | undefined, what: string): number {
 export function parseArgs(argv: string[], env: Record<string, string | undefined>, cpus: number): Args {
   const [cmd, ...rest] = argv;
   if (cmd === undefined) throw new Error(USAGE);
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") return { cmd: "help", tasks: [], skip: [], jobs: 1, force: false, extra: [] };
   if (cmd !== "run" && cmd !== "list") throw new Error(`unknown command ${cmd}\n${USAGE}`);
   const out: Args = { cmd, tasks: [], skip: [], jobs: Math.max(1, Math.floor(cpus / 2)), force: false, extra: [] };
   if (env.FDASH_JOBS !== undefined) out.jobs = positive(env.FDASH_JOBS, "FDASH_JOBS");
@@ -68,13 +70,17 @@ async function main(): Promise<number> {
   let args: Args, root: string, config: Config;
   try {
     args = parseArgs(process.argv.slice(2), process.env, os.availableParallelism());
+    if (args.cmd === "help") {
+      console.log(USAGE);
+      return 0;
+    }
     root = findRoot(process.cwd());
     config = load(root);
     if (args.cmd === "list") {
       for (const l of listLines(config)) console.log(l);
       return 0;
     }
-    for (const n of [...args.tasks, ...args.skip]) if (!config.has(n)) throw new Error(`no task named ${n} in ${CONFIG_FILE}`);
+    for (const n of [...args.tasks, ...args.skip]) if (!config.has(n)) throw new Error(`no task named ${n} (fdash list shows them; a project's tasks are <project>:<task>)`);
   } catch (e) {
     console.error("fdash: " + (e as Error).message);
     return 2;
@@ -82,7 +88,8 @@ async function main(): Promise<number> {
   const ac = new AbortController();
   // Ctrl+C reaches the children from the terminal; fdash only stops starting new tasks
   process.on("SIGINT", () => ac.abort());
-  const { results, interrupted } = await run({ root, config, names: args.tasks, skip: args.skip, jobs: args.jobs, extraArgs: args.extra, force: args.force, signal: ac.signal, onResult: printResult });
+  const logDir = process.env.FDASH_LOG_DIR ? (fs.mkdirSync(process.env.FDASH_LOG_DIR, { recursive: true }), process.env.FDASH_LOG_DIR) : undefined;
+  const { results, interrupted } = await run({ root, config, logDir, names: args.tasks, skip: args.skip, jobs: args.jobs, extraArgs: args.extra, force: args.force, signal: ac.signal, onResult: printResult });
   if (interrupted) {
     console.log("fdash: interrupted");
     return 130;

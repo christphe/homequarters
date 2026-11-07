@@ -128,3 +128,18 @@ test("an item missing from the report takes the command's exit status", async ()
   fs.rmSync(path.join(root, "fail.txt"));
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:silent", "PASS e:x"]);
 });
+
+test("a record found is touched, so a cache can keep only what a run used", async () => {
+  const root = repo({ "a.txt": "1", "b.txt": "1", ".gitignore": ".fdash/\ncount-*\n" });
+  const tasks = { all: { tasks: ["a", "b"] }, a: counting("a", { inputs: ["a.txt"] }), b: counting("b", { inputs: ["b.txt"] }) };
+  await go(root, tasks);
+  const dir = path.join(root, ".fdash", "cache");
+  const old = new Date(Date.now() - 3600_000);
+  for (const f of fs.readdirSync(dir)) fs.utimesSync(path.join(dir, f), old, old);
+  const start = Date.now() - 1000;
+  write(root, "b.txt", "2");
+  await go(root, tasks); // a is found (touched), b reruns (a new record); b's old record is left untouched
+  const fresh = fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).mtimeMs >= start);
+  assert.equal(fs.readdirSync(dir).length, 3);
+  assert.deepEqual(fresh.map((f) => f.split("-")[0]).sort(), ["a", "b"]);
+});

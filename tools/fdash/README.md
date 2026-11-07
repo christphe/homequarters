@@ -18,7 +18,7 @@ node tools/fdash/cli.ts list                   # the tasks, in file order
 
 It prints one line per command as it ends: `PASS <name>`, `CACHED <name>`, or `FAIL <name> (log: <file>)`
 followed by the last 15 lines of the log. Each command's output goes to its own log file in a temporary
-folder. The exit code is the number of failed commands, 2 for a usage or configuration error, 130 when
+folder (`FDASH_LOG_DIR` keeps them in a folder of your choice, to publish them from CI). The exit code is the number of failed commands, 2 for a usage or configuration error, 130 when
 interrupted. On Ctrl+C the terminal stops the running commands itself; fdash starts nothing more.
 
 ## fdash.json
@@ -65,12 +65,58 @@ runs once. Unknown keys, wrong types, unknown names and cycles are refused befor
 Windows, a command found as a `.cmd` or `.bat` (such as `pnpm`) is started through the shell with its
 arguments quoted; nothing else uses a shell.
 
+## Projects: fdash-workspace.json
+
+A repository with several parts declares them as projects, each in its own folder with its own
+`fdash.json`, listed by `fdash-workspace.json` at the root (fdash looks for it from the current folder up,
+before a lone `fdash.json`):
+
+```json
+{
+  "projects": ["core", "app", "addons/*"],
+  "tasks": {
+    "default": { "jobs": 1, "tasks": ["static", "app:browser"] },
+    "static": { "tasks": ["*:lint", "*:test", "docs"] },
+    "docs": { "run": [["node", "tools/docs.mjs"]], "inputs": ["docs/**"] }
+  }
+}
+```
+
+```json
+// addons/maps/fdash.json
+{ "dependsOn": ["core"], "tasks": { "test": { "run": [["node", "--test", "test/*.test.ts"]] } } }
+```
+
+| Workspace key | Meaning |
+| --- | --- |
+| `projects` | folders; a `*` matches one level and skips folders without `fdash.json`; a folder named in full must have one |
+| `tasks` | the workspace's own commands (run from the root, inputs written from the root; without `inputs` not cached) and groups |
+
+| Project key | Meaning |
+| --- | --- |
+| `name` | default: the folder's name; two projects with one name are refused |
+| `files` | what other projects see of it, patterns relative to the project (default `**`) |
+| `dependsOn` | project names; their `files`, transitively, are inputs of every task of this project |
+| `tasks` | as in a single `fdash.json` |
+
+- A project's tasks are named `<project>:<task>` (an item `<project>:<task>:<item>`) and run in its folder.
+- Every command of a project is cached; its default inputs are every file of its folder plus its
+  `dependsOn`'s `files`. Its own `inputs` add to them: relative to the project, or from the root with a
+  leading `/` (`/docs/protocol.md`); a Go provider's `cwd` is relative to the project. Its `!` patterns
+  remove files from the whole set. `"cache": false` turns the cache off for one command.
+- In a group, a member is a task of the same project (`test`), a qualified name (`core:test`), or
+  `*:<task>`: that task in every project that has it, in project order.
+- A file a test reads at run time, outside its project and its `dependsOn`, must be added to its
+  `inputs`: fdash only sees what is declared.
+
 ## The cache
 
 A command with `inputs` is cached. Its key is a SHA-256 of its definition, the extra arguments it gets, the
 values of its `envKeys`, the output of its `tools`, the OS, the CPU architecture, Node's version, and the
 content of its input files. A pass records the key in `.fdash/cache/` (or `FDASH_CACHE_DIR`); a command
-whose key is recorded is reported `CACHED` and not run. Failures are never recorded. Add `.fdash/` to
+whose key is recorded is reported `CACHED` and not run, and its record is touched (its time set to now):
+records older than a run's start were not used by it, so a CI job can delete them before saving its cache.
+Failures are never recorded. Add `.fdash/` to
 `.gitignore`.
 
 Inputs:

@@ -38,7 +38,8 @@
         "E2E_VIEWPORT",
         "HQ_EXTERNAL_URL",
         "HQ_MEDIA_TOKEN_TTL_SECONDS",
-        "HQ_MEDIA_RECONCILE_SECONDS"
+        "HQ_MEDIA_RECONCILE_SECONDS",
+        "CHROME_VERSION"
       ],
       "tools": [
         [
@@ -47,6 +48,10 @@
         ],
         [
           "pnpm",
+          "--version"
+        ],
+        [
+          "livekit-server",
           "--version"
         ]
       ],

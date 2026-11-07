@@ -32,24 +32,29 @@ function runStep(argv: string[], o: { cwd: string; env: NodeJS.ProcessEnv; log: 
   const l = launch(cmd, rest);
   return new Promise((resolve) => {
     let printed = false;
+    // settled once: a program that cannot start emits "error" and then "close", and the log file is closed
+    // as soon as the step is settled, so nothing may be written after that
+    let settled = false;
+    const write = (s: string | Buffer) => { if (!settled) (typeof s === "string" ? fs.writeSync(o.log, s) : fs.writeSync(o.log, s)); };
+    const settle = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
     let child;
     try {
       child = spawn(l.file, l.args, { cwd: o.cwd, env: o.env, shell: l.shell, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     } catch (e) {
-      fs.writeSync(o.log, `fdash: cannot start ${cmd}: ${(e as Error).message}\n`);
-      resolve(false);
+      write(`fdash: cannot start ${cmd}: ${(e as Error).message}\n`);
+      settle(false);
       return;
     }
-    child.stdout.on("data", (d: Buffer) => { printed ||= d.length > 0; fs.writeSync(o.log, d); });
-    child.stderr.on("data", (d: Buffer) => fs.writeSync(o.log, d));
+    child.stdout.on("data", (d: Buffer) => { printed ||= d.length > 0; write(d); });
+    child.stderr.on("data", (d: Buffer) => write(d));
     child.on("error", (e: NodeJS.ErrnoException) => {
-      fs.writeSync(o.log, `fdash: cannot start ${cmd} (${e.code ?? "error"}): ${e.message}\n`);
-      resolve(false);
+      write(`fdash: cannot start ${cmd} (${e.code ?? "error"}): ${e.message}\n`);
+      settle(false);
     });
     child.on("close", (code: number | null, signal: string | null) => {
-      if (code !== 0) fs.writeSync(o.log, `fdash: ${cmd} ended with ${signal ?? "exit code " + code}\n`);
-      else if (o.failOnOutput && printed) fs.writeSync(o.log, `fdash: ${cmd} printed something on stdout, which fails this task\n`);
-      resolve(code === 0 && !(o.failOnOutput && printed));
+      if (code !== 0) write(`fdash: ${cmd} ended with ${signal ?? "exit code " + code}\n`);
+      else if (o.failOnOutput && printed) write(`fdash: ${cmd} printed something on stdout, which fails this task\n`);
+      settle(code === 0 && !(o.failOnOutput && printed));
     });
   });
 }

@@ -2,7 +2,7 @@
 // Run: node --test plugins/bundled/hq-cards/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pileActions, seatButtons, seatPick, tableActions } from "../public/controls.ts";
+import { canPick, pileActions, seatButtons, seatPick, tableActions } from "../public/controls.ts";
 import { FREE, clientGame } from "../public/games.ts";
 
 const ANN = { id: 1, name: "Ann" }, BO = { id: 2, name: "Bo" };
@@ -45,4 +45,6 @@ test("seatPick: only the player a hand is offered to may draw from it", () => {
   assert.equal(seatPick(offer, 0, null, "Ann"), null, "a spectator");
   assert.equal(seatPick(offer, 2, 1, "Cy"), null, "another seat");
   assert.equal(seatPick(null, 0, 1, "Ann"), null, "no offer");
+  // the click on a seat, Enter on it and the pick row ask the same rule (view.ts)
+  assert.deepEqual([canPick(offer, 0, 1), canPick(offer, 0, 2), canPick(offer, 0, null), canPick(offer, 2, 1), canPick(null, 0, 1)], [true, false, false, false, false]);
 });

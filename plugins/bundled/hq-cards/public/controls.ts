@@ -48,7 +48,13 @@ export function pileActions(game: { allow?: Action[] }, pile: { name: string; ca
   return out;
 }
 
+/** Whether I may draw a card from that seat's hand: only when its player offers it to me. Every way in (the
+ * button, a click on the seat, Enter on it, the pick row) asks this. */
+export function canPick(offer: Table["offer"], seat: number, mySeat: number | null): boolean {
+  return mySeat !== null && offer?.from === seat && offer.to === mySeat;
+}
+
 /** The button under the table for a selected seat: drawing from that seat's hand, only when it is offered to me. */
 export function seatPick(offer: Table["offer"], seat: number, mySeat: number | null, name: string): string | null {
-  return mySeat !== null && offer?.from === seat && offer.to === mySeat ? `Draw a card from ${short(name, 12)}` : null;
+  return canPick(offer, seat, mySeat) ? `Draw a card from ${short(name, 12)}` : null;
 }

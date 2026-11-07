@@ -9,7 +9,7 @@ import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { chrome } from "./env.mjs";
-import { ALL, shard, parseShard } from "./shards.mjs";
+import { ALL, shard, parseShard, shardsFor } from "./shards.mjs";
 import { acquire, parseMax, ports } from "./slots.mjs";
 import { LK_IMAGE, liveKitMode, startLiveKit, stopLiveKit, sweepOrphans } from "./livekit.mjs";
 
@@ -28,7 +28,7 @@ const names = shardAt < 0 ? args : args.filter((_, k) => k !== shardAt && (args[
 const listed = names.length ? names : EXTERNAL ? ["proximity", "consent", "rooms"] : ALL;
 let wanted = listed;
 if (shardSpec) { const { i, n } = parseShard(shardSpec); wanted = shard(listed, i, n); console.log(`# shard ${i}/${n}: ${wanted.join(", ") || "(empty)"}`); }
-const PARALLEL = Number(process.env.E2E_PARALLELISM ?? "1") || 1;
+const PARALLEL = shardsFor(Number(process.env.E2E_PARALLELISM ?? "1") || 1, listed.length);
 const parallelRun = PARALLEL > 1 && !shardSpec && !EXTERNAL;
 
 // Windows: go build names the binary as given, while spawning "bin/homequarters" runs a stale homequarters.exe;

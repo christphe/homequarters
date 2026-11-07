@@ -96,8 +96,18 @@ export function cacheKey(root: string, c: Command, extra: string[], files: strin
 
 const recordPath = (dir: string, name: string, key: string) => path.join(dir, `${name.replace(/[^\w.-]/g, "_")}-${key}.json`);
 
+/** Whether this exact run already passed. A record found is touched (its time set to now), so a cache can
+ * keep only the records a run used: those older than the run's start were not. */
 export function passed(dir: string, name: string, key: string): boolean {
-  return fs.existsSync(recordPath(dir, name, key));
+  const file = recordPath(dir, name, key);
+  if (!fs.existsSync(file)) return false;
+  const now = new Date();
+  try {
+    fs.utimesSync(file, now, now);
+  } catch {
+    // a read-only cache still answers
+  }
+  return true;
 }
 
 export function recordPass(dir: string, name: string, key: string, ms: number): void {
