@@ -245,7 +245,8 @@ export async function run(ctx) {
     await press(cy, "Seat 3");
     await waitFor(async () => (await drawn(cy))?.seat === 2, { what: "Cy seated" });
     const annSeats = (await modal(ann)).buttons;
-    check("4: each takes a seat; a seated player cannot take another (free seats disabled for Ann)", annSeats.find((b) => b.text === "Seat 1: " + ann.name)?.pressed && annSeats.find((b) => b.text === "Seat 4")?.disabled, JSON.stringify(annSeats.slice(0, 4)));
+    // (a seated player cannot take another seat: seatButtons in hq-cards/test/controls.test.ts)
+    check("4: each takes a seat through its button; Ann's shows pressed", annSeats.find((b) => b.text === "Seat 1: " + ann.name)?.pressed, JSON.stringify(annSeats.slice(0, 4)));
     await press(cy, "Close");
     const away = await within(async () => (await modal(ann)).buttons.some((b) => b.text === `Seat 3: ${cy.name} (away)`), 1000);
     check("4: Cy closes the window: Ann sees Cy away within 1 s, the seat kept", away >= 0, `${away} ms`);
@@ -342,8 +343,7 @@ export async function run(ctx) {
     await pressInView(ann, "Done");
     const reordered = await within(async () => (await logOf(bo)).includes(`${ann.name} reordered Stock`), 1000);
     check("6: Ann looks through Stock and reorders it: Bo's log says so within 1 s of each", lookingSeen >= 0 && reordered >= 0 && moved[2].c === row[0].c, JSON.stringify({ lookingSeen, reordered }));
-    const named = (await logOf(bo)).filter((l) => l.startsWith(ann.name + " looked") || l.startsWith(ann.name + " reordered"));
-    check("6: the log names no card Ann saw alone", named.every((l) => !/ of (spades|hearts|diamonds|clubs)|joker/.test(l)), JSON.stringify(named));
+    // (the log names no card Ann saw alone: the entries of draw and reorderPile and their sentences, cards.test.ts)
 
     // ---- criterion 7: Ann offers her hand to Bo, who picks her third card
     // Bo is typing a pile's name when the offer's notice appears above his controls: his field keeps the focus
@@ -364,7 +364,7 @@ export async function run(ctx) {
     const picked = await within(async () => (await logOf(cy)).includes(`${bo.name} drew a card from ${ann.name}'s hand`), 1000);
     const annAfter = await handOf(ann);
     check("7: Bo picks the third card: it leaves Ann's hand, it is logged for everybody", picked >= 0 && annAfter.length === annBefore.length - 1 && !annAfter.some((c) => c.c === annBefore[2].c), `${picked} ms`);
-    check("7: Cy, not offered, has no way to pick (no pick row, no button)", !(await drawn(cy)).cards.some((c) => c.where === "pick"));
+    // (only the player offered a hand may draw from it: seatPick in hq-cards/test/controls.test.ts)
 
     // ---- criterion 13 (keyboard half): a card moved with the keyboard only reaches Bo and is announced
     const f = await viewFrame(ann);
@@ -411,14 +411,10 @@ export async function run(ctx) {
     await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e) => {
       throw new Error(e.message + " " + JSON.stringify({ controls: (await modal(bo))?.buttons.slice(0, 10), log: (await logOf(bo)).slice(-3), sent: bo.sent.slice(-3), vp: bo.page.viewport() }));
     });
-    const om = (await modal(ann)).buttons.map((b) => b.text);
-    check("8: Old Maid's window offers Deal all and Count, not Deal N, a new pile or Draw", om.includes("Deal all") && om.includes("Count") && !om.some((b) => b.startsWith("Deal ") && b.endsWith("each")) && !om.includes("New pile face up"), JSON.stringify(om));
+    // (Old Maid's controls, Deal all and Count but no Deal N, new pile, draw or look: hq-card-pouilleux/test/oldMaid.test.ts)
     await press(ann, "Deal all");
     await waitFor(async () => (await handOf(ann)).length + (await handOf(bo)).length === 49, { what: "Old Maid dealt" });
-    check("9: Deal all deals Old Maid's 49 cards (the jacks of clubs, diamonds and hearts left out)", true);
-    await click(ann, pileAt([130, 90]));
-    const omBar = await (await viewFrame(ann)).evaluate(() => [...document.querySelectorAll(".bar button")].map((b) => b.textContent));
-    check("8: Old Maid allows no draw from or look through a pile (no such buttons for the Stock)", !omBar.some((b) => b.startsWith("Draw from") || b.startsWith("Look through")), JSON.stringify(omBar));
+    // (its 49 cards: oldMaid.test.ts; "Deal all" through its button is what the wait above proves)
     // (Old Maid's pairs, offer, count from its hook, and turning it off and on: oldMaid.test.ts, oldmaid_test.go,
     // cards_test.go; the same controls are checked on the free table and with Last Card)
 
@@ -455,9 +451,7 @@ export async function run(ctx) {
       await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
       const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });
       check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog), lcLog);
-      await press(ann, "Count");
-      const lcCount = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "Last Card's count" });
-      check("10b: Count gives each hand's points", new RegExp(`^Count: ${ann.name} \\d+, ${bo.name} \\d+`).test(lcCount), lcCount);
+      // (Last Card's count, through the real host: lastcard_test.go; the Count button and its text: the Old Maid part above)
       // turned off and on with the window open: the page learns of the plugin after the game is back, and the
       // view must still end up drawing the game's own sheet
       await setPlugin(ctx, "hq-card-lastcard", false);

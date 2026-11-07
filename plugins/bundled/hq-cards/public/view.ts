@@ -15,6 +15,7 @@
 // my hand, the felt's cards and piles and the seats; Enter picks up and drops; F turns over, L looks, D
 // draws, T puts the held card on the table; Escape cancels. A live region says what is under the cursor
 // and every new line of the log, which is also listed under the canvas.
+import { pileActions, seatPick, type PileAct } from "./controls.ts";
 import { CARD_H, CARD_W, paintBack, paintCard } from "./art.ts";
 import { cardName, type ClientGame } from "./games.ts";
 import { cardAt, FELT_H, FELT_W, GRID, groupFrom, groups, handSpots, hit, layoutFor, seatSpots, snapAt, WIDE, type Layout, type Spot } from "./layout.ts";
@@ -576,16 +577,18 @@ function toolbar(): void {
   } else if (t && seated && selected) {
     if (selected.k === "pile") {
       const p = pileById(selected.id);
-      if (p) {
+      if (p && game) {
         const id = p.id;
-        if (allowed("draw") && p.cards.length) out.push(button(`Draw from ${short(p.name, 12)}`, () => send({ t: "draw", pile: id })));
-        if (allowed("viewPile") && p.cards.length) out.push(button(`Look through ${short(p.name, 12)}`, () => startLook(id)));
-        if (allowed("shuffle") && p.cards.length > 1) out.push(button(`Shuffle ${short(p.name, 12)}`, () => send({ t: "shuffle", pile: id })));
-        if (allowed("place") && p.cards.length) out.push(button("Turn the top over", () => send({ t: "flip", from: { k: "pile", id } })));
-        if (allowed("place") && p.cards.length) out.push(button("Turn the pile over", () => send({ t: "turnPile", pile: id })));
-        if (allowed("remove") && p.cards.length) out.push(button("Set the top aside", () => send({ t: "setAside", from: { k: "pile", id } })));
-        // any pile but the stock: its cards go back to the stock
-        if (allowed("createPile") && p !== t.piles[0]) out.push(button(`Remove the pile ${short(p.name, 12)}`, () => ((selected = null), send({ t: "delPile", pile: id }))));
+        const does: Record<PileAct, () => void> = {
+          draw: () => send({ t: "draw", pile: id }),
+          look: () => startLook(id),
+          shuffle: () => send({ t: "shuffle", pile: id }),
+          flip: () => send({ t: "flip", from: { k: "pile", id } }),
+          turn: () => send({ t: "turnPile", pile: id }),
+          aside: () => send({ t: "setAside", from: { k: "pile", id } }),
+          remove: () => ((selected = null), send({ t: "delPile", pile: id })),
+        };
+        for (const a of pileActions(game, p, p === t.piles[0])) out.push(button(a.label, does[a.act]));
       }
     } else if (selected.k === "loose") {
       if (allowed("place")) {
@@ -614,8 +617,8 @@ function toolbar(): void {
         }));
       }
     } else if (selected.k === "seat") {
-      const s = selected.seat;
-      if (t.offer?.from === s && t.offer.to === mySeat) out.push(button(`Draw a card from ${short(seatName(s), 12)}`, () => ((picking = true), draw())));
+      const pick = seatPick(t.offer, selected.seat, mySeat, seatName(selected.seat));
+      if (pick) out.push(button(pick, () => ((picking = true), draw())));
     }
   }
   // rebuilt when what it acts on may have changed; kept otherwise, so the focus stays on its button
