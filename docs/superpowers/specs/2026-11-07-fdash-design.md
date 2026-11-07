@@ -72,7 +72,7 @@ All three steps land in one pull request (the user's choice), in this order:
   terminal and finish, the run reports itself interrupted.
 - **CLI**: `node tools/fdash/cli.ts run [task ...] [--skip task ...] [--jobs N] [-- extra args]` prints one
   `PASS <task>` / `FAIL <task> (log: <path>)` line per task as it finishes, with the last 15 lines of a
-  failed task's log indented by 5 spaces; exit code = number of failed tasks, 130 when interrupted.
+  failed task's log indented by 5 spaces; exit code 1 when a task failed (2 is a usage error), 130 when interrupted.
   `node tools/fdash/cli.ts list` prints the tasks in order.
 - **API** (for the gauntlet): `run({ root, tasks?, skip?, jobs?, extraArgs?, onResult? })` resolves with
   each task's result (name, ok, log path, duration) in config order and whether it was interrupted.
@@ -129,7 +129,7 @@ All three steps land in one pull request (the user's choice), in this order:
   server's Go packages reached from `./cmd/homequarters` (provider), the web client (`web/**` without
   `web/test`, `web/dev`, `web/dist`, `web/node_modules`), `e2e/*.mjs`, `e2e/package.json`,
   `e2e/fixtures/**`, every `plugins/bundled/*/plugin.json` (the catalog the admin pages list) and
-  `plugins/sdk/**`; `envKeys` `E2E_VIEWPORT`, `E2E_PARALLELISM`, `HQ_EXTERNAL_URL`; `tools`
+  `plugins/sdk/**`; `envKeys` `E2E_VIEWPORT`, `HQ_EXTERNAL_URL`, `SKIP_BUILD`, `CI` (not `E2E_PARALLELISM`: how many shards run does not change what a scenario checks); `tools`
   `go version`. Each item adds its scenario file; a scenario that turns a bundled plugin on adds that
   plugin's folder (cards: `hq-cards`, `hq-card-*`; chess: `hq-chess`; plugins: every bundled plugin; the
   builder checks each scenario with a search for plugin names and `setPlugin`).

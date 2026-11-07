@@ -19,7 +19,9 @@
         "/e2e/shards.mjs",
         "/e2e/scenarios/**",
         "/plugins/bundled/**",
-        "/.oxlintrc.json"
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
       ]
     }
   }

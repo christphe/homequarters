@@ -59,7 +59,8 @@
       ],
       "inputs": [
         "/plugins/bundled/**",
-        "/plugins/sdk/**"
+        "/plugins/sdk/**",
+        "/web/dev/**"
       ],
       "tools": [
         [

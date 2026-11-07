@@ -11,6 +11,8 @@ function quoteForCmd(arg: string): string {
 export function launch(cmd: string, args: string[]): { file: string; args: string[]; shell: boolean } {
   const s = spawnSpec(cmd, process.platform, process.env.PATH ?? process.env.Path ?? "", process.env.PATHEXT ?? "", args);
   // the shell gets one line already quoted (Node warns about arguments passed apart to a shell)
+  // cmd.exe expands %NAME% even between quotes, so such an argument would not reach the program as written
+  if (s.shell && args.some((a) => a.includes("%"))) throw new Error(`${cmd} runs through cmd.exe, which would expand the % in ${JSON.stringify(args.find((a) => a.includes("%")))}`);
   return s.shell ? { file: [cmd, ...s.args].join(" "), args: [], shell: true } : { file: cmd, args, shell: false };
 }
 

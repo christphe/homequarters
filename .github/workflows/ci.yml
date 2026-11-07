@@ -54,7 +54,7 @@ jobs:
           FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
       - name: Logs of the gates
         if: failure() && steps.gates.outcome == 'failure'
-        run: for f in "$RUNNER_TEMP"/fdash-logs/*.log; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
+        run: for f in "$RUNNER_TEMP"/fdash-logs/*/*.log; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
       - name: Logs of the gates (artifact)
         if: failure() && steps.gates.outcome == 'failure'
         uses: actions/upload-artifact@v4
@@ -136,7 +136,7 @@ jobs:
           node tools/fdash/cli.ts run e2e:browser -- $scenarios
       - name: Log of the suite
         if: always() && steps.suite.outcome != 'skipped'
-        run: cat "$RUNNER_TEMP"/fdash-logs/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"
+        run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"
       - name: Keep only the records this run used
         if: always() && github.ref == 'refs/heads/main' && steps.suite.outcome != 'skipped'
         run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete

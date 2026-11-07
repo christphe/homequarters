@@ -59,8 +59,9 @@ test("parseConfig: every refusal names the task", () => {
     [{ t: { run: [["x"]], inputs: [{ go: "./x", cwd: "s", foo: 1 }] } }, /t: inputs/],
     [{ t: { run: [["x"]], envKeys: [1] } }, /t: envKeys/],
     [{ t: { run: [["x"]], tools: [[]] } }, /t: tools/],
-    [{ t: { run: [["x"]], items: { a: { foo: 1 } } } }, /t: items/],
+    [{ t: { run: [["x"]], args: true, items: { a: { foo: 1 } } } }, /t: items/],
     [{ t: { run: [["x"]], items: [] } }, /t: items/],
+    [{ t: { run: [["x"]], items: { a: {} } } }, /t: items needs "args": true/],
   ];
   for (const [tasks, re] of bad) assert.throws(() => parseConfig(cfg(tasks)), re, JSON.stringify(tasks));
   assert.throws(() => parseConfig("{"), /fdash\.json/);

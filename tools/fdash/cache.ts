@@ -24,7 +24,8 @@ function globFiles(root: string, patterns: string[]): string[] {
 
 /** The files of the main module's packages reached by `go list -deps` from a pattern, plus go.mod and go.sum. */
 function goFiles(root: string, input: { go: string; cwd: string; tests: boolean }): string[] {
-  const lists = ["GoFiles", "CgoFiles", "EmbedFiles", ...(input.tests ? ["TestGoFiles", "XTestGoFiles"] : [])];
+  // every file the package builds from: Go, cgo, assembly, C and C++, SWIG, objects, embedded files
+  const lists = ["GoFiles", "CgoFiles", "CFiles", "CXXFiles", "MFiles", "HFiles", "FFiles", "SFiles", "SwigFiles", "SwigCXXFiles", "SysoFiles", "EmbedFiles", ...(input.tests ? ["TestGoFiles", "XTestGoFiles"] : [])];
   const format = "{{if and (not .Standard) .Module}}{{if .Module.Main}}{{.Module.GoMod}}\t{{.Dir}}" + lists.map((l) => `{{range .${l}}}\t{{.}}{{end}}`).join("") + "{{end}}{{end}}";
   const args = ["list", "-deps", ...(input.tests ? ["-test"] : []), "-f", format, input.go];
   const out = execFileSync("go", args, { cwd: path.join(root, input.cwd), maxBuffer: BIG, stdio: ["ignore", "pipe", "pipe"] }).toString("utf8");

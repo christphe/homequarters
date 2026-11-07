@@ -51,6 +51,15 @@ folder, so a plugin's change reruns its tests and those of the plugins that depe
   doubt, tests check the declarations the repository can verify (every scenario has its file, a scenario
   naming a plugin follows its folder, a plugin's tests import nothing outside its `dependsOn`), and `--force`
   (`FDASH_FORCE=1` for the gauntlet) runs everything.
+- **Assumptions the cache makes:** the scenarios of the browser suite share one server and one database in a
+  run, and each is cached on its own; a scenario that leaves state behind and breaks a later one is caught
+  only when both run. No scenario may import another (a test checks it). A pass is recorded only if the
+  inputs give the same key after the run as before it, and never after Ctrl+C. The local Chrome's version
+  is not in the key (CI sets `CHROME_VERSION`); after a Chrome update, run the gauntlet with `FDASH_FORCE=1`.
+  A file a test reads at run time outside its project must be declared; a test checks the reads it can
+  find (Go tests' `filepath.Join("..", ...)`, tests' `new URL(...)`, imports of another project's
+  `node_modules`).
+- **CI:** pull requests restore the cache that `main` saved and never save one; `main` saves only the
+  records its run used, so the cache stays the size of one run.
 - **Maintenance:** about 700 lines of TypeScript with their own tests; a new gate is a few lines of JSON.
-- **Install:** nothing; Node 24 and git, which the repository already needs. CI keeps its own jobs for now
-  and does not use the cache.
+- **Install:** nothing; Node 24 and git, which the repository already needs.

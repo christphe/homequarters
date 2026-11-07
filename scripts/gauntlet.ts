@@ -77,7 +77,7 @@ async function main(): Promise<number> {
   const end = closing({ fails: results.filter((r) => !r.ok).length, skipE2e, treeBefore, treeAfter, interrupted });
   fs.appendFileSync(record, [...recordLines(results, skipE2e), ...end.lines, `finished ${iso(new Date())}`].join("\n") + "\n");
   console.log("\n" + end.lines.join("\n"));
-  return interrupted ? 130 : end.fails;
+  return interrupted ? 130 : end.fails > 0 ? 1 : 0;
 }
 
 function secs(ms: number): string {

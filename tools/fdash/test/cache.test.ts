@@ -143,3 +143,22 @@ test("a record found is touched, so a cache can keep only what a run used", asyn
   assert.equal(fs.readdirSync(dir).length, 3);
   assert.deepEqual(fresh.map((f) => f.split("-")[0]).sort(), ["a", "b"]);
 });
+
+test("an input changed during the run: the pass is not recorded under the key from before", async () => {
+  const root = repo({ "a.txt": "before", ".gitignore": ".fdash/\ncount-*\n" });
+  // the command changes its own input while it runs (as another person editing the tree would)
+  const tasks = { t: { run: [node(`require("fs").appendFileSync("count-t","x");require("fs").writeFileSync("a.txt","during")`)], inputs: ["a.txt"] } };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS t"]);
+  write(root, "a.txt", "before");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS t"], "the content it started from was not what it ended with: no record");
+  assert.equal(runs(root, "t"), 2);
+});
+
+test("items: an item's input changed during the run is not recorded", async () => {
+  const root = repo({ "s/x": "1", "s/y": "1", ".gitignore": ".fdash/\ncalls\nfail.txt\n" });
+  const cmd = node(`const fs=require("fs");for (const i of process.argv.slice(1)) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({item:i,ok:true})+"\\n");fs.writeFileSync("s/y","2")`);
+  const tasks = { e: { run: [cmd], args: true, inputs: [], items: { x: { inputs: ["s/x"] }, y: { inputs: ["s/y"] } } } };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x", "PASS e:y"]);
+  write(root, "s/y", "1");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED e:x", "PASS e:y"]);
+});

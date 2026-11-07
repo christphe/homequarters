@@ -39,7 +39,9 @@
         "HQ_EXTERNAL_URL",
         "HQ_MEDIA_TOKEN_TTL_SECONDS",
         "HQ_MEDIA_RECONCILE_SECONDS",
-        "CHROME_VERSION"
+        "CHROME_VERSION",
+        "SKIP_BUILD",
+        "CI"
       ],
       "tools": [
         [

@@ -18,7 +18,7 @@ node tools/fdash/cli.ts list                   # the tasks, in file order
 
 It prints one line per command as it ends: `PASS <name>`, `CACHED <name>`, or `FAIL <name> (log: <file>)`
 followed by the last 15 lines of the log. Each command's output goes to its own log file in a temporary
-folder (`FDASH_LOG_DIR` keeps them in a folder of your choice, to publish them from CI). The exit code is the number of failed commands, 2 for a usage or configuration error, 130 when
+folder (`FDASH_LOG_DIR` keeps them in a folder of your choice, to publish them from CI). The exit code is 1 when a command failed, 2 for a usage or configuration error, 130 when
 interrupted. On Ctrl+C the terminal stops the running commands itself; fdash starts nothing more.
 
 ## fdash.json

@@ -2,6 +2,7 @@
 //                                node cli.ts list
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { CONFIG_FILE, type Config } from "./config.ts";
 import { findRoot, load, WORKSPACE_FILE } from "./workspace.ts";
 import { run, type Result } from "./run.ts";
@@ -88,13 +89,14 @@ async function main(): Promise<number> {
   const ac = new AbortController();
   // Ctrl+C reaches the children from the terminal; fdash only stops starting new tasks
   process.on("SIGINT", () => ac.abort());
-  const logDir = process.env.FDASH_LOG_DIR ? (fs.mkdirSync(process.env.FDASH_LOG_DIR, { recursive: true }), process.env.FDASH_LOG_DIR) : undefined;
+  // one folder per run inside FDASH_LOG_DIR: two runs given the same folder must not share report files
+  const logDir = process.env.FDASH_LOG_DIR ? (fs.mkdirSync(process.env.FDASH_LOG_DIR, { recursive: true }), fs.mkdtempSync(path.join(process.env.FDASH_LOG_DIR, "run-"))) : undefined;
   const { results, interrupted } = await run({ root, config, logDir, names: args.tasks, skip: args.skip, jobs: args.jobs, extraArgs: args.extra, force: args.force, signal: ac.signal, onResult: printResult });
   if (interrupted) {
     console.log("fdash: interrupted");
     return 130;
   }
-  return results.filter((r) => !r.ok).length;
+  return results.some((r) => !r.ok) ? 1 : 0;
 }
 
 if (import.meta.main) process.exitCode = await main();

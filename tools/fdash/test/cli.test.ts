@@ -100,3 +100,10 @@ test("a command missing from PATH fails its task without crashing the run", () =
   assert.match(r.stdout, /^PASS ok$/m);
   assert.doesNotMatch(r.stderr, /EBADF|Error/, r.stderr);
 });
+
+test("the exit code is 1 however many commands failed (2 means a usage error)", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-cli-"));
+  const bad = { run: [[process.execPath, "-e", "process.exit(1)"]] };
+  fs.writeFileSync(path.join(root, "fdash.json"), JSON.stringify({ tasks: { default: { tasks: ["a", "b", "c"] }, a: bad, b: bad, c: bad } }));
+  assert.equal(spawnSync(process.execPath, [cli, "run"], { cwd: root, encoding: "utf8" }).status, 1);
+});

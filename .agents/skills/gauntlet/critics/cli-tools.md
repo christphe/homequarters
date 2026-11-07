@@ -1,5 +1,7 @@
 # Critic: CLI and tools
 
+When: only for a change that touches `scripts/` or `tools/` (`git diff --name-only <baseline>`); the other critics run for every change.
+
 Lens: the developer tools of the repository (`tools/`, `scripts/`, `fdash.json`, the e2e runner): do they do what they say for every person who runs them, on every OS, without lying about what passed?
 
 Inputs: the brief, the diff, the gate output.

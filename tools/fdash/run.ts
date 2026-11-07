@@ -29,7 +29,14 @@ export type RunOptions = {
 
 function runStep(argv: string[], o: { cwd: string; env: NodeJS.ProcessEnv; log: number; failOnOutput: boolean }): Promise<boolean> {
   const [cmd, ...rest] = argv;
-  const l = launch(cmd, rest);
+  let l: ReturnType<typeof launch>;
+  try {
+    l = launch(cmd, rest);
+  } catch (e) {
+    fs.writeSync(o.log, `fdash: ${(e as Error).message}
+`);
+    return Promise.resolve(false);
+  }
   return new Promise((resolve) => {
     let printed = false;
     // settled once: a program that cannot start emits "error" and then "close", and the log file is closed
@@ -115,6 +122,18 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
 
   const report = (rs: Result[]) => { for (const r of rs) o.onResult?.(r); return rs; };
 
+  /** Whether a pass may be recorded under `before`: not after an interruption (a child stopped by Ctrl+C may
+   * exit 0), and only if the inputs still give the same key once the command is done; a file changed while it
+   * ran means the content it started from may not be what it read. */
+  const unchanged = (before: string, now: () => string) => {
+    if (stop()) return false;
+    try {
+      return now() === before;
+    } catch {
+      return false;
+    }
+  };
+
   async function command(c: Command): Promise<Result[]> {
     const log = path.join(logDir, `${c.name.replace(/[^\w.-]/g, "_")}.log`);
     const extra = c.args ? o.extraArgs ?? [] : [];
@@ -140,16 +159,15 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       const key = cacheKey(o.root, c, extra, common, process.env);
       if (!o.force && passed(cacheDir, c.name, key)) return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
       const [r] = await plain();
-      if (r.ok) recordPass(cacheDir, c.name, key, r.ms);
+      if (r.ok && unchanged(key, () => cacheKey(o.root, c, extra, resolveInputs(o.root, c.inputs!), process.env))) recordPass(cacheDir, c.name, key, r.ms);
       return [r];
     }
     // items: each keyed on its own, the command run once with the items that have not passed
     const items = [...c.items.keys()].filter((i) => extra.length === 0 || extra.includes(i));
+    const itemKey = (item: string, shared: string[]) =>
+      cacheKey(o.root, c, [item], [...new Set([...shared, ...resolveInputs(o.root, c.items!.get(item)!.inputs)])].sort(), process.env);
     const keys = new Map<string, string>();
-    for (const item of items) {
-      const files = [...new Set([...common, ...resolveInputs(o.root, c.items.get(item)!.inputs)])].sort();
-      keys.set(item, cacheKey(o.root, c, [item], files, process.env));
-    }
+    for (const item of items) keys.set(item, itemKey(item, common));
     const todo = items.filter((i) => o.force || !passed(cacheDir, `${c.name}:${i}`, keys.get(i)!));
     const outcome = new Map<string, boolean>();
     let ms = 0;
@@ -158,10 +176,11 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       const ok = await runCommand(c, { root: o.root, log, extraArgs: todo, env: { FDASH_REPORT: reportFile } });
       ms = Date.now() - t0;
       const said = readReport(reportFile);
+      const after = stop() ? [] : resolveInputs(o.root, c.inputs);
       for (const i of todo) {
         const itemOk = said.get(i) ?? ok;
         outcome.set(i, itemOk);
-        if (itemOk) recordPass(cacheDir, `${c.name}:${i}`, keys.get(i)!, ms);
+        if (itemOk && unchanged(keys.get(i)!, () => itemKey(i, after))) recordPass(cacheDir, `${c.name}:${i}`, keys.get(i)!, ms);
       }
     }
     return items.map((i) => outcome.has(i)

@@ -54,6 +54,7 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
   if (t.envKeys !== undefined && !isStrings(t.envKeys)) throw new Error(`${name}: envKeys must be a list of names`);
   if (t.tools !== undefined && !(Array.isArray(t.tools) && t.tools.every(isArgv))) throw new Error(`${name}: tools must be a list of commands, each a non-empty list of strings`);
   let items: Command["items"];
+  if (t.items !== undefined && t.args !== true) throw new Error(`${name}: items needs "args": true (the items to run are given as arguments)`);
   if (t.items !== undefined) {
     if (!isObject(t.items)) throw new Error(`${name}: items must map item names to { "inputs": [...] }`);
     items = new Map();

@@ -143,3 +143,45 @@ test("no file names a test of web/test, a plugin's test/ or tools/fdash/test tha
   }
   assert.deepEqual(missing, []);
 });
+
+test("files a test reads outside its project are inputs of the task that runs it", () => {
+  const config = loadWorkspace(root);
+  const covered = (task: string, rel: string) => {
+    const inputs = ((config.get(task) as Command).inputs ?? []).filter((i): i is string => typeof i === "string" && !i.startsWith("!"));
+    return inputs.some((p) => path.posix.matchesGlob(rel, p) || path.posix.matchesGlob(rel + "/x", p) || p.startsWith(rel + "/"));
+  };
+  const missing: string[] = [];
+  const files = (dir: string, re: RegExp): string[] => fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && re.test(e.name) && !e.parentPath.includes("node_modules")).map((e) => path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join("/"));
+  // Go tests climbing out of server/internal/<pkg>: filepath.Join("..", "..", "..", "web", "dev", name)
+  for (const f of files("server", /_test\.go$/)) {
+    for (const m of fs.readFileSync(path.join(root, f), "utf8").matchAll(/filepath\.Join\((?:"\.\.", ){3}((?:"[^"]+"(?:, )?)+)/g)) {
+      const rel = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).join("/");
+      if (!covered("server:test", rel)) missing.push(`${f} reads ${rel}, not an input of server:test`);
+    }
+  }
+  // tests reading files by URL, and tests importing another project's node_modules (its lockfile pins them)
+  const owners: [string, string, string][] = [["web/test", "web:test", "web"], ["scripts", "scripts:test", "scripts"],
+    ...fs.readdirSync(path.join(root, "plugins/bundled")).filter((p) => fs.existsSync(path.join(root, "plugins/bundled", p, "test"))).map((p): [string, string, string] => [`plugins/bundled/${p}/test`, `${p}:test`, `plugins/bundled/${p}`])];
+  for (const [dir, task, project] of owners) {
+    for (const f of files(dir, /\.test\.(ts|mjs)$/)) {
+      const text = fs.readFileSync(path.join(root, f), "utf8");
+      for (const m of text.matchAll(/new URL\("(\.\.?\/[^"]+)", import\.meta\.url\)/g)) {
+        const rel = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
+        if (!rel.startsWith(project + "/") && !covered(task, rel)) missing.push(`${f} reads ${rel}, not an input of ${task}`);
+      }
+      for (const m of text.matchAll(/["'](\.\.\/[^"']*?)\/node_modules\//g)) {
+        const other = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
+        if (!covered(task, `${other}/pnpm-lock.yaml`)) missing.push(`${f} imports ${other}/node_modules: ${other}/pnpm-lock.yaml is not an input of ${task}`);
+      }
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
+test("no scenario of the suite imports another (each is cached on its own file)", () => {
+  for (const s of ALL) {
+    const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".mjs"), "utf8");
+    for (const m of text.matchAll(/from\s+["']\.\/([\w-]+)\.mjs["']/g)) assert.fail(`${s} imports ./${m[1]}.mjs: editing it would not rerun ${s}`);
+  }
+});

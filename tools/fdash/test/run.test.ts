@@ -121,3 +121,18 @@ test("a .cmd gets an argument with a space as one argument", { skip: process.pla
     process.env.PATH = old;
   }
 });
+
+test("a % in an argument of a .cmd is refused (cmd.exe would expand it), the task fails with why", { skip: process.platform !== "win32" }, async () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, "echo1.cmd"), "@echo [%~1]\r\n");
+  const old = process.env.PATH;
+  process.env.PATH = dir + path.delimiter + old;
+  try {
+    const c = cfg({ t: { run: [["echo1", "e%PATH%f"]] } }).get("t") as Parameters<typeof runCommand>[0];
+    const log = path.join(dir, "log");
+    assert.equal(await runCommand(c, { root: dir, log }), false);
+    assert.match(fs.readFileSync(log, "utf8"), /cmd\.exe, which would expand the %/);
+  } finally {
+    process.env.PATH = old;
+  }
+});
