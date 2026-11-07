@@ -13,43 +13,43 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launch, joinAs, walkTo, sleep, waitFor } from "../lib.ts";
-import { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK } from "./cards.ts";
+import { launch, joinAs, walkTo, sleep, waitFor, type RunContext, type User } from "../lib.ts";
+import { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK, type Player, type Point } from "./cards.ts";
 import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
 import { seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 
 const HUD = ".topbar,.side,.social-controls,.bar,.minimap,.toast,.dock{display:none!important}";
 const NO_MODAL = ".scrim,.modal{visibility:hidden!important}";
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   const base = process.env.HQ_CAPTURE_DIR ?? "/tmp/hq-capture";
   fs.mkdirSync(base, { recursive: true });
   const dir = path.join(base, "cards-" + Date.now());
   fs.mkdirSync(dir, { recursive: true });
   const browser = await launch();
-  const window = async (u, name) => {
-    const box = await (await u.page.$(MODAL)).boundingBox();
+  const window = async (u: User, name: string) => {
+    const box = (await (await u.page.$(MODAL))!.boundingBox())!;
     await u.page.screenshot({ path: path.join(dir, name + ".png"), clip: box });
   };
   // the table view alone, scrolled into sight (what a player looks at while playing)
-  const view = async (u, name) => {
-    const el = await u.page.$(MODAL + " iframe.plugin-view");
+  const view = async (u: User, name: string) => {
+    const el = (await u.page.$(MODAL + " iframe.plugin-view"))!;
     await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
     await sleep(200);
     await el.screenshot({ path: path.join(dir, name + ".png") });
   };
-  const viewClick = async (u, p) => {
-    const f = await viewFrame(u);
-    const box = await (await f.$("canvas")).boundingBox();
-    const k = (await drawn(u)).scale;
+  const viewClick = async (u: User, p: Point) => {
+    const f = (await viewFrame(u))!;
+    const box = (await (await f.$("canvas"))!.boundingBox())!;
+    const k = (await drawn(u))!.scale;
     await u.page.mouse.click(box.x + p.x * k, box.y + p.y * k);
     await sleep(200);
   };
-  const viewButton = async (u, text) => {
-    const f = await viewFrame(u);
-    for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
+  const viewButton = async (u: User, text: string) => {
+    const f = (await viewFrame(u))!;
+    for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return h.click();
   };
-  const choose = async (title, ...us) => {
+  const choose = async (title: string, ...us: Player[]) => {
     await press(us[0], "Reset");
     await waitFor(async () => (await modal(us[0]))?.buttons.some((b) => b.text === title), { what: title + " offered" });
     await press(us[0], title);
@@ -62,9 +62,9 @@ export async function run(ctx) {
   try {
     for (const p of ["hq-cards", "hq-card-pouilleux", "hq-card-lastcard"]) await setPlugin(ctx, p, true);
     await setDecks(ctx, [DECK]);
-    const ann = await joinAs(browser, "Ann", { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } });
-    const bo = await joinAs(browser, "Bo", { avatar: { sk: 3, hs: 3, hc: 1, sh: 5, pa: 0 } });
-    const adm = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
+    const ann = await joinAs(browser, "Ann", { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } }) as Player;
+    const bo = await joinAs(browser, "Bo", { avatar: { sk: 3, hs: 3, hc: 1, sh: 5, pa: 0 } }) as Player;
+    const adm = await joinAs(browser, "Admin", { cookie: ctx.adminCookie }) as Player;
     for (const u of [ann, bo, adm]) u.sent = [];
     const feet = 23 * 16 + 8;
     await Promise.all([walkTo(ann, 204, feet), walkTo(bo, 212, feet), walkTo(adm, 220, feet)]);
@@ -98,7 +98,7 @@ export async function run(ctx) {
     await sleep(600);
     if (!(await adm.page.$(MODAL))) await openWithX(adm);
     // looking through the Stock
-    await viewClick(ann, pileAt(FREE.piles[0].at));
+    await viewClick(ann, pileAt(FREE.piles![0].at));
     await viewButton(ann, "Look through Stock");
     await sleep(600);
     await window(ann, "look");
@@ -106,7 +106,7 @@ export async function run(ctx) {
     // Bo picks from Ann's hand
     await press(ann, "Offer my hand to Bo");
     await sleep(500);
-    const spot = seatSpots(8, 1).find((s) => s.seat === 0);
+    const spot = seatSpots(8, 1).find((s) => s.seat === 0)!;
     await viewClick(bo, spot);
     await sleep(600);
     await view(bo, "pick");

@@ -6,7 +6,11 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { check, summary, resetChecks, launch, joinAs, sleep, waitFor, walkTo, API } from "../lib.ts";
+import type { Browser } from "puppeteer-core";
+import type { ViewStats } from "../../web/src/game/WorldView.ts";
+import { check, summary, resetChecks, launch, joinAs, sleep, waitFor, walkTo, API, type RunContext, type User } from "../lib.ts";
+
+type Size = { width: number; height: number };
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BOTS = Number(process.env.PERF_BOTS ?? 300);
@@ -14,25 +18,25 @@ const SECONDS = Number(process.env.PERF_SECONDS ?? 30);
 const LOADGEN = path.join(root, "bin", process.platform === "win32" ? "loadgen.exe" : "loadgen"); // (cd server && go build -o ../bin/loadgen.exe ./cmd/loadgen) on Windows
 const GPU_ARGS = process.env.PERF_SOFTWARE_GL ? [] : ["--use-gl=angle", "--use-angle=metal", "--ignore-gpu-blocklist", "--enable-gpu-rasterization"];
 
-const WALK_PTS = [[20, 28], [34, 30], [12, 24], [30, 20], [8, 32], [36, 26]];
+const WALK_PTS: [number, number][] = [[20, 28], [34, 30], [12, 24], [30, 20], [8, 32], [36, 26]];
 
 /** Frames drawn per second over a window: from the rendersTotal counter, and the mean of stats.renders. */
-async function rendersOver(u, seconds) {
+async function rendersOver(u: User, seconds: number) {
   const r0 = await u.page.evaluate(() => window.__hq.view.rendersTotal);
   const t0 = Date.now();
-  const per = [], fps = [], frameMs = [];
+  const per: number[] = [], fps: number[] = [], frameMs: number[] = [];
   while (Date.now() - t0 < seconds * 1000) {
     await sleep(1000);
     const s = await u.page.evaluate(() => window.__hq.view.stats);
     per.push(s.renders); fps.push(s.fps); frameMs.push(s.frameMs);
   }
   const r1 = await u.page.evaluate(() => window.__hq.view.rendersTotal);
-  const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
   return { rendersPerSec: +((r1 - r0) / ((Date.now() - t0) / 1000)).toFixed(1), statsRenders: +avg(per).toFixed(1), fps: +avg(fps).toFixed(1), frameMs: +avg(frameMs).toFixed(2) };
 }
 
 /** Alone in the office: renders per second standing still, then walking. */
-async function measureRenders(browser, size) {
+async function measureRenders(browser: Browser, size: Size) {
   const u = await joinAs(browser, "Perf-renders", { viewport: size });
   await sleep(3000); // settle: fonts, the bake, the arrival banner
   const idle = await rendersOver(u, 10);
@@ -50,7 +54,7 @@ async function measureRenders(browser, size) {
   return { viewport: size.width + "x" + size.height, idle, walking };
 }
 
-async function measure(browser, name, eco, size, ctx) {
+async function measure(browser: Browser, name: string, eco: boolean, size: Size, _ctx: RunContext) {
   const u = await joinAs(browser, name, { viewport: size });
   await u.page.evaluate((eco) => { localStorage.setItem("hq.settings", JSON.stringify({ eco, maxVideos: 6, audioOnly: false, debug: false })); }, eco);
   await u.page.reload({ waitUntil: "domcontentloaded" });
@@ -59,7 +63,7 @@ async function measure(browser, name, eco, size, ctx) {
     const c = document.createElement("canvas");
     const g = c.getContext("webgl");
     const e = g?.getExtension("WEBGL_debug_renderer_info");
-    return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : "unknown";
+    return e ? g!.getParameter(e.UNMASKED_RENDERER_WEBGL) : "unknown";
   });
   const cdp = await u.page.createCDPSession();
   await cdp.send("Performance.enable");
@@ -73,16 +77,16 @@ async function measure(browser, name, eco, size, ctx) {
   await sleep(4000); // settle
   const m0 = await metric();
   const t0 = Date.now();
-  const samples = [];
+  const samples: (ViewStats & { heap: number })[] = [];
   while (Date.now() - t0 < SECONDS * 1000) {
     await sleep(1000);
-    samples.push(await u.page.evaluate(() => ({ ...window.__hq.view.stats, heap: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0 })));
+    samples.push(await u.page.evaluate(() => ({ ...window.__hq.view.stats, heap: (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory ? (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory!.usedJSHeapSize / 1048576 : 0 })));
   }
   const m1 = await metric();
   stop = true;
   await walker.catch(() => {});
   const wall = (Date.now() - t0) / 1000;
-  const avg = (k) => samples.reduce((a, s) => a + s[k], 0) / samples.length;
+  const avg = (k: keyof ViewStats | "heap") => samples.reduce((a, s) => a + s[k], 0) / samples.length;
   const out = {
     mode: eco ? "economy" : "normal", viewport: size.width + "x" + size.height, gl,
     fps: +avg("fps").toFixed(1), fpsMin: Math.min(...samples.map((s) => s.fps)), frameMs: +avg("frameMs").toFixed(2),
@@ -97,10 +101,10 @@ async function measure(browser, name, eco, size, ctx) {
   return out;
 }
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const alone = await launch(GPU_ARGS, { waitEmpty: false });
-  let renders;
+  let renders: Awaited<ReturnType<typeof measureRenders>>;
   try {
     renders = await measureRenders(alone, { width: 1440, height: 900 });
     console.log("RENDERS " + JSON.stringify(renders));
@@ -111,9 +115,9 @@ export async function run(ctx) {
   bots.on("error", (e) => console.log("# load generator did not start (" + LOADGEN + "): " + e.message));
   await sleep(Math.max(8000, BOTS * 40));
   const browser = await launch(GPU_ARGS, { waitEmpty: false });
-  const results = [];
+  const results: Awaited<ReturnType<typeof measure>>[] = [];
   try {
-    for (const [name, eco, size] of [["Perf-normal", false, { width: 1440, height: 900 }], ["Perf-eco", true, { width: 1440, height: 900 }]]) {
+    for (const [name, eco, size] of [["Perf-normal", false, { width: 1440, height: 900 }], ["Perf-eco", true, { width: 1440, height: 900 }]] as [string, boolean, Size][]) {
       const r = await measure(browser, name, eco, size, ctx);
       results.push(r);
       console.log("PERF " + JSON.stringify(r));

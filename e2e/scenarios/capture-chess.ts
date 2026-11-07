@@ -15,25 +15,26 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launch, joinAs, walkTo, sleep, waitFor } from "../lib.ts";
-import { setPlugin, setBoards, board, dragSq, press, button, openWithX, countFrames, viewFrame, sq, MODAL, BOARD } from "./chess.ts";
+import { launch, joinAs, walkTo, sleep, waitFor, type RunContext, type User } from "../lib.ts";
+import type { BoundingBox } from "puppeteer-core";
+import { setPlugin, setBoards, board, dragSq, press, button, openWithX, countFrames, viewFrame, sq, MODAL, BOARD, type Player } from "./chess.ts";
 
 const HUD = ".topbar,.side,.social-controls,.bar,.minimap,.toast,.dock{display:none!important}";
 // a seated player's window stays open (they are "present", the badge shows) but is hidden from the frame
 const NO_MODAL = ".scrim,.modal{visibility:hidden!important}";
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   const base = process.env.HQ_CAPTURE_DIR ?? "/tmp/hq-capture";
   fs.mkdirSync(base, { recursive: true });
   const dir = fs.mkdtempSync(path.join(base, "chess-"));
   const browser = await launch();
-  const shot = (u, name, clip) => u.page.screenshot({ path: path.join(dir, name + ".png"), clip });
+  const shot = (u: User, name: string, clip: BoundingBox) => u.page.screenshot({ path: path.join(dir, name + ".png"), clip });
   const world = { x: 240, y: 150, width: 480, height: 300 }; // around the member the camera follows (960x600)
   try {
     await setPlugin(ctx, true);
     await setBoards(ctx, [BOARD]);
-    const ann = await joinAs(browser, "Ann", { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } });
-    const adm = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
+    const ann = await joinAs(browser, "Ann", { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } }) as Player;
+    const adm = await joinAs(browser, "Admin", { cookie: ctx.adminCookie }) as Player;
     const di = await joinAs(browser, "Di", { avatar: { sk: 2, hs: 0, hc: 4, sh: 3, pa: 1 } });
     ann.flip = false;
     adm.flip = true;
@@ -57,20 +58,20 @@ export async function run(ctx) {
     await dragSq(adm, "d8", "d5");
     await waitFor(async () => (await board(ann))?.w === "P" && (await board(ann))?.b === "p", { what: "two captures" });
     await sleep(300);
-    const box = await (await ann.page.$(MODAL)).boundingBox();
+    const box = (await (await ann.page.$(MODAL))!.boundingBox())!;
     await ann.page.screenshot({ path: path.join(dir, "window.png"), clip: box });
-    await adm.page.screenshot({ path: path.join(dir, "black.png"), clip: await (await adm.page.$(MODAL)).boundingBox() });
-    const scaleOf = (u) => viewFrame(u).then((f) => f.evaluate(() => document.querySelector("canvas").getBoundingClientRect().width / 128));
-    console.log("capture: window", ann.page.viewport().width + "x" + ann.page.viewport().height, "scale", await scaleOf(ann));
+    await adm.page.screenshot({ path: path.join(dir, "black.png"), clip: (await (await adm.page.$(MODAL))!.boundingBox())! });
+    const scaleOf = (u: User) => viewFrame(u).then((f) => f!.evaluate(() => document.querySelector("canvas")!.getBoundingClientRect().width / 128));
+    console.log("capture: window", ann.page.viewport()!.width + "x" + ann.page.viewport()!.height, "scale", await scaleOf(ann));
     await press(adm, "Undo");
     await waitFor(async () => (await board(ann))?.b === "p" && (await board(ann))?.w === "" && (await board(ann))?.p[sq("d8")] === "q", { what: "Qxd5 undone" });
     await sleep(300);
     await ann.page.screenshot({ path: path.join(dir, "undone.png"), clip: box });
-    const original = ann.page.viewport();
-    for (const [name, w, h] of [["window-1080", 1920, 1080], ["window-small", 800, 450], ["window-phone", 390, 844]]) {
+    const original = ann.page.viewport()!;
+    for (const [name, w, h] of [["window-1080", 1920, 1080], ["window-small", 800, 450], ["window-phone", 390, 844]] as const) {
       await ann.page.setViewport({ width: w, height: h });
       await sleep(600);
-      await ann.page.screenshot({ path: path.join(dir, name + ".png"), clip: await (await ann.page.$(MODAL)).boundingBox() });
+      await ann.page.screenshot({ path: path.join(dir, name + ".png"), clip: (await (await ann.page.$(MODAL))!.boundingBox())! });
       console.log("capture:", name, w + "x" + h, "scale", await scaleOf(ann));
     }
     await ann.page.setViewport(original);
@@ -113,7 +114,7 @@ export async function run(ctx) {
       console.log("capture: frames in", dir, "(no contact sheet:", String(e).slice(0, 120) + ")");
     }
     // leave the board as new (the window is hidden from the frames, so not a mouse click)
-    await ann.page.evaluate((sel) => [...document.querySelectorAll(sel + " button")].find((b) => b.textContent === "Reset")?.click(), MODAL);
+    await ann.page.evaluate((sel) => [...document.querySelectorAll<HTMLButtonElement>(sel + " button")].find((b) => b.textContent === "Reset")?.click(), MODAL);
   } finally {
     await setPlugin(ctx, false).catch(() => {});
     await setBoards(ctx, []).catch(() => {});

@@ -1,7 +1,7 @@
 // Consent, busy status and eligibility for automatic conversations.
 import { check, launch, joinAs, waitFor, walkTo, st, sleep, resetChecks } from "../lib.ts";
 
-export async function run() {
+export async function run(): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -31,7 +31,7 @@ export async function run() {
     await b.page.evaluate(() => window.__hq.session.setStatus("busy"));
     await waitFor(async () => (await st(b)).conv === null, { timeout: 8000, what: "B leaves when busy" });
     // Leaving is asynchronous (the room disconnects and tracks stop); it must finish within a moment.
-    const stopped = await waitFor(async () => (await st(b)).mic === false && (await b.page.evaluate(() => window.__hq.media.room === null || window.__hq.media.room === undefined)), { timeout: 4000, what: "capture stops" }).catch(() => false);
+    const stopped = await waitFor(async () => (await st(b)).mic === false && (await b.page.evaluate(() => (window.__hq.media as unknown as { room: unknown }).room === null || (window.__hq.media as unknown as { room: unknown }).room === undefined)), { timeout: 4000, what: "capture stops" }).catch(() => false);
     check("becoming Busy leaves the conversation and stops B's capture", !!stopped);
 
     // Invisible: other clients no longer see the avatar; roster shows offline

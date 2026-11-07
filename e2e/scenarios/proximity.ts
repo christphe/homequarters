@@ -1,7 +1,7 @@
 // Slice-2 acceptance: two real browsers, movement sync, proximity conversation with real media.
 import { resetChecks, rtpBytes, check, summary, launch, joinAs, waitFor, walkTo, pos, others, st, lkParticipants, metrics, sleep } from "../lib.ts";
 
-export async function run() {
+export async function run(): Promise<boolean> {
 resetChecks();
 const browser = await launch();
 try {
@@ -28,7 +28,7 @@ try {
   const a1 = await pos(ana);
   const seenByBruno = (await others(bruno)).find((e) => e.id === ana.id);
   check("Ana moved right", a1.x > a0.x + 10, `${a0.x.toFixed(1)} -> ${a1.x.toFixed(1)}`);
-  check("Bruno sees Ana at her real position", seenByBruno && Math.hypot(seenByBruno.x - a1.x, seenByBruno.y - a1.y) < 6, JSON.stringify(seenByBruno));
+  check("Bruno sees Ana at her real position", (seenByBruno && Math.hypot(seenByBruno.x - a1.x, seenByBruno.y - a1.y) < 6) as boolean, JSON.stringify(seenByBruno));
 
   // Dead reckoning: Bruno only receives state changes, yet must track a 2 s walk closely.
   let maxErr = 0;
@@ -44,7 +44,7 @@ try {
   const realEnd = await pos(ana);
   const seenEnd = (await others(bruno)).find((e) => e.id === ana.id);
   check("remote view tracks a walk from state changes only (max error while moving)", maxErr < 16, maxErr.toFixed(1) + " px");
-  check("remote view converges to the exact stop position", seenEnd && Math.hypot(seenEnd.x - realEnd.x, seenEnd.y - realEnd.y) < 3, JSON.stringify([realEnd, seenEnd]));
+  check("remote view converges to the exact stop position", (seenEnd && Math.hypot(seenEnd.x - realEnd.x, seenEnd.y - realEnd.y) < 3) as boolean, JSON.stringify([realEnd, seenEnd]));
 
   // Go to the social area, opt in to media, approach each other.
   await walkTo(ana, 20 * 16 + 8, 28 * 16 + 8);
@@ -61,6 +61,7 @@ try {
   await waitFor(() => ana.page.evaluate(() => window.__hq.media.tiles.length === 2), { what: "2 tiles" });
   const room = await ana.page.evaluate(() => window.__hq.media.currentRoom);
   await waitFor(async () => (await lkParticipants(room)).length === 2, { what: "SFU has 2 participants" });
+  // oxlint-disable-next-line typescript/require-array-sort-compare -- both sides sort as strings (the ids the SFU lists are strings)
   check("SFU room contains exactly both identities", (await lkParticipants(room)).sort().join() === [ana.id, bruno.id].sort().join());
 
   // real audio flowing? inbound RTP bytes on Ana's subscriber connection
@@ -81,11 +82,11 @@ try {
 
   // Per-person volume, local to Ana: 100% -> 50% -> muted for me -> 100%.
   await ana.page.click(".dock .tile .vol");
-  const half = await waitFor(() => ana.page.evaluate((id) => window.__hq.media.room.remoteParticipants.get(String(id))?.getVolume() === 0.5, bruno.id), { what: "half volume" }).catch(() => false);
+  const half = await waitFor(() => ana.page.evaluate((id) => (window.__hq.media as unknown as { room: { remoteParticipants: Map<string, { getVolume(): number | undefined }> } }).room.remoteParticipants.get(String(id))?.getVolume() === 0.5, bruno.id), { what: "half volume" }).catch(() => false);
   await ana.page.click(".dock .tile .vol");
-  const muted = await waitFor(() => ana.page.evaluate((id) => window.__hq.media.room.remoteParticipants.get(String(id))?.getVolume() === 0, bruno.id), { what: "muted for me" }).catch(() => false);
+  const muted = await waitFor(() => ana.page.evaluate((id) => (window.__hq.media as unknown as { room: { remoteParticipants: Map<string, { getVolume(): number | undefined }> } }).room.remoteParticipants.get(String(id))?.getVolume() === 0, bruno.id), { what: "muted for me" }).catch(() => false);
   await ana.page.click(".dock .tile .vol");
-  check("Ana can turn Bruno down or mute him for herself only", !!half && !!muted && (await ana.page.evaluate((id) => window.__hq.media.room.remoteParticipants.get(String(id))?.getVolume(), bruno.id)) === 1);
+  check("Ana can turn Bruno down or mute him for herself only", !!half && !!muted && (await ana.page.evaluate((id) => (window.__hq.media as unknown as { room: { remoteParticipants: Map<string, { getVolume(): number | undefined }> } }).room.remoteParticipants.get(String(id))?.getVolume(), bruno.id)) === 1);
 
   // Walk away: hysteresis + dwell, then server revokes SFU access.
   const before = await metrics();
@@ -94,7 +95,7 @@ try {
   check("moving away ends the conversation for both", true);
   // revocation runs in the background with retries: give it a few seconds on a loaded machine
   const after = await waitFor(async () => { const m = await metrics(); return m.hq_media_revocations_total - before.hq_media_revocations_total >= 2 ? m : null; }, { timeout: 8000, what: "revocations" }).catch(() => metrics());
-  check("server revoked SFU access for both", after.hq_media_revocations_total - before.hq_media_revocations_total >= 2, `revocations +${after.hq_media_revocations_total - before.hq_media_revocations_total}`);
+  check("server revoked SFU access for both", after!.hq_media_revocations_total - before.hq_media_revocations_total >= 2, `revocations +${after!.hq_media_revocations_total - before.hq_media_revocations_total}`);
   check("SFU room is empty after leaving", (await lkParticipants(room)).length === 0);
   check("media capture stopped after leaving (mic/cam off)", (await st(ana)).mic === false && (await st(bruno)).cam === false);
 

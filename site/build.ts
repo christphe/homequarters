@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { Marked } from "marked";
+import { Marked, type Tokens } from "marked";
 
 const HERE = import.meta.dirname;
 const REPO_ROOT = path.resolve(HERE, "..");
@@ -20,7 +20,8 @@ const BASE_PATH = new URL(SITE).pathname;
 const IMAGE = { url: SITE + "assets/banner.png", width: 1280, height: 640, alt: "Home Quarters, the open source virtual office you host yourself: pixel-art people at their assigned desks, two chatting and two walking their pets" };
 const SUMMARY = "Open source (AGPL-3.0), self-hosted 2D virtual office with pixel-art avatars, proximity audio and video, meeting rooms, screen sharing and chat. Built with Go, PixiJS and LiveKit to be cheap to host.";
 
-const NAV = [
+type NavItem = [slug: string, title: string, file: string];
+const NAV: { group: string; items: NavItem[] }[] = [
   { group: "Get started", items: [["overview", "Overview", "overview.md"], ["getting-started", "Getting started", "getting-started.md"], ["self-hosting", "Self-hosting", "../deploy/README.md"], ["desktop", "Desktop app", "desktop.md"], ["faq", "FAQ", "faq.md"]] },
   { group: "Concepts", items: [["architecture", "Architecture", "architecture.md"], ["proximity-and-media", "Proximity and media", "proximity-and-media.md"], ["art-style", "Art style", "art-style.md"], ["protocol", "WebSocket protocol", "protocol.md"], ["plugins", "Plugins", "plugins.md"], ["plugin-api", "Plugin API reference", "plugin-api.md"]] },
   { group: "Operate", items: [["privacy-and-security", "Privacy and security", "privacy-and-security.md"], ["efficiency-and-benchmarks", "Efficiency and benchmarks", "efficiency-and-benchmarks.md"], ["benchmark-results", "Benchmark results", "benchmark-results.md"], ["status", "Status", "status.md"], ["roadmap", "Roadmap", "roadmap.md"], ["business-model", "Business model", "business-model.md"]] },
@@ -28,14 +29,14 @@ const NAV = [
     group: "Decisions",
     items: fs.readdirSync(path.join(DOCS, "decisions")).filter((f) => f.endsWith(".md")).sort().map((f) => {
       const slug = f.replace(/\.md$/, "");
-      const title = fs.readFileSync(path.join(DOCS, "decisions", f), "utf8").match(/^# (.+)$/m)[1];
+      const title = fs.readFileSync(path.join(DOCS, "decisions", f), "utf8").match(/^# (.+)$/m)![1];
       return [slug, title, "decisions/" + f];
     }),
   },
   { group: "Community", items: [["contributing", "Contributing", "contributing.md"], ["gauntlet", "The gauntlet loop", "gauntlet.md"]] },
 ];
 // Hand-written descriptions for the pages people search for; the rest use their first paragraph.
-const DESCRIPTIONS = {
+const DESCRIPTIONS: Record<string, string> = {
   overview: "What Home Quarters is: an open source, self-hosted 2D virtual office with proximity audio and video, built to be light on CPU, RAM, GPU and bandwidth.",
   "getting-started": "Run Home Quarters locally in minutes: Go, Node.js with pnpm and LiveKit, one dev script, every environment variable and how to run the tests.",
   "self-hosting": "Self-host Home Quarters with Docker Compose: HTTPS through Caddy, a LiveKit SFU, invite-only joins, firewall ports, backups and a public demo mode.",
@@ -51,25 +52,26 @@ const DESCRIPTIONS = {
   "business-model": "How Home Quarters plans to sustain itself: AGPL open source for everyone, plus hosted instances in Team, Business and Enterprise plans with seats.",
 };
 const PAGES = NAV.flatMap((g) => g.items.map(([slug, title, file]) => ({ slug, title: title.replace(/^\d+ · /, ""), file, group: g.group, src: path.resolve(DOCS, file) })));
+type Page = (typeof PAGES)[number];
 const byFile = new Map(PAGES.map((p) => [p.src, p.slug]));
-const docUrl = (slug, root) => root + "docs/" + (slug === "overview" ? "" : slug + "/");
-const docPath = (slug) => "docs/" + (slug === "overview" ? "" : slug + "/");
+const docUrl = (slug: string, root: string) => root + "docs/" + (slug === "overview" ? "" : slug + "/");
+const docPath = (slug: string) => "docs/" + (slug === "overview" ? "" : slug + "/");
 
-const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const unesc = (s) => s.replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
-const slugify = (s) => s.toLowerCase().replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const plain = (s) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*_\x60]/g, "").replace(/\s+/g, " ").trim();
-const clip = (s, n) => (s.length <= n ? s : s.slice(0, s.lastIndexOf(" ", n - 1)).replace(/[\s,;:.(-]+$/, "") + "…");
-const ldScript = (obj) => "<script type=\"application/ld+json\">" + JSON.stringify(obj).replace(/</g, "\\u003c") + "</script>\n";
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const unesc = (s: string) => s.replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+const slugify = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const plain = (s: string) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*_\x60]/g, "").replace(/\s+/g, " ").trim();
+const clip = (s: string, n: number) => (s.length <= n ? s : s.slice(0, s.lastIndexOf(" ", n - 1)).replace(/[\s,;:.(-]+$/, "") + "…");
+const ldScript = (obj: unknown) => "<script type=\"application/ld+json\">" + JSON.stringify(obj).replace(/</g, "\\u003c") + "</script>\n";
 
 // Links in Markdown sources: other doc pages become site URLs, other repository files become
 // GitHub URLs (they do not exist on the site), everything else is left alone.
-function linkTarget(href, srcFile, root) {
+function linkTarget(href: string, srcFile: string, root: string): string {
   if (/^([a-z][a-z0-9+.-]*:|#|\/)/i.test(href)) return href;
   const i = href.indexOf("#");
   const file = i < 0 ? href : href.slice(0, i), hash = i < 0 ? "" : href.slice(i);
   const abs = path.resolve(path.dirname(srcFile), file);
-  if (byFile.has(abs)) return docUrl(byFile.get(abs), root) + hash;
+  if (byFile.has(abs)) return docUrl(byFile.get(abs)!, root) + hash;
   // Some sources link a doc page by file name only (decisions/0001-x.md as 0001-x.md, or the reverse).
   const bySlug = /^([\w-]+)\.md$/.exec(path.basename(file));
   if (!fs.existsSync(abs) && bySlug && PAGES.some((p) => p.slug === bySlug[1])) return docUrl(bySlug[1], root) + hash;
@@ -79,7 +81,7 @@ function linkTarget(href, srcFile, root) {
   return REPO + "/" + kind + "/main/" + rel.split(path.sep).join("/") + hash;
 }
 
-function describe(p, src) {
+function describe(p: Page, src: string) {
   if (DESCRIPTIONS[p.slug]) return DESCRIPTIONS[p.slug];
   const para = src.split(/\n\s*\n/).map((s) => s.trim()).find((s) => s && !/^(#|>|-|\*|\||~~~|\x60\x60\x60|<|\d+\.)/.test(s)) ?? "";
   let d = plain(para);
@@ -88,7 +90,7 @@ function describe(p, src) {
   return clip(d, 158);
 }
 
-function lastModified(file) {
+function lastModified(file: string): string | null {
   try {
     return execFileSync("git", ["log", "-1", "--format=%cI", "--", file], { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
   } catch {
@@ -96,7 +98,7 @@ function lastModified(file) {
   }
 }
 
-function faqEntries(src) {
+function faqEntries(src: string) {
   return src.split(/^## /m).slice(1).map((chunk) => {
     const nl = chunk.indexOf("\n");
     return { q: chunk.slice(0, nl).trim(), a: chunk.slice(nl + 1).trim() };
@@ -105,10 +107,10 @@ function faqEntries(src) {
 
 // The Markdown copies (docs/<slug>.md, llms-full.txt) are read outside the repository, so their
 // relative links become absolute site or GitHub URLs.
-const absoluteLinks = (md, srcFile) => md.replace(/(\]\()([^)\s]+)(\))/g, (m, a, href, b) => a + linkTarget(href, srcFile, SITE) + b);
+const absoluteLinks = (md: string, srcFile: string) => md.replace(/(\]\()([^)\s]+)(\))/g, (_m: string, a: string, href: string, b: string) => a + linkTarget(href, srcFile, SITE) + b);
 
-function render(mdText, root, srcFile) {
-  const toc = [];
+function render(mdText: string, root: string, srcFile: string) {
+  const toc: { depth: number; id: string; text: string }[] = [];
   const md = new Marked({ gfm: true });
   md.use({
     renderer: {
@@ -128,17 +130,17 @@ function render(mdText, root, srcFile) {
         return "<div class=\"code\"><button class=\"copy\" type=\"button\" aria-label=\"Copy code\">Copy</button><pre><code" + (lang ? " class=\"language-" + esc(lang) + "\"" : "") + ">" + esc(text) + "</code></pre></div>\n";
       },
       table({ header, rows }) {
-        const cell = (c, tag) => "<" + tag + (c.align ? " style=\"text-align:" + c.align + "\"" : "") + ">" + this.parser.parseInline(c.tokens) + "</" + tag + ">";
+        const cell = (c: Tokens.TableCell, tag: string) => "<" + tag + (c.align ? " style=\"text-align:" + c.align + "\"" : "") + ">" + this.parser.parseInline(c.tokens) + "</" + tag + ">";
         return "<div class=\"table-wrap\"><table><thead><tr>" + header.map((c) => cell(c, "th")).join("") + "</tr></thead><tbody>" + rows.map((r) => "<tr>" + r.map((c) => cell(c, "td")).join("") + "</tr>").join("") + "</tbody></table></div>\n";
       },
     },
   });
-  return { html: md.parse(mdText), toc };
+  return { html: md.parse(mdText) as string, toc }; // no async extension: parse returns a string
 }
 
 const GH = "<svg viewBox=\"0 0 16 16\" width=\"18\" height=\"18\" aria-hidden=\"true\" fill=\"currentColor\"><path d=\"M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0z\"/></svg>";
 
-function header(root, active) {
+function header(root: string, active: string) {
   return "<header class=\"site-header\"><div class=\"wrap bar\">" +
     "<a class=\"brand\" href=\"" + root + "\">Home Quarters</a>" +
     "<nav class=\"main-nav\" aria-label=\"Main\">" +
@@ -146,12 +148,13 @@ function header(root, active) {
     "<a href=\"" + root + "docs/\"" + (active === "docs" ? " aria-current=\"page\"" : "") + ">Docs</a>" +
     "<a class=\"gh\" href=\"" + REPO + "\" rel=\"noopener\">" + GH + "<span>GitHub</span></a></nav></div></header>";
 }
-function footer(root) {
+function footer(root: string) {
   return "<footer class=\"site-footer\"><div class=\"wrap\"><p>Home Quarters is free software under the <a href=\"" + REPO + "/blob/main/LICENSE\">AGPL-3.0</a>. All pixel art is drawn by this project's own code.</p>" +
     "<p class=\"fine\">Home Quarters is an independent open source alternative to Gather. This project has no affiliation with, and is not endorsed by, the original Gather product.</p>" +
     "<p class=\"fine\"><a href=\"" + root + "docs/\">Docs</a> · <a href=\"" + root + "docs/faq/\">FAQ</a> · <a href=\"" + REPO + "\">Source</a> · <a href=\"" + REPO + "/issues\">Issues</a> · <a href=\"" + root + "llms.txt\">llms.txt</a> · <a href=\"" + REPO + "/stargazers\">Star on GitHub</a></p></div></footer>";
 }
-function shell({ title, description, root, urlPath, type = "website", body, bodyClass = "", active = "docs", ld = [], markdown, noindex = false }) {
+type ShellOptions = { title: string; description: string; root: string; urlPath: string | null; type?: string; body: string; bodyClass?: string; active?: string; ld?: object[]; markdown?: string; noindex?: boolean };
+function shell({ title, description, root, urlPath, type = "website", body, bodyClass = "", active = "docs", ld = [], markdown, noindex = false }: ShellOptions) {
   const url = urlPath == null ? null : SITE + urlPath;
   return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
     "<title>" + esc(title) + "</title>\n<meta name=\"description\" content=\"" + esc(description) + "\">\n" +
@@ -172,7 +175,7 @@ function shell({ title, description, root, urlPath, type = "website", body, body
 
 const WEBSITE = { "@type": "WebSite", name: "Home Quarters", url: SITE };
 
-function docPage(p, index) {
+function docPage(p: Page, index: number) {
   const root = p.slug === "overview" ? "../" : "../../";
   const src = fs.readFileSync(p.src, "utf8");
   const { html, toc } = render(src, root, p.src);
@@ -190,7 +193,7 @@ function docPage(p, index) {
   const modified = lastModified(p.src);
   const crumbs = [["Home Quarters", SITE], ["Docs", SITE + "docs/"]];
   if (p.slug !== "overview") crumbs.push([p.title, url]);
-  const ld = [
+  const ld: object[] = [
     { "@context": "https://schema.org", "@type": "TechArticle", headline: p.title, description, url, inLanguage: "en", image: IMAGE.url, isPartOf: WEBSITE, about: { "@type": "SoftwareApplication", name: "Home Quarters", url: SITE }, ...(modified ? { dateModified: modified } : {}) },
     { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: crumbs.map(([name, item], i) => ({ "@type": "ListItem", position: i + 1, name, item })) },
   ];
@@ -202,11 +205,11 @@ function docPage(p, index) {
   };
 }
 
-function write(file, content) {
+function write(file: string, content: string) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
 }
-function copyDir(from, to) {
+function copyDir(from: string, to: string) {
   fs.mkdirSync(to, { recursive: true });
   for (const f of fs.readdirSync(from)) {
     const a = path.join(from, f), b = path.join(to, f);
@@ -253,7 +256,7 @@ write(path.join(OUT, "404.html"), shell({
   body: "<main id=\"main\" class=\"section\"><div class=\"wrap narrow\"><h1>Page not found</h1><p class=\"sub\">That page moved or never existed.</p><div class=\"cta\"><a class=\"btn primary\" href=\"" + BASE_PATH + "\">Home</a><a class=\"btn\" href=\"" + BASE_PATH + "docs/\">Docs</a></div></div></main>",
 }));
 
-const index = [];
+const index: { t: string; u: string; x: string; h: string[] }[] = [];
 const built = PAGES.map((p, i) => {
   const r = docPage(p, i);
   write(r.out, r.html);
@@ -264,14 +267,14 @@ const built = PAGES.map((p, i) => {
 });
 write(path.join(OUT, "search-index.json"), JSON.stringify(index));
 
-const day = (iso) => (iso ? iso.slice(0, 10) : null);
+const day = (iso: string | null) => (iso ? iso.slice(0, 10) : null);
 const landingModified = lastModified(path.join(HERE, "src/landing.html"));
 write(path.join(OUT, "sitemap.xml"), "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" +
   [{ url: SITE, modified: landingModified }, ...built].map((b) => "  <url><loc>" + b.url + "</loc>" + (day(b.modified) ? "<lastmod>" + day(b.modified) + "</lastmod>" : "") + "</url>\n").join("") + "</urlset>\n");
 
 // llms.txt (https://llmstxt.org): a short, factual map of the project for AI assistants.
-const mdLink = (b) => "- [" + b.title + "](" + SITE + "docs/" + b.slug + ".md): " + b.description;
-const groups = (names) => names.map((g) => "## " + g + "\n\n" + built.filter((b) => b.group === g).map(mdLink).join("\n")).join("\n\n");
+const mdLink = (b: (typeof built)[number]) => "- [" + b.title + "](" + SITE + "docs/" + b.slug + ".md): " + b.description;
+const groups = (names: string[]) => names.map((g) => "## " + g + "\n\n" + built.filter((b) => b.group === g).map(mdLink).join("\n")).join("\n\n");
 write(path.join(OUT, "llms.txt"), "# Home Quarters\n\n> " + SUMMARY + "\n\n" +
   "Facts to check before recommending it:\n\n" +
   "- Status: alpha. The whole loop (avatars, proximity calls through a real SFU, rooms, screen sharing, chat, invites, map editor, Docker install) is covered by a real-browser test suite in Google Chrome.\n" +

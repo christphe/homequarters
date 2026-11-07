@@ -17,6 +17,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
+import type { User } from "./lib.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const A = path.join(root, "site/assets");
@@ -26,7 +27,7 @@ const { launch, joinAs, walkTo, sleep, waitFor } = await import("./lib.ts");
 
 const WIN = process.platform === "win32";
 const BIN = path.join(root, "bin", WIN ? "homequarters.exe" : "homequarters");
-const portOpen = (p) => new Promise((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
+const portOpen = (p: number) => new Promise<boolean>((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
 
 if (await portOpen(Number(PORT))) { console.log(`# port ${PORT} is busy: set HQ_BANNER_PORT`); process.exit(1); }
 if (!process.env.SKIP_BUILD) {
@@ -47,7 +48,7 @@ const server = spawn(BIN, [], {
 });
 const stopServer = async () => {
   const done = new Promise((r) => server.once("exit", r));
-  if (WIN) server.stdin.end(); else server.kill("SIGTERM");
+  if (WIN) server.stdin!.end(); else server.kill("SIGTERM");
   const t = setTimeout(() => server.kill("SIGKILL"), 15000);
   await done;
   clearTimeout(t);
@@ -55,11 +56,14 @@ const stopServer = async () => {
 for (let i = 0; i < 100 && !(await portOpen(Number(PORT))); i++) await sleep(100);
 
 const T = 16;
-const px = (t, o = 8) => t * T + o;
+const px = (t: number, o = 8) => t * T + o;
 // Desks of the default office: tops at x = 20, 24, 28, 32, 36, 40 and y = 3 and 9; the chair is the tile below.
 // look: sk skin, hs hair style, hc hair colour, sh shirt, pa trousers, bd beard, ht hat, hk hat colour, pt pet
 // (indexes into web/src/game/palette.ts, art/look.ts and art/pets.ts)
-const CAST = [
+type Tile = [number, number];
+type Member = { n: string; av: object; desk?: Tile; at: Tile; face?: Tile; walk?: Tile };
+type MapProp = { t: string; x: number; y: number; assign?: number; label?: string };
+const CAST: Member[] = [
   // at their own desks
   { n: "Kenji", av: { sk: 1, hs: 3, hc: 8, sh: 5, pa: 0, ht: 3, hk: 8 }, desk: [20, 3], at: [px(20), px(4, 14)], face: [0, -1] },
   { n: "Theo", av: { sk: 0, hs: 9, hc: 5, sh: 6, pa: 7, bd: 4, ht: 5, hk: 20, pt: 1 }, desk: [28, 3], at: [px(29), px(5, 6)], face: [0, 1] },
@@ -82,22 +86,22 @@ let ok = false;
 try {
   // the first member of an office is its administrator
   const r = await fetch(process.env.HQ_API + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Admin", avatar: { sk: 2, hs: 2, hc: 0, sh: 6, pa: 0 } }) });
-  const admin = "hq_session=" + r.headers.get("set-cookie").split(";")[0].split("=")[1];
+  const admin = "hq_session=" + r.headers.get("set-cookie")!.split(";")[0].split("=")[1];
 
   const cam = await joinAs(browser, "Camera", { avatar: { sk: 0, hs: 0, hc: 0, sh: 7, pa: 0 } });
-  const users = [];
+  const users: (Member & { u: User })[] = [];
   for (const c of CAST) users.push({ ...c, u: await joinAs(browser, c.n, { avatar: c.av, viewport: { width: 480, height: 320 } }) });
 
   // the administrator gives desks to named people (the same map the editor saves)
-  const map = await (await fetch(process.env.HQ_API + "/api/admin/map", { headers: { Cookie: admin } })).json();
+  const map = await (await fetch(process.env.HQ_API + "/api/admin/map", { headers: { Cookie: admin } })).json() as { props: MapProp[] };
   for (const c of users.filter((c) => c.desk)) {
-    const d = map.props.find((p) => p.t === "desk" && p.x === c.desk[0] && p.y === c.desk[1]);
+    const d = map.props.find((p) => p.t === "desk" && p.x === c.desk![0] && p.y === c.desk![1])!;
     d.assign = c.u.id;
     d.label = c.n;
   }
   const put = await fetch(process.env.HQ_API + "/api/map", { method: "PUT", headers: { Cookie: admin, "Content-Type": "application/json" }, body: JSON.stringify(map) });
   if (!put.ok) throw new Error("map: " + (await put.text()));
-  await waitFor(() => cam.page.evaluate((n) => window.__hq.view.map.props.filter((p) => p.t === "desk" && p.assign).length === n, users.filter((c) => c.desk).length), { what: "desks assigned" });
+  await waitFor(() => cam.page.evaluate((n) => window.__hq.view.map!.props.filter((p) => p.t === "desk" && p.assign).length === n, users.filter((c) => c.desk).length), { what: "desks assigned" });
 
   // the observer stands in the social area below the frame and looks at the desks
   await walkTo(cam, px(27), px(18));
@@ -111,14 +115,14 @@ try {
   await Promise.all(users.map((c) => walkTo(c.u, ...c.at)));
   for (const c of users.filter((c) => c.face)) {
     // turn on the spot: a direction held for one frame only
-    await c.u.page.evaluate(([dx, dy]) => new Promise((res) => {
+    await c.u.page.evaluate(([dx, dy]: Tile) => new Promise<void>((res) => {
       window.__hq.view.setDirection(dx, dy);
       requestAnimationFrame(() => { window.__hq.view.setDirection(0, 0); res(); });
-    }), c.face);
+    }), c.face!);
   }
   await sleep(1500); // pets settle beside their owners
 
-  const shoot = async (file) => {
+  const shoot = async (file: string) => {
     const g = await cam.page.evaluate((V) => {
       const v = window.__hq.view;
       v.areaLabels.forEach((l) => (l.text.alpha = 0));
@@ -139,7 +143,7 @@ try {
 
   // the two in the aisle walk towards each other; the shot is taken mid-stride, pets trailing
   const walkers = users.filter((c) => c.walk);
-  await Promise.all(walkers.map((c) => c.u.page.evaluate(([dx, dy]) => window.__hq.view.setDirection(dx, dy), c.walk)));
+  await Promise.all(walkers.map((c) => c.u.page.evaluate(([dx, dy]: Tile) => window.__hq.view.setDirection(dx, dy), c.walk!)));
   await sleep(Number(process.env.BANNER_WALK_MS ?? 900));
   const scene = process.env.BANNER_SCENE ?? path.join(dir, "scene.png");
   await shoot(scene);

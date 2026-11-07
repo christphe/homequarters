@@ -10,6 +10,28 @@
         ]
       ]
     },
+    "tsc": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "--noEmit"
+        ]
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ],
+      "inputs": [
+        "/web/src/**",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml",
+        "/plugins/bundled/*/public/**"
+      ]
+    },
     "browser": {
       "run": [
         [

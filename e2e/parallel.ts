@@ -6,35 +6,38 @@
 // its slot. LiveKit is the livekit-server binary when it is on PATH, else a Docker container per shard
 // (livekit.ts). Everything started here is stopped at the end, when a shard fails, and on Ctrl+C (or
 // Ctrl+Break on Windows).
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { shard } from "./shards.ts";
 import { ports } from "./slots.ts";
-import { LK_IMAGE, startLiveKit, stopLiveKit, logPath } from "./livekit.ts";
+import { LK_IMAGE, startLiveKit, stopLiveKit, logPath, type LiveKit, type LiveKitMode } from "./livekit.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WIN = process.platform === "win32";
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const secs = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`; };
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const secs = (ms: number) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`; };
 
 // Asks a shard to stop: it stops its server and exits. On POSIX the shard leads its own process group
 // (server, Chrome, auth's server), which gets the signal whole; on Windows a closed stdin tells it.
-function stopShard(s) {
+// a shard child: proc, done and ms are set once it is spawned (ms when it exits)
+type Shard = { i: number; names: string[]; out: Buffer[]; code: number | null; t0: number; log: string; proc: ChildProcessWithoutNullStreams; done: Promise<void>; ms: number };
+
+function stopShard(s: Shard) {
   if (s.code != null) return;
-  try { WIN ? s.proc.stdin.end() : process.kill(-s.proc.pid, "SIGTERM"); } catch {}
+  try { WIN ? s.proc.stdin.end() : process.kill(-s.proc.pid!, "SIGTERM"); } catch {}
 }
 
 // slots: the e2e slot of each shard (run.ts took them and checked their ports); mode: "binary" or "docker".
-export async function runParallel({ n, scenarios, slots, mode }) {
+export async function runParallel({ n, scenarios, slots, mode }: { n: number; scenarios: string[]; slots: number[]; mode: LiveKitMode | null }) {
   const t0 = Date.now();
   const run = `${process.pid}-${Date.now().toString(36)}`;
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "homequarters-e2e-shards-"));
 
-  const lks = [];
-  const shards = [];
+  const lks: (LiveKit & { i: number })[] = [];
+  const shards: Shard[] = [];
   const cleanup = () => { for (const lk of lks) stopLiveKit(lk); };
   let interrupted = false;
   const interrupt = async () => {
@@ -47,9 +50,10 @@ export async function runParallel({ n, scenarios, slots, mode }) {
     cleanup();
     process.exit(130);
   };
-  process.on("SIGINT", interrupt);
-  process.on("SIGTERM", interrupt);
-  process.on("SIGBREAK", interrupt); // Ctrl+Break on Windows
+  // a signal handler's result is dropped: interrupt() ends in process.exit
+  process.on("SIGINT", interrupt as () => void);
+  process.on("SIGTERM", interrupt as () => void);
+  process.on("SIGBREAK", interrupt as () => void); // Ctrl+Break on Windows
   process.on("exit", cleanup);
 
   try {
@@ -61,17 +65,17 @@ export async function runParallel({ n, scenarios, slots, mode }) {
 
     for (let i = 1; i <= n; i++) {
       const p = ports(slots[i - 1]);
-      const s = { i, names: shard(scenarios, i, n), out: [], code: null, t0: Date.now(), log: path.join(logDir, `shard-${i}.log`) };
+      const s = { i, names: shard(scenarios, i, n), out: [], code: null, t0: Date.now(), log: path.join(logDir, `shard-${i}.log`) } as unknown as Shard;
       s.proc = spawn(process.execPath, [path.join(here, "run.ts"), "--shard", `${i}/${n}`, ...scenarios], {
         cwd: here, detached: !WIN, stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, SKIP_BUILD: "1", E2E_PARALLELISM: "1", E2E_SHARD_CHILD: "1",
           HQ_TEST_PORT: String(p.server), HQ_TEST_LK_PORT: String(p.lk), HQ_LK_HTTP: `http://127.0.0.1:${p.lk}` },
       });
       const file = fs.createWriteStream(s.log);
-      const take = (b) => { s.out.push(b); file.write(b); };
+      const take = (b: Buffer) => { s.out.push(b); file.write(b); };
       s.proc.stdout.on("data", take);
       s.proc.stderr.on("data", take);
-      s.done = new Promise((r) => s.proc.on("close", (code, sig) => {
+      s.done = new Promise<void>((r) => s.proc.on("close", (code: number | null, sig: NodeJS.Signals | null) => {
         s.code = code ?? (sig ? 1 : 0); s.ms = Date.now() - s.t0; file.end();
         if (!interrupted) console.log(`# shard ${i}/${n} finished: ${s.code === 0 ? "PASS" : "FAIL"} in ${secs(s.ms)}`);
         r();

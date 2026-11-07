@@ -1,15 +1,17 @@
 // Real UI and authoritative world: reactions, interactive notes, guided walking, portals, doors and boards.
-import { API, check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep } from "../lib.ts";
+import { API, check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User, type RunContext } from "../lib.ts";
+import type { EvaluateFunc } from "puppeteer-core";
+import type { MapData } from "../../web/src/net/protocol.ts";
 
-const click = (u, text, selector = "button") => u.page.evaluate((text, selector) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
+const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
   b?.click(); return !!b;
 }, text, selector);
-const read = (u, fn, ...args) => u.page.evaluate(fn, ...args);
-const close = (u) => u.page.keyboard.press("Escape");
-const near = (p, x, y) => Math.hypot(p.x - x, p.y - y) < 10;
+const read = <Params extends unknown[], Func extends EvaluateFunc<Params>>(u: User, fn: Func, ...args: Params) => u.page.evaluate(fn, ...args);
+const close = (u: User) => u.page.keyboard.press("Escape");
+const near = (p: { x: number; y: number }, x: number, y: number) => Math.hypot(p.x - x, p.y - y) < 10;
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -22,7 +24,7 @@ export async function run(ctx) {
     await waitFor(() => read(b, (id) => window.__hq.view.emotes.has(id), a.id), { what: "remote wave bubble" });
     check("number key sends an emote that the other avatar renders", true);
     await waitFor(async () => { await a.page.keyboard.press("x"); return a.page.$(".object-note"); }, { timeout: 20000, every: 700, what: "welcome note opens" });
-    check("X opens the nearby note in a dialog", await read(a, () => document.querySelector(".object-note").textContent.includes("Welcome to Home Quarters!")));
+    check("X opens the nearby note in a dialog", await read(a, () => document.querySelector(".object-note")!.textContent.includes("Welcome to Home Quarters!")));
     check("the public map omits object content", await read(b, () => !JSON.stringify(window.__hq.view.map).includes("Welcome to Home Quarters!")));
     await close(a);
 
@@ -52,10 +54,10 @@ export async function run(ctx) {
     // a loaded CI runner, hence 100 px.
     // every frame for 3 s: on the follower's page its gap to the leader and whether it predicts a run,
     // on the leader's page whether the follower is drawn running
-    const watch = (u, other) => read(u, (other) => new Promise((resolve) => {
+    const watch = (u: User, other: number) => read(u, (other) => new Promise<{ widest: number; fast: boolean; seenRun: boolean }>((resolve) => {
       let widest = 0, fast = false, seenRun = false;
       const t0 = performance.now();
-      const tick = (now) => {
+      const tick = (now: number) => {
         const v = window.__hq.view, me = v.position(), e = v.ents.get(other);
         if (e) widest = Math.max(widest, Math.hypot(me.x - e.x, me.y - e.y));
         fast ||= v.fast;
@@ -96,7 +98,7 @@ export async function run(ctx) {
     // buttons (the room stays locked: B is still inside) and walk straight back in
     await walkTo(a, 43 * 16 + 8, 4 * 16 + 8); // right outside the door, where the door buttons show
     await sleep(800);
-    const hasBtn = (u, re) => u.page.evaluate((src) => [...document.querySelectorAll("button")].some((x) => new RegExp(src).test(x.textContent.trim())), re.source);
+    const hasBtn = (u: User, re: RegExp) => u.page.evaluate((src) => [...document.querySelectorAll("button")].some((x) => new RegExp(src).test(x.textContent.trim())), re.source);
     const offered = { knock: await hasBtn(a, /^Knock · Aurora/), force: await hasBtn(a, /^Enter anyway/), stillLocked: await read(a, () => window.__hq.state.locked.includes(3)) };
     check("the person who locked a room and stepped out is not offered Knock or Enter anyway", offered.stillLocked && !offered.knock && !offered.force, JSON.stringify(offered));
     await walkTo(a, 46 * 16 + 8, 5 * 16 + 8);
@@ -109,10 +111,10 @@ export async function run(ctx) {
     await waitFor(() => a.page.$(".editor"), { what: "editor open" });
     await click(a, "Edit content", ".editor button");
     // Pick the note from the object list (works at any viewport; on small screens the panel covers the map corner).
-    const noteOption = await waitFor(() => read(a, () => [...document.querySelectorAll('.editor select[aria-label="Interactive object to edit"] option')].find((o) => o.textContent.endsWith("(4, 5)"))?.value), { timeout: 20000, what: "object list with the note" });
+    const noteOption = (await waitFor(() => read(a, () => [...document.querySelectorAll<HTMLOptionElement>('.editor select[aria-label="Interactive object to edit"] option')].find((o) => o.textContent.endsWith("(4, 5)"))?.value), { timeout: 20000, what: "object list with the note" }))!;
     await a.page.select('.editor select[aria-label="Interactive object to edit"]', noteOption);
     await waitFor(() => a.page.$(".editor textarea"), { what: "note content editor" });
-    check("editor restores hidden content before editing", await read(a, () => document.querySelector(".editor textarea").value.includes("Welcome to Home Quarters!")));
+    check("editor restores hidden content before editing", await read(a, () => document.querySelector<HTMLTextAreaElement>(".editor textarea")!.value.includes("Welcome to Home Quarters!")));
     await a.page.$eval(".editor textarea", (el) => { el.value = ""; });
     await a.page.type(".editor textarea", "A saved team note");
     await click(a, "Apply content", ".editor button");
@@ -134,18 +136,18 @@ export async function run(ctx) {
     await click(a, "Text", ".board-tools button");
     await a.page.type('.modal input[maxlength="80"]', "Shared test text");
     await click(a, "Place text in centre");
-    await waitFor(() => b.page.evaluate(() => document.querySelector("canvas.whiteboard").getContext("2d").getImageData(400, 270, 220, 40).data.some((v) => v < 200)), { what: "text appears on collaborator canvas" });
+    await waitFor(() => b.page.evaluate(() => document.querySelector<HTMLCanvasElement>("canvas.whiteboard")!.getContext("2d")!.getImageData(400, 270, 220, 40).data.some((v) => v < 200)), { what: "text appears on collaborator canvas" });
     check("whiteboard text appears on the other person's canvas", true);
     await a.page.screenshot({ path: "/tmp/homequarters-whiteboard-qa.png" });
     await click(a, "Pen", ".board-tools button");
-    const rect = await read(a, () => { const r = document.querySelector("canvas.whiteboard").getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    const rect = await read(a, () => { const r = document.querySelector("canvas.whiteboard")!.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     await a.page.mouse.move(rect.x + 50, rect.y + 50); await a.page.mouse.down();
     await a.page.mouse.move(rect.x + 150, rect.y + 80, { steps: 12 }); await a.page.mouse.up();
     await sleep(250);
-    check("pen drawing is rendered by the collaborator", await read(b, () => document.querySelector("canvas.whiteboard").getContext("2d").getImageData(30, 30, 220, 160).data.some((v) => v < 200)));
+    check("pen drawing is rendered by the collaborator", await read(b, () => document.querySelector<HTMLCanvasElement>("canvas.whiteboard")!.getContext("2d")!.getImageData(30, 30, 220, 160).data.some((v) => v < 200)));
     await click(a, "Undo my last stroke");
     await click(a, "Clear board"); await click(a, "Confirm clear");
-    await waitFor(() => read(b, () => !document.querySelector("canvas.whiteboard").getContext("2d").getImageData(0, 0, 1000, 600).data.some((v) => v < 200)), { what: "cleared on collaborator" });
+    await waitFor(() => read(b, () => !document.querySelector<HTMLCanvasElement>("canvas.whiteboard")!.getContext("2d")!.getImageData(0, 0, 1000, 600).data.some((v) => v < 200)), { what: "cleared on collaborator" });
     check("admin clear reaches both collaborators", true);
     check("members do not get a Clear board button", !(await click(b, "Clear board")));
     await click(a, "Text", ".board-tools button");
@@ -153,7 +155,7 @@ export async function run(ctx) {
     await a.page.type('.modal input[maxlength="80"]', "Saved across restart");
     await click(a, "Place text in centre");
     await waitFor(() => read(b, () => window.__hq.boardModel.strokes.some((s) => s.tx === "Saved across restart")), { what: "accepted stroke before restart" });
-    const cookie = (await a.ctx.cookies()).find((c) => c.name === "hq_session").value;
+    const cookie = (await a.ctx.cookies()).find((c) => c.name === "hq_session")!.value;
     await close(a); await close(b);
     check("Escape closes both boards", !(await a.page.$("canvas.whiteboard")) && !(await b.page.$("canvas.whiteboard")));
     // while the server is down on purpose, Chrome logs each refused reconnection of the open pages
@@ -165,8 +167,8 @@ export async function run(ctx) {
     await a.page.keyboard.press("x");
     await waitFor(() => read(a, () => window.__hq.boardModel.strokes.some((s) => s.tx === "Saved across restart")), { what: "whiteboard restores after restart" });
     check("whiteboard survives graceful restart without waiting for debounce", true);
-    const fullMap = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json();
-    check("interactive note edits persist across restart", fullMap.props.find((p) => p.t === "note" && p.x === 4 && p.y === 5).data === "A saved team note");
+    const fullMap: MapData = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json();
+    check("interactive note edits persist across restart", fullMap.props.find((p) => p.t === "note" && p.x === 4 && p.y === 5)!.data === "A saved team note");
     const refused = /^WebSocket connection to '\S+\/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED$/;
     const errors = [a, b].flatMap((p, i) => p.logs.filter((l, j) => !(j >= before[i] && refused.test(l))));
     check("new flows have no browser runtime errors", errors.length === 0, errors.join(" | "));

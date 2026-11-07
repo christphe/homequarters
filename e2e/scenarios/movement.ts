@@ -1,15 +1,24 @@
 // Getting around faster: running, double-click "walk to", walk to a person.
-import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep } from "../lib.ts";
+import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User } from "../lib.ts";
+import type { EvaluateFunc } from "puppeteer-core";
 
-const read = (u, fn, ...args) => u.page.evaluate(fn, ...args);
-const click = (u, text, selector = "button") => u.page.evaluate((text, selector) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
+// what this scenario records on the pages' windows
+type Taps = {
+  __origSend: WebSocket["send"];
+  __tapB: (number | string)[][];
+  __tapA: number[][];
+  __sentA: [number, string][];
+};
+
+const read = <Params extends unknown[], Func extends EvaluateFunc<Params>>(u: User, fn: Func, ...args: Params) => u.page.evaluate(fn, ...args);
+const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
   b?.click(); return !!b;
 }, text, selector);
-const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+const dist = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
 
 /** Distance covered in ~1.5 s of holding "right", measured in the page (frame-rate independent). */
-const stride = (u) => read(u, () => new Promise((resolve) => {
+const stride = (u: User) => read(u, () => new Promise<number>((resolve) => {
   const v = window.__hq.view;
   const p0 = v.position();
   v.setDirection(1, 0);
@@ -26,20 +35,21 @@ const stride = (u) => read(u, () => new Promise((resolve) => {
  * due within the same millisecond could otherwise fire swapped (Chrome truncates fractional delays), and
  * a heartbeat "right" landing after the stop once sent the avatar running on alone on the server (CI,
  * 215 px). A WebSocket never reorders, so neither may this stand-in for one. */
-const delaySends = (u) => read(u, () => {
+const delaySends = (u: User) => read(u, () => {
+  // oxlint-disable-next-line typescript/unbound-method -- called with the socket as this (orig.call(this, ...))
   const orig = WebSocket.prototype.send;
-  const queue = [];
+  const queue: Parameters<WebSocket["send"]>[0][] = [];
   let last = 0;
-  window.__origSend = orig;
+  (window as unknown as Taps).__origSend = orig;
   WebSocket.prototype.send = function (d) {
     const at = Math.max(last, performance.now() + Math.random() * 120);
     last = at;
     queue.push(d);
-    setTimeout(() => orig.call(this, queue.shift()), at - performance.now());
+    setTimeout(() => orig.call(this, queue.shift()!), at - performance.now());
   };
 });
 
-export async function run() {
+export async function run(): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -64,7 +74,7 @@ export async function run() {
     await read(a, () => window.__hq.view.setDirection(0, 0));
     const truth = await pos(a);
     await sleep(600);
-    const seen = await read(b, (id) => { const e = window.__hq.view.ents.get(id); return { x: e.x, y: e.y }; }, a.id);
+    const seen = await read(b, (id) => { const e = window.__hq.view.ents.get(id)!; return { x: e.x, y: e.y }; }, a.id);
     check("others extrapolate a runner at run speed and agree on where it stops", dist(seen, truth) < 6, dist(seen, truth).toFixed(1) + " px");
     check("the HUD shows the run toggle state", await read(a, () => document.querySelector(".run-toggle")?.getAttribute("aria-pressed") === "true"));
     await read(a, () => window.__hq.view.toggleRun(false));
@@ -85,26 +95,27 @@ export async function run() {
     // what the server acknowledges to A, and what A sends. Reported on failure.
     await read(b, (id) => {
       const v = window.__hq.view, f = v.applyWorld.bind(v);
-      window.__tapB = [];
-      v.applyWorld = (m) => { for (const r of m.m ?? []) if (r[0] === id) window.__tapB.push([Math.round(performance.now()), r[1], r[2], r[3]]); if (m.l?.includes(id)) window.__tapB.push([Math.round(performance.now()), "leave"]); return f(m); };
+      (window as unknown as Taps).__tapB = [];
+      v.applyWorld = (m) => { for (const r of m.m ?? []) if (r[0] === id) (window as unknown as Taps).__tapB.push([Math.round(performance.now()), r[1], r[2], r[3]]); if (m.l?.includes(id)) (window as unknown as Taps).__tapB.push([Math.round(performance.now()), "leave"]); return f(m); };
     }, a.id);
     await read(a, () => {
       const v = window.__hq.view, f = v.applyAck.bind(v);
-      window.__tapA = [];
-      v.applyAck = (k) => { window.__tapA.push([Math.round(performance.now()), k.s, k.x, k.y]); return f(k); };
+      (window as unknown as Taps).__tapA = [];
+      v.applyAck = (k) => { (window as unknown as Taps).__tapA.push([Math.round(performance.now()), k.s, k.x, k.y]); return f(k); };
+      // oxlint-disable-next-line typescript/unbound-method -- called with the socket as this (send.call(this, d))
       const send = WebSocket.prototype.send;
-      window.__sentA = [];
-      WebSocket.prototype.send = function (d) { if (String(d).includes('"t":"in"')) window.__sentA.push([Math.round(performance.now()), String(d)]); return send.call(this, d); };
+      (window as unknown as Taps).__sentA = [];
+      WebSocket.prototype.send = function (d) { if (String(d as string).includes('"t":"in"')) (window as unknown as Taps).__sentA.push([Math.round(performance.now()), String(d as string)]); return send.call(this, d); };
     });
     await delaySends(a);
-    const jitter = await read(a, () => new Promise((resolve) => {
+    const jitter = await read(a, () => new Promise<number[]>((resolve) => {
       const v = window.__hq.view;
       v.toggleRun(true);
       v.setDirection(1, 0);
-      const xs = [];
+      const xs: number[] = [];
       const t0 = performance.now();
-      const tick = (now) => {
-        xs.push(v.ents.get(v.meId).x);
+      const tick = (now: number) => {
+        xs.push(v.ents.get(v.meId)!.x);
         if (now - t0 < 1300) requestAnimationFrame(tick);
         else { v.setDirection(0, 0); v.toggleRun(false); resolve(xs); }
       };
@@ -112,19 +123,19 @@ export async function run() {
     }));
     let back = 0;
     for (let i = 1; i < jitter.length; i++) back = Math.max(back, jitter[i - 1] - jitter[i]);
-    check("with 0-120 ms of input jitter, a runner is never drawn stepping back", back <= 0.1 && jitter.at(-1) - jitter[0] > 120, "max step back " + back.toFixed(2) + " px over " + jitter.length + " frames, ran " + (jitter.at(-1) - jitter[0]).toFixed(0) + " px");
+    check("with 0-120 ms of input jitter, a runner is never drawn stepping back", back <= 0.1 && jitter.at(-1)! - jitter[0] > 120, "max step back " + back.toFixed(2) + " px over " + jitter.length + " frames, ran " + (jitter.at(-1)! - jitter[0]).toFixed(0) + " px");
     // convergence is polled, not slept: a loaded machine may take longer than 900 ms to deliver the stop
     // convergence is polled with a generous timeout: a loaded software renderer can take seconds
     // to deliver the stop. The trajectory is reported, so a real never-converges bug is told apart
     // from a slow machine.
     const tc0 = Date.now();
-    let mine = null, theirs = null, gap = Infinity;
-    const gtrail = [];
+    let mine: { x: number; y: number } | null = null, theirs: { x: number; y: number } | null = null, gap = Infinity;
+    const gtrail: number[] = [];
     let converged = false;
     try {
       await waitFor(async () => {
-        mine = await read(a, () => { const v = window.__hq.view, e = v.ents.get(v.meId); return { x: e.x, y: e.y }; });
-        theirs = await read(b, (id) => { const e = window.__hq.view.ents.get(id); return { x: e.x, y: e.y }; }, a.id);
+        mine = await read(a, () => { const v = window.__hq.view, e = v.ents.get(v.meId)!; return { x: e.x, y: e.y }; });
+        theirs = await read(b, (id) => { const e = window.__hq.view.ents.get(id)!; return { x: e.x, y: e.y }; }, a.id);
         gap = dist(mine, theirs);
         gtrail.push(+gap.toFixed(1));
         return gap < 1;
@@ -133,24 +144,24 @@ export async function run() {
     } catch { /* reported below with the trajectory */ }
     if (!converged) {
       // [ms, x, y, state] B got for A; [ms, seq, x, y] acks to A; [ms, frame] inputs A sent
-      console.log("  observer got:", JSON.stringify(await read(b, () => window.__tapB.slice(-12))));
-      console.log("  runner's acks:", JSON.stringify(await read(a, () => window.__tapA.slice(-8))));
-      console.log("  runner sent:", JSON.stringify(await read(a, () => window.__sentA.slice(-8))));
+      console.log("  observer got:", JSON.stringify(await read(b, () => (window as unknown as Taps).__tapB.slice(-12))));
+      console.log("  runner's acks:", JSON.stringify(await read(a, () => (window as unknown as Taps).__tapA.slice(-8))));
+      console.log("  runner sent:", JSON.stringify(await read(a, () => (window as unknown as Taps).__sentA.slice(-8))));
     }
-    const seqs = await read(a, () => window.__sentA.map(([, d]) => JSON.parse(d).s));
+    const seqs = await read(a, () => (window as unknown as Taps).__sentA.map(([, d]): number => JSON.parse(d).s));
     check("the delayed inputs still left the page in order, as on a WebSocket", seqs.length > 2 && seqs.every((s, i) => i === 0 || s > seqs[i - 1]), seqs.join(","));
     check("...and stops where the server and other people see it", converged && gap < 1, gap.toFixed(2) + " px after " + ((Date.now() - tc0) / 1000).toFixed(1) + " s, trail " + gtrail.join("->") + ", mine " + JSON.stringify(mine) + " theirs " + JSON.stringify(theirs));
-    await read(a, () => { WebSocket.prototype.send = window.__origSend; });
+    await read(a, () => { WebSocket.prototype.send = (window as unknown as Taps).__origSend; });
     // the same on a diagonal at walking speed, where each axis moves slowest (51 px/s): both axes monotonic
     await walkTo(a, 6 * 16 + 8, 30 * 16 + 8);
     await delaySends(a);
-    const diag = await read(a, () => new Promise((resolve) => {
+    const diag = await read(a, () => new Promise<[number, number][]>((resolve) => {
       const v = window.__hq.view;
       v.setDirection(1, -1);
-      const pts = [];
+      const pts: [number, number][] = [];
       const t0 = performance.now();
-      const tick = (now) => {
-        const e = v.ents.get(v.meId);
+      const tick = (now: number) => {
+        const e = v.ents.get(v.meId)!;
         pts.push([e.x, e.y]);
         if (now - t0 < 1300) requestAnimationFrame(tick); else { v.setDirection(0, 0); resolve(pts); }
       };
@@ -158,22 +169,22 @@ export async function run() {
     }));
     let backX = 0, backY = 0;
     for (let i = 1; i < diag.length; i++) { backX = Math.max(backX, diag[i - 1][0] - diag[i][0]); backY = Math.max(backY, diag[i][1] - diag[i - 1][1]); }
-    check("...and walking diagonally neither axis is drawn stepping back", backX <= 0.1 && backY <= 0.1 && diag.at(-1)[0] - diag[0][0] > 40, "max back x " + backX.toFixed(2) + " y " + backY.toFixed(2) + " px");
-    await read(a, () => { WebSocket.prototype.send = window.__origSend; });
+    check("...and walking diagonally neither axis is drawn stepping back", backX <= 0.1 && backY <= 0.1 && diag.at(-1)![0] - diag[0][0] > 40, "max back x " + backX.toFixed(2) + " y " + backY.toFixed(2) + " px");
+    await read(a, () => { WebSocket.prototype.send = (window as unknown as Taps).__origSend; });
     // A 1-tile wall above (5, 15): run into it, then nothing may pull the avatar away from it.
     await walkTo(a, 5 * 16 + 8, 16 * 16 + 8);
     const wall = await read(a, async () => {
-      const v = window.__hq.view, wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const v = window.__hq.view, wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
       v.toggleRun(true);
       v.setDirection(0, -1);
       await wait(700);
       v.setDirection(0, 0);
       v.toggleRun(false);
-      const e = v.ents.get(v.meId), at = e.y;
+      const e = v.ents.get(v.meId)!, at = e.y;
       await wait(900);
       return { at, after: e.y, x: e.x };
     });
-    const seenAtWall = await read(b, (id) => window.__hq.view.ents.get(id).y, a.id);
+    const seenAtWall = await read(b, (id) => window.__hq.view.ents.get(id)!.y, a.id);
     check("running into a wall stops touching it, with no pull-back afterwards", wall.at === 15 * 16 + 3 && wall.after === wall.at, "y " + wall.at + " -> " + wall.after);
     check("...and others see it touching the wall too", Math.abs(seenAtWall - wall.after) < 0.5, "observer y " + seenAtWall.toFixed(2));
 
@@ -195,14 +206,14 @@ export async function run() {
     await walkTo(b, 9 * 16 + 8, 6 * 16 + 8);
     const t0 = Date.now();
     await click(a, "Walk to " + b.name, ".people button");
-    const sameTile = (p, q) => Math.floor(p.x / 16) === Math.floor(q.x / 16) && Math.floor(p.y / 16) === Math.floor(q.y / 16);
+    const sameTile = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.floor(p.x / 16) === Math.floor(q.x / 16) && Math.floor(p.y / 16) === Math.floor(q.y / 16);
     await waitFor(async () => sameTile(await pos(a), await pos(b)) && !(await read(a, () => window.__hq.view.guided)), { timeout: 30000, what: "walk to person arrives" });
     check("Walk to (people panel) runs onto the person's tile around walls", true, ((Date.now() - t0) / 1000).toFixed(1) + " s");
 
     // ---- ...but a locked room keeps the walker at its door, and says why
     await walkTo(b, 50 * 16 + 8, 4 * 16 + 8); // Aurora, an open meeting room
     await waitFor(() => click(b, "Lock room"), { what: "lock control" });
-    await waitFor(() => read(a, (id) => window.__hq.state.locked.length > 0, b.id), { what: "lock reaches the walker" });
+    await waitFor(() => read(a, (_id) => window.__hq.state.locked.length > 0, b.id), { what: "lock reaches the walker" });
     await click(a, "Walk to " + b.name, ".people button");
     await waitFor(() => read(a, () => document.querySelector(".toast")?.textContent.includes("stop at the door")), { what: "closed-door toast" });
     await waitFor(async () => !(await read(a, () => window.__hq.view.guided)), { timeout: 30000, what: "walk to the door ends" });
@@ -217,7 +228,7 @@ export async function run() {
 
     check("no console errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | ").slice(0, 300));
   } catch (e) {
-    check("scenario completed", false, e.message);
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
   }

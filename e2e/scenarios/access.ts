@@ -1,12 +1,12 @@
 // Invites, administrator-only actions and production-mode safety. HTTP-level checks (no browser needed).
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { check, summary, resetChecks, API } from "../lib.ts";
+import { check, summary, resetChecks, API, type RunContext } from "../lib.ts";
 
-const post = (p, body, cookie) => fetch(API + p, { method: "POST", headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: "hq_session=" + cookie } : {}) }, body: JSON.stringify(body) });
-const cookieOf = (r) => r.headers.get("set-cookie")?.split(";")[0].split("=")[1];
+const post = (p: string, body: object, cookie?: string) => fetch(API + p, { method: "POST", headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: "hq_session=" + cookie } : {}) }, body: JSON.stringify(body) });
+const cookieOf = (r: Response) => r.headers.get("set-cookie")?.split(";")[0].split("=")[1];
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   // 1. Only admins can mint invites.
   const anon = await post("/api/invites", {});
@@ -42,7 +42,7 @@ export async function run(ctx) {
 
   // 4. Production mode refuses insecure configuration
   const bin = ctx.bin;
-  const tries = [
+  const tries: [string, Record<string, string>][] = [
     ["no LiveKit keys", { HQ_ENV: "production" }],
     ["default dev key", { HQ_ENV: "production", LIVEKIT_URL: "wss://x.example", LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret" }],
     ["ws:// media URL", { HQ_ENV: "production", LIVEKIT_URL: "ws://x.example", LIVEKIT_API_KEY: "k", LIVEKIT_API_SECRET: "s".repeat(40), HQ_ALLOWED_ORIGINS: "x.example" }],

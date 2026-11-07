@@ -1,10 +1,11 @@
 // Chat scopes and privacy, chat history persistence, profile changes and desk labels.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, sleep, API } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, sleep, API, type User, type RunContext } from "../lib.ts";
+import type { MapData } from "../../web/src/net/protocol.ts";
 
-const chatOf = (u) => u.page.evaluate(() => window.__hq.state.chat.map((m) => ({ sc: m.sc, from: m.from, text: m.text, n: m.n })));
-const send = (u, sc, text, id) => u.page.evaluate((sc, text, id) => window.__hq.session.chat(sc, text, id), sc, text, id);
+const chatOf = (u: User) => u.page.evaluate(() => window.__hq.state.chat.map((m) => ({ sc: m.sc, from: m.from, text: m.text, n: m.n })));
+const send = (u: User, sc: "o" | "g" | "d", text: string, id?: number) => u.page.evaluate((sc, text, id) => window.__hq.session.chat(sc, text, id), sc, text, id);
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -16,9 +17,9 @@ export async function run(ctx) {
     // ---- the chat panel itself: type and send through the real composer while both panels are open.
     // Regression: an effect returned scrollIntoView()'s Promise (Chrome 154+), and React crashed the
     // whole UI on the next message.
-    const crashes = [];
+    const crashes: string[] = [];
     for (const u of [b, c]) {
-      u.page.on("pageerror", (e) => crashes.push(u.name + ": " + e.message));
+      u.page.on("pageerror", (e) => crashes.push(u.name + ": " + (e as Error).message));
       await u.page.click('.tabs button[title="Chat"]');
       await u.page.waitForSelector(".composer input");
     }
@@ -38,13 +39,13 @@ export async function run(ctx) {
     await send(a, "o", "  hello office  ");
     // Each page gets its own deadline: the server queues the frame for everybody in one pass, but the
     // sockets deliver it independently, so one page having it says nothing about the others yet.
-    const gotHello = (u) => waitFor(async () => (await chatOf(u)).some((m) => m.sc === "o" && m.text === "hello office" && m.from === a.id), { timeout: 10000, what: "office chat reaches " + u.name }).then(() => null, async () => u.name + " has " + JSON.stringify((await chatOf(u)).filter((m) => m.sc === "o").slice(-3)));
+    const gotHello = (u: User) => waitFor(async () => (await chatOf(u)).some((m) => m.sc === "o" && m.text === "hello office" && m.from === a.id), { timeout: 10000, what: "office chat reaches " + u.name }).then(() => null, async () => u.name + " has " + JSON.stringify((await chatOf(u)).filter((m) => m.sc === "o").slice(-3)));
     const missed = (await Promise.all([a, b, c].map(gotHello))).filter(Boolean);
     check("office chat reaches everybody (trimmed)", missed.length === 0, missed.join("; "));
     await sleep(700);
     await send(a, "o", "x".repeat(900));
     await waitFor(async () => (await chatOf(b)).some((m) => m.text.startsWith("xxxx")), { what: "long message" });
-    check("messages are cut to 500 characters by the server", (await chatOf(b)).find((m) => m.text.startsWith("xxxx")).text.length === 500);
+    check("messages are cut to 500 characters by the server", (await chatOf(b)).find((m) => m.text.startsWith("xxxx"))!.text.length === 500);
 
     // ---- rate limit: a burst of 30 cannot flood the office
     await sleep(3000);
@@ -78,18 +79,18 @@ export async function run(ctx) {
     check("conversation chat reaches group members only", (await chatOf(b)).some((m) => m.sc === "g" && m.text.includes("conversation")) && !(await chatOf(c)).some((m) => m.sc === "g"));
 
     // ---- profile change through the real settings dialog
-    await b.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
+    await b.page.evaluate(() => document.querySelector<HTMLButtonElement>(".bar-row .round.ghost")?.click());
     await waitFor(() => b.page.$('.modal input[aria-label]'), { what: "settings dialog" });
     // no sign-in provider here: the cookie is the account, so there is nothing to sign out of
     check("without sign-in the settings offer no sign out", !(await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((x) => x.textContent.trim() === "Sign out"))));
     await b.page.$eval('.modal input[aria-label]', (el) => el.select());
     await b.page.type('.modal input[aria-label]', "Novo" + t);
     // the look is edited in its own dialog, opened from the settings
-    await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((x) => x.textContent === "Change appearance")?.click());
+    await b.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal button")].find((x) => x.textContent === "Change appearance")?.click());
     await waitFor(() => b.page.$(".modal.huge"), { what: "appearance dialog" });
     // hair style, beard and hat through the avatar editor's own radio groups
-    const pick = (group, label) => b.page.evaluate((g, l) => {
-      const r = [...document.querySelectorAll(`.modal [role=radiogroup][aria-labelledby=${g}] [role=radio]`)].find((x) => x.textContent === l);
+    const pick = (group: string, label: string) => b.page.evaluate((g, l) => {
+      const r = [...document.querySelectorAll<HTMLElement>(`.modal [role=radiogroup][aria-labelledby=${g}] [role=radio]`)].find((x) => x.textContent === l);
       r?.click();
       return !!r;
     }, group, label);
@@ -101,10 +102,10 @@ export async function run(ctx) {
     check("the avatar editor offers hair styles, beards and hats; hat colours appear once a hat is chosen", picked && noHatColourBefore);
     // any colour through the shirt's own colour picker (React listens to "input")
     await b.page.$eval('.modal input[type=color][aria-label="Shirt: custom colour"]', (el) => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "#12ab9f");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "#12ab9f");
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await b.page.evaluate(() => [...document.querySelectorAll(".modal.huge button")].find((x) => x.textContent === "Save")?.click());
+    await b.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal.huge button")].find((x) => x.textContent === "Save")?.click());
     await waitFor(async () => !(await b.page.$(".modal.huge")), { what: "appearance dialog closes on Save" });
     await waitFor(() => a.page.evaluate((n, id) => window.__hq.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
     check("a profile change reaches other people's roster live", true);
@@ -113,7 +114,7 @@ export async function run(ctx) {
     check("another person sees the custom shirt colour", seen?.sh === "#12ab9f", JSON.stringify(seen));
     // someone changing look over and over leaves at most one look per person in other people's memory
     const looks0 = await a.page.evaluate(() => window.__hq.cachedLooks());
-    const bCookie = (await b.ctx.cookies()).find((k) => k.name === "hq_session").value;
+    const bCookie = (await b.ctx.cookies()).find((k) => k.name === "hq_session")!.value;
     for (let i = 0; i < 4; i++) { // the profile rate limit allows a burst of 5; one save is already spent
       await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + bCookie }, body: JSON.stringify({ name: "Novo" + t, avatar: { sk: 1, hs: i, hc: 3, sh: "#0000" + (10 + i), pa: 1 } }) });
       await waitFor(() => a.page.evaluate((id, sh) => window.__hq.state.roster.get(id)?.av.sh === sh, b.id, "#0000" + (10 + i)), { what: "look " + i });
@@ -122,15 +123,15 @@ export async function run(ctx) {
     const looks1 = await a.page.evaluate(() => window.__hq.cachedLooks());
     const bSeen = await a.page.evaluate((id) => window.__hq.view.debugEntities().some((e) => e.id === id), b.id);
     check("four look changes leave other people's avatar cache the same size", bSeen && looks1 === looks0, `B in view: ${bSeen}, looks ${looks0} -> ${looks1}`);
-    const bad = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + (await c.ctx.cookies()).find((k) => k.name === "hq_session").value }, body: JSON.stringify({ name: "   ", avatar: {} }) });
+    const bad = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + (await c.ctx.cookies()).find((k) => k.name === "hq_session")!.value }, body: JSON.stringify({ name: "   ", avatar: {} }) });
     check("an empty name is refused", bad.status === 400);
     const anon = await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) });
     check("anonymous profile changes are refused", anon.status === 401);
 
     // ---- desk assignment shows the owner's label
     // The world map redacts interactive-object content; editors round-trip through the full map.
-    const map = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
-    const desk = map.props.find((p) => p.t === "desk");
+    const map: MapData = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
+    const desk = map.props.find((p) => p.t === "desk")!;
     desk.assign = b.id;
     desk.label = "New desk " + t;
     const put = await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(map) });
@@ -145,26 +146,26 @@ export async function run(ctx) {
       return window.__hq.bitmapFonts();
     });
     const fonts0 = await fontsAfterMeasuring();
-    await c.page.evaluate(() => { window.__oldDeskLabels = window.__hq.view.deskLabels; });
+    await c.page.evaluate(() => { (window as unknown as { __oldDeskLabels: unknown }).__oldDeskLabels = window.__hq.view.deskLabels; });
     desk.label = "Renamed desk " + t;
     await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(map) });
-    await waitFor(() => c.page.evaluate(() => window.__hq.view.deskLabels !== window.__oldDeskLabels), { what: "labels rebuilt by the map reload" });
+    await waitFor(() => c.page.evaluate(() => window.__hq.view.deskLabels !== (window as unknown as { __oldDeskLabels: unknown }).__oldDeskLabels), { what: "labels rebuilt by the map reload" });
     const fonts1 = await fontsAfterMeasuring();
     check("name tags and labels share one bitmap font per look, and a map reload adds none", fonts0 <= 6 && fonts1 === fonts0, `fonts ${fonts0} -> ${fonts1}`);
 
     // ---- history: a newcomer sees the office chat; it survives a restart; DMs and group chat do not
     // ---- the chat panel is usable on small screens: nothing covers its controls (real hit tests)
-    for (const [label, vp] of [["800x450", { width: 800, height: 450 }], ["390x844 touch", { width: 390, height: 844, isMobile: true, hasTouch: true }]]) {
+    for (const [label, vp] of [["800x450", { width: 800, height: 450 }], ["390x844 touch", { width: 390, height: 844, isMobile: true, hasTouch: true }]] as [string, { width: number; height: number; isMobile?: boolean; hasTouch?: boolean }][]) {
       const u = await joinAs(browser, "Sl" + t + label.slice(0, 3), { viewport: vp });
       if (!(await u.page.$(".composer input"))) await u.page.click('.tabs button[title="Chat"]');
       await u.page.waitForSelector(".composer input");
       const blocked = await u.page.evaluate(() => {
-        const hit = (el) => { const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return el.contains(top) ? null : (el.textContent || el.className).trim().slice(0, 20) + " covered by " + (top?.className || top?.tagName); };
-        return [...document.querySelectorAll(".chat .chips .chip"), document.querySelector(".msgs"), document.querySelector(".composer input")].map(hit).filter(Boolean);
+        const hit = (el: Element) => { const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return el.contains(top) ? null : (el.textContent || el.className).trim().slice(0, 20) + " covered by " + (top?.className || top?.tagName); };
+        return [...document.querySelectorAll(".chat .chips .chip"), document.querySelector(".msgs")!, document.querySelector(".composer input")!].map(hit).filter(Boolean);
       });
       check("the chat panel's controls are not covered at " + label, blocked.length === 0, blocked.join("; "));
-      await u.page.evaluate(() => [...document.querySelectorAll(".chat .chips .chip")].find((c) => c.textContent === "Conversation")?.click());
-      check("without a conversation the conversation composer is disabled at " + label, await u.page.evaluate(() => document.querySelector(".composer input")?.disabled === true));
+      await u.page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".chat .chips .chip")].find((c) => c.textContent === "Conversation")?.click());
+      check("without a conversation the conversation composer is disabled at " + label, await u.page.evaluate(() => document.querySelector<HTMLInputElement>(".composer input")?.disabled === true));
       if (vp.hasTouch) {
         await u.page.click(".reaction-toggle");
         const inaccessible = await u.page.evaluate(() => [...document.querySelectorAll(".reaction-row button")].filter((el) => {

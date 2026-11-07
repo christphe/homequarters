@@ -13,7 +13,7 @@ const go = fs.readFileSync(goPath, "utf8");
 const ts = fs.readFileSync(tsPath, "utf8");
 
 // the rows of one "## ..." section's table: | `name` | fields | meaning |
-const section = (title) => {
+const section = (title: string) => {
   const start = doc.indexOf("\n## " + title + "\n");
   if (start < 0) throw new Error(`docs/protocol.md has no "## ${title}" section`);
   const end = doc.indexOf("\n## ", start + 1);
@@ -22,7 +22,7 @@ const section = (title) => {
 // ws.go switches on m.T twice: first to pick a rate limit, then to dispatch; the second lists every message
 const switches = [...go.matchAll(/^(\t+)switch m\.T \{\n([\s\S]*?)^\1\}/gm)];
 if (switches.length < 2) throw new Error("ws.go: the dispatch switch on m.T was not found");
-const names = (list) => [...list.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+const names = (list: string) => [...list.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
 // only the cases at the switch's own indentation: a switch nested in a case has cases of its own
 const [, indent, body] = switches[switches.length - 1];
 const fromClient = new Set([...body.matchAll(new RegExp(`^${indent}case ((?:"[^"]+"(?:, )?)+):`, "gm"))].flatMap((m) => names(m[1])));
@@ -30,7 +30,7 @@ const fromClient = new Set([...body.matchAll(new RegExp(`^${indent}case ((?:"[^"
 const fromServer = new Set([...ts.matchAll(/\bt: ("[^"]+"(?: \| "[^"]+")*)/g)].flatMap((m) => names(m[1])));
 
 let bad = 0;
-const compare = (what, code, documented, where) => {
+const compare = (what: string, code: Set<string>, documented: Set<string>, where: string) => {
   for (const t of code) if (!documented.has(t)) { console.log(`${what}: \`${t}\` is in ${where} but not in docs/protocol.md`); bad++; }
   for (const t of documented) if (!code.has(t)) { console.log(`${what}: \`${t}\` is in docs/protocol.md but not in ${where}`); bad++; }
 };

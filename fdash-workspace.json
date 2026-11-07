@@ -25,6 +25,9 @@
         "web:tsc",
         "web:tsc-tests",
         "web:build",
+        "e2e:tsc",
+        "site:tsc",
+        "desktop-types",
         "protocol-docs",
         "oxlint",
         "plugin-types",
@@ -59,7 +62,13 @@
         ".oxlintrc.json",
         "web/**",
         "plugins/**",
-        "e2e/fixtures/**"
+        "e2e/**",
+        "scripts/**",
+        "site/**",
+        "desktop/tsconfig.json",
+        "desktop/globals.d.ts",
+        "desktop/ui/**",
+        "desktop/src-tauri/src/*.js"
       ],
       "tools": [
         [
@@ -87,6 +96,24 @@
           "pnpm",
           "--version"
         ]
+      ]
+    },
+    "desktop-types": {
+      "run": [
+        [
+          "node",
+          "web/node_modules/typescript/bin/tsc",
+          "-p",
+          "desktop"
+        ]
+      ],
+      "inputs": [
+        "desktop/tsconfig.json",
+        "desktop/globals.d.ts",
+        "desktop/ui/setup.js",
+        "desktop/src-tauri/src/missing-apis.js",
+        "web/package.json",
+        "web/pnpm-lock.yaml"
       ]
     }
   }

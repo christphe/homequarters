@@ -25,6 +25,9 @@ test("the workspace holds the gates of gauntlet.sh, now named by project, with t
     ["web:tsc", "web", "pnpm exec tsc --noEmit", false, false, "{}"],
     ["web:tsc-tests", "web", "pnpm exec tsc -p tsconfig.test.json --noEmit", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
+    ["e2e:tsc", "e2e", "pnpm exec tsc --noEmit", false, false, "{}"],
+    ["site:tsc", "site", "pnpm exec tsc --noEmit", false, false, "{}"],
+    ["desktop-types", ".", "node web/node_modules/typescript/bin/tsc -p desktop", false, false, "{}"],
     ["protocol-docs", ".", "node scripts/check-protocol-docs.ts", false, false, "{}"],
     ["oxlint", ".", "node scripts/oxlint.ts", false, false, "{}"],
     ["plugin-types", ".", "node scripts/check-plugin-types.ts", false, false, "{}"],
@@ -131,7 +134,7 @@ test("closing: green, red, skipped, tree changed, interrupted", () => {
 
 test("no file names a test of web/test, a plugin's test/ or tools/fdash/test that does not exist", () => {
   // docs/status.md and the design notes keep their history; everything else follows the files
-  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\.test\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
+  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\\.test\\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
   const missing: string[] = [];
   for (const line of out.split("\n").filter(Boolean)) {
     const [file, , ref] = line.split(":");

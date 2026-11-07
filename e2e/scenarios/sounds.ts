@@ -7,35 +7,39 @@
 // the page: a cue's element plays only once it has been played while a key or pointer press is handled.
 // This checks our side against that model; it is not WebKit itself. (navigator.userActivation cannot
 // tell: Puppeteer evaluates as a user gesture, so every read of the page's state would count as one.)
-import { APP, check, launch, joinAs, waitFor, sleep, resetChecks, summary } from "../lib.ts";
+import { APP, check, launch, joinAs, waitFor, sleep, resetChecks, summary, type User } from "../lib.ts";
+
+/** What webkitRule keeps on the page's window. */
+type SoundWindow = { __cuePlays: number; __unplayable?: boolean };
 
 function webkitRule() {
   if (window !== window.top) return;
   let pressing = false; // true while a real key or pointer press is being handled
-  const press = (e) => { if (!e.isTrusted) return; pressing = true; setTimeout(() => { pressing = false; }, 0); };
+  const press = (e: Event) => { if (!e.isTrusted) return; pressing = true; setTimeout(() => { pressing = false; }, 0); };
   window.addEventListener("keydown", press, true); // added before the page's own scripts: runs first
   window.addEventListener("pointerdown", press, true);
+  // oxlint-disable-next-line typescript/unbound-method -- called with the element as this (play.call(this))
   const play = HTMLMediaElement.prototype.play;
-  const allowed = new WeakSet();
-  window.__cuePlays = 0; // play() calls on the cues' players
+  const allowed = new WeakSet<HTMLMediaElement>();
+  (window as unknown as SoundWindow).__cuePlays = 0; // play() calls on the cues' players
   HTMLMediaElement.prototype.play = function () {
     if (!this.src.startsWith("blob:")) return play.call(this); // the call's own players: not under test
-    window.__cuePlays++;
-    if (window.__unplayable) return Promise.reject(new DOMException("no decoder (stub)", "NotSupportedError"));
+    (window as unknown as SoundWindow).__cuePlays++;
+    if ((window as unknown as SoundWindow).__unplayable) return Promise.reject(new DOMException("no decoder (stub)", "NotSupportedError"));
     if (pressing) allowed.add(this);
     if (!allowed.has(this)) return Promise.reject(new DOMException("refused before a gesture (stub of WebKit's rule)", "NotAllowedError"));
     return play.call(this);
   };
 }
 
-const cuePlays = (u) => u.page.evaluate(() => window.__cuePlays);
+const cuePlays = (u: User) => u.page.evaluate(() => (window as unknown as SoundWindow).__cuePlays);
 /** Real key presses, a little apart (a person walking). */
-async function presses(u, n) { for (let i = 0; i < n; i++) { await u.page.keyboard.press("ArrowDown"); await sleep(100); } }
-const sounds = (u) => u.page.evaluate(() => [...(window.__hq.sounds ?? [])]);
-const last = async (u) => (await sounds(u)).at(-1) ?? null;
+async function presses(u: User, n: number) { for (let i = 0; i < n; i++) { await u.page.keyboard.press("ArrowDown"); await sleep(100); } }
+const sounds = (u: User) => u.page.evaluate(() => [...(window.__hq.sounds ?? [])]);
+const last = async (u: User) => (await sounds(u)).at(-1) ?? null;
 
 /** Reloads with these saved values, as the update banner's reload starts again: no touch on the page. */
-async function reloadWith(u, items) {
+async function reloadWith(u: User, items: Record<string, unknown>) {
   await u.page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, JSON.stringify(v)); }, items);
   await u.page.reload({ waitUntil: "domcontentloaded" });
   await waitFor(() => u.page.evaluate(() => window.__hq?.state?.meId > 0 && window.__hq.state.conn === "open"), { timeout: 30000, what: u.name + " back" });
@@ -43,14 +47,14 @@ async function reloadWith(u, items) {
 }
 
 /** `from` waves at `to` (past the server's 2 s cooldown), and `to` shows the wave. */
-async function wave(from, to) {
+async function wave(from: User, to: User) {
   await sleep(2200);
   await to.page.evaluate(() => { window.__hq.state.wave = null; });
   await from.page.evaluate((id) => window.__hq.session.wave(id), to.id);
   await waitFor(() => to.page.evaluate(() => window.__hq.state.wave !== null), { timeout: 10000, what: "wave shown" });
 }
 
-export async function run() {
+export async function run(): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -58,7 +62,7 @@ export async function run() {
     const ana = await joinAs(browser, "Snd" + tag);
     const bob = await joinAs(browser, "Wav" + tag);
     await ana.page.evaluateOnNewDocument(webkitRule); // from the next load on
-    const media = [];
+    const media: string[] = [];
     ana.page.on("request", (r) => { if (r.resourceType() === "media" && !r.url().startsWith("blob:")) media.push(r.url()); });
     // capture was allowed before, so the browser lists speakers with their ids
     await ana.ctx.overridePermissions(APP, ["camera", "microphone"]);
@@ -103,7 +107,7 @@ export async function run() {
 
     // 4. An engine that cannot play the cues at all: one press tries each once, the next ones nothing
     await reloadWith(ana, { "hq.settings": { ...settings, sounds: true } });
-    await ana.page.evaluate(() => { window.__unplayable = true; });
+    await ana.page.evaluate(() => { (window as unknown as SoundWindow).__unplayable = true; });
     await presses(ana, 1);
     await sleep(300);
     const tried = await cuePlays(ana);

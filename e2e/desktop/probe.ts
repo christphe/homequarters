@@ -7,14 +7,17 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { AddressInfo } from "node:net";
 
 const [bin, outDir = fs.mkdtempSync(path.join(os.tmpdir(), "hq-desktop-probe-out-"))] = process.argv.slice(2);
 if (!bin) { console.error("usage: node probe.ts <app binary> [out dir]"); process.exit(2); }
 fs.mkdirSync(outDir, { recursive: true });
 const page = fs.readFileSync(new URL("./probe.html", import.meta.url));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-let report = null;
+// what probe.html posts: the checks below read these fields
+type Report = { ipcFromPage?: string; app?: unknown; srcdocFrame?: boolean; webrtcMedia?: unknown; idleState?: string; layoutKeyQ?: string; Notification?: string };
+let report = null as Report | null;
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/report") {
     let body = "";
@@ -24,12 +27,12 @@ const server = http.createServer((req, res) => {
   }
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(page);
 });
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const office = `http://127.0.0.1:${server.address().port}/`;
+await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+const office = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "hq-desktop-probe-"));
 const app = spawn(bin, [`--office=${office}`, `--data-dir=${dataDir}`], { stdio: "inherit" });
-let exited = null;
+let exited = null as number | null;
 app.on("exit", (code) => { exited = code; });
 
 for (let i = 0; i < 120 && !report && exited === null; i++) await sleep(500);
@@ -40,7 +43,7 @@ try {
   else if (process.platform === "linux") execFileSync("import", ["-window", "root", shot]);
   else execFileSync("powershell", ["-NoProfile", "-Command",
     `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $i=New-Object System.Drawing.Bitmap $b.Width,$b.Height; [System.Drawing.Graphics]::FromImage($i).CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $i.Save('${shot}')`]);
-} catch (e) { console.log("# no screenshot: " + e.message); }
+} catch (e) { console.log("# no screenshot: " + (e as Error).message); }
 app.kill();
 server.close();
 
@@ -53,6 +56,6 @@ if (report.srcdocFrame !== true) { console.log("FAIL a sandboxed srcdoc frame (a
 if (process.env.REQUIRE_WEBRTC === "1" && !report.webrtcMedia) { console.log("FAIL no WebRTC media in this webview"); process.exit(1); }
 // REQUIRE_APIS=idle,notify: the APIs this system's app must give the office (natively or from the app)
 const need = (process.env.REQUIRE_APIS ?? "").split(",").filter(Boolean);
-if (need.includes("idle") && !["active", "idle"].includes(report.idleState)) { console.log("FAIL no working IdleDetector: " + report.idleState); process.exit(1); }
+if (need.includes("idle") && !["active", "idle"].includes(report.idleState as string)) { console.log("FAIL no working IdleDetector: " + report.idleState); process.exit(1); }
 if (need.includes("layout") && !/^\S$/.test(report.layoutKeyQ ?? "")) { console.log("FAIL no keyboard layout map: " + report.layoutKeyQ); process.exit(1); }
 if (need.includes("notify") && report.Notification !== "granted") { console.log("FAIL notifications not granted: " + report.Notification); process.exit(1); }

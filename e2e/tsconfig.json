@@ -1,0 +1,25 @@
+{
+  // The browser suite, its runners and the art tools: Node runs these .ts files as they are (type stripping),
+  // so only erasable syntax (Node refuses the rest when it loads the file; erasableSyntaxOnly would also
+  // reject the web client, whose types globals.d.ts brings in), and type-only imports marked as such.
+  // Checked by the e2e:tsc gate.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  "include": ["*.ts", "scenarios", "desktop"]
+}

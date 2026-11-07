@@ -1,11 +1,18 @@
 // Home Quarters' own Oxlint rules (a JS plugin, ESLint's rule format), loaded by .oxlintrc.json.
 // Each one turns a line of AGENTS.md or of a gauntlet critic's checklist into a gate; tests in
 // scripts/oxlint-hq.test.ts. Oxlint's JS plugins are alpha: the oxlint version is pinned in web/package.json.
+import type { RuleTester } from "../web/node_modules/oxlint/dist/plugins-dev.js";
+
+// Oxlint exports no name for a rule or its AST nodes: the types RuleTester.run takes, and its visitor's
+type Rule = Parameters<RuleTester["run"]>[1];
+type Visitor = ReturnType<NonNullable<Rule["create"]>>;
+type Node<K extends keyof Visitor> = Parameters<NonNullable<Visitor[K]>>[0];
+type Expression = Node<"JSXExpressionContainer">["expression"] | NonNullable<Node<"JSXAttribute">["value"]>;
 
 const EFFECTS = new Set(["useEffect", "useLayoutEffect", "useInsertionEffect"]);
-const calleeName = (c) => (c.type === "Identifier" ? c.name : c.type === "MemberExpression" && !c.computed ? c.property.name : "");
+const calleeName = (c: Node<"CallExpression">["callee"]) => (c.type === "Identifier" ? c.name : c.type === "MemberExpression" && !c.computed ? c.property.name : "");
 // the string literals an expression can evaluate to: "a", `a ${x}`, c ? "a" : "b", x || "a", "a " + x
-const strings = (e) => {
+const strings = (e: Expression | null | undefined): string[] => {
   if (!e) return [];
   if (e.type === "Literal") return typeof e.value === "string" ? [e.value] : [];
   if (e.type === "TemplateLiteral") return [e.quasis.map((q) => q.value.cooked ?? "").join("…")];
@@ -18,14 +25,15 @@ const strings = (e) => {
 const WORDS = /[A-Za-z]{2,}/;
 const TEXT_ATTRS = new Set(["aria-label", "aria-description", "aria-placeholder", "aria-roledescription", "title", "placeholder", "alt"]);
 
-const effectCleanup = {
+const effectCleanup: Rule = {
   meta: { type: "problem", docs: { description: "An effect returns a cleanup function or nothing" } },
   create(context) {
     // the hooks under the names this file imports them as (import { useEffect as useFx } from "react")
     const effects = new Set(EFFECTS);
     return {
       ImportSpecifier(node) {
-        if (node.parent?.source?.value === "react" && EFFECTS.has(node.imported.name ?? node.imported.value)) effects.add(node.local.name);
+        const imported = node.imported as { name?: string; value?: string };
+        if ((node.parent as { source?: { value?: unknown } } | null)?.source?.value === "react" && EFFECTS.has((imported.name ?? imported.value)!)) effects.add(node.local.name);
       },
       CallExpression(node) {
         if (!effects.has(calleeName(node.callee))) return;
@@ -41,10 +49,10 @@ const effectCleanup = {
   },
 };
 
-const uiText = {
+const uiText: Rule = {
   meta: { type: "problem", docs: { description: "User-visible text goes through t() (web/src/i18n.ts)" } },
   create(context) {
-    const report = (node, text) => context.report({ node, message: `User-visible text "${text.slice(0, 40)}" outside the i18n dictionary: add it to web/src/i18n.ts and use t().` });
+    const report = (node: Node<"JSXText"> | Node<"JSXExpressionContainer"> | Node<"JSXAttribute">, text: string) => context.report({ node, message: `User-visible text "${text.slice(0, 40)}" outside the i18n dictionary: add it to web/src/i18n.ts and use t().` });
     return {
       JSXText(node) {
         const text = node.value.trim();
@@ -65,7 +73,7 @@ const uiText = {
   },
 };
 
-const dialogThroughModal = {
+const dialogThroughModal: Rule = {
   meta: { type: "problem", docs: { description: "Dialogs use Modal (focus trap, Escape)" } },
   create(context) {
     const message = "A dialog outside Modal: use <Modal> from web/src/ui/Modal.tsx, which traps focus and closes on Escape.";

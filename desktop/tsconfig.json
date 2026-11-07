@@ -1,0 +1,21 @@
+{
+  // The desktop app's two scripts stay plain JavaScript (the shell serves ui/setup.js as is, and inlines
+  // src-tauri/src/missing-apis.js after replacing its __HQ_* placeholders): JSDoc types, checked here with the
+  // web client's TypeScript (the desktop-types gate). globals.d.ts declares what the shell provides.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "types": []
+  },
+  "include": ["globals.d.ts", "ui/setup.js", "src-tauri/src/missing-apis.js"]
+}

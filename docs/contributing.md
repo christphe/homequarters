@@ -17,7 +17,7 @@ Every change runs the [gauntlet loop](gauntlet.md): written acceptance criteria,
 ./scripts/dev.sh                 # full local stack
 cd server && go vet ./... && go tool staticcheck ./... && go test -race ./...   # server checks and tests
 cd web && pnpm exec tsc --noEmit                   # type-check the client
-node scripts/oxlint.ts                            # lint the client and the plugins (type-aware)
+node scripts/oxlint.ts                            # lint the client, the plugins and the tooling (type-aware)
 cd e2e && pnpm install && node run.ts             # real-browser suite: own server, fresh database, real LiveKit
 ~~~
 

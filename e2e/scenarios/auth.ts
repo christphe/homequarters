@@ -3,12 +3,13 @@
 // account, personal links refused once linked, and the admin list showing who has signed in.
 // It runs its own server (another port, its own database): first without sign-in to create members the old
 // way, then with fake-oidc on the same database, as an office that switches on sign-in would.
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { check, summary, resetChecks, launch, waitFor, sleep } from "../lib.ts";
+import type { Page, CookieData } from "puppeteer-core";
+import { check, summary, resetChecks, launch, waitFor, sleep, type RunContext } from "../lib.ts";
 
 const require = createRequire(import.meta.url);
 const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
@@ -16,31 +17,31 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
 const WIN = process.platform === "win32";
 const PORT = Number(process.env.HQ_TEST_PORT ?? "18080") + 10;
 const BASE = `http://127.0.0.1:${PORT}`;
-const portOpen = (p) => new Promise((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
+const portOpen = (p: number) => new Promise<boolean>((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
 
-async function audit(page, label) {
+async function audit(page: Page, label: string) {
   await page.evaluate(AXE);
-  const res = await page.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags } })).violations.map((v) => v.id + " " + v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")), TAGS);
+  const res = await page.evaluate(async (tags: string[]) => (await (window as unknown as { axe: typeof import("axe-core") }).axe.run(document, { runOnly: { type: "tag", values: tags } })).violations.map((v) => v.id + " " + v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")), TAGS);
   check("axe: no violations on " + label, res.length === 0, res.join(", "));
 }
 
-const click = (page, selector, text) => page.evaluate((selector, text) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text);
+const click = (page: Page, selector: string, text: string) => page.evaluate((selector, text) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text);
   b?.click();
   return !!b;
 }, selector, text);
-const text = (page) => page.evaluate(() => document.body.innerText);
-const inOffice = (page) => page.evaluate(() => window.__hq?.state?.meId > 0 && window.__hq.state.conn === "open");
+const text = (page: Page) => page.evaluate(() => document.body.innerText);
+const inOffice = (page: Page) => page.evaluate(() => window.__hq?.state?.meId > 0 && window.__hq.state.conn === "open");
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const root = path.resolve(path.dirname(ctx.bin), "..");
   const db = path.join(ctx.dir, "auth.db");
-  const env = (extra) => ({ ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: db, HQ_STATIC_DIR: path.join(root, "web/dist"),
+  const env = (extra: Record<string, string>) => ({ ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: db, HQ_STATIC_DIR: path.join(root, "web/dist"),
     HQ_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: process.env.HQ_TEST_LK_URL ?? "ws://127.0.0.1:7880", LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret", HQ_JOIN_RATE: "5000",
     HQ_AUTH_PROVIDERS: "", HQ_AUTH_DOMAINS: "", ...(WIN ? { HQ_STOP_ON_STDIN_CLOSE: "1" } : {}), ...extra });
-  let server = null;
-  const start = async (extra) => {
+  let server: ChildProcess | null = null;
+  const start = async (extra: Record<string, string>) => {
     server = spawn(ctx.bin, [], { env: env(extra), stdio: [WIN ? "pipe" : "ignore", fs.openSync(path.join(ctx.dir, "auth-server.log"), "a"), fs.openSync(path.join(ctx.dir, "auth-server.log"), "a")] });
     await waitFor(() => portOpen(PORT), { timeout: 10000, what: "auth server" });
   };
@@ -48,23 +49,23 @@ export async function run(ctx) {
     if (!server) return;
     const c = server; server = null;
     const done = new Promise((r) => c.once("exit", r));
-    if (WIN) c.stdin.end(); else c.kill("SIGTERM");
+    if (WIN) c.stdin!.end(); else c.kill("SIGTERM");
     const timer = setTimeout(() => c.kill("SIGKILL"), 15000);
     await done;
     clearTimeout(timer);
   };
-  const cli = (args) => {
+  const cli = (args: string[]) => {
     try { return { ok: true, out: execFileSync(ctx.bin, args, { env: env({ HQ_AUTH_PROVIDERS: "fake-oidc", HQ_AUTH_DOMAINS: "acme.test" }), stdio: ["ignore", "pipe", "pipe"] }).toString().trim() }; }
-    catch (e) { return { ok: false, out: String(e.stderr ?? e) }; }
+    catch (e) { return { ok: false, out: String((e as { stderr?: Buffer }).stderr ?? e) }; }
   };
   const browser = await launch([], { waitEmpty: false });
   try {
     // ---- before sign-in: two members join the old way (the session cookie is the account)
     await start({});
-    const legacy = {};
+    const legacy: Record<string, { cookie: string; id: number }> = {};
     for (const name of ["Olga", "Pat"]) {
       const r = await fetch(BASE + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-      legacy[name] = { cookie: r.headers.get("set-cookie").split(";")[0].split("=")[1], id: (await r.json()).id };
+      legacy[name] = { cookie: r.headers.get("set-cookie")!.split(";")[0].split("=")[1], id: (await r.json()).id };
     }
     await stop();
 
@@ -86,8 +87,9 @@ export async function run(ctx) {
     const about = await policy.$eval('.join-foot a[href="/about"]', (a) => ({ target: a.target, text: a.textContent })).catch(() => null);
     check("the sign-in screen links the public page about the office", about?.target === "_blank" && about.text === "About this office", JSON.stringify(about));
     const foot = await policy.$eval('.join-foot a[href="/privacy"]', (a) => {
-      const lum = (c) => { const [r, g, b] = c.match(/\d+/g).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-      const fg = lum(getComputedStyle(a).color), bg = lum(getComputedStyle(a.closest(".join-card")).backgroundColor);
+      // `v /= 255` coerces the matched digits to a number, as the JavaScript always did
+      const lum = (c: string) => { const [r, g, b] = (c.match(/\d+/g)! as unknown as number[]).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const fg = lum(getComputedStyle(a).color), bg = lum(getComputedStyle(a.closest(".join-card")!).backgroundColor);
       return { href: a.getAttribute("href"), target: a.target, text: a.textContent, ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) };
     });
     check("the sign-in screen links the privacy policy in a new tab, readable", foot.href === "/privacy" && foot.target === "_blank" && foot.ratio >= 4.5, JSON.stringify(foot));
@@ -112,14 +114,14 @@ export async function run(ctx) {
     await ana.reload({ waitUntil: "domcontentloaded" });
     await waitFor(() => inOffice(ana), { timeout: 30000, what: "Ana after reload" });
     check("a reload keeps her in", true);
-    await ana.evaluate(() => document.querySelector('button[title="Settings"]').click());
+    await ana.evaluate(() => document.querySelector<HTMLButtonElement>('button[title="Settings"]')!.click());
     await waitFor(() => ana.$(".modal"), { what: "settings" });
     check("settings offer no personal link while sign-in is on", !(await text(ana)).includes("Use this account on another machine"));
 
     // Sign out from the settings: the session ends (a copy of the cookie stops working), the sign-in screen
     // comes back, and signing in again with the same account lands in the same member.
     const anaId = await ana.evaluate(() => window.__hq.state.meId);
-    const anaCookie = (await ana.browserContext().cookies()).find((c) => c.name === "hq_session").value;
+    const anaCookie = (await ana.browserContext().cookies()).find((c) => c.name === "hq_session")!.value;
     check("with sign-in on, the settings offer to sign out", await ana.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.trim() === "Sign out")));
     await Promise.all([ana.waitForNavigation(), click(ana, ".modal button", "Sign out")]);
     await ana.waitForSelector(".signin a");
@@ -143,7 +145,7 @@ export async function run(ctx) {
 
     // Olga, admin from before sign-in, links an account and keeps hers.
     const olgaCtx = await browser.createBrowserContext();
-    await olgaCtx.setCookie({ name: "hq_session", value: legacy.Olga.cookie, url: BASE, httpOnly: true, sameSite: "Lax" });
+    await olgaCtx.setCookie({ name: "hq_session", value: legacy.Olga.cookie, url: BASE, httpOnly: true, sameSite: "Lax" } as unknown as CookieData);
     const olga = await olgaCtx.newPage();
     await olga.setViewport({ width: 1280, height: 720 });
     await olga.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -168,7 +170,7 @@ export async function run(ctx) {
     await Promise.all([bob.waitForNavigation(), click(bob, "button", "Cancel")]);
     await bob.waitForSelector(".join-card [role=alert]");
     const kept = await bob.$eval(".signin a", (a) => a.getAttribute("href"));
-    check("after a cancelled sign-in the invite is still there", (await text(bob)).includes("You have an invite") && kept.includes("invite=" + inv), kept);
+    check("after a cancelled sign-in the invite is still there", (await text(bob)).includes("You have an invite") && kept!.includes("invite=" + inv), kept!);
     await Promise.all([bob.waitForNavigation(), click(bob, ".signin a", "Continue with fake sign-in (development)")]);
     await Promise.all([bob.waitForNavigation(), click(bob, "button", "Authorize")]);
     await bob.waitForSelector(".join-card input");
@@ -218,8 +220,8 @@ export async function run(ctx) {
     await waitFor(async () => !(await text(pat)).includes("Welcome back"), { what: "signed out" });
     const after = await pat.evaluate(async () => (await (await fetch("/api/me")).json()));
     check("'Not Pat?' signs the browser out without linking", !after.link && !after.authenticated && (await text(pat)).includes("Sign in to enter the office"), JSON.stringify(after));
-    const fresh = await pat.evaluate(() => ({ error: !!document.querySelector(".join-card .error"), href: document.querySelector(".signin a").getAttribute("href") }));
-    check("a fresh start shows no earlier error and no earlier account hint", !fresh.error && !fresh.href.includes("login_hint"), JSON.stringify(fresh));
+    const fresh = await pat.evaluate(() => ({ error: !!document.querySelector(".join-card .error"), href: document.querySelector(".signin a")!.getAttribute("href") }));
+    check("a fresh start shows no earlier error and no earlier account hint", !fresh.error && !fresh.href!.includes("login_hint"), JSON.stringify(fresh));
     await sleep(100);
   } finally {
     await browser.close();

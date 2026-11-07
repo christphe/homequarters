@@ -1,10 +1,9 @@
-import { spawn } from "node:child_process";
-import { launch, joinAs, sleep, waitFor } from "./lib.ts";
+import { launch, joinAs, waitFor } from "./lib.ts";
 process.env.HQ_APP = process.env.HQ_API = "http://127.0.0.1:18080";
 const b = await launch();
 try {
   const r = await fetch("http://127.0.0.1:18080/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Admin", avatar: {} }) });
-  const cookie = r.headers.get("set-cookie").split(";")[0].split("=")[1];
+  const cookie = r.headers.get("set-cookie")!.split(";")[0].split("=")[1];
   const u = await joinAs(b, "Admin", { cookie });
   await u.page.evaluate(() => [...document.querySelectorAll("button")].find((x) => x.textContent === "Edit office")?.click());
   await waitFor(() => u.page.$(".editor"), { what: "editor" });
@@ -14,5 +13,5 @@ try {
   console.log("target px", p, "tile", await u.page.evaluate((p) => window.__hq.view.screenToTile(p.x, p.y), p));
   console.log("elementFromPoint", await u.page.evaluate((p) => document.elementFromPoint(p.x, p.y)?.className, p));
   await u.page.mouse.move(p.x, p.y); await u.page.mouse.down(); await u.page.mouse.move(p.x, p.y + 20); await u.page.mouse.up();
-  console.log("wall row 20:", await u.page.evaluate(() => window.__hq.view.map.walls[20].slice(30, 40)), u.logs);
+  console.log("wall row 20:", await u.page.evaluate(() => window.__hq.view.map!.walls[20].slice(30, 40)), u.logs);
 } finally { await b.close(); }

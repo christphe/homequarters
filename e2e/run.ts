@@ -11,7 +11,8 @@ import { fileURLToPath } from "node:url";
 import { chrome } from "./env.ts";
 import { ALL, shard, parseShard, shardsFor } from "./shards.ts";
 import { acquire, parseMax, ports } from "./slots.ts";
-import { LK_IMAGE, liveKitMode, startLiveKit, stopLiveKit, sweepOrphans } from "./livekit.ts";
+import { LK_IMAGE, liveKitMode, startLiveKit, stopLiveKit, sweepOrphans, type LiveKit, type LiveKitMode } from "./livekit.ts";
+import type { RunContext, Scenario } from "./lib.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 chrome(); // the suite cannot run without it: stop before building anything
@@ -38,11 +39,11 @@ const parallelRun = PARALLEL > 1 && !shardSpec && !EXTERNAL;
 const WIN = process.platform === "win32";
 const BIN = path.join(root, "bin", WIN ? "homequarters.exe" : "homequarters");
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const portOpen = (p) => new Promise((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const portOpen = (p: number) => new Promise<boolean>((res) => { const s = net.connect(p, "127.0.0.1"); s.on("connect", () => { s.destroy(); res(true); }); s.on("error", () => res(false)); });
 
 // Until the run has something to stop, a signal just exits (the exit handlers release the slot).
-let onSignal = () => process.exit(130);
+let onSignal: (() => unknown) | null = () => process.exit(130);
 for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => onSignal?.());
 
 // A local run takes an e2e slot (one per shard) before it builds or starts anything, waiting while
@@ -51,16 +52,16 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => onSig
 // On a CI runner (CI set, as GitHub Actions does) each job is one run of its own (the suite is split
 // beforehand with --shard): no slot to take, the default ports, and its LiveKit on 7880 as before.
 const oneRunner = !!process.env.CI;
-let slots = [];
-let lkMode = null;
+let slots: number[] = [];
+let lkMode: LiveKitMode | null = null;
 const ownLiveKit = !EXTERNAL && !SHARD_CHILD && (parallelRun || !process.env.HQ_TEST_LK_PORT);
 if (oneRunner && ownLiveKit) {
   lkMode = liveKitMode();
   if (!lkMode) { console.log("# the e2e suite starts its own LiveKit: put livekit-server on PATH"); process.exit(1); }
 }
 if (!EXTERNAL && !SHARD_CHILD && !oneRunner) {
-  let max;
-  try { max = parseMax(process.env.E2E_MAX_PARALLEL); } catch (e) { console.log("# " + e.message); process.exit(1); }
+  let max: number;
+  try { max = parseMax(process.env.E2E_MAX_PARALLEL); } catch (e) { console.log("# " + (e as Error).message); process.exit(1); }
   const need = parallelRun ? PARALLEL : 1;
   if (need > max) { console.log(`# E2E_PARALLELISM=${need} needs ${need} e2e slots but E2E_MAX_PARALLEL is ${max}: lower E2E_PARALLELISM or raise E2E_MAX_PARALLEL (.env)`); process.exit(1); }
   if (ownLiveKit) {
@@ -69,7 +70,7 @@ if (!EXTERNAL && !SHARD_CHILD && !oneRunner) {
     if (lkMode === "docker") sweepOrphans();
   }
   const ownServerPorts = parallelRun || !process.env.HQ_TEST_PORT;
-  const portsFree = async (k) => {
+  const portsFree = async (k: number) => {
     const p = ports(k);
     for (const q of [...(ownServerPorts ? [p.server, p.auth] : []), ...(ownLiveKit ? [p.lk, p.lk + 1] : [])]) if (await portOpen(q)) return `port ${q} in use`;
     return true;
@@ -104,7 +105,7 @@ if (parallelRun) {
   process.exit(ok ? 0 : 1);
 }
 
-let lk = null;
+let lk: LiveKit | null = null;
 if (ownLiveKit) {
   console.log(`# starting LiveKit on ${LK_PORT} (${lkMode === "binary" ? "livekit-server" : "Docker, " + LK_IMAGE})`);
   process.on("exit", () => stopLiveKit(lk));
@@ -119,10 +120,11 @@ const pluginsDir = path.join(dir, "plugins");
 fs.cpSync(path.join(root, "plugins/bundled"), path.join(pluginsDir, "bundled"), { recursive: true });
 fs.cpSync(path.join(root, "e2e/fixtures/plugins/installed"), path.join(pluginsDir, "installed"), { recursive: true });
 // Checks that only need time to pass (an expiring token) run after the other scenarios instead of sleeping in theirs.
-const deferred = [];
+const deferred: { name: string; due: number; fn: () => Promise<unknown>; scenario: string | null }[] = [];
 // the scenario running, so that a deferred check counts for the scenario that registered it
-let current = null;
-const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push({ name, due, fn, scenario: current }); }, async startServer() {
+let current: string | null = null;
+// adminCookie and adminId are set once the administrator has joined, before any scenario runs
+const ctx = { dir, bin: BIN, server: null, defer(name: string, due: number, fn: () => Promise<unknown>) { deferred.push({ name, due, fn, scenario: current }); }, async startServer() {
   const child = spawn(BIN, [], {
     env: { ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: path.join(dir, "e2e.db"), HQ_STATIC_DIR: path.join(root, "web/dist"), HQ_PLUGINS_DIR: pluginsDir,
       HQ_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: process.env.HQ_TEST_LK_URL, LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret",
@@ -137,11 +139,11 @@ const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push(
   const c = ctx.server; ctx.server = null;
   const done = new Promise((r) => c.once("exit", r));
   // a graceful stop saves positions and whiteboards; on Windows closing stdin asks for it (a signal would kill)
-  if (WIN) c.stdin.end(); else c.kill("SIGTERM");
+  if (WIN) c.stdin!.end(); else c.kill("SIGTERM");
   const timer = setTimeout(() => c.kill("SIGKILL"), 15000);
   await done;
   clearTimeout(timer);
-} };
+} } as RunContext;
 // On Ctrl+C (Ctrl+Break on Windows) or a signal the run stops its server and LiveKit and exits, which
 // releases its slot. A shard started by parallel.ts also stops when its stdin closes (on Windows a
 // signal from Node is a hard kill). Exiting also closes the Chrome puppeteer launched.
@@ -163,13 +165,13 @@ const outcome = new Map();
 try {
   // Bootstrap the office admin (the first member of an office becomes admin).
   const r = await fetch(process.env.HQ_API + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Admin", avatar: { sk: 2, hs: 2, hc: 0, sh: 6, pa: 0 } }) });
-  const cookie = r.headers.get("set-cookie").split(";")[0].split("=")[1];
+  const cookie = r.headers.get("set-cookie")!.split(";")[0].split("=")[1];
   ctx.adminCookie = cookie;
-  ctx.adminId = (await r.json()).id;
+  ctx.adminId = ((await r.json()) as { id: number }).id;
   for (const name of wanted) {
     console.log(`\n== ${name} ==`);
     current = name;
-    const mod = await import(`./scenarios/${name}.ts`);
+    const mod = (await import(`./scenarios/${name}.ts`)) as Scenario;
     const passed = await mod.run(ctx);
     outcome.set(name, passed);
     ok = ok && passed;
@@ -185,7 +187,7 @@ try {
     console.log(`\n== ${d.name} (deferred) ==`);
     await sleep(Math.max(0, d.due - Date.now()));
     resetChecks();
-    await d.fn().catch((e) => check("deferred check ran", false, String(e)));
+    await d.fn().catch((e: unknown) => check("deferred check ran", false, String(e)));
     const passed = summary();
     if (!passed && outcome.has(d.scenario)) outcome.set(d.scenario, false);
     ok = passed && ok;

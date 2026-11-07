@@ -1,53 +1,66 @@
 // Plugins: the bundled pets plugin (plugins/bundled/hq-pets) enabled from the admin dialog, pets added,
 // recoloured and removed in its modal and following their owners on other pages, the office's limit, its button, its route and assets, the iframe sandbox, a flooding plugin
 // stopped on one page, and disabling it live. Needs HQ_PLUGINS_DIR (run.ts sets it).
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type RunContext, type User } from "../lib.ts";
+
+/** The global a plugin view gets (plugins/sdk/view.d.ts), used inside the view's frame. */
+declare const hqView: { send(msg: unknown): void };
+/** What code evaluated in a plugin's hidden frame uses of its window: the SDK's hq (plugins/sdk/client.d.ts). */
+type PluginWindow = { hq: { send(msg: unknown): void; remove(id: string): void } };
+/** What ui-demo's orb callbacks record in its frame (e2e/fixtures/plugins/installed/ui-demo). */
+type Placed = { kind: string; x: number; y: number; w: number; h: number; px: number; py: number };
+type Objs = { init: Placed[]; destroy: Placed[]; updates: Record<string, number> };
+/** What the plugin layer reports of one sprite a plugin drew (PluginManager.debug). */
+type Creature = NonNullable<ReturnType<NonNullable<Window["__hq"]["session"]["plugins"]>["debug"]>>[number];
+type Tile = { x: number; y: number };
+/** The admin map as the scenario edits it: only the props are touched. */
+type AdminMap = { props: { t: string; x: number; y: number; w: number; h: number }[] };
 
 const PLUGIN = "hq-pets";
-const click = (u, selector, text) => u.page.evaluate((selector, text) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text);
+const click = (u: User, selector: string, text: string) => u.page.evaluate((selector, text) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent!.trim() === text);
   b?.click();
   return !!b;
 }, selector, text);
-const read = (u, fn, arg) => u.page.evaluate(fn, arg);
+const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg) as Promise<Awaited<R>>;
 /** What the plugin drew on that page, or null when it does not run there. */
-const creatures = (u) => read(u, (p) => window.__hq.session.plugins?.debug(p) ?? null, PLUGIN);
-const creatureOf = async (u, owner) => ((await creatures(u)) ?? []).find((c) => c.player === owner);
-const frames = (u) => read(u, () => document.querySelectorAll("iframe.plugin-frame").length);
-const pluginFrame = (u) => u.page.frames().find((f) => f.url() === "about:srcdoc");
-const petsOf = async (u, owner) => ((await creatures(u)) ?? []).filter((c) => c.player === owner);
+const creatures = (u: User) => read(u, (p: string) => window.__hq.session.plugins?.debug(p) ?? null, PLUGIN);
+const creatureOf = async (u: User, owner: number) => ((await creatures(u)) ?? []).find((c) => c.player === owner);
+const frames = (u: User) => read(u, () => document.querySelectorAll("iframe.plugin-frame").length);
+const pluginFrame = (u: User) => u.page.frames().find((f) => f.url() === "about:srcdoc");
+const petsOf = async (u: User, owner: number) => ((await creatures(u)) ?? []).filter((c) => c.player === owner);
 /** One of owner's pets by its sheet key: n<kind> in its own colours, t<kind> tinted. */
-const pet = async (u, owner, key) => (await petsOf(u, owner)).find((c) => c.key === key);
-const modalHas = (u, text) => u.page.evaluate((text) => [...document.querySelectorAll(".modal.plugin-modal button, .modal.plugin-modal p")].some((x) => x.textContent === text), text);
+const pet = async (u: User, owner: number, key: string) => (await petsOf(u, owner)).find((c) => c.key === key);
+const modalHas = (u: User, text: string) => u.page.evaluate((text) => [...document.querySelectorAll(".modal.plugin-modal button, .modal.plugin-modal p")].some((x) => x.textContent === text), text);
 /** Puts text in a field of the plugin's modal with the keyboard, then Enter. */
-async function setField(u, selector, text) {
+async function setField(u: User, selector: string, text: string) {
   const sel = ".modal.plugin-modal " + selector;
   await waitFor(() => u.page.$(sel), { what: selector });
   await u.page.focus(sel);
-  await u.page.evaluate((sel) => document.querySelector(sel).select(), sel);
+  await u.page.evaluate((sel) => document.querySelector<HTMLInputElement>(sel)!.select(), sel);
   await u.page.keyboard.type(text);
   await u.page.keyboard.press("Enter");
 }
 /** Moves the real mouse over one of owner's pets on u's page, and reads the hover tag. */
-async function hoverOver(u, owner, sprite) {
+async function hoverOver(u: User, owner: number, sprite: string): Promise<string> {
   const c = (await petsOf(u, owner)).find((x) => x.id === sprite);
   if (!c) return "missing";
-  const at = await read(u, ({ x, y }) => window.__hq.view.pageOf(x, y - 8), { x: c.x, y: c.y });
+  const at = await read(u, ({ x, y }: { x: number; y: number }) => window.__hq.view.pageOf(x, y - 8), { x: c.x, y: c.y });
   // a pet under the top bar or off the canvas cannot be pointed at on this page (CI's 800x450 view)
   if (!(await u.page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName === "CANVAS", at))) return "covered";
   await u.page.mouse.move(at.x, at.y);
   // a wandering pet keeps walking: read the tag on the next frames, before it walks out from under the mouse
-  return read(u, () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__hq.view.hoverText())))));
+  return read(u, () => new Promise<string>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__hq.view.hoverText())))));
 }
 /** hoverOver on the first of these pages where the pet is in view. */
-async function hoverOn(pages, owner, sprite) {
+async function hoverOn(pages: User[], owner: number, sprite: string) {
   let tag = "covered";
   for (const u of pages) if ((tag = await hoverOver(u, owner, sprite)) !== "covered") break;
   return tag;
 }
-async function openPets(u) {
+async function openPets(u: User) {
   await waitFor(() => u.page.evaluate(() => {
-    const b = document.querySelector('.side .tabs button[aria-label="Plugins"]');
+    const b = document.querySelector<HTMLElement>('.side .tabs button[aria-label="Plugins"]');
     if (b && b.getAttribute("aria-selected") !== "true") b.click();
     return !!b;
   }), { what: "Plugins tab in the side panel" });
@@ -61,16 +74,16 @@ async function openPets(u) {
   }, { timeout: 30000, what: "the Pets modal" });
 }
 
-async function setEnabled(admin, on, title = "Pets", plugin = PLUGIN) {
+async function setEnabled(admin: User, on: boolean, title = "Pets", plugin = PLUGIN) {
   await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
   await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
   const label = (on ? "Turn on " : "Turn off ") + title;
-  await waitFor(() => admin.page.evaluate((l) => { const b = document.querySelector(`.modal button[aria-label="${l}"]`); b?.click(); return !!b; }, label), { what: label });
-  await waitFor(() => admin.page.evaluate((s) => document.querySelector(`.modal tr[data-plugin="${s[1]}"]`)?.textContent.includes(s[0]), [on ? "Running" : "Off", plugin]), { what: "plugin state " + (on ? "running" : "off") });
+  await waitFor(() => admin.page.evaluate((l) => { const b = document.querySelector<HTMLElement>(`.modal button[aria-label="${l}"]`); b?.click(); return !!b; }, label), { what: label });
+  await waitFor(() => admin.page.evaluate((s) => document.querySelector(`.modal tr[data-plugin="${s[1]}"]`)?.textContent!.includes(s[0]), [on ? "Running" : "Off", plugin]), { what: "plugin state " + (on ? "running" : "off") });
   await admin.page.keyboard.press("Escape");
 }
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -87,11 +100,11 @@ export async function run(ctx) {
     await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
     await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
     await waitFor(() => admin.page.$('.modal tr[data-plugin="hq-pets"]'), { what: "hq-pets row" });
-    check("the admin dialog lists the bundled pets plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]').textContent.includes("Off")));
-    const rows = await admin.page.evaluate(() => [...document.querySelectorAll(".modal .plugins-table tbody tr")].map((r) => ({
-      name: r.dataset.plugin, source: r.querySelector(".plugin-source")?.textContent, text: r.textContent, button: !!r.querySelector("button"),
+    check("the admin dialog lists the bundled pets plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')!.textContent!.includes("Off")));
+    const rows = await admin.page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".modal .plugins-table tbody tr")].map((r) => ({
+      name: r.dataset.plugin, source: r.querySelector(".plugin-source")?.textContent, text: r.textContent!, button: !!r.querySelector("button"),
     })));
-    const row = (n) => rows.find((r) => r.name === n) ?? {};
+    const row = (n: string) => rows.find((r) => r.name === n) ?? ({} as (typeof rows)[number]);
     check("every plugin row says where it comes from", rows.length >= 3 && row("hq-pets").source === "Bundled" && row("ui-demo").source === "Installed" && rows.every((r) => r.source), JSON.stringify(rows.map((r) => [r.name, r.source])));
     check("an installed plugin using hq- is listed as refused, with the rule, and has no switch",
       row("hq-impostor").source === "Installed" && row("hq-impostor").text.includes("Cannot run") && row("hq-impostor").text.includes("reserved for plugins bundled") && !row("hq-impostor").button,
@@ -114,7 +127,7 @@ export async function run(ctx) {
     await waitFor(() => modalHas(rem, "Add a pet (1 of 3)"), { what: "modal redrawn" });
     await click(rem, ".modal.plugin-modal button", "Seedling");
     await waitFor(async () => (await petsOf(mia, rem.id)).length === 2, { what: "Rem's seedling on Mia's page" });
-    const [cat, seedling] = await Promise.all([pet(mia, rem.id, "n0"), pet(mia, rem.id, "n8")]);
+    const [cat, seedling] = await Promise.all([pet(mia, rem.id, "n0"), pet(mia, rem.id, "n8")]) as [Creature, Creature];
     check("a member can have several pets, of any kind including the seedling", !!cat && !!seedling, JSON.stringify((await petsOf(mia, rem.id)).map((c) => c.key)));
     await rem.page.keyboard.press("Escape");
     await waitFor(async () => !(await rem.page.$(".modal.plugin-modal")), { what: "modal closed by Escape" });
@@ -127,12 +140,12 @@ export async function run(ctx) {
     await mia.page.keyboard.press("Escape");
 
     // ---- the pets walk behind their owner in a line, recorded on the observer's page
-    const rec = read(mia, ({ id, plugin, a, b }) => new Promise((resolve) => {
-      const out = [];
+    const rec = read(mia, ({ id, plugin, a, b }: { id: number; plugin: string; a: string; b: string }) => new Promise<number[][]>((resolve) => {
+      const out: number[][] = [];
       const t0 = performance.now();
-      const tick = (now) => {
+      const tick = (now: number) => {
         const e = window.__hq.view.ents.get(id);
-        const list = window.__hq.session.plugins.debug(plugin);
+        const list = window.__hq.session.plugins!.debug(plugin)!;
         const ca = list.find((x) => x.id === a), cb = list.find((x) => x.id === b);
         if (e && ca && cb) out.push([now - t0, e.x, e.y, ca.x, ca.y, cb.x, cb.y]);
         if (now - t0 < 2600) requestAnimationFrame(tick); else resolve(out);
@@ -140,13 +153,13 @@ export async function run(ctx) {
       requestAnimationFrame(tick);
     }), { id: rem.id, plugin: PLUGIN, a: cat.id, b: seedling.id });
     await read(rem, async () => {
-      const v = window.__hq.view, wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const v = window.__hq.view, wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
       await wait(200);
       v.setDirection(1, 0); await wait(1600);
       v.setDirection(0, 0);
     });
     const S = await rec;
-    const ga = [], gb = [];
+    const ga: number[] = [], gb: number[] = [];
     let closest = Infinity;
     for (let i = 1; i < S.length; i++) {
       const [tt, ox, oy, ax, ay, bx, by] = S[i];
@@ -158,7 +171,7 @@ export async function run(ctx) {
         gb.push(Math.hypot(bx - ox, by - oy));
       }
     }
-    const med = (l) => l.sort((x, y) => x - y)[Math.floor(l.length / 2)];
+    const med = (l: number[]) => l.sort((x, y) => x - y)[Math.floor(l.length / 2)];
     const [ma, mb] = [med(ga), med(gb)];
     check("while the owner walks, the first pet keeps about 20 px behind and the next one about 36 px", ga.length > 10 && ma > 14 && ma < 28 && mb > 28 && mb < 44, `medians ${ma?.toFixed(1)} and ${mb?.toFixed(1)} px over ${ga.length} frames`);
     check("no pet walks on top of its owner", closest > 12, `closest ${closest.toFixed(1)} px`);
@@ -173,13 +186,13 @@ export async function run(ctx) {
     // would leave under 15 % still (under 17.6 fps), since frame jitter on a busy runner moves the pace
     // more than hops would at higher rates (CI has measured 9 of 52 frames off pace at 49 fps, and
     // 5 of 21 just under 20 fps, with no still frame).
-    const runAfter = (u) => read(u, ({ plugin, owner, ms }) => new Promise((resolve) => {
-      const last = new Map();
+    const runAfter = (u: User) => read(u, ({ plugin, owner, ms }: { plugin: string; owner: number; ms: number }) => new Promise<{ max: number; frames: number; ownerStill: number; petStill: number; uneven: number; span: number; fps: number }>((resolve) => {
+      const last = new Map<string | number, number[]>();
       let max = 0, frames = 0, ownerStill = 0, petStill = 0, since = 0, prev = 0, span = 0;
-      const paces = [];
+      const paces: number[] = [];
       const t0 = performance.now();
-      const tick = (now) => {
-        const v = window.__hq.view, e = v.ents.get(owner);
+      const tick = (now: number): void | number => {
+        const v = window.__hq.view, e = v.ents.get(owner)!;
         const running = owner === v.meId ? v.guided : !!(e?.dx || e?.dy);
         since = running ? since || now : 0;
         const steady = running && now - since > 300; // under way, not starting
@@ -192,7 +205,7 @@ export async function run(ctx) {
         }
         prev = now;
         last.set("owner", [e.x, e.y]);
-        for (const c of window.__hq.session.plugins.debug(plugin).filter((x) => x.player === owner && x.visible)) {
+        for (const c of window.__hq.session.plugins!.debug(plugin)!.filter((x) => x.player === owner && x.visible)) {
           const p = last.get(c.id);
           if (p) max = Math.max(max, Math.hypot(c.x - p[0], c.y - p[1]));
           if (steady && p && (Math.hypot(c.x - p[0], c.y - p[1]) < 0.1 || !c.moving)) petStill++;
@@ -211,24 +224,24 @@ export async function run(ctx) {
     const to = await read(rem, () => window.__hq.view.pageOf(4 * 16 + 8, 27 * 16 + 8));
     await rem.page.mouse.click(to.x, to.y, { count: 2 });
     const [jr, jm] = await Promise.all([onRem, onMia]);
-    const arrived = await read(rem, () => { const e = window.__hq.view.ents.get(window.__hq.view.meId); return [e.x, e.y]; });
+    const arrived = await read(rem, () => { const e = window.__hq.view.ents.get(window.__hq.view.meId)!; return [e.x, e.y]; });
     check("a double-click on the map runs the owner there", Math.hypot(arrived[0] - (4 * 16 + 8), arrived[1] - (27 * 16 + 8)) < 12, JSON.stringify(arrived));
-    const say = (r) => `${r.ownerStill} still owner frames, ${r.uneven} off its pace, ${r.petStill} still pet frames of ${r.frames} (${r.fps.toFixed(0)} fps over ${(r.span / 1000).toFixed(1)} s), largest pet step ${r.max.toFixed(1)} px`;
+    const say = (r: typeof jr) => `${r.ownerStill} still owner frames, ${r.uneven} off its pace, ${r.petStill} still pet frames of ${r.frames} (${r.fps.toFixed(0)} fps over ${(r.span / 1000).toFixed(1)} s), largest pet step ${r.max.toFixed(1)} px`;
     check("on a walk-to the owner's own avatar runs smoothly, moving every frame (not in 15 Hz hops)", jr.frames >= 8 && jr.span >= 600 && jr.ownerStill <= jr.frames * 0.1 && (1 - 15 / jr.fps >= 0.15 || jr.uneven <= jr.frames * 0.2), say(jr));
     check("its pets run after it every frame with their walk animation, on the owner's page and on others, never jumping",
       jr.frames >= 8 && jm.frames >= 8 && jr.span >= 600 && jm.span >= 600 && jr.petStill <= jr.frames * 0.05 && jm.petStill <= jm.frames * 0.05 && jr.max < 24 && jm.max < 24, `owner's page: ${say(jr)}; other page: ${say(jm)}`);
 
     // ---- render on demand still holds with pets standing
     await sleep(1500);
-    const draws = await read(mia, () => new Promise((resolve) => {
+    const draws = await read(mia, () => new Promise<number>((resolve) => {
       const v = window.__hq.view, r0 = v.rendersTotal;
       setTimeout(() => resolve(v.rendersTotal - r0), 3000);
     }));
     // resting pets potter about (a short stroll every 5-10 s each): the page redraws while one walks, not all the time
     check("an idle page with pottering pets does not redraw continuously", draws <= 120, `${draws} draws in 3 s`);
-    const restAt = await read(mia, ({ id, plugin, a, b }) => {
-      const e = window.__hq.view.ents.get(id), list = window.__hq.session.plugins.debug(plugin);
-      const ca = list.find((x) => x.id === a), cb = list.find((x) => x.id === b);
+    const restAt = await read(mia, ({ id, plugin, a, b }: { id: number; plugin: string; a: string; b: string }) => {
+      const e = window.__hq.view.ents.get(id)!, list = window.__hq.session.plugins!.debug(plugin)!;
+      const ca = list.find((x) => x.id === a)!, cb = list.find((x) => x.id === b)!;
       return { a: [ca.x - e.x, ca.y - e.y], b: [cb.x - e.x, cb.y - e.y] };
     }, { id: rem.id, plugin: PLUGIN, a: cat.id, b: seedling.id });
     check("at rest the pets potter about their owner's feet, close enough to fit at a desk",
@@ -238,10 +251,10 @@ export async function run(ctx) {
     // ---- a name and a colour per pet, through the modal's fields
     await openPets(rem);
     await setField(rem, 'input[type="text"]', "Biscuit");
-    await waitFor(async () => (await pet(mia, rem.id, "n0"))?.label === null && (await read(rem, () => document.querySelector('.modal.plugin-modal input[type="text"]')?.value === "Biscuit")), { what: "the name kept in the redrawn modal" });
+    await waitFor(async () => (await pet(mia, rem.id, "n0"))?.label === null && (await read(rem, () => document.querySelector<HTMLInputElement>('.modal.plugin-modal input[type="text"]')?.value === "Biscuit")), { what: "the name kept in the redrawn modal" });
     check("naming a pet in the modal is kept (redrawn with it)", true);
     const picked = await read(rem, () => {
-      const input = document.querySelector('.modal.plugin-modal input[type="color"]');
+      const input = document.querySelector<HTMLInputElement>('.modal.plugin-modal input[type="color"]');
       if (!input) return false;
       input.value = "#3fa7d6"; // what choosing a colour in the picker does; then the browser fires change
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -254,7 +267,7 @@ export async function run(ctx) {
     check("Reset colour gives the pet back its drawn colours", true);
     // remove the seedling (second row): the cat stays the same sprite, it does not turn into another pet
     await waitFor(() => rem.page.evaluate(() => {
-      const b = [...document.querySelectorAll(".modal.plugin-modal button")].filter((x) => x.textContent === "Remove")[1];
+      const b = [...document.querySelectorAll<HTMLElement>(".modal.plugin-modal button")].filter((x) => x.textContent === "Remove")[1];
       b?.click();
       return !!b;
     }), { what: "Remove button" });
@@ -263,15 +276,15 @@ export async function run(ctx) {
     await rem.page.keyboard.press("Escape");
 
     // ---- the office's limit: the plugin's setting, in Administration > Plugins
-    const setLimit = async (n) => {
+    const setLimit = async (n: number) => {
       await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
       await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
-      await waitFor(() => admin.page.evaluate(() => { const b = document.querySelector('.modal button[aria-label="Settings of Pets"]'); b?.click(); return !!b; }), { what: "the gear button" });
+      await waitFor(() => admin.page.evaluate(() => { const b = document.querySelector<HTMLElement>('.modal button[aria-label="Settings of Pets"]'); b?.click(); return !!b; }), { what: "the gear button" });
       const sel = `.modal .plugin-setting input`;
       await waitFor(() => admin.page.$(sel), { what: "the limit field" });
-      const before = await read(admin, (sel) => document.querySelector(sel).value, sel);
+      const before = await read(admin, (sel: string) => document.querySelector<HTMLInputElement>(sel)!.value, sel);
       await admin.page.focus(sel);
-      await admin.page.evaluate((sel) => document.querySelector(sel).select(), sel);
+      await admin.page.evaluate((sel) => document.querySelector<HTMLInputElement>(sel)!.select(), sel);
       await admin.page.keyboard.type(String(n));
       await admin.page.keyboard.press("Enter"); // submits the settings form: Save, which closes the modal
       await waitFor(async () => !(await admin.page.$(".modal .plugin-setting")), { what: "settings saved and closed" });
@@ -291,7 +304,7 @@ export async function run(ctx) {
     // outside the browser with Rem's app token, draws a critter that the pets plugin walks for Rem
     await fetch(API + "/api/admin/plugins/critters", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
     const critterToken = await waitFor(() => read(rem, () => fetch("/api/plugins/critters/token", { method: "POST" }).then((r) => r.ok ? r.json() : null).then((j) => j?.token)), { what: "a critters token" });
-    const petCall = (path, body) => fetch(`${API}/plugins/critters/api/${path}`, { method: "POST", headers: { Authorization: "Bearer " + critterToken }, body });
+    const petCall = (path: string, body: string) => fetch(`${API}/plugins/critters/api/${path}`, { method: "POST", headers: { Authorization: "Bearer " + critterToken }, body });
     const put = await (await petCall("pet", "Bramble")).json();
     await waitFor(async () => (await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g") && c.visible), { what: "the critter on Mia's page" });
     check("another plugin puts a pet of its own drawing with the member whose token it served, and it follows them", put.ok === true, JSON.stringify(put));
@@ -306,19 +319,19 @@ export async function run(ctx) {
     // ---- a guest pet whose sheet its plugin draws on each page: drawn-pet (e2e/fixtures) gives one by
     // metadata (setPet without a sheet) and provides its sheet from an OffscreenCanvas (hq.provideSheet)
     await fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
-    const drawnPet = (u, owner) => read(u, (id) => (window.__hq.session.plugins?.debug("hq-pets") ?? []).find((c) => c.id.startsWith(id + ":x:drawn-pet:") && c.visible) ?? null, String(owner));
+    const drawnPet = (u: User, owner: number) => read(u, (id: string) => (window.__hq.session.plugins?.debug("hq-pets") ?? []).find((c) => c.id.startsWith(id + ":x:drawn-pet:") && c.visible) ?? null, String(owner));
     // left out, not only hidden: no place behind its owner, nobody to go along with
-    const leftOut = (u, owner) => read(u, (id) => !(window.__hq.session.plugins?.debug("hq-pets") ?? []).some((c) => c.id.startsWith(id + ":x:drawn-pet:")), String(owner));
-    const dp = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "Rem's drawn pet on Mia's page" }).catch(() => null);
+    const leftOut = (u: User, owner: number) => read(u, (id: string) => !(window.__hq.session.plugins?.debug("hq-pets") ?? []).some((c) => c.id.startsWith(id + ":x:drawn-pet:")), String(owner));
+    const dp = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "Rem's drawn pet on Mia's page" }).catch(() => null) as Creature | null;
     check("a guest pet put by metadata is drawn by its plugin on every page and follows its owner like a pet", dp?.mode === "follow" && dp?.player === rem.id, JSON.stringify(dp));
-    const drawnPetOn = (enabled) => fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
+    const drawnPetOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
     await drawnPetOn(false);
     const goneWithIt = await waitFor(async () => (await leftOut(mia, rem.id)) && (await leftOut(rem, rem.id)), { what: "drawn pet gone with its plugin" }).catch(() => false);
     // hq-pets itself still runs: its own pet stays (a stopped hq-pets would hide the drawn pet too)
     const catStays = (await petsOf(mia, rem.id)).some((c) => c.id === cat.id) && (await petsOf(rem, rem.id)).some((c) => c.id === cat.id);
     check("turning the plugin off takes its drawn pet out of every page at once (no place left behind its owner), and leaves the other pets", goneWithIt && catStays, `gone ${goneWithIt}, cat stays ${catStays}`);
     await drawnPetOn(true);
-    const drawnBack = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "drawn pet back with its plugin" }).catch(() => null);
+    const drawnBack = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "drawn pet back with its plugin" }).catch(() => null) as Creature | null;
     check("turning it on again draws the pet again, without reloading the page", drawnBack?.mode === "follow" && drawnBack?.player === rem.id, JSON.stringify(drawnBack));
     await drawnPetOn(false);
     await waitFor(async () => (await leftOut(mia, rem.id)) && (await leftOut(rem, rem.id)), { what: "drawn pet gone again" });
@@ -329,9 +342,9 @@ export async function run(ctx) {
     // first Rem walks to open floor: a pet that picks a spot it cannot reach (a wall, a desk) rests until
     // its next pick, 18-65 s later, and Rem stands against a wall since the walk-to above
     const open = await read(rem, () => {
-      const v = window.__hq.view, me = v.ents.get(v.meId), T = 16;
-      const free = (x, y) => { for (let r = 16; r <= 64; r += 16) for (let a = 0; a < 16; a++) if (!v.canStandStatic(x + Math.cos(a * Math.PI / 8) * r, y + Math.sin(a * Math.PI / 8) * r)) return false; return v.canStandStatic(x, y); };
-      let best = null;
+      const v = window.__hq.view, me = v.ents.get(v.meId)!, T = 16;
+      const free = (x: number, y: number) => { for (let r = 16; r <= 64; r += 16) for (let a = 0; a < 16; a++) if (!v.canStandStatic(x + Math.cos(a * Math.PI / 8) * r, y + Math.sin(a * Math.PI / 8) * r)) return false; return v.canStandStatic(x, y); };
+      let best: { x: number; y: number; d: number; at: { x: number; y: number } } | null = null;
       for (let dy = -12; dy <= 12; dy++) for (let dx = -12; dx <= 12; dx++) {
         const x = (Math.floor(me.x / T) + dx) * T + T / 2, y = (Math.floor(me.y / T) + dy) * T + T / 2, d = Math.hypot(x - me.x, y - me.y);
         const at = v.pageOf(x, y);
@@ -342,17 +355,17 @@ export async function run(ctx) {
     });
     if (open) {
       await rem.page.mouse.click(open.at.x, open.at.y, { count: 2 });
-      await waitFor(() => read(rem, ({ x, y }) => { const v = window.__hq.view, e = v.ents.get(v.meId); return !v.guided && Math.hypot(e.x - x, e.y - y) < 12; }, open), { timeout: 15000, what: "Rem on open floor" }).catch(() => {});
+      await waitFor(() => read(rem, ({ x, y }: Tile) => { const v = window.__hq.view, e = v.ents.get(v.meId)!; return !v.guided && Math.hypot(e.x - x, e.y - y) < 12; }, open), { timeout: 15000, what: "Rem on open floor" }).catch(() => {});
       await sleep(600); // the pets settle behind Rem
     }
     // the cat's walks are recorded on Mia's page from the moment it is let go: its first one starts within
     // 2 s; the recording goes on until it walked (9 to 25 s: a spot it cannot reach costs it one pause)
-    const remAt = await read(mia, (id) => { const e = window.__hq.view.ents.get(id); return { x: e.x, y: e.y }; }, rem.id);
-    const strolling = read(mia, ({ id, plugin }) => new Promise((resolve) => {
-      const seen = [];
+    const remAt = await read(mia, (id: number) => { const e = window.__hq.view.ents.get(id)!; return { x: e.x, y: e.y }; }, rem.id);
+    const strolling = read(mia, ({ id, plugin }: { id: string; plugin: string }) => new Promise<[number, number, string][]>((resolve) => {
+      const seen: [number, number, string][] = [];
       const t0 = performance.now();
       const tick = () => {
-        const c = window.__hq.session.plugins.debug(plugin).find((x) => x.id === id);
+        const c = window.__hq.session.plugins!.debug(plugin)!.find((x) => x.id === id);
         if (c) seen.push([c.x, c.y, c.mode]);
         const moved = seen.some(([x, y], i) => i > 0 && Math.hypot(x - seen[i - 1][0], y - seen[i - 1][1]) > 0.5);
         const t = performance.now() - t0;
@@ -368,7 +381,7 @@ export async function run(ctx) {
     // what the socialize mood sends; Mia's page also picks goals by its own moods, so say it until it shows
     let joined = false;
     await waitFor(async () => {
-      await pluginFrame(mia).evaluate((goal) => window.hq.send({ t: "wander", g: [goal] }), cat.id);
+      await pluginFrame(mia)!.evaluate((goal) => (window as unknown as PluginWindow).hq.send({ t: "wander", g: [goal] }), cat.id);
       await sleep(250);
       return (joined = (await petsOf(rem, mia.id))[0]?.target === cat.id);
     }, { timeout: 8000, every: 50, what: "dog with the cat" }).catch(() => {});
@@ -388,11 +401,11 @@ export async function run(ctx) {
     // its mood decides how far: near home or its owner, or exploring up to 240 px from home
     check("a wandering pet walks on its own while its owner stands still, within its moods' reach", moved && far < 300 && strolls.every((x) => x[2] !== "follow"), `moved ${moved}, farthest ${far.toFixed(1)} px`);
     // Call: the pet walks back (around walls), it never jumps; recorded frame by frame on Mia's page
-    const back = read(mia, ({ id, plugin }) => new Promise((resolve) => {
-      let prev = null, maxJump = 0, frames = 0;
+    const back = read(mia, ({ id, plugin }: { id: number; plugin: string }) => new Promise<{ maxJump: number; frames: number; mode: string | undefined }>((resolve) => {
+      let prev: Tile | null = null, maxJump = 0, frames = 0;
       const t0 = performance.now();
-      const tick = (now) => {
-        const c = window.__hq.session.plugins.debug(plugin).find((x) => x.player === id);
+      const tick = (now: number) => {
+        const c = window.__hq.session.plugins!.debug(plugin)!.find((x) => x.player === id);
         if (c && c.visible) {
           if (prev) maxJump = Math.max(maxJump, Math.hypot(c.x - prev.x, c.y - prev.y));
           prev = { x: c.x, y: c.y };
@@ -412,13 +425,13 @@ export async function run(ctx) {
     // ---- the iframe is a sandbox
     const f = pluginFrame(mia);
     const probe = f ? await f.evaluate(() => {
-      const tries = {};
-      const attempt = (k, fn) => { try { tries[k] = fn() ?? "undefined"; } catch (e) { tries[k] = "threw " + e.name; } };
+      const tries: Record<string, string> = {};
+      const attempt = (k: string, fn: () => string) => { try { tries[k] = fn() ?? "undefined"; } catch (e) { tries[k] = "threw " + (e as Error).name; } };
       attempt("parentDocument", () => String(window.parent.document.title));
       attempt("parentHQ", () => typeof window.parent.__hq);
       attempt("cookie", () => document.cookie);
       attempt("storage", () => String(localStorage.length));
-      attempt("hq", () => typeof window.hq);
+      attempt("hq", () => typeof (window as unknown as PluginWindow).hq);
       return tries;
     }) : null;
     // a request the plugin sends to the office carries no session cookie (no cross-site request forgery)
@@ -440,18 +453,18 @@ export async function run(ctx) {
     await setEnabled(admin, true);
     await waitFor(async () => (await frames(mia)) === 1 && (await creatureOf(mia, rem.id))?.visible, { what: "plugin back on Mia's page" });
     // a plugin sending far more than the server accepts never gets its member disconnected
-    await pluginFrame(mia).evaluate(() => { for (let i = 0; i < 300; i++) window.hq.send({ t: "flood", i }); });
-    const conns = await read(mia, () => new Promise((resolve) => {
-      const seen = new Set();
+    await pluginFrame(mia)!.evaluate(() => { for (let i = 0; i < 300; i++) (window as unknown as PluginWindow).hq.send({ t: "flood", i }); });
+    const conns = await read(mia, () => new Promise<string[]>((resolve) => {
+      const seen = new Set<string>();
       const t0 = performance.now();
       const tick = () => { seen.add(window.__hq.state.conn); if (performance.now() - t0 < 3000) setTimeout(tick, 50); else resolve([...seen]); };
       tick();
     }));
     check("a flood of plugin messages does not disconnect the member", conns.length === 1 && conns[0] === "open" && (await frames(mia)) === 1, conns.join());
-    await pluginFrame(mia).evaluate(() => { for (let i = 0; i < 600; i++) window.hq.remove("x" + i); });
-    await waitFor(() => read(mia, (p) => window.__hq.session.plugins.stopReasons.get(p) ?? "", PLUGIN), { what: "flooding plugin stopped" });
-    const reason = await read(mia, (p) => window.__hq.session.plugins.stopReasons.get(p), PLUGIN);
-    check("a batch over the limit stops the plugin on that page", /512/.test(reason) && (await frames(mia)) === 0, reason);
+    await pluginFrame(mia)!.evaluate(() => { for (let i = 0; i < 600; i++) (window as unknown as PluginWindow).hq.remove("x" + i); });
+    await waitFor(() => read(mia, (p) => window.__hq.session.plugins!.stopReasons.get(p) ?? "", PLUGIN), { what: "flooding plugin stopped" });
+    const reason = await read(mia, (p) => window.__hq.session.plugins!.stopReasons.get(p), PLUGIN);
+    check("a batch over the limit stops the plugin on that page", /512/.test(reason!) && (await frames(mia)) === 0, reason!);
     check("the other page keeps it", (await frames(rem)) === 1 && !!(await creatureOf(rem, mia.id))?.visible);
     await walkTo(mia, 9 * 16 + 8, 31 * 16 + 8);
     check("the office keeps working on the page that stopped it", await read(mia, () => window.__hq.state.conn === "open"));
@@ -460,24 +473,24 @@ export async function run(ctx) {
 
     // ---- a sprite sheet from image data: drawn-sheet (e2e/fixtures) paints its sheet on an OffscreenCanvas
     await fetch(API + "/api/admin/plugins/drawn-sheet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
-    const drawnOf = (u, owner) => read(u, (id) => (window.__hq.session.plugins?.debug("drawn-sheet") ?? []).find((c) => c.player === id && c.visible) ?? null, owner);
+    const drawnOf = (u: User, owner: number) => read(u, (id: number) => (window.__hq.session.plugins?.debug("drawn-sheet") ?? []).find((c) => c.player === id && c.visible) ?? null, owner);
     await waitFor(async () => (await drawnOf(mia, rem.id)) && (await drawnOf(rem, mia.id)), { timeout: 15000, what: "the drawn sprites" });
     check("a sheet the plugin drew and handed over as image data is drawn, following its member, on every page", true);
-    check("image data that is not a picture is refused as an invalid sheet, and the plugin goes on", await read(mia, () => !window.__hq.session.plugins.stopReasons.get("drawn-sheet") && !!document.querySelector('iframe.plugin-frame[data-plugin="drawn-sheet"]')));
-    await waitFor(() => mia.page.evaluate(() => { const b = document.querySelector('.side .tabs button[aria-label="Plugins"]'); if (b && b.getAttribute("aria-selected") !== "true") b.click(); return !!b; }), { what: "Plugins tab" });
+    check("image data that is not a picture is refused as an invalid sheet, and the plugin goes on", await read(mia, () => !window.__hq.session.plugins!.stopReasons.get("drawn-sheet") && !!document.querySelector('iframe.plugin-frame[data-plugin="drawn-sheet"]')));
+    await waitFor(() => mia.page.evaluate(() => { const b = document.querySelector<HTMLElement>('.side .tabs button[aria-label="Plugins"]'); if (b && b.getAttribute("aria-selected") !== "true") b.click(); return !!b; }), { what: "Plugins tab" });
     await waitFor(() => click(mia, ".plugins-panel button", "Drawn sheet"), { what: "Drawn sheet entry" });
     const previewDrawn = await waitFor(() => read(mia, () => {
-      const c = document.querySelector('.modal.plugin-modal canvas.plugin-sprite');
+      const c = document.querySelector<HTMLCanvasElement>('.modal.plugin-modal canvas.plugin-sprite');
       if (!c) return false;
-      const px = c.getContext("2d").getImageData(8, 8, 1, 1).data;
+      const px = c.getContext("2d")!.getImageData(8, 8, 1, 1).data;
       return px[3] > 0;
     }), { what: "the preview" }).catch(() => false);
     check("the modal previews a cell of that sheet (hq.ui.sprite with sheet)", previewDrawn);
     await mia.page.keyboard.press("Escape");
     // what its iframe may fetch: its own folder and the hosts its manifest declares, nothing else
-    const drawnFrame = await (await mia.page.$('iframe.plugin-frame[data-plugin="drawn-sheet"]')).contentFrame();
-    const blocked = await drawnFrame.evaluate(() => new Promise((resolve) => {
-      const seen = [];
+    const drawnFrame = await (await mia.page.$('iframe.plugin-frame[data-plugin="drawn-sheet"]'))!.contentFrame();
+    const blocked = await drawnFrame!.evaluate(() => new Promise<string[]>((resolve) => {
+      const seen: string[] = [];
       document.addEventListener("securitypolicyviolation", (e) => seen.push(e.blockedURI));
       fetch("https://undeclared.example.net/sheet.png").catch(() => {});
       fetch("https://images.invalid/sheet.png").catch(() => {}); // declared; .invalid never resolves: no network
@@ -489,10 +502,10 @@ export async function run(ctx) {
 
     // ---- a map object the plugin draws itself (ui-demo's orb: no sprite, "dynamic": true), placed
     // before the plugin starts, on open floor beside Mia
-    const adminMap = () => fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
-    const putMap = (m) => fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
+    const adminMap = () => fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json() as Promise<AdminMap>);
+    const putMap = (m: AdminMap) => fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
     const ORB = { x: 10, y: 31 };
-    const setOrb = async (at) => {
+    const setOrb = async (at: Tile | null) => {
       const m = await adminMap();
       m.props = m.props.filter((p) => p.t !== "ui-demo/orb");
       if (at) m.props.push({ t: "ui-demo/orb", x: at.x, y: at.y, w: 1, h: 1 });
@@ -500,33 +513,34 @@ export async function run(ctx) {
     };
     await walkTo(mia, 9 * 16 + 8, 31 * 16 + 8);
     check("an administrator places the plugin's orb on the map while the plugin is off (map API)", await setOrb(ORB));
-    await waitFor(() => read(mia, () => window.__hq.view.map.props.some((p) => p.t === "ui-demo/orb")), { what: "the orb in Mia's map" });
+    await waitFor(() => read(mia, () => window.__hq.view.map!.props.some((p) => p.t === "ui-demo/orb")), { what: "the orb in Mia's map" });
 
     // ---- every anchor, the modal widgets and app tokens, with the suite's test plugin (e2e/fixtures/plugins/installed/ui-demo)
     await setEnabled(admin, true, "UI demo", "ui-demo");
     // what the orb's callbacks saw, read inside ui-demo's iframe; and its sprite, which the plugin spawned
-    const demoFrame = async (u) => (await u.page.$('iframe.plugin-frame[data-plugin="ui-demo"]'))?.contentFrame();
-    const objs = async (u) => (await demoFrame(u))?.evaluate(() => JSON.parse(JSON.stringify(window.__objs ?? null))).catch(() => null);
-    const orbKey = (at) => `orb@${at.x},${at.y}`;
-    const orbSprite = (u, at) => read(u, (id) => (window.__hq.session.plugins?.debug("ui-demo") ?? []).find((c) => c.id === id) ?? null, orbKey(at));
-    const placed = (at) => ({ kind: "orb", x: at.x, y: at.y, w: 1, h: 1, px: at.x * 16, py: at.y * 16 });
-    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    await waitFor(async () => (await objs(mia))?.init.length > 0, { timeout: 15000, what: "the orb's init" });
+    const demoFrame = async (u: User) => (await u.page.$('iframe.plugin-frame[data-plugin="ui-demo"]'))?.contentFrame();
+    const objs = async (u: User) => (await demoFrame(u))?.evaluate(() => JSON.parse(JSON.stringify((window as unknown as { __objs?: Objs }).__objs ?? null)) as Objs | null).catch(() => null);
+    const orbKey = (at: Tile) => `orb@${at.x},${at.y}`;
+    const orbSprite = (u: User, at: Tile) => read(u, (id: string) => (window.__hq.session.plugins?.debug("ui-demo") ?? []).find((c) => c.id === id) ?? null, orbKey(at));
+    const placed = (at: Tile) => ({ kind: "orb", x: at.x, y: at.y, w: 1, h: 1, px: at.x * 16, py: at.y * 16 });
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    await waitFor(async () => (await objs(mia))?.init.length as number > 0, { timeout: 15000, what: "the orb's init" });
     await sleep(500);
-    const o1 = await objs(mia);
+    const o1 = (await objs(mia))!;
     check("on start the plugin gets one onObjectInit for the orb already placed, with tiles and world pixels", same(o1.init, [placed(ORB)]) && o1.destroy.length === 0, JSON.stringify(o1));
-    const u0 = (await objs(mia)).updates[orbKey(ORB)] ?? 0;
+    const u0 = (await objs(mia))!.updates[orbKey(ORB)] ?? 0;
     await sleep(2000);
-    const u1 = (await objs(mia)).updates[orbKey(ORB)] ?? 0;
+    const u1 = (await objs(mia))!.updates[orbKey(ORB)] ?? 0;
     check("a dynamic object gets onObjectUpdate about 10 times a second", u1 - u0 >= 12 && u1 - u0 <= 24, `${u1 - u0} in 2 s`);
     const spr = await waitFor(() => orbSprite(mia, ORB), { what: "the orb's sprite" });
-    check("the sprite the plugin spawned for it stands on the object (bottom centre of its tile)", spr.visible && spr.x === ORB.x * 16 + 8 && spr.y === ORB.y * 16 + 16, JSON.stringify(spr));
-    const anims = await read(mia, (id) => new Promise((resolve) => {
-      const seen = new Set();
+    check("the sprite the plugin spawned for it stands on the object (bottom centre of its tile)", spr!.visible && spr!.x === ORB.x * 16 + 8 && spr!.y === ORB.y * 16 + 16, JSON.stringify(spr));
+    const anims = await read(mia, (id: string) => new Promise<(string | null)[]>((resolve) => {
+      const seen = new Set<string | null>();
       const t0 = performance.now();
       const tick = () => {
         const c = (window.__hq.session.plugins?.debug("ui-demo") ?? []).find((x) => x.id === id);
         if (c) seen.add(c.anim);
+        // oxlint-disable-next-line typescript/require-array-sort-compare -- kept as written (typing only): the default order sorts the frame names "a" and "b"
         if (performance.now() - t0 < 1500) setTimeout(tick, 50); else resolve([...seen].sort());
       };
       tick();
@@ -543,18 +557,18 @@ export async function run(ctx) {
     await waitFor(async () => !(await admin.page.$(".editor")), { what: "editor closed" });
     // removed from the map, put back, moved
     await setOrb(null);
-    await waitFor(async () => (await objs(mia))?.destroy.length > 0, { what: "the orb's destroy" });
+    await waitFor(async () => (await objs(mia))?.destroy.length as number > 0, { what: "the orb's destroy" });
     await waitFor(async () => !(await orbSprite(mia, ORB)), { what: "orb sprite removed" });
-    const o2 = await objs(mia);
+    const o2 = (await objs(mia))!;
     await sleep(500);
-    check("removed from the map: one onObjectDestroy, its sprite goes and its updates stop", same(o2.destroy, [placed(ORB)]) && (await objs(mia)).updates[orbKey(ORB)] === o2.updates[orbKey(ORB)], JSON.stringify(o2.destroy));
+    check("removed from the map: one onObjectDestroy, its sprite goes and its updates stop", same(o2.destroy, [placed(ORB)]) && (await objs(mia))!.updates[orbKey(ORB)] === o2.updates[orbKey(ORB)], JSON.stringify(o2.destroy));
     await setOrb(ORB);
     await waitFor(async () => (await objs(mia))?.init.length === 2 && (await orbSprite(mia, ORB))?.visible, { what: "the orb back" });
     check("put back: onObjectInit again, and the plugin draws it again", true);
     const MOVED = { x: ORB.x + 1, y: ORB.y };
     await setOrb(MOVED);
     await waitFor(async () => (await objs(mia))?.init.length === 3, { what: "the moved orb's init" });
-    const o3 = await objs(mia);
+    const o3 = (await objs(mia))!;
     const movedSprite = await waitFor(() => orbSprite(mia, MOVED), { what: "moved orb sprite" }).catch(() => null);
     check("moved: a destroy at the old place, then an init at the new one", same(o3.destroy, [placed(ORB), placed(ORB)]) && same(o3.init[2], placed(MOVED)) && !!movedSprite && !(await orbSprite(mia, ORB)), JSON.stringify(o3));
     const boxText = () => read(mia, () => document.querySelector('.plugin-screen[data-plugin="ui-demo"]')?.textContent ?? "");
@@ -567,20 +581,20 @@ export async function run(ctx) {
     await late.ctx.close();
     const anchors = [["topbar", '.topbar [data-anchor="topbar"] .plugin-slot'], ["topright", '.topbar [data-anchor="topright"] .plugin-slot'], ["bottombar", ".bar .plugin-slot"], ["minimap", '.minimap [data-anchor="minimap"] .plugin-slot']];
     for (const [anchor, sel] of anchors) {
-      await waitFor(() => mia.page.evaluate((sel) => { const b = document.querySelector(sel + '[data-plugin="ui-demo"]'); b?.click(); return !!b; }, sel), { what: anchor + " button" });
+      await waitFor(() => mia.page.evaluate((sel) => { const b = document.querySelector<HTMLElement>(sel + '[data-plugin="ui-demo"]'); b?.click(); return !!b; }, sel), { what: anchor + " button" });
       await waitFor(async () => (await boxText()).includes("Last click: " + anchor), { what: "callback of the " + anchor + " button" });
     }
     check("a plugin button at every anchor (top bar, top right, bottom bar, minimap) runs the plugin's callback", true);
     const named = await read(mia, () => [...document.querySelectorAll('.plugin-slot[data-plugin="ui-demo"]')].every((b) => (b.getAttribute("aria-label") || b.textContent).trim().length > 0));
     check("every plugin button has an accessible name, icon-only ones included", named);
-    await waitFor(() => mia.page.evaluate(() => { const b = document.querySelector('.side .tabs button[aria-label="Plugins"]'); if (b && b.getAttribute("aria-selected") !== "true") b.click(); return !!document.querySelector(".plugins-panel"); }), { what: "Plugins tab" });
+    await waitFor(() => mia.page.evaluate(() => { const b = document.querySelector<HTMLElement>('.side .tabs button[aria-label="Plugins"]'); if (b && b.getAttribute("aria-selected") !== "true") b.click(); return !!document.querySelector(".plugins-panel"); }), { what: "Plugins tab" });
     await waitFor(() => click(mia, ".plugins-panel button", "UI demo"), { what: "UI demo entry" });
     await waitFor(() => mia.page.$('.modal.plugin-modal[aria-label="UI demo"] .copy-field input'), { what: "UI demo modal" });
-    check("the copyable text shows its value", (await read(mia, () => document.querySelector(".modal.plugin-modal .copy-field input").value)) === "copied-value-42");
+    check("the copyable text shows its value", (await read(mia, () => document.querySelector<HTMLInputElement>(".modal.plugin-modal .copy-field input")!.value)) === "copied-value-42");
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Create token"), { what: "Create token" });
-    const token = await waitFor(() => read(mia, () => [...document.querySelectorAll(".modal.plugin-modal .app-token input")].map((i) => i.value).find((v) => v.startsWith("hqp_"))), { what: "the new token" });
+    const token = await waitFor(() => read(mia, () => [...document.querySelectorAll<HTMLInputElement>(".modal.plugin-modal .app-token input")].map((i) => i.value).find((v) => v.startsWith("hqp_"))), { what: "the new token" });
     check("Create token shows the token once in a copyable field", !!token && token.length > 40);
-    const post = (tok) => fetch(`${API}/plugins/ui-demo/api/state`, { method: "POST", headers: tok ? { Authorization: "Bearer " + tok } : {}, body: "hp=42" });
+    const post = (tok: string | undefined) => fetch(`${API}/plugins/ui-demo/api/state`, { method: "POST", headers: tok ? { Authorization: "Bearer " + tok } : {}, body: "hp=42" });
     check("an app outside the browser calls the plugin's route with the token", (await post(token)).status === 200);
     await waitFor(async () => (await boxText()).includes("State: hp=42"), { what: "the state on Mia's page" });
     check("what the app sent reaches the member's page", true);
@@ -600,26 +614,26 @@ export async function run(ctx) {
       await waitFor(() => mia.page.$('.modal.plugin-modal[aria-label="UI demo"]'), { what: "UI demo modal" });
     };
     const modalText = () => read(mia, () => document.querySelector(".modal.plugin-modal .plugin-body")?.textContent ?? "");
-    const warnings = [];
+    const warnings: string[] = [];
     mia.page.on("console", (m) => { if (m.type() === "warn") warnings.push(m.text()); });
     await openDemo();
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Echo view"), { what: "Echo view button" });
     await waitFor(async () => (await modalText()).includes("View: hello"), { timeout: 15000, what: "the view's hello" });
-    const viewEl = await mia.page.$('.modal.plugin-modal iframe.plugin-view[data-view="echo"]');
+    const viewEl = (await mia.page.$('.modal.plugin-modal iframe.plugin-view[data-view="echo"]'))!;
     const viewAttrs = await viewEl.evaluate((f) => ({ sandbox: f.getAttribute("sandbox"), title: f.title, height: f.getBoundingClientRect().height }));
     check("the view is an iframe with sandbox=allow-scripts only, titled by its label", viewAttrs.sandbox === "allow-scripts" && viewAttrs.title === "Echo view" && viewAttrs.height > 0, JSON.stringify(viewAttrs));
     check("the page is out of the view's reach (parent.document throws inside it)", (await modalText()).includes("View: hello, page blocked"), await modalText());
-    const view = await viewEl.contentFrame();
-    await view.evaluate(() => { window.__mark = 42; });
+    const view = (await viewEl.contentFrame())!;
+    await view.evaluate(() => { (window as unknown as { __mark: number }).__mark = 42; });
     await view.evaluate(() => hqView.send({ t: "ping", n: 7 }));
     await waitFor(async () => (await view.evaluate(() => document.getElementById("out")?.textContent)) === "pong 7", { what: "pong in the view" });
     check("a message goes view -> client code -> view", true);
     await waitFor(async () => (await modalText()).includes("View: ping 7"), { what: "the modal redrawn after the ping" });
-    check("redrawing the modal keeps the view's iframe and its state", (await viewEl.evaluate((f) => f.isConnected)) && (await view.evaluate(() => window.__mark)) === 42);
+    check("redrawing the modal keeps the view's iframe and its state", (await viewEl.evaluate((f) => f.isConnected)) && (await view.evaluate(() => (window as unknown as { __mark: number }).__mark)) === 42);
     // plugin code posting on its raw port, past the SDK's check: the view gets the page's JSON copy, not the clone
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Raw post"), { what: "Raw post" });
     const rawOut = await waitFor(async () => { const t = await view.evaluate(() => document.getElementById("out")?.textContent ?? ""); return t.startsWith("raw") ? t : null; }, { what: "the raw post in the view" });
-    check("a Map or an ArrayBuffer posted past the SDK reaches the view as {} (the page relays its JSON copy)", rawOut === "raw big={} buf={}", rawOut);
+    check("a Map or an ArrayBuffer posted past the SDK reaches the view as {} (the page relays its JSON copy)", rawOut === "raw big={} buf={}", rawOut!);
     // 100 messages in one second each way: at most 30 go through, and nothing stops
     await view.evaluate(() => { for (let i = 0; i < 100; i++) hqView.send({ t: "flood" }); });
     // each message from the view redraws the modal, and a redraw frees the old buttons' callbacks: a click
@@ -635,7 +649,7 @@ export async function run(ctx) {
     check("100 hq.ui.post in a second: at most 30 reach the view", toView >= 1 && toView <= 30, "got " + toView);
     const dropped = ["from the view", "to the view"].map((dir) => warnings.some((w) => w.includes("view message dropped: more than 30 a second " + dir)));
     check("the dropped messages are reported with a console warning, each way", dropped.every(Boolean), JSON.stringify(warnings.slice(0, 4)));
-    const stillRuns = await read(mia, () => !window.__hq.session.plugins.stopReasons.has("ui-demo") && !!document.querySelector('iframe.plugin-frame[data-plugin="ui-demo"]') && !!document.querySelector("iframe.plugin-view"));
+    const stillRuns = await read(mia, () => !window.__hq.session.plugins!.stopReasons.has("ui-demo") && !!document.querySelector('iframe.plugin-frame[data-plugin="ui-demo"]') && !!document.querySelector("iframe.plugin-view"));
     check("a flooding view or client code is throttled, not stopped: the plugin and its view still run", stillRuns);
     await waitFor(() => click(mia, ".modal.plugin-modal .modal-actions button", "Close"), { what: "Close" });
     await waitFor(async () => (await boxText()).includes("echo closed"), { what: "the echo modal's onClose" });
@@ -645,7 +659,7 @@ export async function run(ctx) {
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Missing view"), { what: "Missing view button" });
     await waitFor(async () => (await modalText()).includes("No view here"), { what: "the Missing modal" });
     await sleep(300);
-    const missing = await read(mia, () => ({ frame: !!document.querySelector("iframe.plugin-view"), modal: !!document.querySelector('.modal.plugin-modal[aria-label="Missing"]'), runs: !window.__hq.session.plugins.stopReasons.has("ui-demo") }));
+    const missing = await read(mia, () => ({ frame: !!document.querySelector("iframe.plugin-view"), modal: !!document.querySelector('.modal.plugin-modal[aria-label="Missing"]'), runs: !window.__hq.session.plugins!.stopReasons.has("ui-demo") }));
     check("a view the manifest does not declare is left out; the modal stays and the plugin runs", !missing.frame && missing.modal && missing.runs, JSON.stringify(missing));
     await waitFor(() => click(mia, ".modal.plugin-modal .modal-actions button", "Close"), { what: "Close" });
 
@@ -655,16 +669,16 @@ export async function run(ctx) {
     check("and the sprites it drew for its objects", (await read(mia, () => window.__hq.session.plugins?.debug("ui-demo") ?? null)) === null);
     // on again: a fresh start gets one init per object still on the map, and no destroy
     await setEnabled(admin, true, "UI demo", "ui-demo");
-    await waitFor(async () => (await objs(mia))?.init.length > 0, { timeout: 15000, what: "init after a restart" });
+    await waitFor(async () => (await objs(mia))?.init.length as number > 0, { timeout: 15000, what: "init after a restart" });
     await waitFor(() => orbSprite(mia, MOVED), { what: "the orb drawn again" });
     await sleep(300);
-    const o4 = await objs(mia);
+    const o4 = (await objs(mia))!;
     check("turned on again, the plugin gets an onObjectInit for the object placed, no destroy, and draws it", same(o4.init, [placed(MOVED)]) && o4.destroy.length === 0, JSON.stringify(o4));
     await setEnabled(admin, false, "UI demo", "ui-demo");
     await setOrb(null); // leave the shared office's map as it was
     // the forged PUT above is refused (401) on purpose; Chrome logs that response as a console error
     // expected on Mia's page: a 401 the test provokes, the fetch blocked by the CSP, and the declared .invalid host not resolving
-    const real = (u) => u.logs.filter((l) => !(u === mia && (/status of 401/.test(l) || /undeclared\.example\.net|images\.invalid|ERR_NAME_NOT_RESOLVED/.test(l))));
+    const real = (u: User) => u.logs.filter((l) => !(u === mia && (/status of 401/.test(l) || /undeclared\.example\.net|images\.invalid|ERR_NAME_NOT_RESOLVED/.test(l))));
     for (const u of [admin, mia, rem]) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
     await Promise.all([admin, mia, rem].map((u) => u.ctx.close()));
   } catch (e) {

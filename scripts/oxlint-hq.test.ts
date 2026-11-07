@@ -7,8 +7,8 @@ import plugin from "./oxlint-hq.ts";
 RuleTester.describe = describe;
 RuleTester.it = it;
 const tester = new RuleTester({ languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } } });
-const tsx = (code) => ({ code, filename: "x.tsx" });
-const bad = (code, errors = 1) => ({ ...tsx(code), errors });
+const tsx = (code: string) => ({ code, filename: "x.tsx" });
+const bad = (code: string, errors = 1) => ({ ...tsx(code), errors });
 
 tester.run("effect-cleanup", plugin.rules["effect-cleanup"], {
   valid: [

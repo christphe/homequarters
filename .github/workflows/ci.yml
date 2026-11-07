@@ -40,10 +40,14 @@ jobs:
           cache-dependency-path: |
             web/pnpm-lock.yaml
             site/pnpm-lock.yaml
+            e2e/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: web
       - run: pnpm install --frozen-lockfile
         working-directory: site
+      # the e2e:tsc gate type-checks the browser suite against puppeteer-core's types
+      - run: pnpm install --frozen-lockfile
+        working-directory: e2e
       - name: Records of the gates that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,7 +1,10 @@
 // Reconnection, persistence across a server restart, and hostile/invalid client input.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, lkParticipants, rtpBytes } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, rtpBytes, type RunContext } from "../lib.ts";
 
-export async function run(ctx) {
+/** The interval the flood keeps on the page's window. */
+type FloodWindow = { __flood: ReturnType<typeof setInterval> };
+
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -16,7 +19,7 @@ export async function run(ctx) {
     const p0 = await pos(a);
 
     // --- WebSocket drop: reconnect, same place, conversation and media survive
-    await a.page.evaluate(() => window.__hq.session.socket.ws.close());
+    await a.page.evaluate(() => (window.__hq.session.socket as unknown as { ws: WebSocket }).ws.close());
     await waitFor(() => a.page.evaluate(() => window.__hq.state.conn === "reconnecting"), { timeout: 3000, what: "reconnecting state" });
     await waitFor(() => a.page.evaluate(() => window.__hq.state.conn === "open"), { timeout: 10000, what: "reconnected" });
     await sleep(800);
@@ -32,16 +35,16 @@ export async function run(ctx) {
     // --- Hostile input: speed cheating attempts are inert (server only takes a direction), invalid frames close the socket
     await walkTo(a, 6 * 16 + 8, 20 * 16 + 8);
     const s0 = await pos(a);
-    await a.page.evaluate(() => { const s = window.__hq.session.socket; window.__flood = setInterval(() => { for (let i = 0; i < 20; i++) s.send({ t: "in", s: 5000 + i, x: 1, y: 0, speed: 9999 }); }, 20); });
+    await a.page.evaluate(() => { const s = window.__hq.session.socket!; (window as unknown as FloodWindow).__flood = setInterval(() => { for (let i = 0; i < 20; i++) s.send({ t: "in", s: 5000 + i, x: 1, y: 0, speed: 9999 }); }, 20); });
     await sleep(2000);
-    await a.page.evaluate(() => { clearInterval(window.__flood); window.__hq.session.socket.send({ t: "in", s: 9999, x: 0, y: 0 }); });
+    await a.page.evaluate(() => { clearInterval((window as unknown as FloodWindow).__flood); window.__hq.session.socket!.send({ t: "in", s: 9999, x: 0, y: 0 }); });
     await sleep(600);
     // The flood may trip the rate limit and close the socket; ask again until the reconnected session answers.
     const loc = await waitFor(async () => {
       await a.page.evaluate((id) => window.__hq.session.locate(id), a.id);
       return a.page.evaluate(() => window.__hq.view.locate);
     }, { timeout: 30000, every: 1000, what: "server position" });
-    const dist = Math.hypot(loc.x - s0.x, loc.y - s0.y);
+    const dist = Math.hypot(loc!.x - s0.x, loc!.y - s0.y);
     check("flooding inputs cannot make the server move a player faster than the configured speed", dist <= 72 * 2.9, dist.toFixed(1) + " px in ~2.6s (limit ~209)");
     const d = await joinAs(browser, "Rd" + t); // throwaway: a 2nd socket with the same session replaces the 1st (latest wins)
     const closed = await d.page.evaluate(async () => {
@@ -52,7 +55,7 @@ export async function run(ctx) {
       return Promise.race([done, new Promise((r) => setTimeout(() => r("open"), 3000))]);
     });
     check("oversized WebSocket frames close the connection", closed === 1009, "close code " + closed);
-    const noAuth = await fetch(process.env.HQ_APP.replace("http", "ws").replace("ws://", "http://") + "/ws").then((r) => r.status);
+    const noAuth = await fetch(process.env.HQ_APP!.replace("http", "ws").replace("ws://", "http://") + "/ws").then((r) => r.status);
     check("unauthenticated /ws is rejected", noAuth === 401, "status " + noAuth);
 
     // --- Persistence across a server restart
@@ -66,7 +69,7 @@ export async function run(ctx) {
     await ctx.stopServer();
     await ctx.startServer();
     check("session cookie survives a server restart (sessions are persisted)", cookies.some((k) => k.name === "hq_session"));
-    const c2 = await joinAs(browser, "Rc" + t, { cookie: cookies.find((k) => k.name === "hq_session").value });
+    const c2 = await joinAs(browser, "Rc" + t, { cookie: cookies.find((k) => k.name === "hq_session")!.value });
     const back = await pos(c2);
     check("player re-enters at the persisted position after a restart", Math.hypot(back.x - saved.x, back.y - saved.y) < 3, JSON.stringify([saved, back]));
 

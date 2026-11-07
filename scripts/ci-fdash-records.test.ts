@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pickRuns } from "./ci-fdash-records.ts";
 
-const run = (id, sha, branch = "main", event = "push") => ({ databaseId: id, headSha: sha, headBranch: branch, event });
+const run = (id: number, sha: string, branch = "main", event = "push") => ({ databaseId: id, headSha: sha, headBranch: branch, event });
 
 test("only push runs of main whose commit is on main, newest first", () => {
   const onMain = new Set(["a", "b"]);

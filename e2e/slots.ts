@@ -16,10 +16,10 @@ export const DIR = path.join(os.tmpdir(), "homequarters-e2e-slots");
 // Ports of slot k: server 38180+100k (auth +10), LiveKit 47980+100k with RTC TCP +1 and UDP +2. They
 // stay clear of the dev stack (8080, 7880-7882), of runs on the old default ports (18080 and up) and
 // of the banner (38090).
-export const ports = (k) => ({ server: 38180 + 100 * k, auth: 38190 + 100 * k, lk: 47980 + 100 * k });
+export const ports = (k: number) => ({ server: 38180 + 100 * k, auth: 38190 + 100 * k, lk: 47980 + 100 * k });
 
 /** E2E_MAX_PARALLEL as a positive integer; DEFAULT_MAX when unset or empty; throws on anything else. */
-export function parseMax(v) {
+export function parseMax(v: string | null | undefined) {
   if (v == null || String(v).trim() === "") return DEFAULT_MAX;
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1) throw new Error(`E2E_MAX_PARALLEL wants a positive integer, got ${v}`);
@@ -27,7 +27,10 @@ export function parseMax(v) {
 }
 
 /** The owner recorded in a slot file, or null when the content is not one (a half-written file). */
-export function parseOwner(text) {
+/** What a slot file holds (tryTake writes it; tests may write only some fields). */
+export type Owner = { pid: number; started?: string; cwd?: string; token?: string };
+
+export function parseOwner(text: string): Owner | null {
   try {
     const o = JSON.parse(text);
     return Number.isInteger(o?.pid) && o.pid > 0 ? o : null;
@@ -38,27 +41,27 @@ export function parseOwner(text) {
  * Whether a slot file is stale: its owner's pid is gone. A file without a readable owner is stale only
  * once it is older than `graceMs` (its writer may be between create and write).
  */
-export function isStale(owner, { alive, ageMs, graceMs = 5000 }) {
+export function isStale(owner: Owner | null, { alive, ageMs, graceMs = 5000 }: { alive: (pid: number) => boolean; ageMs: number; graceMs?: number }) {
   if (!owner) return ageMs > graceMs;
   return !alive(owner.pid);
 }
 
-export function pidAlive(pid) {
-  try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
+export function pidAlive(pid: number) {
+  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
-const slotFile = (dir, k) => path.join(dir, `slot-${k}`);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const slotFile = (dir: string, k: number) => path.join(dir, `slot-${k}`);
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-function readOwner(file) {
-  let text, ageMs;
+function readOwner(file: string): { missing: true; owner?: undefined; ageMs?: undefined } | { missing?: undefined; owner: Owner | null; ageMs: number } {
+  let text: string, ageMs: number;
   try { text = fs.readFileSync(file, "utf8"); ageMs = Date.now() - fs.statSync(file).mtimeMs; } catch { return { missing: true }; }
   return { owner: parseOwner(text), ageMs };
 }
 
 // Removes slot k when it is stale. A takeover lock makes the re-read and the unlink one step, so two
 // runs that both saw the stale file cannot remove the fresh one the first of them created.
-function takeOver(dir, k) {
+function takeOver(dir: string, k: number) {
   const file = slotFile(dir, k);
   const lock = file + ".takeover";
   try { fs.closeSync(fs.openSync(lock, "wx")); } catch {
@@ -74,7 +77,7 @@ function takeOver(dir, k) {
   } catch { return false; } finally { try { fs.unlinkSync(lock); } catch {} }
 }
 
-function tryTake(dir, k, me) {
+function tryTake(dir: string, k: number, me: Owner) {
   const file = slotFile(dir, k);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -83,14 +86,14 @@ function tryTake(dir, k, me) {
       fs.closeSync(fd);
       return true;
     } catch (e) {
-      if (e.code !== "EEXIST") throw e;
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       if (!takeOver(dir, k)) return false;
     }
   }
   return false;
 }
 
-function release(dir, k, token) {
+function release(dir: string, k: number, token: string) {
   const file = slotFile(dir, k);
   try { if (parseOwner(fs.readFileSync(file, "utf8"))?.token === token) fs.unlinkSync(file); } catch {}
 }
@@ -101,15 +104,27 @@ function release(dir, k, token) {
  * something else holds. Returns { slots, release }; release() is idempotent and synchronous, so it can
  * run in an exit handler. Throws when n > max: that run would wait forever.
  */
-export async function acquire({ n = 1, max, dir = DIR, portsFree = async () => true, log = console.log, pollMs = 1000, reportMs = 30000 } = {}) {
+/** What acquire() takes: run.ts passes n, max and portsFree; the tests also dir, log, pollMs and reportMs. */
+export type AcquireOptions = {
+  n?: number;
+  max: number;
+  dir?: string;
+  /** true when slot k's ports are free, else why not (shown in the waiting line) */
+  portsFree?: (k: number) => Promise<true | string>;
+  log?: (line: string) => void;
+  pollMs?: number;
+  reportMs?: number;
+};
+
+export async function acquire({ n = 1, max, dir = DIR, portsFree = async () => true, log = console.log, pollMs = 1000, reportMs = 30000 }: AcquireOptions = {} as AcquireOptions): Promise<{ slots: number[]; release: () => void }> {
   if (n > max) throw new Error(`E2E_PARALLELISM=${n} needs ${n} e2e slots but E2E_MAX_PARALLEL is ${max}: lower E2E_PARALLELISM or raise E2E_MAX_PARALLEL (.env)`);
   fs.mkdirSync(dir, { recursive: true });
   const me = { pid: process.pid, started: new Date().toISOString(), cwd: process.cwd(), token: crypto.randomUUID() };
   let lastReport = 0;
   for (;;) {
-    const held = [];
-    const pids = [];
-    const blocked = [];
+    const held: number[] = [];
+    const pids: (number | string)[] = [];
+    const blocked: string[] = [];
     for (let k = 0; k < max && held.length < n; k++) {
       if (!tryTake(dir, k, me)) { pids.push(readOwner(slotFile(dir, k)).owner?.pid ?? "?"); continue; }
       const why = await portsFree(k);

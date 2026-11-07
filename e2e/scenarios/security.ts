@@ -1,12 +1,18 @@
 // Media isolation attacks against the real SFU: replayed, tampered and expired tokens.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, lkParticipants, metrics, LK } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, lkParticipants, metrics, LK, type RunContext } from "../lib.ts";
+import type { JoinInfo } from "../../web/src/media/MediaManager.ts";
 
-const prefixOf = (room) => room.split(".").slice(0, 2).join(".");
+/** The part of livekit-client's Room the attacker uses (the class is taken from the client's own room). */
+type AttackRoom = { connect(url: string, token: string, opts: { autoSubscribe: boolean }): Promise<void>; disconnect(): Promise<void> };
+/** What this scenario puts on window. */
+type AttackWindow = { __stale: JoinInfo; __RoomCtor: (new () => AttackRoom) | null; __attacker?: AttackRoom; __privateRoom: string };
+
+const prefixOf = (room: string) => room.split(".").slice(0, 2).join(".");
 const TTL = Number(process.env.HQ_MEDIA_TOKEN_TTL_SECONDS ?? 20);
 // the SFU's own token check (the one a signal connection runs): 200 accepted, 401 rejected
-const validate = async (token) => (await fetch(LK + "/rtc/validate?access_token=" + encodeURIComponent(token))).status;
+const validate = async (token: string) => (await fetch(LK + "/rtc/validate?access_token=" + encodeURIComponent(token))).status;
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -14,17 +20,18 @@ export async function run(ctx) {
     const a = await joinAs(browser, "Xa" + t);
     const b = await joinAs(browser, "Xb" + t);
     await a.page.evaluate(() => {
+      const w = window as unknown as AttackWindow;
       const m = window.__hq.media;
       const j = m.join.bind(m);
-      m.join = (i) => { window.__stale = i; window.__RoomCtor = null; return j(i).then(() => { window.__RoomCtor = m.room.constructor; }); };
+      m.join = (i: JoinInfo) => { w.__stale = i; w.__RoomCtor = null; return j(i).then(() => { w.__RoomCtor = (m as unknown as { room: { constructor: new () => AttackRoom } }).room.constructor; }); };
     });
     await walkTo(a, 12 * 16 + 8, 30 * 16 + 8);
     await walkTo(b, 12 * 16 + 40, 30 * 16 + 8);
     await Promise.all([a, b].map((u) => u.page.evaluate(() => window.__hq.session.setConsent(true))));
     await waitFor(async () => (await st(a)).conv?.state === "live" && (await st(b)).conv?.state === "live", { timeout: 20000, what: "conversation" });
-    await waitFor(() => a.page.evaluate(() => !!window.__RoomCtor), { what: "room constructor captured" });
+    await waitFor(() => a.page.evaluate(() => !!(window as unknown as AttackWindow).__RoomCtor), { what: "room constructor captured" });
     const room = await a.page.evaluate(() => window.__hq.media.currentRoom);
-    await a.page.evaluate((r) => { window.__privateRoom = r; }, prefixOf(room) + ".r.boardroom");
+    await a.page.evaluate((r) => { (window as unknown as AttackWindow).__privateRoom = r; }, prefixOf(room) + ".r.boardroom");
     const issued = Date.now();
 
     // Everyone leaves the group; the server revokes A's access.
@@ -35,22 +42,23 @@ export async function run(ctx) {
     check("after leaving, the SFU room is empty (server-side revocation)", true);
 
     // Attack 1: replay A's still-valid token from a "hacked" client after leaving the group.
-    const attack = (tokenTweak) => a.page.evaluate(async (tweak) => {
-      const s = window.__stale;
-      const r = new window.__RoomCtor();
-      window.__attacker = r;
+    const attack = (tokenTweak: string) => a.page.evaluate(async (tweak) => {
+      const w = window as unknown as AttackWindow;
+      const s = w.__stale;
+      const r = new w.__RoomCtor!();
+      w.__attacker = r;
       let token = s.token;
       if (tweak === "room") {
         const [h, p, sg] = token.split(".");
         const payload = JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/")));
-        payload.video.room = window.__privateRoom;
+        payload.video.room = w.__privateRoom;
         token = h + "." + btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") + "." + sg;
       }
       try {
         await r.connect(s.url, token, { autoSubscribe: true });
         return "connected";
       } catch (e) {
-        return "rejected: " + String(e?.message ?? e).slice(0, 80);
+        return "rejected: " + String((e as Error | undefined)?.message ?? e).slice(0, 80);
       }
     }, tokenTweak);
 
@@ -62,7 +70,7 @@ export async function run(ctx) {
     // "could not establish pc connection" is an ICE/DTLS setup flake of the headless browser, not a token verdict
     // (a rejected token fails at the signal step). Retry it once so the check measures the token.
     if (/pc connection/.test(replay) || (replay === "connected" && !seen)) {
-      await a.page.evaluate(() => window.__attacker?.disconnect());
+      await a.page.evaluate(() => (window as unknown as AttackWindow).__attacker?.disconnect());
       replay = await attack("none");
       seen = replay === "connected" && await seenInRoom();
     }
@@ -74,7 +82,7 @@ export async function run(ctx) {
     check("the reconciler evicts the replayed connection within seconds", evicted, ((Date.now() - t0) / 1000).toFixed(1) + " s");
     const removals = [before.hq_media_reconcile_removals_total ?? 0, rm.hq_media_reconcile_removals_total];
     check("the eviction is counted (hq_media_reconcile_removals_total)", removals[1] > removals[0], removals.join(" -> "));
-    await a.page.evaluate(() => window.__attacker?.disconnect());
+    await a.page.evaluate(() => (window as unknown as AttackWindow).__attacker?.disconnect());
 
     // Attack 2: change the room inside the token (private room) without the signing secret.
     const tamper = await attack("room");
@@ -85,7 +93,7 @@ export async function run(ctx) {
     // 12 s past its exp was still accepted), so the effective lifetime is TTL + 60 s. Rather than sleep through
     // that here, the runner asks the SFU about the same token after the other scenarios.
     const LEEWAY = 60;
-    const stale = await a.page.evaluate(() => window.__stale.token);
+    const stale = await a.page.evaluate(() => (window as unknown as AttackWindow).__stale.token);
     const fresh = await validate(stale);
     check("the SFU accepts the token while it is valid (control for the deferred expiry check)", fresh === 200, String(fresh));
     ctx.defer("security: expired token", issued + (TTL + LEEWAY + 8) * 1000, async () => {

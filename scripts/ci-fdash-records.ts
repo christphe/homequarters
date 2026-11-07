@@ -7,12 +7,15 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
+/** A run as `gh run list --json databaseId,headSha,headBranch,event` lists it. */
+export type Run = { databaseId: number; headSha: string; headBranch: string; event: string };
+
 /** The ids of the runs to take records from, newest first: push runs of main whose commit is on main. */
-export function pickRuns(runs, isOnMain) {
+export function pickRuns(runs: Run[], isOnMain: (sha: string) => boolean): number[] {
   return runs.filter((r) => r.event === "push" && r.headBranch === "main" && isOnMain(r.headSha)).map((r) => r.databaseId);
 }
 
-function gh(args) {
+function gh(args: string[]): string {
   return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
@@ -24,15 +27,15 @@ function main() {
     return 2;
   }
   fs.mkdirSync(".fdash/cache", { recursive: true });
-  let runs = [];
+  let runs: Run[] = [];
   try {
     runs = JSON.parse(gh(["run", "list", "--repo", repo, "--workflow", "ci.yml", "--branch", "main", "--event", "push", "--status", "completed", "--limit", "5", "--json", "databaseId,headSha,headBranch,event"]));
   } catch (e) {
-    console.log("no records from main (cannot list its runs: " + String(e.message).split("\n")[0] + "): every check runs");
+    console.log("no records from main (cannot list its runs: " + String((e as Error).message).split("\n")[0] + "): every check runs");
     return 0;
   }
   // a commit is on main when main is ahead of it or is it
-  const isOnMain = (sha) => {
+  const isOnMain = (sha: string) => {
     try {
       return ["ahead", "identical"].includes(gh(["api", `repos/${repo}/compare/${sha}...main`, "--jq", ".status"]).trim());
     } catch {

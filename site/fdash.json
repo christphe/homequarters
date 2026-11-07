@@ -1,5 +1,21 @@
 {
   "tasks": {
+    "tsc": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "--noEmit"
+        ]
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
     "build": {
       "run": [
         [

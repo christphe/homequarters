@@ -8,23 +8,23 @@ const DIST = path.join(HERE, "dist");
 const ROOT = path.resolve(HERE, "..");
 const SITE = "https://christphe.github.io/homequarters/";
 const BASE = new URL(SITE).pathname; // "/homequarters/"
-const fails = [];
-const fail = (file, msg) => fails.push((file ? path.relative(DIST, file) || file : "") + ": " + msg);
+const fails: string[] = [];
+const fail = (file: string, msg: string) => fails.push((file ? path.relative(DIST, file) || file : "") + ": " + msg);
 
-function walk(dir) {
+function walk(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
 }
 const files = fs.existsSync(DIST) ? walk(DIST) : [];
 const html = files.filter((f) => f.endsWith(".html"));
 if (!html.length) fail(DIST, "no HTML pages; run node build.ts first");
 
-const meta = (src, attr, key) => (new RegExp("<meta " + attr + "=\"" + key + "\" content=\"([^\"]*)\"").exec(src) ?? [])[1];
+const meta = (src: string, attr: string, key: string) => (new RegExp("<meta " + attr + "=\"" + key + "\" content=\"([^\"]*)\"").exec(src) ?? [])[1];
 // URLs use forward slashes on every OS (path.relative gives docs\status\ on Windows)
-const urlOf = (file) => SITE + path.relative(DIST, file).split(path.sep).join("/").replace(/index\.html$/, "");
-const decode = (s) => s.replace(/&quot;/g, "\"").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
-const text = (s) => decode(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+const urlOf = (file: string) => SITE + path.relative(DIST, file).split(path.sep).join("/").replace(/index\.html$/, "");
+const decode = (s: string) => s.replace(/&quot;/g, "\"").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+const text = (s: string) => decode(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
 
-function resolveLocal(from, ref) {
+function resolveLocal(from: string, ref: string): string | null {
   ref = decode(ref).split("#")[0].split("?")[0];
   if (!ref) return null;
   let p;
@@ -36,8 +36,10 @@ function resolveLocal(from, ref) {
   return fs.existsSync(p) ? null : "broken link: " + ref;
 }
 
-const titles = new Map();
-const ld = new Map();
+const titles = new Map<string, string>();
+// The JSON-LD blocks this check reads (what build.ts writes); any other field is ignored.
+type LdBlock = { "@type"?: string; mainEntity?: { name: string; acceptedAnswer?: { text?: string } }[] };
+const ld = new Map<string, { src: string; blocks: LdBlock[]; types: Set<string | undefined> }>();
 for (const f of html) {
   const src = fs.readFileSync(f, "utf8");
   if (meta(src, "property", "og:site_name") !== "Home Quarters") fail(f, "site brand must be Home Quarters");
@@ -48,7 +50,7 @@ for (const f of html) {
   else titles.set(title, path.relative(DIST, f));
   const desc = decode(meta(src, "name", "description") ?? "");
   if (desc.length < 50 || desc.length > 160) fail(f, "description length " + desc.length + " (want 50-160): " + desc);
-  if (/\]\(|[*\x60\[\]]/.test(desc)) fail(f, "Markdown syntax in description: " + desc);
+  if (/\]\(|[*\x60[\]]/.test(desc)) fail(f, "Markdown syntax in description: " + desc);
   const canonical = (/<link rel="canonical" href="([^"]+)"/.exec(src) ?? [])[1];
   if (!is404) {
     if (canonical !== urlOf(f)) fail(f, "canonical " + canonical + " != " + urlOf(f));
@@ -78,8 +80,8 @@ for (const f of html) {
   for (const m of src.matchAll(/href="#([^"]+)"/g)) if (!src.includes("id=\"" + decode(m[1]) + "\"")) fail(f, "broken same-page anchor: #" + m[1]);
   if (/&amp;(quot|amp|lt|gt|#\d+|#x[0-9a-f]+);/i.test(src)) fail(f, "double-escaped entity (shows as &quot; etc.)");
   if (is404 && src.includes("aria-current")) fail(f, "404 page marks a nav item as current");
-  const blocks = [...src.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => {
-    try { const v = JSON.parse(m[1]); return Array.isArray(v) ? v : [v]; } catch (e) { fail(f, "JSON-LD does not parse: " + e.message); return []; }
+  const blocks: LdBlock[] = [...src.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => {
+    try { const v = JSON.parse(m[1]); return Array.isArray(v) ? v : [v]; } catch (e) { fail(f, "JSON-LD does not parse: " + (e as Error).message); return []; }
   });
   ld.set(f, { src, blocks, types: new Set(blocks.map((b) => b["@type"])) });
   for (const u of JSON.stringify(blocks).match(/https:\/\/[^"]+/g) ?? []) if (u.startsWith(SITE)) { const err = resolveLocal(f, u); if (err) fail(f, "JSON-LD " + err); }
@@ -129,7 +131,7 @@ for (const f of [full, llms, ...files.filter((x) => x.endsWith(".md"))]) {
 }
 const searchFile = path.join(DIST, "search-index.json");
 if (!fs.existsSync(searchFile)) fail(searchFile, "missing");
-else for (const e of JSON.parse(fs.readFileSync(searchFile, "utf8"))) {
+else for (const e of JSON.parse(fs.readFileSync(searchFile, "utf8")) as { u: string; h: string[] }[]) {
   const err = resolveLocal(path.join(DIST, "index.html"), e.u || "./");
   if (err) fail(searchFile, err);
   if (e.h.some((h) => /&(quot|amp|lt|gt|#\d+);/.test(h))) fail(searchFile, "escaped entity in headings of " + e.u);

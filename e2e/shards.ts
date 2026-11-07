@@ -6,7 +6,7 @@ export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social
 
 // Seconds per scenario, measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
 // scenario grows; a scenario missing here counts as UNKNOWN seconds.
-export const DURATIONS = {
+export const DURATIONS: Record<string, number> = {
   proximity: 39, consent: 43, rooms: 110, access: 1, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
   security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
   update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
@@ -23,10 +23,11 @@ export const UNKNOWN = 60;
  * shard (lowest index on a tie). Every scenario of `all` lands in exactly one shard, and each shard keeps
  * the order of `all`. The deferred checks a scenario registers run in the shard that runs it.
  */
-export function shard(all, i, n) {
+export function shard(all: readonly string[], i: number, n: number): string[] {
   if (!Number.isInteger(n) || n < 1 || !Number.isInteger(i) || i < 1 || i > n) throw new Error(`bad shard ${i}/${n}`);
+  // oxlint-disable-next-line unicorn/no-new-array -- n is the length (a positive integer, checked above)
   const load = new Array(n).fill(0);
-  const owner = new Map();
+  const owner = new Map<string, number>();
   const longestFirst = all.map((name, at) => ({ name, at, s: DURATIONS[name] ?? UNKNOWN })).sort((a, b) => b.s - a.s || a.at - b.at);
   for (const { name, s } of longestFirst) {
     let k = 0;
@@ -38,7 +39,7 @@ export function shard(all, i, n) {
 }
 
 /** Parses "i/n" (1-based); throws on anything else. */
-export function parseShard(spec) {
+export function parseShard(spec: string | null | undefined) {
   const m = /^(\d+)\/(\d+)$/.exec(spec ?? "");
   if (!m) throw new Error(`--shard wants i/n, got ${spec}`);
   const i = Number(m[1]), n = Number(m[2]);
@@ -48,6 +49,6 @@ export function parseShard(spec) {
 
 /** How many shards to run for `count` scenarios when `requested` were asked for: never more than there are
  * scenarios (a shard without one would hold an e2e slot and start a LiveKit for nothing), at least one. */
-export function shardsFor(requested, count) {
+export function shardsFor(requested: number, count: number) {
   return Math.max(1, Math.min(Number.isInteger(requested) ? requested : 1, count));
 }

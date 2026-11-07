@@ -10,69 +10,82 @@
 // side (who may act, restarts, game hooks such as Old Maid's count, a game turned off and on) in
 // server/internal/plugin/cards_test.go and oldmaid_test.go. This scenario keeps what needs the browser: real
 // controls, drags and the keyboard, what each page draws, sync between pages, a game's own card sheet.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type RunContext, type User } from "../lib.ts";
+import type { CDPSession, ClickOptions, ElementHandle, Frame, MouseClickOptions } from "puppeteer-core";
 import { CARD_W, CARD_H } from "../../plugins/bundled/hq-cards/public/art.ts";
 import { FX, FY, NARROW, GRID, CASCADE, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
+import type { ToServer } from "../../plugins/bundled/hq-cards/public/messages.ts";
+
+/** A member of this scenario: the plugin frames their page sent (countFrames), its CDP session, where they stand to play. */
+type Player = User & { sent: ToServer[]; cdp?: CDPSession; spot?: { x: number; y: number } };
+/** A point of the table view, in view units. */
+type Point = { x: number; y: number };
+/** A card as the table view drew it (window.__drawn in public/view.ts), in canvas pixels. */
+type DrawnCard = { c: number; up: boolean; x: number; y: number; w: number; where: "hand" | "loose" | "pile" | "seat" | "look" | "pick" };
+/** What the table view publishes for tests (publish() in public/view.ts). */
+type Drawn = { cards: DrawnCard[]; scale: number; layout: "narrow" | "wide"; font: number; seat: number | null; sheet: "loaded" | "loading" | null; log: string[] };
+/** The admin map as the scenario edits it: only the props are touched. */
+type AdminMap = { props: { t: string; x: number; y: number; w: number; h: number }[] };
 
 const PLUGIN = "hq-cards";
 const T = 16;
 const DECK = { x: 13, y: 22 }; // bottom row of the social area's 4x2 table at (12, 21), as the chess scenario
 const MODAL = '.modal.plugin-modal[aria-label="Cards"]';
 
-const admin = (ctx, method, path, body) =>
+const admin = (ctx: RunContext, method: string, path: string, body?: object) =>
   fetch(API + path, { method, headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: body && JSON.stringify(body) });
-const setPlugin = (ctx, name, enabled) => admin(ctx, "PUT", "/api/admin/plugins/" + name, { enabled });
-const installed = async (ctx) => (await (await admin(ctx, "GET", "/api/admin/plugins")).json()).map((p) => p.name);
-async function setDecks(ctx, at) {
-  const m = await (await admin(ctx, "GET", "/api/admin/map")).json();
+const setPlugin = (ctx: RunContext, name: string, enabled: boolean) => admin(ctx, "PUT", "/api/admin/plugins/" + name, { enabled });
+const installed = async (ctx: RunContext) => ((await (await admin(ctx, "GET", "/api/admin/plugins")).json()) as { name: string }[]).map((p) => p.name);
+async function setDecks(ctx: RunContext, at: { x: number; y: number }[]) {
+  const m = (await (await admin(ctx, "GET", "/api/admin/map")).json()) as AdminMap;
   m.props = m.props.filter((p) => p.t !== PLUGIN + "/deck");
   for (const d of at) m.props.push({ t: PLUGIN + "/deck", x: d.x, y: d.y, w: 1, h: 1 });
   return (await admin(ctx, "PUT", "/api/map", m)).ok;
 }
 
-const read = (u, fn, arg) => u.page.evaluate(fn, arg);
-async function viewFrame(u) {
+const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg) as Promise<Awaited<R>>;
+async function viewFrame(u: User): Promise<Frame | null> {
   const el = await u.page.$(MODAL + ' iframe.plugin-view[data-view="table"]');
   return el ? el.contentFrame() : null;
 }
 /** What the page's table view drew, its seat, and its log. */
-async function drawn(u) {
+async function drawn(u: User): Promise<Drawn | null> {
   const f = await viewFrame(u);
-  return f ? f.evaluate(() => window.__drawn ?? null) : null;
+  return f ? f.evaluate(() => (window as unknown as { __drawn?: Drawn }).__drawn ?? null) : null;
 }
-const handOf = async (u) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "hand");
-const looseOf = async (u) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "loose");
-const logOf = async (u) => (await drawn(u))?.log ?? [];
+const handOf = async (u: User) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "hand");
+const looseOf = async (u: User) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "loose");
+const logOf = async (u: User) => (await drawn(u))?.log ?? [];
 
 /** The window's controls, wherever they are: its own buttons and texts (the choice of a game, Close) and,
  * with a game, the controls of the table view's panel. */
-const modal = async (u) => {
-  const own = await read(u, (sel) => {
+const modal = async (u: User) => {
+  const own = await read(u, (sel: string) => {
     const m = document.querySelector(sel);
     if (!m) return null;
     return {
-      buttons: [...m.querySelectorAll(".plugin-body button, .modal-actions button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-      texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent.trim()),
+      buttons: [...m.querySelectorAll<HTMLButtonElement>(".plugin-body button, .modal-actions button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+      texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent!.trim()),
     };
   }, MODAL);
   if (!own) return null;
   const f = await viewFrame(u);
   const inView = f ? await f.evaluate(() => ({
-    buttons: [...document.querySelectorAll(".controls button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-    texts: [...document.querySelectorAll(".controls p")].map((p) => p.textContent.trim()),
+    buttons: [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+    texts: [...document.querySelectorAll(".controls p")].map((p) => p.textContent!.trim()),
   })).catch(() => null) : null;
   return { buttons: [...own.buttons, ...(inView?.buttons ?? [])], texts: [...own.texts, ...(inView?.texts ?? [])] };
 };
-const hasButton = async (u, text) => !!(await modal(u))?.buttons.find((b) => b.text === text && !b.disabled);
+const hasButton = async (u: User, text: string) => !!(await modal(u))?.buttons.find((b) => b.text === text && !b.disabled);
 /** Clicks a control by its text with the real mouse: in the window, or in the table view's panel. The panel
  * is rebuilt when the table changes: a button found just before may be gone, so it is looked for again. */
-async function press(u, text) {
+async function press(u: User, text: string): Promise<void> {
   for (let tries = 0; ; tries++) {
     try {
-      for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return await h.click();
+      for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return await h.click();
       const f = await viewFrame(u);
-      if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) {
+      if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) {
         await h.evaluate((b) => b.scrollIntoView({ block: "center" }));
         return await h.click();
       }
@@ -83,39 +96,39 @@ async function press(u, text) {
     }
   }
 }
-async function pressInView(u, text) {
-  const f = await viewFrame(u);
-  for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
+async function pressInView(u: User, text: string) {
+  const f = (await viewFrame(u))!;
+  for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return h.click();
   throw new Error("no view button " + text + " for " + u.name);
 }
 /** Types into a field of the table view's panel, found by its label. */
-async function type(u, label, value) {
-  const f = await viewFrame(u);
-  const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent.trim().startsWith(label))?.querySelector("input"), label);
-  await input.click({ clickCount: 3 });
+async function type(u: User, label: string, value: string) {
+  const f = (await viewFrame(u))!;
+  const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent!.trim().startsWith(label))?.querySelector("input"), label) as ElementHandle<HTMLInputElement>;
+  await input.click({ clickCount: 3 } as ClickOptions);
   await input.type(value);
 }
 
 /** Page coordinates of view points (view units), the view scrolled into sight. */
-async function onPage(u, ...pts) {
+async function onPage(u: User, ...pts: Point[]) {
   await u.page.evaluate((sel) => document.querySelector(sel + " iframe.plugin-view")?.scrollIntoView({ block: "center" }), MODAL);
-  const f = await viewFrame(u);
-  const k = (await drawn(u)).scale;
+  const f = (await viewFrame(u))!;
+  const k = (await drawn(u))!.scale;
   await f.evaluate((ys) => {
-    const r = document.querySelector("canvas").getBoundingClientRect();
+    const r = document.querySelector("canvas")!.getBoundingClientRect();
     scrollTo(0, Math.max(0, r.top + scrollY + (Math.min(...ys) + Math.max(...ys)) / 2 - innerHeight / 2));
   }, pts.map((p) => p.y * k));
-  const box = await (await f.$("canvas")).boundingBox();
+  const box = (await (await f.$("canvas"))!.boundingBox())!;
   return pts.map((p) => ({ x: box.x + p.x * k, y: box.y + p.y * k }));
 }
-const centre = (c) => ({ x: c.x + CARD_W / 2, y: c.y + CARD_H / 2 });
-const handAt = async (u, i) => centre(handSpots((await handOf(u)).length)[i]);
-const pileAt = (at) => centre(cardAt(at));
-const feltAt = (x, y) => ({ x: FX + x, y: FY + y });
-const seatAt = (seats, me, seat) => seatSpots(seats, me).find((s) => s.seat === seat);
+const centre = (c: Point) => ({ x: c.x + CARD_W / 2, y: c.y + CARD_H / 2 });
+const handAt = async (u: User, i: number) => centre(handSpots((await handOf(u)).length)[i]);
+const pileAt = (at: [number, number]) => centre(cardAt(at));
+const feltAt = (x: number, y: number) => ({ x: FX + x, y: FY + y });
+const seatAt = (seats: number, me: number, seat: number) => seatSpots(seats, me).find((s) => s.seat === seat)!;
 
 /** A real mouse drag between two view points; the plg frames sent while dragging and in all. */
-async function drag(u, a, b) {
+async function drag(u: Player, a: Point, b: Point) {
   const [from, to] = await onPage(u, a, b);
   const n0 = u.sent.length;
   await u.page.mouse.move(from.x, from.y);
@@ -129,17 +142,17 @@ async function drag(u, a, b) {
   return { during, total: u.sent.length - n0, msgs: u.sent.slice(n0) };
 }
 /** count real clicks at a view point (Puppeteer's clickCount only labels one click: a double click is two). */
-async function click(u, p, count = 1) {
+async function click(u: User, p: Point, count = 1) {
   const [q] = await onPage(u, p);
   for (let i = 0; i < count; i++) {
-    await u.page.mouse.click(q.x, q.y, { clickCount: i + 1 });
+    await u.page.mouse.click(q.x, q.y, { clickCount: i + 1 } as MouseClickOptions);
     if (i + 1 < count) await sleep(60);
   }
   await sleep(150);
 }
 
 /** Counts the plugin frames this page sends on its game socket (u.sent: their payloads). */
-async function countFrames(u) {
+async function countFrames(u: Player) {
   u.sent = [];
   if (u.cdp) return; // one listener per page: a page reloaded keeps its session (a second one would count every frame twice)
   const s = (u.cdp = await u.page.createCDPSession());
@@ -151,26 +164,26 @@ async function countFrames(u) {
     } catch { /* not JSON */ }
   });
 }
-async function within(fn, limit) {
+async function within(fn: () => Promise<unknown>, limit: number) {
   const t0 = Date.now();
   for (;;) {
     let ok = false;
-    try { ok = await fn(); } catch { ok = false; }
+    try { ok = (await fn()) as boolean; } catch { ok = false; }
     if (ok) return Date.now() - t0;
     if (Date.now() - t0 > limit) return -1;
     await sleep(40);
   }
 }
-const nearDeck = (u) => read(u, () => window.__hq.state.nearby?.t === "hq-cards/deck");
+const nearDeck = (u: User) => read(u, () => window.__hq.state.nearby?.t === "hq-cards/deck");
 /** Walks to a spot within reach of the deck, again if a walk stopped short (another avatar in the way). */
-async function goTo(u, x, y) {
+async function goTo(u: Player, x: number, y: number) {
   u.spot = { x, y };
   for (let i = 0; i < 3; i++) {
     await walkTo(u, x, y).catch(() => {});
     if (await waitFor(() => nearDeck(u), { timeout: 3000, what: "near" }).catch(() => false)) return;
   }
 }
-async function openWithX(u) {
+async function openWithX(u: Player) {
   if (!(await nearDeck(u)) && u.spot) await goTo(u, u.spot.x, u.spot.y);
   await waitFor(() => nearDeck(u), { what: u.name + " next to the deck" });
   // X does nothing while a dialog's scrim is still on the page (a window closing): pressed until it opens
@@ -188,20 +201,20 @@ async function openWithX(u) {
   }, { what: u.name + "'s table drawn" });
 }
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
-  const users = [];
+  const users: Player[] = [];
   try {
     const t = String(Date.now() % 10000);
     const games = await installed(ctx);
     const hasLastCard = games.includes("hq-card-lastcard");
     check("an administrator turns hq-cards on (admin API)", (await setPlugin(ctx, PLUGIN, true)).ok);
     check("a deck is placed on a table through the map API", await setDecks(ctx, [DECK]));
-    const ann = await joinAs(browser, "Ann" + t, { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } });
-    const bo = await joinAs(browser, "Bo" + t, { avatar: { sk: 3, hs: 3, hc: 1, sh: 5, pa: 0 } });
+    const ann = await joinAs(browser, "Ann" + t, { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } }) as Player;
+    const bo = await joinAs(browser, "Bo" + t, { avatar: { sk: 3, hs: 3, hc: 1, sh: 5, pa: 0 } }) as Player;
     // Cy has a name of 24 characters, the longest a member can have
-    const cy = await joinAs(browser, "Cyrillia Featherston" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } });
+    const cy = await joinAs(browser, "Cyrillia Featherston" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } }) as Player;
     users.push(ann, bo, cy);
     for (const u of users) await countFrames(u);
     const feet = 23 * T + 8;
@@ -212,7 +225,7 @@ export async function run(ctx) {
       const s = await read(ann, () => window.__hq.view.objSprites.filter((x) => !x.destroyed).map((x) => ({ x: x.x, y: x.y, w: x.texture.width, h: x.texture.height, on: x.visible })));
       return s.find((x) => x.w === 16 && x.x === 13 * 16) ?? null;
     }, { what: "the deck sprite" });
-    check("1: the deck's sprite is drawn on its tile of the table (16x16)", sprite.on && sprite.y === (DECK.y + 1) * T, JSON.stringify(sprite));
+    check("1: the deck's sprite is drawn on its tile of the table (16x16)", sprite!.on && sprite!.y === (DECK.y + 1) * T, JSON.stringify(sprite));
     const hint = await waitFor(() => read(ann, () => document.querySelector(".interaction-hint")?.textContent ?? ""), { what: "the X hint" });
     check("1: standing beside it, the X hint names it", hint.includes("Card deck") && hint.includes("X"), JSON.stringify(hint));
 
@@ -225,8 +238,8 @@ export async function run(ctx) {
       const r = b.getBoundingClientRect();
       return { top: r.top, bottom: r.bottom, H: innerHeight };
     }, MODAL), { what: "Bo's choice" });
-    check("UX: at 800x450 the game choice shows when the window opens", choiceSeen.top >= 0 && choiceSeen.bottom <= choiceSeen.H, JSON.stringify(choiceSeen));
-    const only = await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table") && (await modal(ann)), { what: "the game choice" });
+    check("UX: at 800x450 the game choice shows when the window opens", choiceSeen!.top >= 0 && choiceSeen!.bottom <= choiceSeen!.H, JSON.stringify(choiceSeen));
+    const only = await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table") && (await modal(ann)), { what: "the game choice" }) as NonNullable<Awaited<ReturnType<typeof modal>>>;
     check("2: a new table offers Free table, and no game while none runs", only.buttons.some((b) => b.text === "Free table") && !only.buttons.some((b) => b.text === "Old Maid"), JSON.stringify(only.buttons));
     await setPlugin(ctx, "hq-card-pouilleux", true);
     const listed = await within(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), 5000);
@@ -239,19 +252,19 @@ export async function run(ctx) {
     await press(ann, "Free table");
     await waitFor(async () => hasButton(ann, "Seat 1"), { what: "the free table's seats" });
     await press(ann, "Seat 1");
-    await waitFor(async () => hasButton(bo, "Seat 2") && (await modal(bo)).buttons.some((b) => b.text === "Seat 1: " + ann.name), { what: "Ann seated, on Bo's page" });
+    await waitFor(async () => (hasButton(bo, "Seat 2") as unknown as boolean) && (await modal(bo))!.buttons.some((b) => b.text === "Seat 1: " + ann.name), { what: "Ann seated, on Bo's page" });
     await press(bo, "Seat 2");
-    await waitFor(async () => hasButton(cy, "Seat 3") && (await modal(cy)).buttons.some((b) => b.text === "Seat 2: " + bo.name), { what: "Bo seated" });
+    await waitFor(async () => (hasButton(cy, "Seat 3") as unknown as boolean) && (await modal(cy))!.buttons.some((b) => b.text === "Seat 2: " + bo.name), { what: "Bo seated" });
     await press(cy, "Seat 3");
     await waitFor(async () => (await drawn(cy))?.seat === 2, { what: "Cy seated" });
-    const annSeats = (await modal(ann)).buttons;
+    const annSeats = (await modal(ann))!.buttons;
     // (a seated player cannot take another seat: seatButtons in hq-cards/test/controls.test.ts)
-    check("4: each takes a seat through its button; Ann's shows pressed", annSeats.find((b) => b.text === "Seat 1: " + ann.name)?.pressed, JSON.stringify(annSeats.slice(0, 4)));
+    check("4: each takes a seat through its button; Ann's shows pressed", annSeats.find((b) => b.text === "Seat 1: " + ann.name)?.pressed as boolean, JSON.stringify(annSeats.slice(0, 4)));
     await press(cy, "Close");
-    const away = await within(async () => (await modal(ann)).buttons.some((b) => b.text === `Seat 3: ${cy.name} (away)`), 1000);
+    const away = await within(async () => (await modal(ann))!.buttons.some((b) => b.text === `Seat 3: ${cy.name} (away)`), 1000);
     check("4: Cy closes the window: Ann sees Cy away within 1 s, the seat kept", away >= 0, `${away} ms`);
     await openWithX(cy);
-    const back = await within(async () => (await modal(ann)).buttons.some((b) => b.text === `Seat 3: ${cy.name}`) && (await drawn(cy))?.seat === 2, 2000);
+    const back = await within(async () => (await modal(ann))!.buttons.some((b) => b.text === `Seat 3: ${cy.name}`) && (await drawn(cy))?.seat === 2, 2000);
     check("4: Cy opens it again and is back in the seat", back >= 0, `${back} ms`);
 
     // ---- criterion 5: deal, then drags to the felt, a pile and a player
@@ -259,21 +272,21 @@ export async function run(ctx) {
     await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7 && (await handOf(cy)).length === 7, { what: "7 cards each" });
     const alive = await Promise.all(users.map((u) => read(u, () => Object.keys(window.__hq.session.plugins?.stopReasons ?? {}).length === 0 || !("hq-cards" in (window.__hq.session.plugins?.stopReasons ?? {})))));
     check("UX: with a 24-character name at the table, the Cards plugin keeps running on every page after the deal", alive.every(Boolean) && (await Promise.all(users.map((u) => viewFrame(u)))).every(Boolean), JSON.stringify(alive));
-    const fits = await (await viewFrame(bo)).evaluate(() => {
-      const c = document.querySelector("canvas").getBoundingClientRect(), b = document.querySelector(".bar").getBoundingClientRect();
+    const fits = await (await viewFrame(bo))!.evaluate(() => {
+      const c = document.querySelector("canvas")!.getBoundingClientRect(), b = document.querySelector(".bar")!.getBoundingClientRect();
       return { canvasTop: c.top, canvasBottom: c.bottom, barBottom: b.bottom, H: innerHeight, scroll: scrollY };
     });
     check("UX: at 800x450 the whole table, my hand included, and the buttons under it fit Bo's view without scrolling", fits.canvasTop >= 0 && fits.barBottom <= fits.H + 1, JSON.stringify(fits));
     check("5: Deal 7 each gives every seated player 7 cards, shown face up in their own hand only",
-      (await handOf(ann)).every((c) => c.up) && ((await drawn(ann)).cards.filter((c) => c.where === "loose")).length === 0);
+      (await handOf(ann)).every((c) => c.up) && ((await drawn(ann))!.cards.filter((c) => c.where === "loose")).length === 0);
     const first = (await handOf(ann))[0];
-    const handAfter = async (n) => waitFor(async () => (await handOf(ann)).length === n, { what: "Ann's hand of " + n });
+    const handAfter = async (n: number) => waitFor(async () => (await handOf(ann)).length === n, { what: "Ann's hand of " + n });
     let d = await drag(ann, await handAt(ann, 0), feltAt(60, 120));
     const seen = await Promise.all([bo, cy].map((u) => within(async () => (await looseOf(u)).some((c) => c.c === first.c && c.up), 1000)));
     check("5: Ann drags her first card onto the felt: Bo and Cy see it face up within 1 s", seen.every((ms) => ms >= 0), JSON.stringify(seen));
     check("12: nothing sent while dragging, one plg frame for the drop", d.during === 0 && d.total === 1 && d.msgs[0].t === "place", JSON.stringify(d));
     await handAfter(6);
-    const stock = { at: FREE.piles[0].at }; // the free table's stock, in the middle of the felt
+    const stock = { at: FREE.piles![0].at }; // the free table's stock, in the middle of the felt
     d = await drag(ann, await handAt(ann, 0), pileAt(stock.at));
     const onStock = await within(async () => (await logOf(bo)).some((l) => l === `${ann.name} put a card on Stock`), 1000);
     check("5: a card dragged onto the Stock pile goes on it (face down, as the pile) and is logged", onStock >= 0 && d.total === 1, `${onStock} ms ` + JSON.stringify({ d, hand: (await handOf(ann)).length, log: (await logOf(bo)).slice(-3), annLog: (await logOf(ann)).slice(-2) }));
@@ -282,8 +295,8 @@ export async function run(ctx) {
     d = await drag(ann, await handAt(ann, 0), boSpot);
     const gave = await within(async () => (await handOf(bo)).length === 8, 1000);
     check("5: a card dragged onto Bo's name goes into Bo's hand", gave >= 0 && (await handOf(ann)).length === 4, `${gave} ms`);
-    const barOf = async (u) => (await viewFrame(u)).evaluate(() => [...document.querySelectorAll(".bar button")].map((b) => b.textContent));
-    const lifted = (await handOf(ann)).some((c, i, a) => c.y !== a[0].y);
+    const barOf = async (u: User) => (await viewFrame(u))!.evaluate(() => [...document.querySelectorAll(".bar button")].map((b) => b.textContent));
+    const lifted = (await handOf(ann)).some((c, _i, a) => c.y !== a[0].y);
     check("UX: after a drag nothing is left selected: no card lifted, no buttons under the table", !lifted && (await barOf(ann)).length === 0, JSON.stringify(await barOf(ann)));
     // select card 0, then card 2, then the button: card 2 is played; twice: two places on the felt
     const before = await handOf(ann);
@@ -334,15 +347,15 @@ export async function run(ctx) {
     await pressInView(ann, "Draw from Stock");
     await waitFor(async () => (await logOf(bo)).includes(`${ann.name} drew a card from Stock`), { what: "draw logged" });
     await pressInView(ann, "Look through Stock");
-    const lookingSeen = await within(async () => (await read(bo, () => 0), (await drawn(bo)).cards.length >= 0) && (await logOf(bo)).includes(`${ann.name} looked at Stock`), 1000);
-    const row = await waitFor(async () => { const r = (await drawn(ann)).cards.filter((c) => c.where === "look"); return r.length > 2 ? r : null; }, { what: "the pile's row" });
-    const k = (await drawn(ann)).scale;
-    const a0 = { x: row[0].x / k + 4, y: row[0].y / k + 10 }, a2 = { x: row[2].x / k + 4, y: row[2].y / k + 10 };
+    const lookingSeen = await within(async () => (await read(bo, () => 0), (await drawn(bo))!.cards.length >= 0) && (await logOf(bo)).includes(`${ann.name} looked at Stock`), 1000);
+    const row = await waitFor(async () => { const r = (await drawn(ann))!.cards.filter((c) => c.where === "look"); return r.length > 2 ? r : null; }, { what: "the pile's row" });
+    const k = (await drawn(ann))!.scale;
+    const a0 = { x: row![0].x / k + 4, y: row![0].y / k + 10 }, a2 = { x: row![2].x / k + 4, y: row![2].y / k + 10 };
     await drag(ann, a0, a2);
-    const moved = (await drawn(ann)).cards.filter((c) => c.where === "look");
+    const moved = (await drawn(ann))!.cards.filter((c) => c.where === "look");
     await pressInView(ann, "Done");
     const reordered = await within(async () => (await logOf(bo)).includes(`${ann.name} reordered Stock`), 1000);
-    check("6: Ann looks through Stock and reorders it: Bo's log says so within 1 s of each", lookingSeen >= 0 && reordered >= 0 && moved[2].c === row[0].c, JSON.stringify({ lookingSeen, reordered }));
+    check("6: Ann looks through Stock and reorders it: Bo's log says so within 1 s of each", lookingSeen >= 0 && reordered >= 0 && moved[2].c === row![0].c, JSON.stringify({ lookingSeen, reordered }));
     // (the log names no card Ann saw alone: the entries of draw and reorderPile and their sentences, cards.test.ts)
 
     // ---- criterion 7: Ann offers her hand to Bo, who picks her third card
@@ -350,36 +363,36 @@ export async function run(ctx) {
     await type(bo, "New pile", "Wa");
     await press(ann, `Offer my hand to ${bo.name}`);
     await waitFor(async () => (await logOf(bo)).includes(`${ann.name} offered their hand to ${bo.name}`), { what: "the offer" });
-    await waitFor(async () => (await (await viewFrame(bo)).evaluate(() => !!document.querySelector(".controls .notice"))), { timeout: 3000, what: "the offer's notice for Bo" });
+    await waitFor(async () => (await (await viewFrame(bo))!.evaluate(() => !!document.querySelector(".controls .notice"))), { timeout: 3000, what: "the offer's notice for Bo" });
     await bo.page.keyboard.type("ste");
-    const typed = await (await viewFrame(bo)).evaluate(() => ({ value: [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent.trim().startsWith("New pile"))?.querySelector("input")?.value, focused: document.activeElement?.tagName }));
+    const typed = await (await viewFrame(bo))!.evaluate(() => ({ value: [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent.trim().startsWith("New pile"))?.querySelector("input")?.value, focused: document.activeElement?.tagName }));
     check("UX: a notice appearing above the controls while Bo types keeps his field and its focus", typed.value === "Waste" && typed.focused === "INPUT", JSON.stringify(typed));
     const annBefore = await handOf(ann);
     await click(bo, seatAt(8, 1, 0));
     await pressInView(bo, `Draw a card from ${ann.name}`).catch(() => {}); // the click on Ann's seat already opened the row
-    const pickRow = await waitFor(async () => { const r = (await drawn(bo)).cards.filter((c) => c.where === "pick"); return r.length === annBefore.length ? r : null; }, { what: "Bo's pick row" });
-    check("7: the hand offered shows to Bo as backs only", pickRow.every((c) => !c.up));
-    const kb = (await drawn(bo)).scale;
-    await click(bo, { x: pickRow[2].x / kb + 4, y: pickRow[2].y / kb + 10 });
+    const pickRow = await waitFor(async () => { const r = (await drawn(bo))!.cards.filter((c) => c.where === "pick"); return r.length === annBefore.length ? r : null; }, { what: "Bo's pick row" });
+    check("7: the hand offered shows to Bo as backs only", pickRow!.every((c) => !c.up));
+    const kb = (await drawn(bo))!.scale;
+    await click(bo, { x: pickRow![2].x / kb + 4, y: pickRow![2].y / kb + 10 });
     const picked = await within(async () => (await logOf(cy)).includes(`${bo.name} drew a card from ${ann.name}'s hand`), 1000);
     const annAfter = await handOf(ann);
     check("7: Bo picks the third card: it leaves Ann's hand, it is logged for everybody", picked >= 0 && annAfter.length === annBefore.length - 1 && !annAfter.some((c) => c.c === annBefore[2].c), `${picked} ms`);
     // (only the player offered a hand may draw from it: seatPick in hq-cards/test/controls.test.ts)
 
     // ---- criterion 13 (keyboard half): a card moved with the keyboard only reaches Bo and is announced
-    const f = await viewFrame(ann);
+    const f = (await viewFrame(ann))!;
     await f.focus("canvas");
-    const said = async (u) => (await viewFrame(u)).evaluate(() => document.querySelector("[aria-live]").textContent);
+    const said = async (u: User) => (await viewFrame(u))!.evaluate(() => document.querySelector("[aria-live]")!.textContent);
     const handN = (await handOf(ann)).length;
     await ann.page.keyboard.press("ArrowLeft");
     await ann.page.keyboard.press("ArrowRight"); // the cursor on my first card
     const sayFirst = await waitFor(async () => (await said(ann)) || null, { timeout: 2000, what: "the live region" }).catch(() => "");
     await ann.page.keyboard.press("Enter");
-    const looseN = (await drawn(ann)).cards.filter((c) => c.where === "loose").length;
+    const looseN = (await drawn(ann))!.cards.filter((c) => c.where === "loose").length;
     for (let i = 0; i < handN + looseN; i++) await ann.page.keyboard.press("ArrowRight"); // to the first pile, Stock
     await ann.page.keyboard.press("Enter");
     const kbd = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} put a card on Stock`, 1000);
-    check("13: with the keyboard only, Ann puts a card on Stock; Bo's log has it within 1 s, Ann's live region spoke", kbd >= 0 && /your hand/.test(sayFirst), JSON.stringify({ kbd, sayFirst }));
+    check("13: with the keyboard only, Ann puts a card on Stock; Bo's log has it within 1 s, Ann's live region spoke", kbd >= 0 && /your hand/.test(sayFirst!), JSON.stringify({ kbd, sayFirst }));
 
     // (the table, its seats and its log survive a server restart: cards_test.go)
 
@@ -387,7 +400,7 @@ export async function run(ctx) {
     await setPlugin(ctx, "hq-card-pouilleux", true);
     await press(ann, "Reset");
     await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), { timeout: 5000, what: "Old Maid offered after the reset" })
-      .catch(async (e) => { throw new Error(e.message + " " + JSON.stringify({ sent: ann.sent.slice(-4), log: (await logOf(ann)).slice(-3), cards: await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => globalThis.__cards?.()).catch(() => "?"), m: await modal(ann) })); });
+      .catch(async (e) => { throw new Error(e.message + " " + JSON.stringify({ sent: ann.sent.slice(-4), log: (await logOf(ann)).slice(-3), cards: await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => (globalThis as unknown as { __cards?: () => unknown }).__cards?.()).catch(() => "?"), m: await modal(ann) })); });
     await press(ann, "Old Maid");
     await waitFor(() => hasButton(ann, "Seat 1"), { what: "Old Maid's seats" });
     await press(ann, "Seat 1");
@@ -395,14 +408,14 @@ export async function run(ctx) {
     await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 free for Bo" });
     // Bo's click straddles a rebuild of his controls (Ann counts between his press and his release): it still lands
     {
-      const f = await viewFrame(bo);
-      const seat2 = await f.evaluateHandle(() => [...document.querySelectorAll(".controls button")].find((b) => b.textContent.trim() === "Seat 2"));
+      const f = (await viewFrame(bo))!;
+      const seat2 = await f.evaluateHandle(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].find((b) => b.textContent!.trim() === "Seat 2")) as ElementHandle<HTMLButtonElement>;
       await seat2.evaluate((b) => b.scrollIntoView({ block: "center" }));
-      const box = await seat2.boundingBox();
+      const box = (await seat2.boundingBox())!;
       await bo.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await bo.page.mouse.down();
       await press(ann, "Count");
-      await waitFor(async () => (await (await viewFrame(bo)).evaluate(() => [...document.querySelectorAll(".controls p")].some((p) => p.textContent.startsWith("Count: ")))), { timeout: 3000, what: "Bo's controls rebuilt by the count" });
+      await waitFor(async () => (await (await viewFrame(bo))!.evaluate(() => [...document.querySelectorAll(".controls p")].some((p) => p.textContent!.startsWith("Count: ")))), { timeout: 3000, what: "Bo's controls rebuilt by the count" });
       await bo.page.mouse.up();
     }
     const straddled = await within(async () => (await drawn(bo))?.seat === 1, 3000);
@@ -450,19 +463,19 @@ export async function run(ctx) {
       await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7, { what: "Last Card dealt" });
       await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
       const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });
-      check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog), lcLog);
+      check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog!), lcLog!);
       // (Last Card's count, through the real host: lastcard_test.go; the Count button and its text: the Old Maid part above)
       // turned off and on with the window open: the page learns of the plugin after the game is back, and the
       // view must still end up drawing the game's own sheet
       await setPlugin(ctx, "hq-card-lastcard", false);
-      const off = await within(async () => { const m = await modal(ann); return m.texts.some((x) => x.startsWith("This game is not available")) && m.buttons.filter((b) => b.text !== "Close").every((b) => b.text === "Reset"); }, 5000);
+      const off = await within(async () => { const m = (await modal(ann))!; return m.texts.some((x) => x.startsWith("This game is not available")) && m.buttons.filter((b) => b.text !== "Close").every((b) => b.text === "Reset"); }, 5000);
       check("10: a game turned off: its table offers only Reset", off >= 0, JSON.stringify(await modal(ann)));
       // the window opened again while the game is off: its view starts without the game's images allowed
       await press(ann, "Close");
       await openWithX(ann);
       await setPlugin(ctx, "hq-card-lastcard", true);
       const again = await within(async () => (await drawn(ann))?.sheet === "loaded" && (await handOf(ann)).length === 6, 20000); // a plugin turned on under load can take seconds to register
-      const inWindow = await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => globalThis.__cards?.()).catch((x) => String(x));
+      const inWindow = await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => (globalThis as unknown as { __cards?: () => unknown }).__cards?.()).catch((x) => String(x));
       check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ inWindow, modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
     } else check("10b: Last Card (hq-card-lastcard is not in this tree yet)", false, "not installed");
 
@@ -473,10 +486,10 @@ export async function run(ctx) {
     await waitFor(() => hasButton(ann, "Seat 1"), { what: "the solitaire's seats" });
     await press(ann, "Seat 1");
     await waitFor(async () => (await drawn(ann))?.seat === 0, { what: "Ann seated alone" });
-    const box = await read(ann, (sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), W: innerWidth, H: innerHeight }; }, MODAL);
+    const box = await read(ann, (sel: string) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), W: innerWidth, H: innerHeight }; }, MODAL);
     check("R1: with a game, the Cards window fills the screen less its margin", Math.abs(box.W - 24 - box.w) <= 2 && Math.abs(box.H - 24 - box.h) <= 2, JSON.stringify(box));
     // 1.75x and more at 1280 x 720; at the small size (800 x 450, E2E_VIEWPORT=small) the whole table still shows, under 1x
-    const sc = (await drawn(ann)).scale, wide = ann.page.viewport().width >= 1280;
+    const sc = (await drawn(ann))!.scale, wide = ann.page.viewport()!.width >= 1280;
     check(wide ? "R2: at 1280x720 the table is drawn at 1.75x or more" : "R2: at 800x450 the whole table is drawn (0.75x or more)", sc >= (wide ? 1.75 : 0.75), String(sc));
     // R3: snapping off and on again, for everybody
     await press(ann, "Snapping: on");
@@ -487,8 +500,8 @@ export async function run(ctx) {
     // R7: two columns, of 1 and 3 cards: the first near a grid point, each next one dropped on the previous
     // card's lower half (it cascades CASCADE lower); everything comes from the stock, face down. Where a drop
     // lands, a run and a stack: snapAt and groupFrom in cards.test.ts; here, the drags that use them.
-    const stockAt = pileAt(FREE.piles[0].at);
-    const colX = (k) => GRID[0] / 2 + 3 * GRID[0] + k * GRID[0]; // grid columns 3 and 4, clear of the stock
+    const stockAt = pileAt(FREE.piles![0].at);
+    const colX = (k: number) => GRID[0] / 2 + 3 * GRID[0] + k * GRID[0]; // grid columns 3 and 4, clear of the stock
     const top = GRID[1] / 2;
     const sizes = [1, 3];
     for (let k = 0; k < sizes.length; k++) {
@@ -499,8 +512,8 @@ export async function run(ctx) {
         await waitFor(async () => (await looseOf(ann)).length === before + 1, { timeout: 5000, what: `card ${i + 1} of column ${k + 1}` });
       }
     }
-    const k1 = (await drawn(ann)).scale;
-    const column = async (x) => (await looseOf(ann)).filter((c) => Math.round(c.x / k1) === cardAt([x, 0]).x).map((c) => Math.round(c.y / k1)).sort((a, b) => a - b);
+    const k1 = (await drawn(ann))!.scale;
+    const column = async (x: number) => (await looseOf(ann)).filter((c) => Math.round(c.x / k1) === cardAt([x, 0]).x).map((c) => Math.round(c.y / k1)).sort((a, b) => a - b);
     const cols = [await column(colX(0)), await column(colX(1))];
     const cascades = cols.every((ys, k) => ys.length === sizes[k] && ys.every((y, i) => y === cardAt([0, top + i * CASCADE]).y));
     check("R3, R7: with snapping, cards dropped by hand land on a grid point, each next one CASCADE below the last", cascades, JSON.stringify(cols));
@@ -526,18 +539,18 @@ export async function run(ctx) {
     await waitFor(() => hasButton(ann, "Face up"), { what: "New pile enabled" });
     await press(ann, "Face up");
     await waitFor(async () => (await logOf(bo)).includes(`${ann.name} created the pile Waste`), { what: "Waste created" });
-    const wasteAt = [GRID[0] / 2, GRID[1] / 2]; // the first free place along the top of the felt
+    const wasteAt: [number, number] = [GRID[0] / 2, GRID[1] / 2]; // the first free place along the top of the felt
     await drag(ann, stockAt, pileAt(wasteAt));
-    const wasteTo = [GRID[0] / 2 + 12 * GRID[0], GRID[1] / 2]; // along the top row: the card lands there, its handle near the felt's edge
+    const wasteTo: [number, number] = [GRID[0] / 2 + 12 * GRID[0], GRID[1] / 2]; // along the top row: the card lands there, its handle near the felt's edge
     await drag(ann, feltAt(wasteAt[0], wasteAt[1] - CARD_H / 2 - 3), feltAt(wasteTo[0], wasteTo[1] - CARD_H / 2 - 3));
     const pileMoved = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} moved the pile Waste`, 3000);
     check("R5: a pile moves by its handle to the felt's top row, for everybody", pileMoved >= 0, `${pileMoved} ms`);
     // the latest line of the log shows for the seated player, a pile selected (the selection bar above it)
     await click(ann, pileAt(wasteTo));
-    const logSeen = await (await viewFrame(ann)).evaluate(() => {
+    const logSeen = await (await viewFrame(ann))!.evaluate(() => {
       const last = [...document.querySelectorAll(".log li")].at(-1), log = document.querySelector(".log"), panel = document.querySelector(".panel");
       if (!last) return null;
-      const r = last.getBoundingClientRect(), l = log.getBoundingClientRect(), p = panel.getBoundingClientRect();
+      const r = last.getBoundingClientRect(), l = log!.getBoundingClientRect(), p = panel!.getBoundingClientRect();
       return { inLog: r.bottom <= l.bottom + 1 && r.top >= l.top - 1, inPanel: r.bottom <= p.bottom + 1, last: last.textContent };
     });
     check("UX: at 1280x720, seated, a pile selected, the log's latest line is in sight", !!logSeen?.inLog && !!logSeen?.inPanel, JSON.stringify(logSeen));
@@ -548,21 +561,23 @@ export async function run(ctx) {
     // R6: the stock's top set aside: out of the game through Gather all
     await click(ann, stockAt);
     await pressInView(ann, "Set the top aside");
+    // oxlint-disable-next-line unicorn/prefer-string-starts-ends-with -- kept as written (typing only, no behaviour change)
     await waitFor(async () => / aside$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "a card set aside" }).catch(() => {});
     await press(ann, "Gather all");
     await waitFor(async () => (await logOf(bo)).at(-1) === `${ann.name} gathered all the cards`, { what: "gathered" });
     await press(ann, "Count");
     const outCount = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "the count" }).catch(() => "");
-    check("R6: a card set aside stays out through Gather all (Count: Stock 53 and 1 set aside)", /Stock 53/.test(outCount) && /1 set aside/.test(outCount), outCount);
+    check("R6: a card set aside stays out through Gather all (Count: Stock 53 and 1 set aside)", /Stock 53/.test(outCount!) && /1 set aside/.test(outCount!), outCount!);
     // a named pile turned over as a whole: the stock, face down, comes face up (its bottom card on top)
     await click(ann, stockAt);
     await pressInView(ann, "Turn the pile over");
-    const turned = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} turned the pile Stock over` && (await drawn(bo)).cards.some((c) => c.where === "pile" && c.up), 3000);
+    const turned = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} turned the pile Stock over` && (await drawn(bo))!.cards.some((c) => c.where === "pile" && c.up), 3000);
     check("a named pile turns over: the log says so and its top card now shows face up on every page", turned >= 0, `${turned} ms`);
     await click(ann, stockAt);
     await pressInView(ann, "Turn the pile over"); // back face down
     // a 32-card game: the jokers, then the 2s to 6s chosen one by one, set aside from the panel
     await press(ann, "Play with 52 cards");
+    // oxlint-disable-next-line unicorn/prefer-string-starts-ends-with -- kept as written (typing only, no behaviour change)
     await waitFor(async () => /set aside the jokers$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "the jokers set aside" }).catch(() => {});
     for (const r of ["2", "3", "4", "5", "6"]) await press(ann, r);
     await press(ann, "Set the chosen aside");
@@ -572,7 +587,7 @@ export async function run(ctx) {
     const m32 = /Stock (\d+) · (\d+) set aside/.exec(deck32 ?? "");
     check("a 32-card game from the panel: whole ranks set aside in one line of the log; at most 32 cards left, the rest set aside", ranksOut >= 0 && !!m32 && Number(m32[1]) <= 32 && Number(m32[1]) + Number(m32[2]) === 54, `${ranksOut} ms; ${deck32}`);
 
-    const real = (u) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
+    const real = (u: User) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     for (const u of users) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
     // leave the table as new for later scenarios that put a deck on the same tile
     await press(ann, "Reset").catch(() => {});
@@ -580,7 +595,7 @@ export async function run(ctx) {
   } catch (e) {
     // what each page showed when it failed (HQ_FAIL_SHOTS: a folder)
     if (process.env.HQ_FAIL_SHOTS) for (const u of users) await u.page.screenshot({ path: `${process.env.HQ_FAIL_SHOTS}/${u.name}.png` }).catch((x) => console.log("no shot of " + u.name + ": " + x));
-    check("scenario completed", false, String((e && e.stack) || e));
+    check("scenario completed", false, String((e && (e as Error).stack) || e));
   } finally {
     for (const name of ["hq-card-lastcard", "hq-card-pouilleux", PLUGIN]) await setPlugin(ctx, name, false).catch(() => {});
     await setDecks(ctx, []).catch(() => {});
@@ -589,4 +604,5 @@ export async function run(ctx) {
   return summary();
 }
 
+export type { Player, Point };
 export { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK };

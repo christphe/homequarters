@@ -2,23 +2,23 @@
 // Needs a running game server that serves the built client. Example:
 //   HQ_APP=http://127.0.0.1:8091 HQ_API=http://127.0.0.1:8091 node screens.ts
 import path from "node:path";
-import { launch, joinAs, walkTo, sleep } from "./lib.ts";
+import { launch, joinAs, walkTo, sleep, type User } from "./lib.ts";
 
 const OUT = path.resolve(import.meta.dirname, "../site/assets");
-const CAST = [
+const CAST: [name: string, look: object][] = [
   ["Marina", { sk: 2, hs: 1, hc: 0, sh: 4, pa: 1 }],
   ["Bruno", { sk: 4, hs: 5, hc: 4, sh: 1, pa: 7 }],
   ["Carla", { sk: 0, hs: 4, hc: 3, sh: 6, pa: 3 }],
   ["Diego", { sk: 1, hs: 3, hc: 6, sh: 5, pa: 0 }],
   ["Elisa", { sk: 3, hs: 0, hc: 7, sh: 2, pa: 4 }],
 ];
-const c8 = (n) => n * 16 + 8;
+const c8 = (n: number) => n * 16 + 8;
 const browser = await launch();
 try {
-  const users = [];
+  const users: User[] = [];
   for (const [n, av] of CAST) users.push(await joinAs(browser, n, { avatar: av }));
   const [marina, bruno, carla, diego, elisa] = users;
-  const clean = (u) =>
+  const clean = (u: User) =>
     u.page.evaluate(() => {
       const st = document.createElement("style");
       st.textContent = ".topbar,.side,.bar,.toast,.debug,.dock{display:none!important}";

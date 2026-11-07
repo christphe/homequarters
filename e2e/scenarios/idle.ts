@@ -1,20 +1,22 @@
 // Render on demand: an idle office is not redrawn 60 times a second, and anything that changes on
 // screen is still drawn at once. Reports frames drawn and the renderer + GPU process CPU time.
-import { check, resetChecks, summary, launch, joinAs, walkTo, sleep } from "../lib.ts";
+import type { Browser } from "puppeteer-core";
+import { check, resetChecks, summary, launch, joinAs, walkTo, sleep, type User } from "../lib.ts";
 
-const read = (u, fn, ...args) => u.page.evaluate(fn, ...args);
+// puppeteer cannot check a generic page function against generic arguments: the cast keeps the caller's types
+const read = <P extends unknown[], R>(u: User, fn: (...args: P) => R, ...args: P) => u.page.evaluate(fn as never, ...args) as Promise<Awaited<R>>;
 
 /** CPU seconds of every renderer and GPU process (CDP SystemInfo), summed. */
-async function cpu(browser) {
+async function cpu(browser: Browser) {
   const s = await browser.target().createCDPSession();
   const { processInfo } = await s.send("SystemInfo.getProcessInfo");
   await s.detach();
   const out = { renderer: 0, GPU: 0 };
-  for (const p of processInfo) if (p.type in out) out[p.type] += p.cpuTime;
+  for (const p of processInfo) if (p.type in out) out[p.type as keyof typeof out] += p.cpuTime;
   return out;
 }
 
-async function window_(browser, u, ms, during = async () => {}) {
+async function window_(browser: Browser, u: User, ms: number, during = async () => {}) {
   const c0 = await cpu(browser);
   const n0 = await read(u, () => window.__hq.view.rendersTotal);
   const t0 = Date.now();
@@ -27,7 +29,7 @@ async function window_(browser, u, ms, during = async () => {}) {
   return { draws: (n1 - n0) / secs, renderer: ((c1.renderer - c0.renderer) / secs) * 100, gpu: ((c1.GPU - c0.GPU) / secs) * 100 };
 }
 
-export async function run() {
+export async function run(): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -44,11 +46,11 @@ export async function run() {
     const shot0 = await a.page.screenshot({ encoding: "base64" });
     // frame by frame on the observer: every frame where the other person's sprite moved or changed
     // picture must have been drawn (rAF callbacks run before Pixi's ticker, so look one frame back)
-    const watch = read(a, (id) => new Promise((resolve) => {
+    const watch = read(a, (id: number) => new Promise<{ seen: number; drawn: number }>((resolve) => {
       const v = window.__hq.view;
       let seen = 0, drawn = 0, last = v.rendersTotal, prev = "";
       const t0 = performance.now();
-      const tick = (now) => {
+      const tick = (now: number) => {
         const e = v.ents.get(id);
         const cur = e ? e.spr.x + "," + e.spr.y + "," + e.spr.texture.uid : "";
         if (prev && cur !== prev) { seen++; if (v.rendersTotal !== last) drawn++; }
@@ -67,7 +69,7 @@ export async function run() {
     // wall-clock window included 200 ms standing still afterwards, which fails a slow renderer by arithmetic.
     // Frames and draws are both counted in the page over the exact walk window: on a slow software
     // renderer the display rate itself drops, so draws are judged against the frames that ran.
-    const walk = await read(a, () => new Promise((resolve) => {
+    const walk = await read(a, () => new Promise<{ draws: number; frames: number }>((resolve) => {
       const v = window.__hq.view;
       const r0 = v.rendersTotal, t0 = performance.now();
       let frames = 0;
@@ -91,7 +93,7 @@ export async function run() {
     check("a status change seen while everybody stands still shows up within a moment", before !== after);
     check("no console errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | ").slice(0, 300));
   } catch (e) {
-    check("scenario completed", false, e.message);
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
   }

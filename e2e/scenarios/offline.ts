@@ -1,19 +1,20 @@
 // Requests that fail on the network (no answer at all, as when the connection drops) through the real controls:
 // each panel shows its error and the page has no unhandled rejection. The requests are aborted in the browser.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo } from "../lib.ts";
+import type { ClickOptions } from "puppeteer-core";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, type RunContext, type User } from "../lib.ts";
 
-const click = (u, selector, text) => u.page.evaluate((selector, text) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text);
+const click = (u: User, selector: string, text: string) => u.page.evaluate((selector, text) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text);
   b?.click();
   return !!b;
 }, selector, text);
-const tileToClient = (u, tx, ty) =>
+const tileToClient = (u: User, tx: number, ty: number) =>
   u.page.evaluate((tx, ty) => {
     const v = window.__hq.view;
     const r = v.app.canvas.getBoundingClientRect();
     return { x: r.left + v.camX + (tx * 16 + 8) * v.S, y: r.top + v.camY + (ty * 16 + 8) * v.S };
   }, tx, ty);
-async function drag(u, from, to) {
+async function drag(u: User, from: [number, number], to: [number, number]) {
   const a = await tileToClient(u, ...from), b = await tileToClient(u, ...to);
   await u.page.mouse.move(a.x, a.y);
   await u.page.mouse.down();
@@ -21,7 +22,7 @@ async function drag(u, from, to) {
   await u.page.mouse.up();
 }
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -30,7 +31,7 @@ export async function run(ctx) {
     // the request to drop, "METHOD /path" (a path ending in * is a prefix); everything else goes through
     let failing = "";
     let aborted = 0;
-    const matches = (key) => failing && (failing.endsWith("*") ? key.startsWith(failing.slice(0, -1)) : key === failing);
+    const matches = (key: string) => failing && (failing.endsWith("*") ? key.startsWith(failing.slice(0, -1)) : key === failing);
     await page.setRequestInterception(true);
     page.on("request", (req) => {
       if (req.isInterceptResolutionHandled()) return;
@@ -42,7 +43,7 @@ export async function run(ctx) {
     const toasts = () => page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent ?? ""));
     // the console error of the aborted request itself is expected; an uncaught rejection is the bug
     const uncaught = () => admin.logs.filter((l) => /^pageerror|Uncaught/.test(l));
-    const offline = async (what, key, act, expected) => {
+    const offline = async (what: string, key: string, act: () => Promise<unknown>, expected: string) => {
       // the store shows one toast at a time, for 4 s: wait for the previous step's one to go, so this
       // step's toast is its own even when the text is the same
       await waitFor(async () => (await toasts()).length === 0, { timeout: 6000, what: "no toast before " + what });
@@ -58,7 +59,7 @@ export async function run(ctx) {
     };
 
     // ---- Settings
-    await page.evaluate(() => document.querySelector('button[title="Settings"]')?.click());
+    await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[title="Settings"]')?.click());
     await waitFor(() => page.$('.modal input[aria-label="Your name"]'), { what: "settings open" });
     await offline("Settings > Save profile", "PUT /api/profile", () => click(admin, ".modal button", "Save profile"), "Could not save the profile");
     await offline("Settings > Create a sign-in link", "POST /api/account-link", () => click(admin, ".modal button", "Create a sign-in link"), "Could not create a link.");
@@ -68,9 +69,9 @@ export async function run(ctx) {
     await offline("Admin > Members", "GET /api/admin/members", () => waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" }), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Office");
     const field = await waitFor(() => page.$("#office-name"), { what: "office name field" });
-    const name = await field.evaluate((el) => el.value);
-    await field.click({ clickCount: 3 });
-    await field.type(name + " 2");
+    const name = await field!.evaluate((el) => (el as HTMLInputElement).value);
+    await field!.click({ clickCount: 3 } as ClickOptions);
+    await field!.type(name + " 2");
     await offline("Admin > Office > Rename", "PATCH /api/admin/office", () => click(admin, ".modal button", "Rename"), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Announce");
     await waitFor(() => page.$("#announce-text"), { what: "announce field" });
@@ -78,8 +79,8 @@ export async function run(ctx) {
     await offline("Admin > Announce", "POST /api/admin/announce", () => click(admin, ".modal form button", "Announce"), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Plugins");
     const toggle = await waitFor(() => page.evaluate(() => document.querySelector('.modal button[aria-label^="Turn "]')?.getAttribute("aria-label")), { what: "a plugin's on/off button" });
-    const title = toggle.replace(/^Turn (on|off) /, "");
-    await offline("Admin > Plugins > " + toggle, "PUT /api/admin/plugins/*", () => page.evaluate((l) => { const b = document.querySelector(`.modal button[aria-label="${l}"]`); b?.click(); return !!b; }, toggle), `${title} could not start: Something went wrong.`);
+    const title = toggle!.replace(/^Turn (on|off) /, "");
+    await offline("Admin > Plugins > " + toggle, "PUT /api/admin/plugins/*", () => page.evaluate((l) => { const b = document.querySelector<HTMLButtonElement>(`.modal button[aria-label="${l}"]`); b?.click(); return !!b; }, toggle), `${title} could not start: Something went wrong.`);
     await page.keyboard.press("Escape");
 
     // ---- map editor: an edit, then Save

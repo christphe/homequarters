@@ -1,10 +1,12 @@
+// @ts-check
 (() => {
   const root = document.body.dataset.root || "./";
 
   // Copy buttons on code blocks
   document.querySelectorAll(".code .copy").forEach((btn) => {
+    // oxlint-disable-next-line typescript/no-misused-promises -- the handler catches its own failure; the DOM ignores the promise
     btn.addEventListener("click", async () => {
-      const text = btn.parentElement.querySelector("code").innerText;
+      const text = /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (btn.parentElement).querySelector("code")).innerText;
       try {
         await navigator.clipboard.writeText(text);
         btn.textContent = "Copied";
@@ -18,26 +20,30 @@
   // Fit the fixed-size hero stage into its wrapper
   const wrap = document.querySelector(".stage-wrap");
   if (wrap) {
-    const stage = wrap.querySelector(".stage");
-    const fit = () => stage.style.setProperty("--k", Math.min(1, wrap.clientWidth / 640));
+    const stage = /** @type {HTMLElement} */ (wrap.querySelector(".stage"));
+    const fit = () => stage.style.setProperty("--k", /** @type {string} */ (/** @type {unknown} */ (Math.min(1, wrap.clientWidth / 640)))); // the number becomes its string
     new ResizeObserver(fit).observe(wrap);
     fit();
   }
 
   // Docs: mobile sidebar toggle + tiny client-side search
   const toggle = document.querySelector(".side-toggle");
-  const sidebar = document.querySelector(".sidebar");
+  const sidebar = /** @type {HTMLElement} */ (document.querySelector(".sidebar"));
   toggle?.addEventListener("click", () => {
     const open = sidebar.classList.toggle("open");
     toggle.setAttribute("aria-expanded", String(open));
   });
 
-  const q = document.getElementById("q");
+  const q = /** @type {HTMLInputElement | null} */ (document.getElementById("q"));
   const list = document.getElementById("results");
   if (q && list) {
+    /** @typedef {{ t: string, u: string, x: string, h: string[] }} Entry one page of search-index.json (build.ts) */
+    /** @type {Entry[] | null} */
     let index = null;
+    /** @returns {Promise<Entry[]>} */
     const load = async () => (index ??= await (await fetch(root + "search-index.json")).json());
-    q.addEventListener("input", async () => {
+    // oxlint-disable-next-line typescript/no-misused-promises -- the DOM ignores the promise (a failed fetch of the index stays an unhandled rejection, as before)
+    q.addEventListener("input", /** @returns {Promise<boolean | void>} */ async () => {
       const term = q.value.trim().toLowerCase();
       if (term.length < 2) return (list.hidden = true);
       const data = await load();
@@ -55,7 +61,7 @@
           }
           return { p, s };
         })
-        .filter(Boolean)
+        .filter(/** @type {(h: { p: Entry, s: number } | null) => h is { p: Entry, s: number }} */ (/** @type {unknown} */ (Boolean)))
         .sort((a, b) => b.s - a.s)
         .slice(0, 6);
       list.replaceChildren(

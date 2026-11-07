@@ -1,17 +1,20 @@
 // Presence: waving across the office, raised hands, status notes, dancing, the minimap and the touch pad.
 import os from "node:os";
 import path from "node:path";
-import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, APP } from "../lib.ts";
+import type { ElementHandle } from "puppeteer-core";
+import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, APP, type RunContext, type User } from "../lib.ts";
+import type { MapData } from "../../web/src/net/protocol.ts";
 
-const read = (u, fn, ...args) => u.page.evaluate(fn, ...args);
-const click = (u, text, selector = "button") => u.page.evaluate((text, selector) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
+// puppeteer cannot check a generic page function against generic arguments: the cast keeps the caller's types
+const read = <P extends unknown[], R>(u: User, fn: (...args: P) => R, ...args: P) => u.page.evaluate(fn as never, ...args) as Promise<Awaited<R>>;
+const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
   b?.click(); return !!b;
 }, text, selector);
-const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
-const toast = (u) => read(u, () => document.querySelector(".toast")?.textContent ?? "");
+const dist = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
+const toast = (u: User) => read(u, () => document.querySelector(".toast")?.textContent ?? "");
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -22,8 +25,8 @@ export async function run(ctx) {
     await walkTo(b, 9 * 16 + 8, 6 * 16 + 8); // reception, behind a wall and out of a's area of interest
 
     // ---- the mouse wheel zooms the map (not the UI) and the server widens the area of interest to match ----
-    const sees = (u, id) => read(u, (id) => window.__hq.view.debugEntities().some((e) => e.id === id), id);
-    const layoutBox = () => read(a, () => [".topbar", ".stage canvas"].map((q) => { const r = document.querySelector(q).getBoundingClientRect(); return [r.width, r.height].join("x"); }).join(" "));
+    const sees = (u: User, id: number) => read(u, (id) => window.__hq.view.debugEntities().some((e) => e.id === id), id);
+    const layoutBox = () => read(a, () => [".topbar", ".stage canvas"].map((q) => { const r = document.querySelector(q)!.getBoundingClientRect(); return [r.width, r.height].join("x"); }).join(" "));
     const s0 = await read(a, () => window.__hq.view.scale);
     const [lo, hi] = await read(a, () => window.__hq.view.scaleRange());
     await read(a, (hi) => window.__hq.view.zoomBy(hi), hi);
@@ -31,7 +34,7 @@ export async function run(ctx) {
     check("zoomed in, someone three cells away is outside the area of interest", !(await sees(a, b.id)));
     await read(a, (s) => window.__hq.view.zoomBy(s - window.__hq.view.scale), s0);
     const box0 = await layoutBox();
-    const canvas = await read(a, () => { const r = document.querySelector(".stage canvas").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    const canvas = await read(a, () => { const r = document.querySelector(".stage canvas")!.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     await a.page.mouse.move(canvas.x, canvas.y);
     await a.page.mouse.wheel({ deltaY: -100 });
     await sleep(300);
@@ -48,14 +51,14 @@ export async function run(ctx) {
     check("zoomed out, the server sends the people the wider view shows", true);
     // a stands near the map's west wall: the camera must not show farther than the largest radius reaches
     const span = await read(a, () => {
-      const v = window.__hq.view, p = v.position(), S = v.scale, r = v.aoiMax * v.cellPx, m = v.currentMap();
+      const v = window.__hq.view, p = v.position(), S = v.scale, r = v.aoiMax * v.cellPx, m = v.currentMap()!;
       const { width: W, height: H } = v.app.screen;
       // visible map pixels only: a margin beyond the map's edge holds nobody
       return { l: p.x - Math.max(0, -v.camX / S), r: Math.min(m.w * 16, (W - v.camX) / S) - p.x, t: p.y - Math.max(0, -v.camY / S), b: Math.min(m.h * 16, (H - v.camY) / S) - p.y, reach: r };
     });
     check("zoomed out next to a map edge, no visible part of the map is farther from me than the server's largest radius", Math.max(span.l, span.r, span.t, span.b) <= span.reach + 1, JSON.stringify(span));
     const lineMode = await read(a, () => {
-      const v = window.__hq.view, c = document.querySelector(".stage canvas"), s0 = v.scale;
+      const v = window.__hq.view, c = document.querySelector(".stage canvas")!, s0 = v.scale;
       c.dispatchEvent(new WheelEvent("wheel", { deltaY: -3, deltaMode: 1, ctrlKey: true, bubbles: true, cancelable: true })); // Firefox: one notch = 3 lines
       return v.scale - s0;
     });
@@ -89,14 +92,14 @@ export async function run(ctx) {
     check("a press that barely moves is a click, not a drag", (await cam()).x === c1.x);
     // pressed on the map next to the top bar and released on the bar before it became a drag:
     // hovering afterwards must not pan
-    const bar = await read(a, () => document.querySelector(".topbar").getBoundingClientRect().bottom);
+    const bar = await read(a, () => document.querySelector(".topbar")!.getBoundingClientRect().bottom);
     await a.page.mouse.move(canvas.x, bar + 1);
     await a.page.mouse.down();
     await a.page.mouse.move(canvas.x, bar - 2);
     await a.page.mouse.up();
     await a.page.mouse.move(canvas.x - 100, canvas.y, { steps: 5 });
     await sleep(200);
-    check("a press released off the map before dragging leaves no drag behind", (await cam()).x === c1.x && (await read(a, () => document.querySelector(".stage canvas").style.cursor)) !== "grabbing");
+    check("a press released off the map before dragging leaves no drag behind", (await cam()).x === c1.x && (await read(a, () => document.querySelector<HTMLCanvasElement>(".stage canvas")!.style.cursor)) !== "grabbing");
     // a drag ends with the text selection and cursor back to normal
     await a.page.mouse.move(canvas.x, canvas.y);
     await a.page.mouse.down();
@@ -112,7 +115,7 @@ export async function run(ctx) {
     const c3 = await cam();
     await a.page.mouse.up();
     check("zooming during a drag keeps the drag 1:1 at the new scale", Math.abs(c3.x - mid.x - 30) <= 2, `scale ${z}, camera ${mid.x} -> ${c3.x}`);
-    check("the cursor and text selection are back to normal after a drag", (await read(a, () => document.querySelector(".stage canvas").style.cursor + "|" + document.body.style.userSelect)) === "|");
+    check("the cursor and text selection are back to normal after a drag", (await read(a, () => document.querySelector<HTMLCanvasElement>(".stage canvas")!.style.cursor + "|" + document.body.style.userSelect)) === "|");
     await read(a, (s) => window.__hq.view.zoomBy(s - window.__hq.view.scale), s0);
     // the camera keeps me mid-screen even next to the office's west wall, and a pan stops at the edge
     await sleep(300);
@@ -135,7 +138,7 @@ export async function run(ctx) {
     // ---- wave, answered by walking over ----
     await click(a, "Wave at " + b.name, ".people button");
     await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave card" });
-    check("a wave reaches somebody anywhere in the office", (await read(b, () => document.querySelector(".wave-card").textContent)).includes(a.name));
+    check("a wave reaches somebody anywhere in the office", (await read(b, () => document.querySelector(".wave-card")!.textContent)).includes(a.name));
     await waitFor(async () => (await toast(a)).includes("You waved at"), { what: "wave confirmation" });
     check("the sender is told the wave arrived", true);
     await click(b, "Walk to them", ".wave-card button");
@@ -146,7 +149,7 @@ export async function run(ctx) {
     await click(a, "Wave at " + b.name, ".people button");
     await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave at a busy person" });
     check("a busy person can still be waved at (everybody sees the status)", true);
-    await read(b, () => document.querySelector('.wave-card button[aria-label="Dismiss"]')?.click());
+    await read(b, () => document.querySelector<HTMLButtonElement>('.wave-card button[aria-label="Dismiss"]')?.click());
     await sleep(2200);
     await click(a, "Wave at " + b.name, ".people button");
     await waitFor(async () => (await toast(a)).includes("30 seconds"), { what: "second wave refused" });
@@ -194,7 +197,7 @@ export async function run(ctx) {
     check("away shows the veil too, and Ctrl+U brings you back from it", true);
 
     // ---- shortcuts follow key positions: an AZERTY keyboard types "z" on KeyW and "&" on Digit1 ----
-    const key = (type, key, code) => read(a, (type, key, code) => window.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true })), type, key, code);
+    const key = (type: string, key: string, code: string) => read(a, (type, key, code) => window.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true })), type, key, code);
     await sleep(800); // emote cooldown
     await key("keydown", "&", "Digit1");
     await key("keyup", "&", "Digit1");
@@ -210,11 +213,11 @@ export async function run(ctx) {
     await key("keyup", "ArrowUp", "Numpad8");
     check("the keypad without Num Lock still walks", keypad === -1, `dy ${keypad}`);
     await sleep(800);
-    check("the key at the W position (Z on AZERTY) walks up and does not dance", up === -1 && after === 0 && !(await read(b, (id) => window.__hq.view.ents.get(id)?.danceUntil > performance.now(), a.id)), `dy ${up} then ${after}`);
+    check("the key at the W position (Z on AZERTY) walks up and does not dance", up === -1 && after === 0 && !(await read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil as number) > performance.now(), a.id)), `dy ${up} then ${after}`);
 
     // ---- dance (Z) ----
     await a.page.keyboard.press("z");
-    await waitFor(() => read(b, (id) => window.__hq.view.ents.get(id)?.danceUntil > performance.now(), a.id), { what: "dance seen" });
+    await waitFor(() => read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil as number) > performance.now(), a.id), { what: "dance seen" });
     check("Z makes the avatar dance for the people nearby", true);
 
     // ---- minimap ----
@@ -222,7 +225,7 @@ export async function run(ctx) {
     const counts = await read(a, () => window.__hq.state.areaCounts);
     check("the minimap shows head counts per area from the server", counts.reduce((x, y) => x + y, 0) >= 2, JSON.stringify(counts));
     const start = await pos(a);
-    const box = await read(a, () => { const r = document.querySelector(".minimap canvas").getBoundingClientRect(); const m = window.__hq.view.currentMap(); return { x: r.left + (4.5 * 16) * (r.width / (m.w * 16)), y: r.top + (30.5 * 16) * (r.width / (m.w * 16)) }; });
+    const box = await read(a, () => { const r = document.querySelector(".minimap canvas")!.getBoundingClientRect(); const m = window.__hq.view.currentMap()!; return { x: r.left + (4.5 * 16) * (r.width / (m.w * 16)), y: r.top + (30.5 * 16) * (r.width / (m.w * 16)) }; });
     await a.page.mouse.click(box.x, box.y);
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === 4 && Math.floor(p.y / 16) === 30; }, { timeout: 20000, what: "minimap walk" });
     check("clicking the minimap runs there", dist(start, await pos(a)) > 16);
@@ -231,16 +234,16 @@ export async function run(ctx) {
     const vp = a.page.viewport();
     // the colours of a 10x10 grid, to compare the picture before and after a round trip through ratio 2
     const grid = () => read(a, () => {
-      const c = document.querySelector(".minimap canvas"), g = c.getContext("2d"), out = [];
+      const c = document.querySelector<HTMLCanvasElement>(".minimap canvas")!, g = c.getContext("2d")!, out: number[][] = [];
       for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) out.push([...g.getImageData(Math.floor((i + 0.5) * c.width / 10), Math.floor((j + 0.5) * c.height / 10), 1, 1).data]);
       return out;
     });
     const before = await grid();
-    await a.page.setViewport({ ...vp, deviceScaleFactor: 2 });
+    await a.page.setViewport({ ...vp!, deviceScaleFactor: 2 });
     await waitFor(() => read(a, () => window.devicePixelRatio === 2), { what: "pixel ratio 2" });
     await sleep(800); // a few minimap redraws (every 250 ms)
     const fill = await read(a, () => {
-      const c = document.querySelector(".minimap canvas"), g = c.getContext("2d"), m = window.__hq.view.currentMap();
+      const c = document.querySelector<HTMLCanvasElement>(".minimap canvas")!, g = c.getContext("2d")!, m = window.__hq.view.currentMap()!;
       let holes = 0;
       for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) if (g.getImageData(Math.floor((i + 0.5) * c.width / 10), Math.floor((j + 0.5) * c.height / 10), 1, 1).data[3] < 255) holes++;
       return { holes, size: `${c.width}x${c.height}`, want: `400x${Math.round(Math.round(m.h * 16 * 200 / (m.w * 16)) * 2)}` };
@@ -301,25 +304,25 @@ export async function run(ctx) {
     check("Ctrl+D with nothing assigned says so", !(await read(a, () => window.__hq.view.guided)));
     const api = (await read(a, () => location.origin));
     const full = await (await fetch(api + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
-    const putMap = (m) => fetch(api + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
-    const withDesk = JSON.parse(JSON.stringify(full));
+    const putMap = (m: MapData) => fetch(api + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
+    const withDesk: MapData = JSON.parse(JSON.stringify(full));
     // a free desk of the open-plan area whose right-hand neighbour is free too (other scenarios may have assigned some)
-    const free = (x, y) => withDesk.props.find((p) => p.t === "desk" && p.x === x && p.y === y && !p.assign);
-    const desk = withDesk.props.find((p) => p.t === "desk" && !p.assign && p.y < 14 && free(p.x + 4, p.y));
+    const free = (x: number, y: number) => withDesk.props.find((p) => p.t === "desk" && p.x === x && p.y === y && !p.assign);
+    const desk = withDesk.props.find((p) => p.t === "desk" && !p.assign && p.y < 14 && free(p.x + 4, p.y))!;
     desk.assign = a.id; // the owner's id only: the desk is named after them wherever it shows
     check("an administrator assigns a desk (API)", (await putMap(withDesk)).ok, `desk at ${desk.x},${desk.y}`);
-    await waitFor(() => read(a, (id) => window.__hq.view.map.props.some((p) => p.t === "desk" && p.assign === id), a.id), { what: "desk assignment reaches the client" });
+    await waitFor(() => read(a, (id) => window.__hq.view.map!.props.some((p) => p.t === "desk" && p.assign === id), a.id), { what: "desk assignment reaches the client" });
     await a.page.keyboard.down("Control");
     await a.page.keyboard.press("d");
     await a.page.keyboard.up("Control");
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === desk.x && Math.floor(p.y / 16) === desk.y + 1; }, { timeout: 30000, what: "back at the desk" });
     check("Ctrl+D runs to the chair of my assigned desk", true);
     // ---- an assigned desk is a room: alone there is no call; the neighbour's desk is not in it; a visitor is
-    const conv = (u) => read(u, () => window.__hq.state.conv);
+    const conv = (u: User) => read(u, () => window.__hq.state.conv);
     await Promise.all([a, b].map((u) => read(u, () => window.__hq.session.setConsent(true))));
     await sleep(2000);
     check("alone at my desk with audio allowed, there is no call", !(await conv(a)));
-    const deskRoom = await read(a, (id) => { const v = window.__hq.view, i = v.map.areas.findIndex((r) => r.id === id); return { i, auto: v.map.areas[i]?.auto === true, floor: v.map.areas[i]?.floor, labelled: v.areaLabels.some((l) => l.ai === i) }; }, `desk-${desk.x}-${desk.y}`);
+    const deskRoom = await read(a, (id) => { const v = window.__hq.view, i = v.map!.areas.findIndex((r) => r.id === id); return { i, auto: v.map!.areas[i]?.auto === true, floor: v.map!.areas[i]?.floor, labelled: v.areaLabels.some((l) => l.ai === i) }; }, `desk-${desk.x}-${desk.y}`);
     check("my desk has its own room, drawn with the desk floor and no label of its own", deskRoom.i >= 0 && deskRoom.auto && deskRoom.floor === "desk_mat" && !deskRoom.labelled, JSON.stringify(deskRoom));
     check("the place shown at my desk is still the desks area", (await read(a, () => window.__hq.state.currentArea)) === "Individual desks");
     await walkTo(b, (desk.x + 4) * 16 + 8, (desk.y + 1) * 16 + 8); // the neighbouring desk's chair, 4 tiles away
@@ -328,13 +331,13 @@ export async function run(ctx) {
     await a.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-desk-room.png") });
     await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8); // just behind my chair, inside my desk's room
     await waitFor(async () => (await conv(a))?.kind === "r" && (await conv(b))?.kind === "r", { timeout: 20000, what: "desk call" });
-    check("coming over to my desk starts its call, named after me, for both of us", (await conv(a)).name === a.name + "'s desk", (await conv(a)).name);
+    check("coming over to my desk starts its call, named after me, for both of us", (await conv(a))!.name === a.name + "'s desk", (await conv(a))!.name);
     await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8); // back out into the aisle
     await waitFor(async () => !(await conv(a)) && !(await conv(b)), { timeout: 20000, what: "desk call ends" });
     check("when the visitor leaves, the call ends and I stay at my desk alone", true);
     // ---- the owner locks the desk with its real button: the visitor knocks and is let in
-    const btn = (u, text) => read(u, (text) => { const x = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text)); x?.click(); return !!x; }, text);
-    const has = (u, text) => read(u, (text) => [...document.querySelectorAll("button")].some((b) => b.textContent.trim().startsWith(text)), text);
+    const btn = (u: User, text: string) => read(u, (text) => { const x = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text)); x?.click(); return !!x; }, text);
+    const has = (u: User, text: string) => read(u, (text) => [...document.querySelectorAll("button")].some((b) => b.textContent.trim().startsWith(text)), text);
     await waitFor(() => btn(a, "Lock desk"), { what: "lock desk button" });
     await waitFor(() => read(b, () => window.__hq.state.locked.length > 0), { what: "lock reaches the visitor" });
     check("the desk shows a lock to others", await read(b, () => window.__hq.view.deskLabels.some((l) => l.text.text.endsWith("🔒"))));
@@ -365,7 +368,7 @@ export async function run(ctx) {
     await waitFor(() => phone.evaluate(() => window.__hq?.state?.conn === "open"), { timeout: 30000, what: "phone connected" });
     const pad = await waitFor(() => phone.$(".touchpad .tp-right"), { what: "touch pad" });
     const p0 = await phone.evaluate(() => window.__hq.view.position());
-    const r = await pad.boundingBox();
+    const r = (await pad!.boundingBox())!;
     await phone.touchscreen.touchStart(r.x + r.width / 2, r.y + r.height / 2);
     await sleep(700);
     await phone.touchscreen.touchEnd();
@@ -379,17 +382,17 @@ export async function run(ctx) {
       const c = await joinAs(browser, "Idler" + sfx);
       const cdp = await c.page.createCDPSession();
       await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
-      await c.page.evaluate(() => document.querySelector(".bar-row .round.ghost")?.click());
+      await c.page.evaluate(() => document.querySelector<HTMLButtonElement>(".bar-row .round.ghost")?.click());
       await waitFor(() => c.page.$(".modal"), { what: "settings dialog" });
       const idleBox = () => c.page.evaluateHandle(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("computer is idle"))?.querySelector("input"));
       // blocked by the browser: the click must say so (asking would never answer), and the setting stays off
       await cdp.send("Browser.setPermission", { permission: { name: "idle-detection" }, setting: "denied" });
-      await (await idleBox()).click();
+      await ((await idleBox()) as ElementHandle<HTMLInputElement>).click();
       await waitFor(() => c.page.evaluate(() => !!document.querySelector(".modal .setting-note")), { timeout: 5000, what: "blocked note" }).catch(() => {});
       const blocked = await c.page.evaluate(() => ({ note: document.querySelector(".modal .setting-note")?.textContent ?? "", on: window.__hq.state.settings.osIdle }));
       check("a browser that blocks idle detection gets an explanation next to the setting, which stays off", blocked.note.includes("blocks idle detection") && !blocked.on, JSON.stringify(blocked));
       await c.ctx.overridePermissions(APP, ["idle-detection"]);
-      const box = await idleBox();
+      const box = (await idleBox()) as ElementHandle<HTMLInputElement>;
       await box.click();
       await waitFor(() => c.page.evaluate(() => window.__hq.state.settings.osIdle), { what: "idle setting on" });
       await c.page.keyboard.press("Escape");
@@ -412,7 +415,7 @@ export async function run(ctx) {
 
     check("no console errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | ").slice(0, 300));
   } catch (e) {
-    check("scenario completed", false, e.message);
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
   }

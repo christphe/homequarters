@@ -1,13 +1,17 @@
 // Deploy versions: a page from the previous deploy notices the server moved on (once the socket
 // reconnects) and asks to reload, in a dialog that cannot be dismissed.
-import { check, resetChecks, summary, launch, joinAs, waitFor, sleep, APP } from "../lib.ts";
+import type { Browser } from "puppeteer-core";
+import { check, resetChecks, summary, launch, joinAs, waitFor, sleep, APP, type RunContext, type User } from "../lib.ts";
 
-const meta = (u) => u.page.evaluate(() => document.querySelector('meta[name="hq-version"]')?.content ?? "");
-const dialog = (u) => u.page.evaluate(() => [...document.querySelectorAll(".modal")].find((m) => m.textContent.includes("new version"))?.textContent ?? "");
+/** The fields of the web app manifest this scenario reads. */
+type Manifest = { name?: string; display?: string; start_url?: string; scope?: string; icons?: { src: string; sizes: string; purpose?: string }[] };
+
+const meta = (u: User) => u.page.evaluate(() => document.querySelector<HTMLMetaElement>('meta[name="hq-version"]')?.content ?? "");
+const dialog = (u: User) => u.page.evaluate(() => [...document.querySelectorAll(".modal")].find((m) => m.textContent.includes("new version"))?.textContent ?? "");
 
 // The rename from Tilework: a browser that saved its name, avatar, settings and consent under the old
 // keys keeps them, read through the join screen's real name field.
-async function keepsLegacyStorage(browser, t) {
+async function keepsLegacyStorage(browser: Browser, t: string) {
   const bctx = await browser.createBrowserContext();
   try {
     const page = await bctx.newPage();
@@ -30,7 +34,7 @@ async function keepsLegacyStorage(browser, t) {
     }));
     check("an upgraded browser keeps its name in the join screen's field", got.field === "Legacy" + t, got.field);
     check("...and its avatar, settings and consent under hq.*, with no tilework.* key left",
-      got.avatar?.sk === 3 && got.settings?.minimap === false && got.consent === "1" && !got.keys.some((k) => k.startsWith("tilework.")), got.keys.join(","));
+      got.avatar?.sk === 3 && got.settings?.minimap === false && got.consent === "1" && !got.keys.some((k: string) => k.startsWith("tilework.")), got.keys.join(","));
   } finally {
     await bctx.close();
   }
@@ -38,15 +42,15 @@ async function keepsLegacyStorage(browser, t) {
 
 // Installable as an app (Chrome/Edge "Install"): Chrome itself reports no installability error and reads
 // the manifest, with no service worker in the way of deploys.
-async function installable(browser) {
+async function installable(browser: Browser) {
   const page = await browser.newPage();
   try {
     await page.goto(APP + "/", { waitUntil: "load" });
     const cdp = await page.createCDPSession();
-    const { manifest } = await waitFor(async () => {
+    const { manifest } = (await waitFor(async () => {
       const r = await cdp.send("Page.getAppManifest");
-      return r.url && r.data ? { manifest: { url: r.url, data: JSON.parse(r.data) } } : null;
-    }, { timeout: 10000, what: "manifest" });
+      return r.url && r.data ? { manifest: { url: r.url as string, data: JSON.parse(r.data) as Manifest } } : null;
+    }, { timeout: 10000, what: "manifest" }))!;
     const m = manifest.data;
     const icons = (m.icons ?? []).map((i) => i.sizes + "/" + (i.purpose ?? "any"));
     check("the page links a manifest for Home Quarters, standalone, from /",
@@ -59,14 +63,14 @@ async function installable(browser) {
       return true;
     }, m.icons ?? [], manifest.url)) && res.ok, res.type ?? "");
     const { installabilityErrors } = await cdp.send("Page.getInstallabilityErrors");
-    check("Chrome finds the client installable", installabilityErrors.length === 0, installabilityErrors.map((e) => e.errorId).join(","));
+    check("Chrome finds the client installable", installabilityErrors.length === 0, installabilityErrors.map((e: { errorId: string }) => e.errorId).join(","));
     check("...without a service worker", !(await page.evaluate(async () => (await navigator.serviceWorker?.getRegistrations?.())?.length ?? 0)));
   } finally {
     await page.close();
   }
 }
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const external = !!process.env.HQ_EXTERNAL_URL;
   const browser = await launch();
@@ -89,11 +93,11 @@ export async function run(ctx) {
     await u.page.mouse.click(5, 5); // outside the dialog
     await sleep(300);
     check("...in a dialog that Escape and a click outside do not close", (await dialog(u)) !== "");
-    await Promise.all([u.page.waitForNavigation({ waitUntil: "domcontentloaded" }), u.page.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Reload")?.click())]);
+    await Promise.all([u.page.waitForNavigation({ waitUntil: "domcontentloaded" }), u.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal button")].find((b) => b.textContent === "Reload")?.click())]);
     await waitFor(() => u.page.evaluate(() => window.__hq?.state?.conn === "open"), { timeout: 20000, what: "back in" });
     check("Reload brings the new version, and the dialog is gone", (await meta(u)) === "e2e-next-" + t && (await dialog(u)) === "");
   } catch (e) {
-    check("scenario completed", false, e.message);
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
     if (!external) {

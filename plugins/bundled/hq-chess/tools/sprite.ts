@@ -10,13 +10,13 @@ import { deflateSync } from "node:zlib";
 
 const OUT = "#1a1526"; // the shared outline colour of web/src/game/art/pixel.ts
 
-function canvas(w, h) {
+function canvas(w: number, h: number) {
   const px = new Uint8Array(w * h * 4);
   return {
     w,
     h,
     px,
-    set(x, y, hex) {
+    set(x: number, y: number, hex: string) {
       if (x < 0 || y < 0 || x >= w || y >= h) return;
       const i = (y * w + x) * 4;
       px[i] = parseInt(hex.slice(1, 3), 16);
@@ -24,23 +24,24 @@ function canvas(w, h) {
       px[i + 2] = parseInt(hex.slice(5, 7), 16);
       px[i + 3] = 255;
     },
-    rect(x, y, rw, rh, hex) {
+    rect(x: number, y: number, rw: number, rh: number, hex: string) {
       for (let j = y; j < y + rh; j++) for (let i = x; i < x + rw; i++) this.set(i, j, hex);
     },
   };
 }
+type Canvas = ReturnType<typeof canvas>;
 
 const CRC = new Uint32Array(256).map((_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
 });
-function crc32(buf) {
+function crc32(buf: Uint8Array) {
   let c = 0xffffffff;
   for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
-function chunk(type, data) {
+function chunk(type: string, data: Buffer) {
   const out = Buffer.alloc(12 + data.length);
   out.writeUInt32BE(data.length, 0);
   out.write(type, 4, "ascii");
@@ -48,7 +49,7 @@ function chunk(type, data) {
   out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
   return out;
 }
-function png(c) {
+function png(c: Canvas) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(c.w, 0);
   ihdr.writeUInt32BE(c.h, 4);
@@ -91,7 +92,7 @@ function chessboard() {
   c.rect(12, 4, 1, 9, wood.hi);
   for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) c.set(4 + f, 4 + r, (r + f) % 2 === 0 ? sq.light : sq.dark);
   // a white pawn (bottom right) and a black pawn (top left), two pixels wide, rising one pixel above their square
-  const pawn = (x, y, body, shade, top) => {
+  const pawn = (x: number, y: number, body: string, shade: string, top: string) => {
     c.set(x, y - 1, OUT);
     c.set(x + 1, y - 1, OUT);
     c.set(x, y, top);
@@ -126,7 +127,7 @@ function badges() {
     PAWN.forEach((row, y) =>
       [...row].forEach((ch, x) => {
         if (ch === ".") return;
-        c.set(cell * 7 + x, y, ch === "#" ? OUT : t[ch]);
+        c.set(cell * 7 + x, y, ch === "#" ? OUT : t[ch as keyof typeof t]);
       }),
     );
   });

@@ -1,7 +1,30 @@
 // Shared helpers for real-browser end-to-end tests (Chrome + fake camera/mic).
 import { chrome } from "./env.ts";
-import puppeteer from "puppeteer-core";
+import puppeteer, { type Browser, type BrowserContext, type CookieData, type Page, type Viewport } from "puppeteer-core";
+import type { ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
+
+/** A player of a scenario: an isolated browser context with its page, joined as name (joinAs). */
+export type User = { ctx: BrowserContext; page: Page; name: string; logs: string[]; id: number };
+
+/** What run.ts gives every scenario's run(). */
+export interface RunContext {
+  /** the run's temporary folder (database, server log, plugins) */
+  dir: string;
+  /** the server binary the run built */
+  bin: string;
+  server: ChildProcess | null;
+  /** the session cookie and id of the office's first member, its administrator */
+  adminCookie: string;
+  adminId: number;
+  /** runs fn after the other scenarios, once `due` (a Date.now() time) has passed */
+  defer(name: string, due: number, fn: () => Promise<unknown>): void;
+  startServer(): Promise<void>;
+  stopServer(): Promise<void>;
+}
+
+/** What every file of scenarios/ exports. */
+export type Scenario = { run(ctx: RunContext): Promise<boolean> };
 
 export const APP = process.env.HQ_APP ?? "http://127.0.0.1:5173";
 export const API = process.env.HQ_API ?? "http://127.0.0.1:8080";
@@ -10,10 +33,10 @@ const KEY = process.env.LIVEKIT_API_KEY ?? "devkey";
 const SECRET = process.env.LIVEKIT_API_SECRET ?? "secret";
 
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let results = [];
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+let results: { name: string; ok: boolean }[] = [];
 export const resetChecks = () => { results = []; };
-export function check(name, ok, detail = "") {
+export function check(name: string, ok: boolean, detail = "") {
   results.push({ name, ok });
   console.log((ok ? "PASS " : "FAIL ") + name + (detail ? " — " + detail : ""));
 }
@@ -28,7 +51,7 @@ export async function waitForEmptyOffice() {
   await waitFor(async () => (await metrics()).hq_players === 0, { timeout: 30000, every: 500, what: "empty office" });
 }
 
-export async function launch(extra = [], { waitEmpty = true } = {}) {
+export async function launch(extra: string[] = [], { waitEmpty = true } = {}): Promise<Browser> {
   // HQ_SHARED_OFFICE=1: a public instance (the demo) may have real visitors and no /metrics; do not wait.
   if (waitEmpty && !process.env.HQ_SHARED_OFFICE) await waitForEmptyOffice();
   return puppeteer.launch({
@@ -45,10 +68,10 @@ export async function launch(extra = [], { waitEmpty = true } = {}) {
   });
 }
 
-export async function waitFor(fn, { timeout = 15000, every = 100, what = "condition" } = {}) {
+export async function waitFor<T>(fn: () => T | Promise<T>, { timeout = 15000, every = 100, what = "condition" } = {}): Promise<T> {
   const t0 = Date.now();
   for (;;) {
-    let v;
+    let v: T | false;
     try { v = await fn(); } catch { v = false; }
     if (v) return v;
     if (Date.now() - t0 > timeout) throw new Error("timeout waiting for " + what);
@@ -57,20 +80,21 @@ export async function waitFor(fn, { timeout = 15000, every = 100, what = "condit
 }
 
 /** Opens an isolated browser context (own cookies) and joins as name. */
-export async function joinAs(browser, name, { path = "/", avatar = null, viewport = process.env.E2E_VIEWPORT === "small" ? { width: 800, height: 450 } : { width: 1280, height: 720 }, cookie = null } = {}) {
+export async function joinAs(browser: Browser, name: string, { path = "/", avatar = null as object | null, viewport = (process.env.E2E_VIEWPORT === "small" ? { width: 800, height: 450 } : { width: 1280, height: 720 }) as Viewport, cookie = null as string | null } = {}): Promise<User> {
   // CI runners render in software (SwiftShader) on 2 cores; a smaller canvas keeps the browsers near 30 fps.
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
-  if (cookie) await ctx.setCookie({ name: "hq_session", value: cookie, url: APP, httpOnly: true, sameSite: "Lax" });
+  // CDP (Storage.setCookies) takes a url in place of the domain the type asks for
+  if (cookie) await ctx.setCookie({ name: "hq_session", value: cookie, url: APP, httpOnly: true, sameSite: "Lax" } as unknown as CookieData);
   await page.setViewport(viewport);
   // the top page only: it would also run in a plugin's sandboxed iframe, where storage throws
   if (avatar) await page.evaluateOnNewDocument((a) => { if (window === window.top) localStorage.setItem("hq.avatar", JSON.stringify(a)); }, avatar);
-  const logs = [];
+  const logs: string[] = [];
   // livekit-client logs these two as errors when WE close a call on purpose (user-initiated abort of its data channels)
   const benign = /DataChannel error on (lossy|reliable): User-Initiated Abort|publisher data channel '(DATA_TRACK_)?(LOSSY|RELIABLE)' closed unexpectedly|error reading from signal stream/i; // the last one: LiveKit's signal socket dropped on a loaded runner; the client reconnects on its own
   // a failed load says only its status: add the URL it was for (the console message carries it)
-  page.on("console", (m) => { if (m.type() === "error" && !benign.test(m.text())) logs.push(m.text() + (/^Failed to load resource/.test(m.text()) && m.location()?.url ? " " + m.location().url : "")); });
-  page.on("pageerror", (e) => logs.push("pageerror: " + e.message));
+  page.on("console", (m) => { if (m.type() === "error" && !benign.test(m.text())) logs.push(m.text() + (m.text().startsWith("Failed to load resource") && m.location()?.url ? " " + m.location().url : "")); });
+  page.on("pageerror", (e) => logs.push("pageerror: " + (e as Error).message));
   await page.goto(APP + path, { waitUntil: "domcontentloaded" });
   if (!cookie) {
     await page.waitForSelector("input", { timeout: 10000 });
@@ -81,22 +105,22 @@ export async function joinAs(browser, name, { path = "/", avatar = null, viewpor
   return { ctx, page, name, logs, id: await page.evaluate(() => window.__hq.state.meId) };
 }
 
-export const pos = (u) => u.page.evaluate(() => window.__hq.view.position());
-export const others = (u) => u.page.evaluate(() => window.__hq.view.debugEntities());
-export const st = (u) => u.page.evaluate(() => ({ conv: window.__hq.state.conv, mic: window.__hq.state.mic, cam: window.__hq.state.cam, status: window.__hq.state.status, consent: window.__hq.state.consent }));
+export const pos = (u: User) => u.page.evaluate(() => window.__hq.view.position());
+export const others = (u: User) => u.page.evaluate(() => window.__hq.view.debugEntities());
+export const st = (u: User) => u.page.evaluate(() => ({ conv: window.__hq.state.conv, mic: window.__hq.state.mic, cam: window.__hq.state.cam, status: window.__hq.state.status, consent: window.__hq.state.consent }));
 
 /** BFS over the map's solid grid, then walk waypoint by waypoint using the real input path. */
-export async function walkTo(u, tx, ty, { timeout = 60000 } = {}) {
-  const grid = await u.page.evaluate(() => ({ w: window.__hq.view.map.w, h: window.__hq.view.map.h, solid: window.__hq.view.map.solid, deny: [...window.__hq.view.deny] }));
+export async function walkTo(u: User, tx: number, ty: number, { timeout = 60000 } = {}) {
+  const grid = await u.page.evaluate(() => ({ w: window.__hq.view.map!.w, h: window.__hq.view.map!.h, solid: window.__hq.view.map!.solid, deny: [...window.__hq.view.deny] }));
   const T = 16;
   const p0 = await pos(u);
   const start = [Math.floor(p0.x / T), Math.floor(p0.y / T)];
   const goal = [Math.floor(tx / T), Math.floor(ty / T)];
-  const key = (x, y) => y * grid.w + x;
-  const prev = new Map([[key(...start), null]]);
-  const q = [start];
+  const key = (x: number, y: number) => y * grid.w + x;
+  const prev = new Map<number, [number, number] | null>([[key(start[0], start[1]), null]]);
+  const q: [number, number][] = [[start[0], start[1]]];
   while (q.length) {
-    const [x, y] = q.shift();
+    const [x, y] = q.shift()!;
     if (x === goal[0] && y === goal[1]) break;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = x + dx, ny = y + dy;
@@ -105,9 +129,9 @@ export async function walkTo(u, tx, ty, { timeout = 60000 } = {}) {
       q.push([nx, ny]);
     }
   }
-  const path = [];
-  for (let c = goal; c; c = prev.get(key(...c))) path.unshift(c);
-  if (!prev.has(key(...goal))) throw new Error("no path");
+  const path: [number, number][] = [];
+  for (let c: [number, number] | null | undefined = [goal[0], goal[1]]; c; c = prev.get(key(c[0], c[1]))) path.unshift(c);
+  if (!prev.has(key(goal[0], goal[1]))) throw new Error("no path");
   const t0 = Date.now();
   for (const [cx, cy] of path.slice(1)) {
     await steer(u, cx * T + 8, cy * T + 8, Math.max(1000, timeout - (Date.now() - t0)), "walk timeout to " + [cx, cy] + " (" + u.name + ")");
@@ -123,13 +147,13 @@ export async function walkTo(u, tx, ty, { timeout = 60000 } = {}) {
  * overshoots on slow software-rendered CI browsers (~10-16 fps, i.e. 4-7 px per frame at 72 px/s).
  * Each axis stops once within max(1.5 px, half a frame of travel), so accuracy follows the frame rate.
  */
-async function steer(u, wx, wy, timeoutMs, what) {
-  const r = await u.page.evaluate((wx, wy, timeoutMs) => new Promise((resolve) => {
+async function steer(u: User, wx: number, wy: number, timeoutMs: number, what: string) {
+  const r = await u.page.evaluate((wx, wy, timeoutMs) => new Promise<{ ok: boolean; [more: string]: unknown }>((resolve) => {
     const v = window.__hq.view;
     const speed = 72; // world.Config.Speed, px/s
     const t0 = performance.now();
     let last = t0;
-    const frame = (now) => {
+    const frame = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
       const tol = Math.max(1.5, speed * dt * 0.5);
@@ -152,7 +176,7 @@ async function steer(u, wx, wy, timeoutMs, what) {
 // ---- server-side checks ----
 export async function metrics() {
   const txt = await (await fetch(API + "/metrics")).text();
-  const m = {};
+  const m: Record<string, number> = {};
   for (const line of txt.split("\n")) {
     if (!line || line.startsWith("#")) continue;
     const [k, v] = line.split(" ");
@@ -161,13 +185,13 @@ export async function metrics() {
   return m;
 }
 
-function jwt(video) {
-  const b = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+function jwt(video: object) {
+  const b = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
   const body = b({ alg: "HS256", typ: "JWT" }) + "." + b({ iss: KEY, nbf: now - 10, exp: now + 60, video });
   return body + "." + crypto.createHmac("sha256", SECRET).update(body).digest("base64url");
 }
-export async function lk(method, body, room) {
+export async function lk(method: string, body: object, room?: string) {
   const r = await fetch(LK + "/twirp/livekit.RoomService/" + method, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt({ roomAdmin: true, roomList: true, room }) },
@@ -175,14 +199,14 @@ export async function lk(method, body, room) {
   });
   return r.ok ? r.json() : { error: r.status, text: await r.text() };
 }
-export const lkParticipants = async (room) => ((await lk("ListParticipants", { room }, room)).participants ?? []).map((p) => p.identity);
+export const lkParticipants = async (room: string): Promise<string[]> => ((await lk("ListParticipants", { room }, room)).participants ?? []).map((p: { identity: string }) => p.identity);
 
 /** Sum of RTP bytes on the LiveKit peer connection (single-PC mode: publisher.pc carries both directions). */
 /** Audio or video packets received so far: a stream that still flows, even silent (Opus sends a packet
  * every 400 ms when there is nothing to say, so bytes depend on the sound, packets much less). */
-export const rtpPackets = (u, kind) =>
+export const rtpPackets = (u: User, kind: "audio" | "video") =>
   u.page.evaluate(async (kind) => {
-    const pm = window.__hq.media.room.engine.pcManager;
+    const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
     const pc = pm.subscriber?.pc ?? pm.publisher.pc;
     let total = 0;
     (await pc.getStats()).forEach((s) => {
@@ -191,9 +215,9 @@ export const rtpPackets = (u, kind) =>
     return total;
   }, kind);
 
-export const rtpBytes = (u, dir, kind) =>
+export const rtpBytes = (u: User, dir: "inbound" | "outbound", kind: "audio" | "video") =>
   u.page.evaluate(async (dir, kind) => {
-    const pm = window.__hq.media.room.engine.pcManager;
+    const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
     const pc = pm.subscriber?.pc ?? pm.publisher.pc;
     let total = 0;
     (await pc.getStats()).forEach((s) => {

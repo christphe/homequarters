@@ -5,29 +5,34 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, API } from "../lib.ts";
+import type { Page } from "puppeteer-core";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, API, type RunContext } from "../lib.ts";
+import type { Prop } from "../../web/src/net/protocol.ts";
+
+/** axe-core, once AXE has been evaluated in a page or a frame. */
+type AxeWindow = { axe: typeof import("axe-core") };
 
 const require = createRequire(import.meta.url);
 const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
 
-async function audit(page, label, context) {
+async function audit(page: Page, label: string, context?: string) {
   await page.evaluate(AXE);
-  const res = await page.evaluate(async (tags, ctx) => {
-    const r = await window.axe.run(ctx ?? document, { runOnly: { type: "tag", values: tags } });
+  const res = await page.evaluate(async (tags: string[], ctx: string | null) => {
+    const r = await (window as unknown as AxeWindow).axe.run(ctx ?? document, { runOnly: { type: "tag", values: tags } });
     return r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(" ") + " :: " + (n.failureSummary ?? "").split("\n").slice(1, 3).join(" ").slice(0, 200)), count: v.nodes.length }));
   }, TAGS, context ?? null);
   for (const v of res) console.log("  axe", v.impact, v.id, "x" + v.count, "-", v.help, "\n     ", v.nodes.join("\n      "));
   check("axe: no WCAG A/AA or best-practice violations on " + label, res.length === 0, res.map((v) => v.id).join(","));
 }
 
-const click = (page, selector, text) => page.evaluate((selector, text) => {
-  const b = [...document.querySelectorAll(selector)].find((x) => (text === undefined ? true : x.textContent.trim() === text));
+const click = (page: Page, selector: string, text?: string) => page.evaluate((selector, text) => {
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => (text === undefined ? true : x.textContent.trim() === text));
   b?.click();
   return !!b;
 }, selector, text);
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -41,8 +46,8 @@ export async function run(ctx) {
     check("the page declares its language", (await anon.evaluate(() => document.documentElement.lang)) === "en");
     // the avatar editor makes the join card taller than the screen: the wheel must bring Enter into view,
     // and back up the title must not be cut off (a centred card that overflows loses its top)
-    const reach = [];
-    const box = (sel) => anon.$eval(sel, (el) => { const x = el.getBoundingClientRect(); return [Math.round(x.top), Math.round(x.bottom)]; });
+    const reach: { width: number; height: number; enter: number[]; title: number[]; ok: boolean }[] = [];
+    const box = (sel: string) => anon.$eval(sel, (el) => { const x = el.getBoundingClientRect(); return [Math.round(x.top), Math.round(x.bottom)]; });
     for (const [width, height] of [[1280, 720], [800, 450], [390, 844]]) {
       await anon.setViewport({ width, height });
       await anon.reload({ waitUntil: "domcontentloaded" });
@@ -66,24 +71,24 @@ export async function run(ctx) {
     await audit(p, "the office (people panel)");
     await waitFor(() => p.$('.people button[aria-label^="More actions for"]'), { what: "more actions button" });
     await p.screenshot({ path: path.join(os.tmpdir(), "homequarters-people-row.png") });
-    const fit = await p.evaluate(() => { const ul = document.querySelector(".people"), b = document.querySelector('.people button[aria-label^="More actions for"]').getBoundingClientRect(), u = ul.getBoundingClientRect(); return { sw: ul.scrollWidth, cw: ul.clientWidth, inside: b.right <= u.right + 0.5 }; });
+    const fit = await p.evaluate(() => { const ul = document.querySelector(".people")!, b = document.querySelector('.people button[aria-label^="More actions for"]')!.getBoundingClientRect(), u = ul.getBoundingClientRect(); return { sw: ul.scrollWidth, cw: ul.clientWidth, inside: b.right <= u.right + 0.5 }; });
     check("people rows fit the panel: no sideways scroll, the more button fully visible", fit.sw <= fit.cw && fit.inside, JSON.stringify(fit));
-    await p.evaluate(() => document.querySelector('.people button[aria-label^="More actions for"]').click());
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>('.people button[aria-label^="More actions for"]')!.click());
     await waitFor(() => p.$(".more-menu"), { what: "more actions menu" });
     await audit(p, "a person's more actions menu");
-    const onScreen = await p.evaluate(() => { const r = document.querySelector(".more-menu").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; });
+    const onScreen = await p.evaluate(() => { const r = document.querySelector(".more-menu")!.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; });
     check("the more actions menu is entirely on screen", onScreen);
     await p.screenshot({ path: path.join(os.tmpdir(), "homequarters-people-menu.png") });
     await p.keyboard.press("Escape");
     await click(p, ".tabs button[aria-selected]", undefined); // toggles people off
-    await p.evaluate(() => [...document.querySelectorAll(".tabs button")][1].click());
+    await p.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".tabs button")][1].click());
     await waitFor(() => p.$(".chat"), { what: "chat panel" });
     await audit(p, "the office (chat panel)");
-    await p.evaluate(() => document.querySelector(".status-menu button").click());
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>(".status-menu button")!.click());
     await waitFor(() => p.$(".menu"), { what: "status menu" });
     await audit(p, "the status menu");
     await p.keyboard.press("Escape");
-    await p.evaluate(() => document.querySelector(".status-menu button[aria-expanded=true]")?.click());
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>(".status-menu button[aria-expanded=true]")?.click());
 
     // ---- dialogs
     await p.evaluate(() => [...document.querySelectorAll("button")].find((b) => /settings/i.test(b.getAttribute("aria-label") ?? b.title ?? ""))?.click());
@@ -98,13 +103,13 @@ export async function run(ctx) {
     };
     check("Tab stays inside an open dialog (focus trap)", await trapped());
     // the appearance editor opens over the settings: audited, and Escape closes only the top one
-    await p.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Change appearance")?.click());
+    await p.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal button")].find((b) => b.textContent === "Change appearance")?.click());
     await waitFor(() => p.$(".modal.huge"), { what: "appearance dialog" });
     await audit(p, "the appearance dialog");
     const layout = await p.evaluate(() => {
-      const opt = document.querySelector(".appearance-options").getBoundingClientRect();
-      const views = document.querySelector(".appearance-views").getBoundingClientRect();
-      const act = document.querySelector(".modal.huge .modal-actions").getBoundingClientRect();
+      const opt = document.querySelector(".appearance-options")!.getBoundingClientRect();
+      const views = document.querySelector(".appearance-views")!.getBoundingClientRect();
+      const act = document.querySelector(".modal.huge .modal-actions")!.getBoundingClientRect();
       return { optBottom: Math.round(opt.bottom), viewsBottom: Math.round(views.bottom), actionsTop: Math.round(act.top), vh: innerHeight, w: innerWidth };
     });
     check("the appearance options scroll above the buttons, never under them", layout.optBottom <= layout.actionsTop && layout.viewsBottom <= layout.actionsTop, JSON.stringify(layout));
@@ -129,19 +134,19 @@ export async function run(ctx) {
     await click(p, ".modal [role=tab]", "Plugins");
     await waitFor(() => p.$('.modal tr[data-plugin="hq-pets"]'), { what: "plugins tab" });
     await audit(p, "the administration dialog (plugins)");
-    await p.evaluate(() => document.querySelector('.modal button[aria-label="Turn on Pets"]')?.click());
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>('.modal button[aria-label="Turn on Pets"]')?.click());
     await waitFor(() => p.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')?.textContent.includes("Running")), { what: "sample plugin running" });
-    await p.evaluate(() => document.querySelector('.modal button[aria-label="Settings of Pets"]')?.click());
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>('.modal button[aria-label="Settings of Pets"]')?.click());
     await waitFor(() => p.$(".modal .plugin-setting"), { what: "plugin settings" });
     await audit(p, "a plugin's settings");
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal .plugin-setting")), { what: "plugin settings closed" });
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "admin closed" });
-    await waitFor(() => p.evaluate(() => { const b = document.querySelector('.side .tabs button[aria-label="Plugins"]'); b?.click(); return !!b; }), { what: "side panel plugins tab" });
+    await waitFor(() => p.evaluate(() => { const b = document.querySelector<HTMLButtonElement>('.side .tabs button[aria-label="Plugins"]'); b?.click(); return !!b; }), { what: "side panel plugins tab" });
     await waitFor(() => p.$(".plugins-panel button"), { what: "plugin buttons" });
     await audit(p, "the side panel (plugins)");
-    await p.evaluate(() => [...document.querySelectorAll(".plugins-panel button")].find((b) => b.textContent === "Pets")?.click());
+    await p.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".plugins-panel button")].find((b) => b.textContent === "Pets")?.click());
     await waitFor(() => p.$(".modal.plugin-modal"), { what: "plugin modal" });
     await audit(p, "a plugin's modal");
     await p.keyboard.press("Escape");
@@ -173,10 +178,10 @@ export async function run(ctx) {
 
     // the chess window (bundled hq-chess): a board placed on the social area's table, opened with X; the
     // page and the board view's own document are audited
-    const chessOn = (enabled) => fetch(API + "/api/admin/plugins/hq-chess", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
-    const setChessboard = async (on) => {
+    const chessOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/hq-chess", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
+    const setChessboard = async (on: boolean) => {
       const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
-      m.props = m.props.filter((x) => x.t !== "hq-chess/chessboard");
+      m.props = m.props.filter((x: Prop) => x.t !== "hq-chess/chessboard");
       if (on) m.props.push({ t: "hq-chess/chessboard", x: 13, y: 22, w: 1, h: 1 });
       await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
     };
@@ -185,13 +190,13 @@ export async function run(ctx) {
     await walkTo(admin, 13 * 16 + 8, 23 * 16 + 8);
     await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "hq-chess/chessboard"), { what: "nearby chessboard" });
     await p.keyboard.press("x");
-    const chessView = await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" });
+    const chessView = (await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" }))!;
     await waitFor(() => chessView.evaluate(() => !!document.querySelector("canvas[aria-label]")), { what: "chess board view" });
     await audit(p, "the chess window");
     await chessView.evaluate(AXE);
     // axe run inside the frame takes it for a whole page: its page-level rules (one main landmark, one h1),
     // which axe applies to the top document only when it audits a page with its frames, are left out
-    const inView = await chessView.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
+    const inView = await chessView.evaluate(async (tags) => (await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
     check("axe: no WCAG A/AA or best-practice violations inside the chess board view", inView.length === 0, inView.join(","));
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "chess closed" });
@@ -200,10 +205,10 @@ export async function run(ctx) {
 
     // the Cards window (bundled hq-cards): a deck in the same place, a free table chosen, the admin seated
     // and dealt 7 cards; the page and the table view's own document are audited
-    const cardsOn = (enabled) => fetch(API + "/api/admin/plugins/hq-cards", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
-    const setDeck = async (on) => {
+    const cardsOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/hq-cards", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
+    const setDeck = async (on: boolean) => {
       const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
-      m.props = m.props.filter((x) => x.t !== "hq-cards/deck");
+      m.props = m.props.filter((x: Prop) => x.t !== "hq-cards/deck");
       if (on) m.props.push({ t: "hq-cards/deck", x: 13, y: 22, w: 1, h: 1 });
       await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
     };
@@ -219,25 +224,25 @@ export async function run(ctx) {
       return false;
     }, { what: "cards window" });
     // a control of the window, or (with a game) of the table view's panel
-    const cardsButton = async (text) => {
-      if (await p.evaluate((sel, text) => { const b = [...document.querySelectorAll(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text)) return true;
+    const cardsButton = async (text: string) => {
+      if (await p.evaluate((sel, text) => { const b = [...document.querySelectorAll<HTMLButtonElement>(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text)) return true;
       const f = await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame();
-      return !!f && f.evaluate((text) => { const b = [...document.querySelectorAll(".controls button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, text);
+      return !!f && f.evaluate((text) => { const b = [...document.querySelectorAll<HTMLButtonElement>(".controls button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, text);
     };
     // a table left over by an earlier scenario on the same tile keeps its game: start it afresh
     await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
     // on a failure, say what the window showed (a CI runner cannot be watched)
     const cardsWindow = async () => ({
-      window: await p.evaluate((sel) => ({ buttons: [...document.querySelectorAll(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS),
-      panel: await (await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame())?.evaluate(() => [...document.querySelectorAll(".controls button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : ""))).catch(() => null),
+      window: await p.evaluate((sel) => ({ buttons: [...document.querySelectorAll<HTMLButtonElement>(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS),
+      panel: await (await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame())?.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : ""))).catch(() => null),
     });
     await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     await waitFor(() => cardsButton("Deal"), { what: "Deal" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
-    const cardsView = await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" });
-    await waitFor(() => cardsView.evaluate(() => window.__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
+    const cardsView = (await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" }))!;
+    await waitFor(() => cardsView.evaluate(() => (window as unknown as { __drawn?: { cards: { where: string }[] } }).__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     await audit(p, "the Cards window with a dealt free table");
     await cardsView.evaluate(AXE);
-    const inCards = await cardsView.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
+    const inCards = await cardsView.evaluate(async (tags) => (await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
     check("axe: no WCAG A/AA or best-practice violations inside the card table view", inCards.length === 0, inCards.join(","));
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "cards closed" });
@@ -246,7 +251,7 @@ export async function run(ctx) {
 
     // a free desk: its Take button and the confirmation (Escape leaves the desk free)
     // earlier scenarios may have assigned some desks: take the first free one in the desk area
-    const free = await p.evaluate(() => window.__hq.view.map.props.find((d) => d.t === "desk" && !d.assign && d.y < 14));
+    const free = (await p.evaluate(() => window.__hq.view.map!.props.find((d) => d.t === "desk" && !d.assign && d.y < 14)))!;
     await walkTo(admin, free.x * 16 + 8, (free.y + 1) * 16 + 8);
     await waitFor(() => p.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Take this desk")), { what: "take desk button" });
     await audit(p, "the office with the Take this desk button");
@@ -255,7 +260,7 @@ export async function run(ctx) {
     await audit(p, "the take a desk dialog");
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "take desk closed" });
-    check("Escape closes the take a desk dialog without taking the desk", !(await p.evaluate((x, y) => window.__hq.view.map.props.find((d) => d.t === "desk" && d.x === x && d.y === y)?.assign, free.x, free.y)));
+    check("Escape closes the take a desk dialog without taking the desk", !(await p.evaluate((x, y) => window.__hq.view.map!.props.find((d) => d.t === "desk" && d.x === x && d.y === y)?.assign, free.x, free.y)));
 
     await p.evaluate(() => window.__hq.session.setStatus("away"));
     await waitFor(() => p.$(".status-veil"), { what: "away veil" });

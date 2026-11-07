@@ -1,17 +1,18 @@
 // Smoke test against a deployed (public) instance using only public endpoints: demo join as member,
 // a proximity call with real audio/video RTP, and which ICE path the media actually used.
 // usage: HQ_APP=https://office.example.com node demo-smoke.ts
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, rtpBytes, sleep } from "./lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, rtpBytes, sleep, type User } from "./lib.ts";
 
-const candidate = (u) => u.page.evaluate(async () => {
-  const pm = window.__hq.media.room.engine.pcManager;
+const candidate = (u: User) => u.page.evaluate(async () => {
+  // the client's LiveKit room is private to MediaManager
+  const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
   const pc = pm.subscriber?.pc ?? pm.publisher.pc;
   const stats = await pc.getStats();
-  let pair = null;
-  stats.forEach((s) => { if (s.type === "candidate-pair" && s.nominated && s.state === "succeeded") pair = s; });
+  let pair = null as RTCIceCandidatePairStats | null;
+  stats.forEach((s: RTCIceCandidatePairStats) => { if (s.type === "candidate-pair" && s.nominated && s.state === "succeeded") pair = s; });
   if (!pair) return null;
   const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
-  return { protocol: remote?.protocol, remoteType: remote?.candidateType, localType: local?.candidateType, rttMs: Math.round((pair.currentRoundTripTime ?? 0) * 1000) };
+  return { protocol: remote?.protocol as string | undefined, remoteType: remote?.candidateType, localType: local?.candidateType, rttMs: Math.round((pair.currentRoundTripTime ?? 0) * 1000) };
 });
 
 resetChecks();
@@ -23,7 +24,7 @@ try {
   const role = await a.page.evaluate(() => window.__hq.state.role);
   check("demo visitors join without an invite, as members", role === "member", role);
   check("the page announces the public demo", await a.page.evaluate(() => !!window.__hq.state.demo));
-  check("the demo serves the starter office with its six private offices", (await a.page.evaluate(() => window.__hq.view.map.areas.filter((x) => x.access.mode === "office").length)) === 6);
+  check("the demo serves the starter office with its six private offices", (await a.page.evaluate(() => window.__hq.view.map!.areas.filter((x) => x.access.mode === "office").length)) === 6);
   await walkTo(a, 22 * 16 + 8, 30 * 16 + 8);
   await walkTo(b, 24 * 16 + 8, 30 * 16 + 8);
   await Promise.all([a, b].map((u) => u.page.evaluate(() => window.__hq.session.setConsent(true))));
@@ -39,7 +40,7 @@ try {
   check("media uses UDP (not the TCP fallback)", c?.protocol === "udp", JSON.stringify(c));
   // the chat as a person uses it: both panels open, messages typed into the composer
   for (const u of [a, b]) { await u.page.click('.tabs button[title="Chat"]'); await u.page.waitForSelector(".composer input"); }
-  const said = [];
+  const said: string[] = [];
   for (let i = 1; i <= 3; i++) {
     const msg = "smoke " + t + " #" + i;
     said.push(msg);
@@ -48,7 +49,7 @@ try {
     await a.page.keyboard.press("Enter");
     await sleep(600);
   }
-  const shown = (u) => u.page.evaluate((said) => said.filter((m) => [...document.querySelectorAll(".msgs .msg span")].some((s) => s.textContent === m)).length, said);
+  const shown = (u: User) => u.page.evaluate((said) => said.filter((m) => [...document.querySelectorAll(".msgs .msg span")].some((s) => s.textContent === m)).length, said);
   await waitFor(async () => (await shown(a)) === 3 && (await shown(b)) === 3, { timeout: 15000, what: "chat rendered" }).catch(() => {});
   check("chat typed in the composer renders for sender and receiver and the app stays up", (await shown(a)) === 3 && (await shown(b)) === 3 && !!(await a.page.$(".composer input")) && !!(await b.page.$(".composer input")), (await shown(a)) + "/" + (await shown(b)));
   const errs = [a, b].flatMap((u) => u.logs);

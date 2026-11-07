@@ -1,44 +1,48 @@
 // Microphone and camera turned off for the next conversation once one ends (after a grace), through the real
 // media dialog and media bar. The grace is shortened through window.__hq.autoOff for the test only.
-import { check, launch, joinAs, waitFor, walkTo, st, sleep, resetChecks, summary } from "../lib.ts";
+import { check, launch, joinAs, waitFor, walkTo, st, sleep, resetChecks, summary, type User } from "../lib.ts";
 
-const HERE = [20 * 16 + 8, 28 * 16 + 8];
-const NEAR = [20 * 16 + 40, 28 * 16 + 8];
-const FAR = [28 * 16 + 8, 28 * 16 + 8]; // 128 px: past the 96 px a conversation needs before it lets go
+// what logCaptures records on the page's window
+type Captures = { __captures: { at: number; audio: boolean; video: boolean }[] };
+
+const HERE = [20 * 16 + 8, 28 * 16 + 8] as const;
+const NEAR = [20 * 16 + 40, 28 * 16 + 8] as const;
+const FAR = [28 * 16 + 8, 28 * 16 + 8] as const; // 128 px: past the 96 px a conversation needs before it lets go
 const CAM_OFF_LABEL = "Turn the camera off when a conversation ends";
 const MIC_OFF_LABEL = "Mute the microphone when a conversation ends";
 
 // what the media bar's buttons show (aria-pressed)
-const bar = (u) => u.page.evaluate(() => {
-  const b = (titles) => [...document.querySelectorAll(".bar-row button")].find((x) => titles.includes(x.title));
+const bar = (u: User) => u.page.evaluate(() => {
+  const b = (titles: string[]) => [...document.querySelectorAll<HTMLButtonElement>(".bar-row button")].find((x) => titles.includes(x.title));
   return { mic: b(["Mute", "Unmute"])?.getAttribute("aria-pressed") === "true", cam: b(["Turn camera off", "Turn camera on"])?.getAttribute("aria-pressed") === "true" };
 });
-const press = (u, titles) => u.page.evaluate((ts) => [...document.querySelectorAll(".bar-row button")].find((x) => ts.includes(x.title))?.click(), titles);
-const boxes = (u) => u.page.evaluate(() => [...document.querySelectorAll(".modal label.check")].map((l) => ({ text: l.textContent.trim(), on: !!l.querySelector("input")?.checked })));
-const tick = (u, label) => u.page.evaluate((x) => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes(x))?.querySelector("input")?.click(), label);
-const clickModal = (u, text) => u.page.evaluate((x) => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === x)?.click(), text);
-const live = (u) => st(u).then((s) => s.conv?.state === "live");
-const grace = (u, ms) => u.page.evaluate((v) => { if (window.__hq.autoOff) window.__hq.autoOff.grace = v; }, ms);
+const press = (u: User, titles: string[]) => u.page.evaluate((ts) => [...document.querySelectorAll<HTMLButtonElement>(".bar-row button")].find((x) => ts.includes(x.title))?.click(), titles);
+const boxes = (u: User) => u.page.evaluate(() => [...document.querySelectorAll(".modal label.check")].map((l) => ({ text: l.textContent.trim(), on: !!l.querySelector("input")?.checked })));
+const tick = (u: User, label: string) => u.page.evaluate((x) => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes(x))?.querySelector("input")?.click(), label);
+const clickModal = (u: User, text: string) => u.page.evaluate((x) => [...document.querySelectorAll<HTMLButtonElement>(".modal button")].find((b) => b.textContent === x)?.click(), text);
+const live = (u: User) => st(u).then((s) => s.conv?.state === "live");
+const grace = (u: User, ms: number) => u.page.evaluate((v) => { if (window.__hq.autoOff) window.__hq.autoOff.grace = v; }, ms);
 
 // Every capture the page asks the browser for. Chrome's fake camera on Windows sometimes vanishes after it
 // was released ("Requested device not found"), so "the call asked for the camera" is what proves the
 // client's decision; what LiveKit actually publishes is reported alongside.
-const logCaptures = (u) => u.page.evaluate(() => {
+const logCaptures = (u: User) => u.page.evaluate(() => {
   const md = navigator.mediaDevices, orig = md.getUserMedia.bind(md);
-  window.__captures = [];
-  md.getUserMedia = (c) => { window.__captures.push({ at: performance.now(), audio: !!c?.audio, video: !!c?.video }); return orig(c); };
+  (window as unknown as Captures).__captures = [];
+  md.getUserMedia = (c) => { (window as unknown as Captures).__captures.push({ at: performance.now(), audio: !!c?.audio, video: !!c?.video }); return orig(c); };
 });
-const now = (u) => u.page.evaluate(() => performance.now());
-const asked = (u, since) => u.page.evaluate((t) => {
-  const c = window.__captures.filter((x) => x.at >= t);
+const now = (u: User) => u.page.evaluate(() => performance.now());
+const asked = (u: User, since: number) => u.page.evaluate((t) => {
+  const c = (window as unknown as Captures).__captures.filter((x) => x.at >= t);
   return { mic: c.some((x) => x.audio), cam: c.some((x) => x.video) };
 }, since);
-const publishing = (u) => u.page.evaluate(() => {
-  const lp = window.__hq.media.room?.localParticipant;
+const publishing = (u: User) => u.page.evaluate(() => {
+  // the media manager's LiveKit room is private in the client
+  const lp = (window.__hq.media as unknown as { room: { localParticipant: { isMicrophoneEnabled: boolean; isCameraEnabled: boolean } } | null }).room?.localParticipant;
   return { mic: !!lp?.isMicrophoneEnabled, cam: !!lp?.isCameraEnabled };
 });
 
-export async function run() {
+export async function run(): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -103,7 +107,7 @@ export async function run() {
     check("the next conversation captures the microphone but never asks for the camera", next.mic && !next.cam && !(await publishing(host)).cam && !(await bar(host)).cam, JSON.stringify(next));
 
     // The microphone setting, through Settings > Microphone, camera and speaker.
-    await host.page.evaluate(() => document.querySelector('.bar-row button[title="Settings"]')?.click());
+    await host.page.evaluate(() => document.querySelector<HTMLButtonElement>('.bar-row button[title="Settings"]')?.click());
     await waitFor(() => host.page.$(".modal"), { what: "settings" });
     await clickModal(host, "Microphone, camera and speaker");
     await waitFor(async () => (await boxes(host)).some((b) => b.text.includes(MIC_OFF_LABEL)), { what: "device dialog" });

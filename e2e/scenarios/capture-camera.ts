@@ -8,12 +8,12 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { launch, joinAs, walkTo, sleep } from "../lib.ts";
 
-export async function run() {
+export async function run(): Promise<boolean> {
   const base = process.env.HQ_CAPTURE_DIR ?? "/tmp/hq-capture";
   fs.mkdirSync(base, { recursive: true });
   const dir = fs.mkdtempSync(path.join(base, "camera-"));
   const browser = await launch();
-  const states = [];
+  const states: object[] = [];
   try {
     const u = await joinAs(browser, "Cam", { avatar: { sk: 2, hs: 1, hc: 0, sh: 4, pa: 1 } });
     const page = u.page;
@@ -22,7 +22,7 @@ export async function run() {
       return { S: v.scale, camX: v.camX, camY: v.camY, pan: v.pan, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 };
     });
     let n = 0;
-    const shot = async (what) => {
+    const shot = async (what: string) => {
       const name = String(n++).padStart(2, "0") + "-" + what + ".png";
       await page.screenshot({ path: path.join(dir, name) });
       states.push({ frame: name, ...(await view()) });
@@ -51,7 +51,7 @@ export async function run() {
     await page.evaluate((s) => window.__hq.view.zoomBy(s - window.__hq.view.scale), s0);
     await sleep(400);
     await shot("west-edge");
-    const c = await page.evaluate(() => { const r = document.querySelector(".stage canvas").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    const c = await page.evaluate(() => { const r = document.querySelector(".stage canvas")!.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     await page.mouse.move(c.x, c.y);
     await page.mouse.down();
     for (let i = 1; i <= 10; i++) await page.mouse.move(c.x - i * 20, c.y - i * 8);

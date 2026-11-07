@@ -15,13 +15,13 @@ const OUT = "#1a1526"; // the shared outline colour of web/src/game/art/pixel.ts
 const INK = "#f6ecd2"; // numerals and icons, a warm paper white
 const W = 20, H = 28, PER_ROW = 16, FRAMES = 109;
 
-function canvas(w, h) {
+function canvas(w: number, h: number) {
   const px = new Uint8Array(w * h * 4);
   return {
     w,
     h,
     px,
-    set(x, y, hex) {
+    set(x: number, y: number, hex: string) {
       if (x < 0 || y < 0 || x >= w || y >= h) return;
       const i = (y * w + x) * 4;
       px[i] = parseInt(hex.slice(1, 3), 16);
@@ -29,23 +29,24 @@ function canvas(w, h) {
       px[i + 2] = parseInt(hex.slice(5, 7), 16);
       px[i + 3] = 255;
     },
-    rect(x, y, rw, rh, hex) {
+    rect(x: number, y: number, rw: number, rh: number, hex: string) {
       for (let j = y; j < y + rh; j++) for (let i = x; i < x + rw; i++) this.set(i, j, hex);
     },
   };
 }
+type Canvas = ReturnType<typeof canvas>;
 
 const CRC = new Uint32Array(256).map((_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
 });
-function crc32(buf) {
+function crc32(buf: Uint8Array) {
   let c = 0xffffffff;
   for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
-function chunk(type, data) {
+function chunk(type: string, data: Buffer) {
   const out = Buffer.alloc(12 + data.length);
   out.writeUInt32BE(data.length, 0);
   out.write(type, 4, "ascii");
@@ -53,7 +54,7 @@ function chunk(type, data) {
   out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
   return out;
 }
-function png(c) {
+function png(c: Canvas) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(c.w, 0);
   ihdr.writeUInt32BE(c.h, 4);
@@ -79,6 +80,7 @@ const COLOURS = {
   Green: { hi: "#7ccb6a", mid: "#3f9a4c", lo: "#22604c" },
   Blue: { hi: "#72a0ea", mid: "#3c68c4", lo: "#2a3a84" },
 };
+type Tones = { hi: string; mid: string; lo: string };
 const WILD = { hi: "#5e5478", mid: "#3a3250", lo: "#241e36" };
 const BACKC = { hi: "#4c4a82", mid: "#2f2c5a", lo: "#1f1c40" };
 const FOUR = [COLOURS.Red.mid, COLOURS.Yellow.mid, COLOURS.Green.mid, COLOURS.Blue.mid]; // top, right, bottom, left
@@ -114,17 +116,17 @@ const SMALL = {
   reverse: [".#...", "#####", ".....", "#####", "...#."],
 };
 const GAP = [".", ".", ".", ".", "."]; // a column between the plus and its digit
-const join_ = (...glyphs) => glyphs[0].map((_, y) => glyphs.map((g) => g[y]).join(""));
+const join_ = (...glyphs: string[][]) => glyphs[0].map((_, y) => glyphs.map((g) => g[y]).join(""));
 
 // A bitmap in INK with a one-pixel shadow to the bottom-right (light from the top-left).
-function stamp(c, x, y, rows, ink = INK, shadow = OUT) {
+function stamp(c: Canvas, x: number, y: number, rows: string[], ink = INK, shadow = OUT) {
   rows.forEach((row, j) => [...row].forEach((ch, i) => ch === "#" && c.set(x + i + 1, y + j + 1, shadow)));
   rows.forEach((row, j) => [...row].forEach((ch, i) => ch === "#" && c.set(x + i, y + j, ink)));
 }
 
 // The card's outline with cut corners, its three-tone body and the framed panel (x 3-16, y 7-20).
 // frame: the panel's inner light line, one colour or four (top, right, bottom, left).
-function body(c, x0, y0, t, frame) {
+function body(c: Canvas, x0: number, y0: number, t: Tones, frame: string | string[]) {
   c.rect(x0 + 1, y0, W - 2, H, OUT);
   c.rect(x0, y0 + 1, W, H - 2, OUT);
   c.rect(x0 + 1, y0 + 1, W - 2, H - 2, t.mid);
@@ -143,21 +145,21 @@ function body(c, x0, y0, t, frame) {
 }
 
 // Both indices: the top-left one at (2, 2), the bottom-right one ending at (17, 25); both upright.
-function indices(c, x0, y0, rows, ink = INK, shadow = OUT) {
+function indices(c: Canvas, x0: number, y0: number, rows: string[], ink = INK, shadow = OUT) {
   const w = rows[0].length;
   stamp(c, x0 + 2, y0 + 2, rows, ink, shadow);
   stamp(c, x0 + 17 - w, y0 + 21, rows, ink, shadow);
 }
 
 // The panel's 10 x 10 well starts at (5, 9): a glyph of w x h plus its shadow, centred.
-function centre(c, x0, y0, rows) {
+function centre(c: Canvas, x0: number, y0: number, rows: string[]) {
   const w = rows[0].length, h = rows.length;
   stamp(c, x0 + 5 + Math.floor((10 - (w + 1)) / 2), y0 + 9 + Math.floor((10 - (h + 1)) / 2), rows);
 }
 
 // Skip: a ring crossed from the top-right to the bottom-left, 9 x 9.
 const SKIP_BIG = (() => {
-  const rows = [];
+  const rows: string[] = [];
   for (let y = 0; y < 9; y++) {
     let r = "";
     for (let x = 0; x < 9; x++) {
@@ -173,7 +175,7 @@ const SKIP_BIG = (() => {
 // upper one turned half a turn.
 const REVERSE_BIG = (() => {
   const g = Array.from({ length: 9 }, () => Array(9).fill("."));
-  const upper = [];
+  const upper: [number, number][] = [];
   for (let x = 1; x <= 7; x++) upper.push([x, 2]); // the shaft, heading right
   upper.push([1, 3]); // the tail, bent down
   for (let y = 0; y <= 4; y++) upper.push([6, y]); // the head
@@ -186,7 +188,7 @@ const REVERSE_BIG = (() => {
 })();
 
 // The four-colour square split along its diagonals (dark seams), size x size, at (x, y).
-function split(c, x, y, size) {
+function split(c: Canvas, x: number, y: number, size: number) {
   const m = (size - 1) / 2;
   for (let j = 0; j < size; j++)
     for (let i = 0; i < size; i++) {
@@ -198,11 +200,11 @@ function split(c, x, y, size) {
 }
 
 // Copies of the same card get 0 to 3 tiny light dots at the bottom-left, so every frame of the sheet differs.
-function copyMark(c, x0, y0, copy, t) {
+function copyMark(c: Canvas, x0: number, y0: number, copy: number, t: Tones) {
   for (let k = 0; k < copy; k++) c.set(x0 + 2 + k * 2, y0 + 25, t.hi);
 }
 
-function face(c, x0, y0, name, copy) {
+function face(c: Canvas, x0: number, y0: number, name: string, copy: number) {
   if (name.startsWith("Wild")) {
     body(c, x0, y0, WILD, FOUR);
     split(c, x0 + 5, y0 + 9, 10);
@@ -219,11 +221,11 @@ function face(c, x0, y0, name, copy) {
     return;
   }
   const [colour, ...rest] = name.split(" ");
-  const t = COLOURS[colour], what = rest.join(" ");
+  const t = COLOURS[colour as keyof typeof COLOURS], what = rest.join(" ");
   body(c, x0, y0, t, t.hi);
   if (/^\d$/.test(what)) {
-    centre(c, x0, y0, BIG[what]);
-    indices(c, x0, y0, SMALL[what]);
+    centre(c, x0, y0, BIG[what as keyof typeof BIG]);
+    indices(c, x0, y0, SMALL[what as keyof typeof SMALL]);
   } else if (what === "Skip") {
     centre(c, x0, y0, SKIP_BIG);
     indices(c, x0, y0, SMALL.skip);
@@ -238,7 +240,7 @@ function face(c, x0, y0, name, copy) {
 }
 
 // The back: indigo with a woven diagonal texture inside an inner border, and a split square in the middle.
-function back(c, x0, y0) {
+function back(c: Canvas, x0: number, y0: number) {
   c.rect(x0 + 1, y0, W - 2, H, OUT);
   c.rect(x0, y0 + 1, W, H - 2, OUT);
   c.rect(x0 + 1, y0 + 1, W - 2, H - 2, BACKC.mid);
@@ -257,7 +259,7 @@ function back(c, x0, y0) {
 }
 
 const sheet = canvas(PER_ROW * W, Math.ceil(FRAMES / PER_ROW) * H);
-const seen = new Map();
+const seen = new Map<string, number>();
 CARDS.forEach(({ name }, i) => {
   const copy = seen.get(name) ?? 0;
   seen.set(name, copy + 1);

@@ -1,16 +1,17 @@
 // A real speaker and listeners in different private calls: the extra SFU room permits publishing only for the speaker.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, lkParticipants } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, lkParticipants, type User, type RunContext } from "../lib.ts";
 
-const state = (u) => u.page.evaluate(() => window.__hq.state.spotlight);
-const rtp = (u, kind) => u.page.evaluate(async (kind) => {
-  const pm = window.__hq.spotlightMedia.room.engine.pcManager;
+const state = (u: User) => u.page.evaluate(() => window.__hq.state.spotlight);
+const rtp = (u: User, kind: "audio" | "video") => u.page.evaluate(async (kind) => {
+  // the media manager's LiveKit room and the transports' peer connections are private in the client
+  const pm = (window.__hq.spotlightMedia as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
   const pc = pm.subscriber?.pc ?? pm.publisher.pc;
   let bytes = 0;
   (await pc.getStats()).forEach((s) => { if (s.type === "inbound-rtp" && s.kind === kind) bytes += s.bytesReceived; });
   return bytes;
 }, kind);
 
-export async function run(ctx) {
+export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch(["--auto-select-desktop-capture-source=Entire screen", "--enable-features=GetDisplayMediaSetAutoSelectAllScreens"]);
   try {
@@ -19,7 +20,7 @@ export async function run(ctx) {
     const quiet = await joinAs(browser, "Quiet" + Date.now() % 10000);
     for (const u of [speaker, listener]) await u.page.evaluate(() => {
       const m = window.__hq.spotlightMedia, join = m.join.bind(m);
-      m.join = (info, publish) => { window.__spotInfo = info; return join(info, publish); };
+      m.join = (info, publish) => { (window as unknown as { __spotInfo: typeof info }).__spotInfo = info; return join(info, publish); };
     });
     // the listener is in a room call of their own (a room's call needs two people: a mate keeps them company)
     const mate = await joinAs(browser, "Mate" + Date.now() % 10000);
@@ -36,10 +37,10 @@ export async function run(ctx) {
       const ldiag = await listener.page.evaluate(() => ({ spot: window.__hq.state.spotlight, conv: window.__hq.state.conv?.state }));
       throw new Error(e.message + " speaker=" + JSON.stringify(diag) + " listener=" + JSON.stringify(ldiag));
     });
-    check("stepping onto the pad goes on air only with consent", (await state(speaker)).me === true);
-    check("listener keeps their isolated private call", await listener.page.evaluate((r) => window.__hq.media.currentRoom === r && window.__hq.state.conv.state === "live", privateRoom));
+    check("stepping onto the pad goes on air only with consent", (await state(speaker))!.me === true);
+    check("listener keeps their isolated private call", await listener.page.evaluate((r) => window.__hq.media.currentRoom === r && window.__hq.state.conv!.state === "live", privateRoom));
     const room = await speaker.page.evaluate(() => window.__hq.spotlightMedia.currentRoom);
-    const claims = await listener.page.evaluate(() => JSON.parse(atob(window.__spotInfo.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))));
+    const claims = await listener.page.evaluate(() => JSON.parse(atob((window as unknown as { __spotInfo: { token: string } }).__spotInfo.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))));
     check("the audience token is subscribe-only and scoped to the broadcast", claims.video.canPublish === false && claims.video.room === room && claims.video.canSubscribe === true);
     await waitFor(async () => await rtp(listener, "audio") > 0, { timeout: 15000, what: "real broadcast audio RTP" });
     check("a listener in a private room receives broadcast audio RTP", await rtp(listener, "audio") > 0);
