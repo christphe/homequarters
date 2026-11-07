@@ -72,7 +72,6 @@
         ]
       ],
       "inputs": [
-        "/plugins/**",
         "/web/dev/**"
       ],
       "tools": [
