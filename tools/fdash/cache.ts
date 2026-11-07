@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Command, Input } from "./config.ts";
-import { spawnSpec } from "./spawn.ts";
+import { launch } from "./spawn.ts";
 
 const BIG = 256 * 1024 * 1024;
 const toPosix = (p: string) => p.split(path.sep).join("/");
@@ -47,8 +47,11 @@ function goFiles(root: string, input: { go: string; cwd: string; tests: boolean 
 
 /** Every file of the inputs, sorted, relative to the root with "/" separators. */
 export function resolveInputs(root: string, inputs: Input[]): string[] {
-  const files = new Set(globFiles(root, inputs.filter((i): i is string => typeof i === "string")));
-  for (const i of inputs) if (typeof i !== "string") for (const f of goFiles(root, i)) files.add(f);
+  const patterns = inputs.filter((i): i is string => typeof i === "string");
+  const files = new Set(globFiles(root, patterns));
+  const excluded = patterns.filter((p) => p.startsWith("!")).map((p) => p.slice(1));
+  // a "!" pattern removes from the whole set, the files of Go packages included
+  for (const i of inputs) if (typeof i !== "string") for (const f of goFiles(root, i)) if (!excluded.some((x) => path.posix.matchesGlob(f, x))) files.add(f);
   return [...files].sort();
 }
 
@@ -68,8 +71,8 @@ export function toolOutput(argv: string[]): string {
   if (out === undefined) {
     try {
       const [cmd, ...args] = argv;
-      const { shell, args: a } = spawnSpec(cmd, process.platform, process.env.PATH ?? "", process.env.PATHEXT ?? "", args);
-      out = execFileSync(cmd, a, { shell, stdio: ["ignore", "pipe", "pipe"] }).toString("utf8").trim();
+      const l = launch(cmd, args);
+      out = execFileSync(l.file, l.args, { shell: l.shell, stdio: ["ignore", "pipe", "pipe"] }).toString("utf8").trim();
     } catch (e) {
       out = "error: " + (e as Error).message.split("\n")[0];
     }

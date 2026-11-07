@@ -1,8 +1,8 @@
-// hq-card-pouilleux (Old Maid) rules: its deck, its definition as hq-cards validates it, its count. Run: node --test web/test
+// hq-card-pouilleux (Old Maid) rules: its deck, its definition as hq-cards validates it, its count. Run: node --test plugins/bundled/hq-card-pouilleux/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CODES, DEFINITION, count } from "../../plugins/bundled/hq-card-pouilleux/rules.ts";
-import { STANDARD, validateDefinition } from "../../plugins/bundled/hq-cards/public/games.ts";
+import { CODES, DEFINITION, count } from "../rules.ts";
+import { STANDARD, validateDefinition } from "../../hq-cards/public/games.ts";
 
 const n = (code: string) => {
   const i = CODES.indexOf(code);

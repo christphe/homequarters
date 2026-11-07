@@ -145,9 +145,40 @@ All three steps land in one pull request (the user's choice), in this order:
 - Other scenarios keep their checks in this pull request; a list of the next candidates (plugins, chess,
   presence) goes in the PR text.
 
+## Projects and the workspace (decided after the first runs)
+
+One flat `fdash.json` made every unit test one cache key: touching any file reran all of them. fdash gets
+projects, as Rush has: no language awareness (a later step may read `package.json`, `go.mod`, `tsconfig.json`).
+
+- **`fdash-workspace.json`** at the root: `projects`, a list of folders (a `*` matches one level:
+  `plugins/bundled/*`; a folder a `*` matches without `fdash.json` is skipped, a folder named in full without one is refused), and `tasks`, the workspace's own
+  commands (run from the root, inputs written from the root) and groups.
+- **`<project>/fdash.json`**: `name` (default: the folder's name; two projects with one name are refused),
+  `files` (what other projects see of it, patterns relative to the project, default `**`), `dependsOn`
+  (project names), `tasks`. Task names are `<project>:<task>` (items `<project>:<task>:<item>`).
+- **Default inputs** of a project's command: every file of its folder, plus the `files` of its
+  `dependsOn`, transitively. The command's own `inputs` add to them (relative to the project; a leading
+  `/` is relative to the root; a Go provider's `cwd` is relative to the project), and its `!` patterns
+  remove from the whole set. `"cache": false` turns the cache off for a command. A workspace command
+  without `inputs` is not cached, as before.
+- **References** in a group: a qualified name (`server:test`), a name of the same project (`test`), or
+  `*:<task>`: that task in every project that has it, in project order.
+- Without `fdash-workspace.json`, a root `fdash.json` is one project whose task names are not qualified
+  (the single-file format above keeps working).
+
+The repository's projects: `server` (fmt, vet, staticcheck, test), `web` (tsc, tsc-tests, build, test),
+`site` (build), `e2e` (test: shards and slots, browser: the scenarios as items), `scripts` (test,
+protocol-docs, oxlint, plugin-types), `tools/fdash` (test), `plugins/sdk` (no task, depended on), and one
+project per bundled plugin that has unit tests (`hq-cards`, `hq-card-pouilleux`, `hq-card-lastcard`,
+`hq-chess`): their tests move from `web/test/` to `plugins/bundled/<plugin>/test/` (still type-checked by
+`web/tsconfig.test.json` and linted by oxlint). The workspace holds `default` and `static`
+(`*:fmt`, `*:vet`, ..., `*:test` and the rest). Files a test reads at run time stay declared by hand (web's
+tests read `server/internal/gamemap/map.go` and `server/internal/httpapi/avatar.go`; Go's plugin tests read
+`plugins/bundled`).
+
 ## Non-goals
 
-No change to CI's jobs beyond running the new unit tests (no `actions/cache` yet). No change to the e2e
+No language-aware projects. No change to CI's jobs beyond running the new unit tests (no `actions/cache` yet). No change to the e2e
 slots. No gate added or removed (Rust's `cargo` checks are a later gate). No Vite or Cargo provider.
 
 ## Anti-goals
@@ -193,6 +224,13 @@ slots. No gate added or removed (Rust's `cargo` checks are a later gate). No Vit
     real runs, the lines in the PR.
 14. `cards.mjs` keeps only browser checks; each moved check has a unit test seen red then green; the
     whole suite stays green; the before/after duration of `cards` is recorded. Seam: the tests, the runs.
+
+15. Projects: a change inside `plugins/bundled/hq-chess` reruns `hq-chess:test` (and the Go tests, which
+    read it) but not `web:test` nor `hq-cards:test`; a change in `hq-cards` reruns the tests of
+    `hq-cards`, `hq-card-pouilleux` and `hq-card-lastcard`; a change in `web/src` reruns `web:*` only.
+    Seam: fdash unit tests on a temporary workspace; one real run per case, lines in the PR.
+16. A plugin test imports nothing outside its plugin and its `dependsOn`. Seam: a unit test over
+    `plugins/bundled/*/test/*.ts`.
 
 ## Anti-goals (cache)
 

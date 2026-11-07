@@ -1,4 +1,4 @@
-// The gauntlet's automatic gates, run by fdash (tools/fdash, fdash.json). Usage:
+// The gauntlet's automatic gates, run by fdash (tools/fdash; fdash-workspace.json and each project's fdash.json). Usage:
 //   node scripts/gauntlet.ts                  # static gates + the whole browser suite (CI viewport)
 //   node scripts/gauntlet.ts social movement  # static gates + only these scenarios
 //   GAUNTLET_SKIP_E2E=1 node scripts/gauntlet.ts
@@ -13,10 +13,13 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadConfig } from "../tools/fdash/config.ts";
+import { loadWorkspace } from "../tools/fdash/workspace.ts";
 import { parseArgs, printResult, resultLine } from "../tools/fdash/cli.ts";
 import { run, type Result } from "../tools/fdash/run.ts";
 import { fingerprint } from "./gauntlet-fingerprint.ts";
+
+/** The browser suite's task (fdash-workspace.json, e2e/fdash.json); its scenarios are its items. */
+export const BROWSER = "e2e:browser";
 
 const iso = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z");
 
@@ -48,7 +51,7 @@ async function main(): Promise<number> {
     console.error((e as Error).message);
     return 2;
   }
-  const config = loadConfig(root);
+  const config = loadWorkspace(root);
   fs.mkdirSync(path.join(root, ".gauntlet"), { recursive: true });
   const record = path.join(root, ".gauntlet", "last-gates.log");
   const treeBefore = fingerprint(root);
@@ -59,16 +62,16 @@ async function main(): Promise<number> {
   // Ctrl+C reaches the gates from the terminal (the browser suite stops its server and LiveKit itself)
   process.on("SIGINT", () => ac.abort());
   const t0 = Date.now();
-  let staticDone = false;
+  let staticEnd = t0;
   const { results, interrupted } = await run({
-    root, config, names: ["default"], skip: skipE2e ? ["e2e"] : [], jobs, extraArgs: scenarios,
+    root, config, names: ["default"], skip: skipE2e ? [BROWSER] : [], jobs, extraArgs: scenarios,
     force: !!process.env.FDASH_FORCE, signal: ac.signal,
     onResult: (r) => {
-      if (!staticDone && r.name.startsWith("e2e")) { staticDone = true; console.log(`# static gates: ${secs(Date.now() - t0)}`); }
+      if (!r.name.startsWith(BROWSER + ":")) staticEnd = Date.now();
       printResult(r);
     },
   });
-  if (!staticDone) console.log(`# static gates: ${secs(Date.now() - t0)}`);
+  console.log(`# static gates: ${secs(staticEnd - t0)}`);
   if (skipE2e) console.log("SKIPPED e2e");
   const treeAfter = fingerprint(root);
   const end = closing({ fails: results.filter((r) => !r.ok).length, skipE2e, treeBefore, treeAfter, interrupted });

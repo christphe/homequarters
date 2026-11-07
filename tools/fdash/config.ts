@@ -14,6 +14,8 @@ export type Command = {
   env: Record<string, string>;
   failOnOutput: boolean;
   args: boolean;
+  /** false: never cached, whatever its inputs */
+  cache: boolean;
   inputs: Input[] | undefined;
   envKeys: string[];
   tools: string[][];
@@ -26,7 +28,7 @@ export type Config = Map<string, Task>;
 
 export const CONFIG_FILE = "fdash.json";
 
-const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items"]);
+const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache"]);
 const GROUP_KEYS = new Set(["tasks", "jobs"]);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -48,7 +50,7 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
   if (!Array.isArray(t.run) || t.run.length === 0 || !t.run.every(isArgv)) throw new Error(`${name}: run must be a non-empty list of steps, each a non-empty list of strings`);
   if (t.cwd !== undefined && typeof t.cwd !== "string") throw new Error(`${name}: cwd must be a string`);
   if (t.env !== undefined && !(isObject(t.env) && Object.values(t.env).every((s) => typeof s === "string"))) throw new Error(`${name}: env must map names to strings`);
-  for (const k of ["failOnOutput", "args"] as const) if (t[k] !== undefined && typeof t[k] !== "boolean") throw new Error(`${name}: ${k} must be true or false`);
+  for (const k of ["failOnOutput", "args", "cache"] as const) if (t[k] !== undefined && typeof t[k] !== "boolean") throw new Error(`${name}: ${k} must be true or false`);
   if (t.envKeys !== undefined && !isStrings(t.envKeys)) throw new Error(`${name}: envKeys must be a list of names`);
   if (t.tools !== undefined && !(Array.isArray(t.tools) && t.tools.every(isArgv))) throw new Error(`${name}: tools must be a list of commands, each a non-empty list of strings`);
   let items: Command["items"];
@@ -68,6 +70,7 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
     env: (t.env as Record<string, string> | undefined) ?? {},
     failOnOutput: t.failOnOutput === true,
     args: t.args === true,
+    cache: t.cache !== false,
     inputs: t.inputs === undefined ? undefined : parseInputs(name, "inputs", t.inputs),
     envKeys: (t.envKeys as string[] | undefined) ?? [],
     tools: (t.tools as string[][] | undefined) ?? [],
@@ -81,16 +84,25 @@ function parseGroup(name: string, t: Record<string, unknown>): Group {
   return t.jobs === undefined ? { kind: "group", name, tasks: t.tasks } : { kind: "group", name, tasks: t.tasks, jobs: t.jobs as number };
 }
 
-export function parseConfig(text: string): Config {
-  let raw: unknown;
+/** Parses JSON, naming the file in the error. */
+export function parseJson(text: string, file: string): unknown {
   try {
-    raw = JSON.parse(text);
+    return JSON.parse(text);
   } catch (e) {
-    throw new Error(`${CONFIG_FILE}: invalid JSON (${(e as Error).message})`);
+    throw new Error(`${file}: invalid JSON (${(e as Error).message})`);
   }
+}
+
+export function parseConfig(text: string): Config {
+  const raw = parseJson(text, CONFIG_FILE);
   if (!isObject(raw) || !isObject(raw.tasks)) throw new Error(`${CONFIG_FILE}: needs a "tasks" object`);
+  return finishConfig(parseTasks(raw.tasks));
+}
+
+/** The tasks of one "tasks" object, each checked on its own; references between them are not checked yet. */
+export function parseTasks(tasks: Record<string, unknown>): Config {
   const config: Config = new Map();
-  for (const [name, t] of Object.entries(raw.tasks)) {
+  for (const [name, t] of Object.entries(tasks)) {
     if (!isObject(t)) throw new Error(`${name}: must be an object`);
     const isCommand = "run" in t, isGroup = "tasks" in t;
     if (isCommand && isGroup) throw new Error(`${name}: has both run and tasks; a task is a command or a group`);
@@ -99,6 +111,11 @@ export function parseConfig(text: string): Config {
     for (const k of Object.keys(t)) if (!allowed.has(k)) throw new Error(`${name}: unknown key ${k}`);
     config.set(name, isCommand ? parseCommand(name, t) : parseGroup(name, t));
   }
+  return config;
+}
+
+/** Checks that every group member exists and that groups form no cycle. */
+export function finishConfig(config: Config): Config {
   for (const t of config.values()) {
     if (t.kind === "group") for (const m of t.tasks) if (!config.has(m)) throw new Error(`${t.name}: no task named ${m}`);
   }

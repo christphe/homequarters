@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { expand, type Command, type Config } from "./config.ts";
 import { cacheKey, passed, recordPass, resolveInputs } from "./cache.ts";
-import { spawnSpec } from "./spawn.ts";
+import { launch, spawnSpec } from "./spawn.ts";
 
 export { spawnSpec };
 
@@ -29,12 +29,12 @@ export type RunOptions = {
 
 function runStep(argv: string[], o: { cwd: string; env: NodeJS.ProcessEnv; log: number; failOnOutput: boolean }): Promise<boolean> {
   const [cmd, ...rest] = argv;
-  const { shell, args } = spawnSpec(cmd, process.platform, o.env.PATH ?? o.env.Path ?? "", o.env.PATHEXT ?? "", rest);
+  const l = launch(cmd, rest);
   return new Promise((resolve) => {
     let printed = false;
     let child;
     try {
-      child = spawn(cmd, args, { cwd: o.cwd, env: o.env, shell, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+      child = spawn(l.file, l.args, { cwd: o.cwd, env: o.env, shell: l.shell, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     } catch (e) {
       fs.writeSync(o.log, `fdash: cannot start ${cmd}: ${(e as Error).message}\n`);
       resolve(false);
@@ -121,7 +121,7 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       const ok = await runCommand(c, { root: o.root, log, extraArgs: extra, env: reportEnv });
       return [{ name: c.name, ok, cached: false, log, ms: Date.now() - t0 }];
     };
-    if (c.inputs === undefined) return plain();
+    if (c.inputs === undefined || !c.cache) return plain();
     let common: string[];
     try {
       common = resolveInputs(o.root, c.inputs);

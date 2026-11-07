@@ -1,0 +1,93 @@
+{
+  "projects": [
+    "server",
+    "web",
+    "site",
+    "e2e",
+    "scripts",
+    "tools/fdash",
+    "plugins/sdk",
+    "plugins/bundled/*"
+  ],
+  "tasks": {
+    "default": {
+      "jobs": 1,
+      "tasks": [
+        "static",
+        "e2e:browser"
+      ]
+    },
+    "static": {
+      "tasks": [
+        "server:fmt",
+        "server:vet",
+        "server:staticcheck",
+        "web:tsc",
+        "web:tsc-tests",
+        "web:build",
+        "protocol-docs",
+        "oxlint",
+        "plugin-types",
+        "*:test",
+        "site:build"
+      ]
+    },
+    "protocol-docs": {
+      "run": [
+        [
+          "node",
+          "scripts/check-protocol-docs.mjs"
+        ]
+      ],
+      "inputs": [
+        "scripts/check-protocol-docs.mjs",
+        "docs/protocol.md",
+        "server/internal/httpapi/**",
+        "web/src/net/**"
+      ]
+    },
+    "oxlint": {
+      "run": [
+        [
+          "node",
+          "scripts/oxlint.mjs"
+        ]
+      ],
+      "inputs": [
+        "scripts/oxlint.mjs",
+        "scripts/oxlint-hq.mjs",
+        ".oxlintrc.json",
+        "web/**",
+        "plugins/**",
+        "e2e/fixtures/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "plugin-types": {
+      "run": [
+        [
+          "node",
+          "scripts/check-plugin-types.mjs"
+        ]
+      ],
+      "inputs": [
+        "scripts/check-plugin-types.mjs",
+        "plugins/**",
+        "e2e/fixtures/**",
+        "web/package.json",
+        "web/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    }
+  }
+}

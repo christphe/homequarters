@@ -1,0 +1,72 @@
+{
+  "tasks": {
+    "fmt": {
+      "run": [
+        [
+          "gofmt",
+          "-l",
+          "."
+        ]
+      ],
+      "failOnOutput": true,
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "vet": {
+      "run": [
+        [
+          "go",
+          "vet",
+          "./..."
+        ]
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "staticcheck": {
+      "run": [
+        [
+          "go",
+          "tool",
+          "staticcheck",
+          "./..."
+        ]
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "test": {
+      "run": [
+        [
+          "go",
+          "test",
+          "-race",
+          "-count=1",
+          "./..."
+        ]
+      ],
+      "inputs": [
+        "/plugins/bundled/**",
+        "/plugins/sdk/**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    }
+  }
+}

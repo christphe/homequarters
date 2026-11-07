@@ -2,13 +2,13 @@
 //                                node cli.ts list
 import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
-import { CONFIG_FILE, loadConfig, type Config } from "./config.ts";
+import { CONFIG_FILE, type Config } from "./config.ts";
+import { findRoot, load, WORKSPACE_FILE } from "./workspace.ts";
 import { run, type Result } from "./run.ts";
 
 export const USAGE = `usage: fdash run [task ...] [--skip task]... [--jobs N] [--force] [-- extra args]
        fdash list
-Runs the tasks of ${CONFIG_FILE} (the task "default" when none is named). FDASH_JOBS sets --jobs;
+Runs the tasks of ${WORKSPACE_FILE} and its projects' ${CONFIG_FILE}, or of a single ${CONFIG_FILE} (the task "default" when none is named). FDASH_JOBS sets --jobs;
 FDASH_CACHE_DIR moves the cache (default .fdash/cache next to ${CONFIG_FILE}).`;
 
 export type Args = { cmd: "run" | "list"; tasks: string[]; skip: string[]; jobs: number; force: boolean; extra: string[] };
@@ -51,13 +51,7 @@ export function listLines(config: Config): string[] {
   return [...config.values()].map((t) => t.kind === "command" ? t.name : `${t.name}: ${t.tasks.join(", ")}${t.jobs ? ` (jobs ${t.jobs})` : ""}`);
 }
 
-/** The nearest folder, from `dir` up, that holds fdash.json. */
-export function findRoot(dir: string): string {
-  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
-    if (fs.existsSync(path.join(d, CONFIG_FILE))) return d;
-    if (path.dirname(d) === d) throw new Error(`no ${CONFIG_FILE} in ${dir} or above`);
-  }
-}
+export { findRoot };
 
 export function printResult(r: Result): void {
   console.log(resultLine(r));
@@ -75,7 +69,7 @@ async function main(): Promise<number> {
   try {
     args = parseArgs(process.argv.slice(2), process.env, os.availableParallelism());
     root = findRoot(process.cwd());
-    config = loadConfig(root);
+    config = load(root);
     if (args.cmd === "list") {
       for (const l of listLines(config)) console.log(l);
       return 0;

@@ -1,54 +1,84 @@
-// The gauntlet on fdash: its gates in fdash.json, the tree fingerprint, the record. Run: node --test scripts/gauntlet.test.ts  (part of the web-unit gate)
+// The gauntlet on fdash: its gates in the workspace, the tree fingerprint, the record. Run: node --test scripts/gauntlet.test.ts  (the scripts:test gate)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expand, loadConfig, type Command } from "../tools/fdash/config.ts";
+import { expand, type Command } from "../tools/fdash/config.ts";
+import { loadWorkspace } from "../tools/fdash/workspace.ts";
 import { fingerprint } from "./gauntlet-fingerprint.ts";
-import { closing, header, recordLines } from "./gauntlet.ts";
+import { BROWSER, closing, header, recordLines } from "./gauntlet.ts";
 // a plain .mjs without types: imported through a variable so the type-checker does not look for them
 const shards = "../e2e/shards.mjs";
 const { ALL } = (await import(shards)) as { ALL: string[] };
 
 const root = path.resolve(import.meta.dirname, "..");
 
-test("fdash.json holds the gates of gauntlet.sh, in its order, with its commands", () => {
-  const config = loadConfig(root);
+test("the workspace holds the gates of gauntlet.sh, now named by project, with their commands", () => {
+  const config = loadWorkspace(root);
   const gates = expand(config, ["default"], []);
   const row = (c: Command) => [c.name, c.cwd, c.run.map((s) => s.join(" ")).join(" && "), c.failOnOutput, c.args, JSON.stringify(c.env)];
+  const test = (name: string, cwd: string) => [name, cwd, "node --test test/*.test.ts", false, false, "{}"];
   assert.deepEqual(gates.map(row), [
-    ["gofmt", "server", "gofmt -l .", true, false, "{}"],
-    ["go-vet", "server", "go vet ./...", false, false, "{}"],
-    ["staticcheck", "server", "go tool staticcheck ./...", false, false, "{}"],
-    ["go-test-race", "server", "go test -race -count=1 ./...", false, false, "{}"],
-    ["tsc", "web", "pnpm exec tsc --noEmit", false, false, "{}"],
-    ["tsc-tests", "web", "pnpm exec tsc -p tsconfig.test.json --noEmit", false, false, "{}"],
-    ["vite-build", "web", "pnpm exec vite build", false, false, "{}"],
+    ["server:fmt", "server", "gofmt -l .", true, false, "{}"],
+    ["server:vet", "server", "go vet ./...", false, false, "{}"],
+    ["server:staticcheck", "server", "go tool staticcheck ./...", false, false, "{}"],
+    ["web:tsc", "web", "pnpm exec tsc --noEmit", false, false, "{}"],
+    ["web:tsc-tests", "web", "pnpm exec tsc -p tsconfig.test.json --noEmit", false, false, "{}"],
+    ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["protocol-docs", ".", "node scripts/check-protocol-docs.mjs", false, false, "{}"],
     ["oxlint", ".", "node scripts/oxlint.mjs", false, false, "{}"],
     ["plugin-types", ".", "node scripts/check-plugin-types.mjs", false, false, "{}"],
-    ["web-unit", ".", "node --test web/test/*.test.ts tools/fdash/test/*.test.ts e2e/shards.test.mjs e2e/slots.test.mjs scripts/oxlint-hq.test.mjs scripts/check-protocol-docs.test.mjs scripts/gauntlet.test.ts", false, false, "{}"],
-    ["site-build", "site", "node build.mjs && node check.mjs", false, false, "{}"],
-    ["e2e", "e2e", "node run.mjs", false, true, '{"E2E_VIEWPORT":"small"}'],
+    ["server:test", "server", "go test -race -count=1 ./...", false, false, "{}"],
+    test("web:test", "web"),
+    ["e2e:test", "e2e", "node --test shards.test.mjs slots.test.mjs", false, false, "{}"],
+    ["scripts:test", "scripts", "node --test oxlint-hq.test.mjs check-protocol-docs.test.mjs gauntlet.test.ts", false, false, "{}"],
+    test("fdash:test", "tools/fdash"),
+    test("hq-card-lastcard:test", "plugins/bundled/hq-card-lastcard"),
+    test("hq-card-pouilleux:test", "plugins/bundled/hq-card-pouilleux"),
+    test("hq-cards:test", "plugins/bundled/hq-cards"),
+    test("hq-chess:test", "plugins/bundled/hq-chess"),
+    ["site:build", "site", "node build.mjs && node check.mjs", false, false, "{}"],
+    [BROWSER, "e2e", "node run.mjs", false, true, '{"E2E_VIEWPORT":"small"}'],
   ]);
-  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", "e2e"], jobs: 1 });
+  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", BROWSER], jobs: 1 });
   assert.equal((config.get("static") as { jobs?: number }).jobs, undefined);
 });
 
 test("every gate is cached, and every scenario of the suite is an item with its own file", () => {
-  const gates = expand(loadConfig(root), ["default"], []);
-  for (const g of gates) assert.ok(g.inputs && g.inputs.length > 0, `${g.name} declares inputs`);
-  const e2e = gates.find((g) => g.name === "e2e")!;
+  const gates = expand(loadWorkspace(root), ["default"], []);
+  for (const g of gates) assert.ok(g.inputs && g.inputs.length > 0 && g.cache, `${g.name} is cached`);
+  const e2e = gates.find((g) => g.name === BROWSER)!;
   assert.deepEqual([...e2e.items!.keys()], ALL);
   for (const [s, item] of e2e.items!) assert.ok(item.inputs.includes(`e2e/scenarios/${s}.mjs`), s);
+  assert.ok(e2e.inputs!.includes("!e2e/scenarios/**"), "a scenario's file reruns that scenario only");
   // scenarios that turn a bundled plugin on, or list the plugins' catalog, follow that plugin's code
   const follows = (s: string, p: string) => e2e.items!.get(s)!.inputs.some((i) => typeof i === "string" && path.posix.matchesGlob(`plugins/bundled/${p}/main.ts`, i));
   for (const s of ALL) {
     const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".mjs"), "utf8");
     for (const p of fs.readdirSync(path.join(root, "plugins/bundled"))) if (text.includes(p)) assert.ok(follows(s, p), `${s} names ${p}: its folder is an input`);
     if (/\[role=tab\]", "Plugins"|Plugins tab|plugins tab/.test(text)) assert.ok(follows(s, "hq-"), `${s} lists the plugins: every plugin is an input`);
+  }
+});
+
+test("each plugin's tests run in its project, and import nothing outside it and what it depends on", () => {
+  const config = loadWorkspace(root);
+  const bundled = path.join(root, "plugins/bundled");
+  for (const p of fs.readdirSync(bundled)) {
+    const dir = path.join(bundled, p, "test");
+    if (!fs.existsSync(dir)) continue;
+    const task = config.get(`${p}:test`) as Command | undefined;
+    assert.ok(task, `${p} has tests, so a project with a test task`);
+    const deps: string[] = JSON.parse(fs.readFileSync(path.join(bundled, p, "fdash.json"), "utf8")).dependsOn ?? [];
+    const allowed = [path.join(bundled, p), ...deps.map((d) => (d === "sdk" ? path.join(root, "plugins/sdk") : path.join(bundled, d)))];
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
+      const text = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|new URL\(\s*)["'](\.[^"']+)["']/g)) {
+        const target = path.resolve(dir, m[1]);
+        assert.ok(allowed.some((a) => target.startsWith(a + path.sep)), `${p}/test/${f} reaches ${m[1]}, outside ${p} and its dependsOn`);
+      }
+    }
   }
 });
 

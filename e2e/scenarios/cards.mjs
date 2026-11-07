@@ -6,7 +6,7 @@
 // each card with its face, in canvas pixels) and from its live region.
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves.
 // Rules and logic are unit-tested, not here: the table, the log, snapping and the layout in
-// web/test/cards.test.ts, Old Maid and Last Card in web/test/oldMaid.test.ts and lastCard.test.ts, the server
+// plugins/bundled/hq-cards/test/cards.test.ts, Old Maid and Last Card in plugins/bundled/hq-card-pouilleux/test/oldMaid.test.ts and hq-card-lastcard/test/lastCard.test.ts, the server
 // side (who may act, restarts, game hooks such as Old Maid's count, a game turned off and on) in
 // server/internal/plugin/cards_test.go and oldmaid_test.go. This scenario keeps what needs the browser: real
 // controls, drags and the keyboard, what each page draws, sync between pages, a game's own card sheet.

@@ -1,0 +1,26 @@
+{
+  "dependsOn": [
+    "fdash"
+  ],
+  "tasks": {
+    "test": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "oxlint-hq.test.mjs",
+          "check-protocol-docs.test.mjs",
+          "gauntlet.test.ts"
+        ]
+      ],
+      "inputs": [
+        "/fdash-workspace.json",
+        "/**/fdash.json",
+        "/e2e/shards.mjs",
+        "/e2e/scenarios/**",
+        "/plugins/bundled/**",
+        "/.oxlintrc.json"
+      ]
+    }
+  }
+}

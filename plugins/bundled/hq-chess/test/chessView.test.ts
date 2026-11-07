@@ -1,12 +1,12 @@
 // hq-chess's board view and window without the browser: what the view lets a member pick up and send, what it
 // says, how it confirms or undoes an action of mine (public/sync.ts), and the window's buttons (public/window.ts).
-// The browser scenario e2e/scenarios/chess.mjs keeps the wiring: real drags, keys and buttons. Run: node --test web/test
+// The browser scenario e2e/scenarios/chess.mjs keeps the wiring: real drags, keys and buttons. Run: node --test plugins/bundled/hq-chess/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { START } from "../../plugins/bundled/hq-chess/public/game.ts";
-import type { BoardState, ViewIn } from "../../plugins/bundled/hq-chess/public/messages.ts";
-import { BoardSync } from "../../plugins/bundled/hq-chess/public/sync.ts";
-import { holders, resetAllowed, seatButton, undoAllowed } from "../../plugins/bundled/hq-chess/public/window.ts";
+import { START } from "../public/game.ts";
+import type { BoardState, ViewIn } from "../public/messages.ts";
+import { BoardSync } from "../public/sync.ts";
+import { holders, resetAllowed, seatButton, undoAllowed } from "../public/window.ts";
 
 const ANN = 1, BO = 2, CY = 3; // White, Black, a spectator
 const sq = (name: string) => (8 - Number(name[1])) * 8 + "abcdefgh".indexOf(name[0]);
