@@ -4,6 +4,8 @@
     "web",
     "site",
     "e2e",
+    "docs",
+    "desktop",
     "scripts",
     "tools/fdash",
     "plugins/sdk",
@@ -14,108 +16,14 @@
       "jobs": 1,
       "tasks": [
         "static",
-        "e2e:browser"
+        "test:e2e"
       ]
     },
     "static": {
       "tasks": [
-        "server:fmt",
-        "server:vet",
-        "server:staticcheck",
-        "web:tsc",
-        "web:tsc-tests",
-        "web:tsc-sdk",
-        "web:build",
-        "e2e:tsc",
-        "site:tsc",
-        "desktop-types",
-        "protocol-docs",
-        "oxlint",
-        "plugin-types",
-        "*:test",
-        "site:build"
-      ]
-    },
-    "protocol-docs": {
-      "run": [
-        [
-          "node",
-          "scripts/check-protocol-docs.ts"
-        ]
-      ],
-      "inputs": [
-        "scripts/check-protocol-docs.ts",
-        "docs/protocol.md",
-        "server/internal/httpapi/**",
-        "web/src/net/**"
-      ]
-    },
-    "oxlint": {
-      "run": [
-        [
-          "node",
-          "scripts/oxlint.ts"
-        ]
-      ],
-      "inputs": [
-        "scripts/oxlint.ts",
-        "scripts/oxlint-hq.ts",
-        ".oxlintrc.json",
-        "web/**",
-        "plugins/**",
-        "e2e/**",
-        "scripts/**",
-        "tools/fdash/**",
-        "site/**",
-        "desktop/tsconfig.json",
-        "desktop/globals.d.ts",
-        "desktop/ui/**",
-        "desktop/src-tauri/src/*.js"
-      ],
-      "tools": [
-        [
-          "pnpm",
-          "--version"
-        ]
-      ]
-    },
-    "plugin-types": {
-      "run": [
-        [
-          "node",
-          "scripts/check-plugin-types.ts"
-        ]
-      ],
-      "inputs": [
-        "scripts/check-plugin-types.ts",
-        "plugins/**",
-        "e2e/fixtures/**",
-        "web/package.json",
-        "web/pnpm-lock.yaml"
-      ],
-      "tools": [
-        [
-          "pnpm",
-          "--version"
-        ]
-      ]
-    },
-    "desktop-types": {
-      "run": [
-        [
-          "node",
-          "web/node_modules/typescript/bin/tsc",
-          "-p",
-          "desktop"
-        ]
-      ],
-      "inputs": [
-        "desktop/tsconfig.json",
-        "desktop/globals.d.ts",
-        "desktop/ui/setup.js",
-        "desktop/src-tauri/src/missing-apis.js",
-        "web/package.json",
-        "web/pnpm-lock.yaml"
+        "lint",
+        "build",
+        "test:unit"
       ]
     }
   }

@@ -3,12 +3,29 @@
     "fdash"
   ],
   "tasks": {
-    "test": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
+      ]
+    },
+    "test:unit": {
       "run": [
         [
           "node",
           "--test",
           "oxlint-hq.test.ts",
+          "oxlint.test.ts",
           "check-protocol-docs.test.ts",
           "gauntlet.test.ts",
           "ci-fdash-records.test.ts"

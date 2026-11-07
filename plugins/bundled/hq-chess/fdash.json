@@ -1,9 +1,38 @@
 {
   "dependsOn": [
+    "server",
     "sdk"
   ],
   "tasks": {
-    "test": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json"
+        ],
+        [
+          "node",
+          "../../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "public/tsconfig.json"
+        ],
+        [
+          "node",
+          "../../../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
+      ]
+    },
+    "test:unit": {
       "run": [
         [
           "node",

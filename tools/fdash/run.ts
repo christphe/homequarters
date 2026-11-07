@@ -43,7 +43,7 @@ function runStep(argv: string[], o: { cwd: string; env: NodeJS.ProcessEnv; log: 
     // settled once: a program that cannot start emits "error" and then "close", and the log file is closed
     // as soon as the step is settled, so nothing may be written after that
     let settled = false;
-    const write = (s: string | Buffer) => { if (!settled) (typeof s === "string" ? fs.writeSync(o.log, s) : fs.writeSync(o.log, s)); };
+    const write = (s: string | Uint8Array) => { if (!settled) (typeof s === "string" ? fs.writeSync(o.log, s) : fs.writeSync(o.log, s)); };
     const settle = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
     let child;
     try {

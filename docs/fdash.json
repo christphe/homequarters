@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../scripts/check-protocol-docs.ts"
+        ]
+      ],
+      "inputs": [
+        "/scripts/check-protocol-docs.ts",
+        "/server/internal/httpapi/ws.go",
+        "/web/src/net/protocol.ts",
+        "protocol.md"
+      ]
+    }
+  }
+}

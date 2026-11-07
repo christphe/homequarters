@@ -1,3 +1,24 @@
 {
-  "name": "sdk"
+  "name": "sdk",
+  "dependsOn": [
+    "server"
+  ],
+  "tasks": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
+      ]
+    }
+  }
 }

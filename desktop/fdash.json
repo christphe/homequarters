@@ -1,0 +1,27 @@
+{
+  "tasks": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "."
+        ],
+        [
+          "node",
+          "../scripts/oxlint.ts",
+          "ui",
+          "src-tauri/src"
+        ]
+      ],
+      "inputs": [
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
+      ]
+    }
+  }
+}

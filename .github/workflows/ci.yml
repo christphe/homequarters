@@ -9,18 +9,22 @@ permissions:
   contents: read
   actions: read # to download the records main's runs published
 
-# The gates run through fdash (tools/fdash, fdash-workspace.json, decision 0035): a gate or a browser scenario
-# that already passed on main with the same inputs is reported CACHED and not run again. The records come only
-# from runs of a push to main, which publish them as an artifact of their own run; every job (a pull request's
-# too) downloads that artifact from main's latest finished run. Nothing a pull request runs can add to it: a run
-# of a pull request publishes no records, and reading them from anywhere else would need a change to this file
-# in the pull request's final diff. actions/cache is not used because a pull request's own scope is searched
-# first and an earlier commit of it could save one. Each main job publishes only the records its run used or
-# made (fdash touches the records it finds; older ones are deleted first), so they stay the size of one run.
+# The checks run through fdash (tools/fdash, fdash-workspace.json, decision 0035), by the conventional task
+# names every project uses: `unit` runs lint, build and test:unit; `integration` builds the server and runs
+# test:integration (against the testbed); `e2e` builds the server and the client, then runs one shard of
+# test:e2e. A check or a browser scenario that already passed on main with the same inputs is reported
+# CACHED and not run again; a cached build restores its outputs (the binary, web/dist, site/dist) with it.
+# The records come only from runs of a push to main, which publish them as an artifact of their own run, one
+# per job; every job (a pull request's too) downloads its artifact from main's latest finished run. Nothing a
+# pull request runs can add to it: a run of a pull request publishes no records, and reading them from
+# anywhere else would need a change to this file in the pull request's final diff. actions/cache is not used
+# because a pull request's own scope is searched first and an earlier commit of it could save one. Each main
+# job publishes only the records its run used or made (fdash touches the records and outputs it finds; older
+# ones are deleted first), so they stay the size of one run.
 # (The Go and pnpm caches of setup-go and setup-node still use actions/cache, as before.)
 
 jobs:
-  static:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,28 +49,28 @@ jobs:
         working-directory: web
       - run: pnpm install --frozen-lockfile
         working-directory: site
-      # the e2e:tsc gate type-checks the browser suite against puppeteer-core's types
+      # e2e's lint type-checks the browser suite against puppeteer-core's types
       - run: pnpm install --frozen-lockfile
         working-directory: e2e
-      - name: Records of the gates that passed on main (its latest run's artifact)
+      - name: Records of the checks that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci-fdash-records.ts fdash-static
-      - name: Static gates (fdash run static)
+        run: node scripts/ci-fdash-records.ts fdash-unit
+      - name: Lint, build and unit tests (fdash run lint build test:unit)
         id: gates
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
-          node tools/fdash/cli.ts run static
+          node tools/fdash/cli.ts run lint build test:unit
         env:
           FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
-      - name: Logs of the gates
+      - name: Logs of the checks
         if: failure() && steps.gates.outcome == 'failure'
         run: for f in "$RUNNER_TEMP"/fdash-logs/*/*.log; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
-      - name: Logs of the gates (artifact)
+      - name: Logs of the checks (artifact)
         if: failure() && steps.gates.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: static-gate-logs
+          name: unit-logs
           path: ${{ runner.temp }}/fdash-logs
       - name: Keep only the records this run used
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
@@ -75,19 +79,64 @@ jobs:
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
-          name: fdash-static
+          name: fdash-unit
           path: .fdash/cache
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
-      - name: Build binaries
+      # the server's binary is fdash's server build, above
+      - name: Build the load generator
         working-directory: server
-        run: |
-          go build ./cmd/homequarters
-          go build ./cmd/loadgen
+        run: go build ./cmd/loadgen
       - name: Build the media benchmark tool
         working-directory: bench/mediagen
         run: go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@$(cd ../../server && go list -m -f '{{.Version}}' honnef.co/go/tools) ./... && go build -o /dev/null .
+
+  # Tests against a real server without a browser: each test:integration starts the testbed (homequarters
+  # testbed), built here with the race detector.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOFLAGS: -race
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Records of the checks that passed on main (its latest run's artifact)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-fdash-records.ts fdash-integration
+      # the build first, in a run of its own: a test:integration does not wait for another project's build
+      - name: Integration tests (fdash run build --pkg server, then test:integration)
+        id: gates
+        run: |
+          date +%s > "$RUNNER_TEMP/fdash-start"
+          node tools/fdash/cli.ts run build --pkg server
+          node tools/fdash/cli.ts run test:integration
+        env:
+          FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
+      - name: Logs of the checks
+        if: failure() && steps.gates.outcome == 'failure'
+        run: for f in "$RUNNER_TEMP"/fdash-logs/*/*.log; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
+      - name: Keep only the records this run used
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
+        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete
+      - name: Publish the records (main only)
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdash-integration
+          path: .fdash/cache
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
 
   # Real-browser end-to-end suite: Chrome with fake devices against a real LiveKit server, split into
   # shards balanced by measured scenario durations (e2e/shards.ts); each job runs one on its own runner,
@@ -96,7 +145,7 @@ jobs:
     name: e2e (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [static]
+    needs: [unit]
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +178,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-fdash-records.ts fdash-e2e-${{ matrix.shard }}
-      - name: Suite (fdash run e2e:browser with this shard's scenarios)
+      # the build first, in a run of its own: test:e2e uses bin/ and web/dist as they are (E2E_PREBUILT)
+      - name: Suite (fdash run build, then test:e2e with this shard's scenarios)
         id: suite
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
@@ -141,7 +191,8 @@ jobs:
           scenarios=$(node -e "import('./e2e/shards.ts').then((m) => console.log(m.shard(m.ALL, ${{ matrix.shard }}, 4).join(' ')))")
           echo "shard ${{ matrix.shard }}/4: $scenarios"
           if [ -z "$scenarios" ]; then exit 0; fi # no item would mean every scenario
-          node tools/fdash/cli.ts run e2e:browser -- $scenarios
+          node tools/fdash/cli.ts run build --pkg server --pkg web
+          node tools/fdash/cli.ts run test:e2e --pkg e2e -- $scenarios
       - name: Log of the suite
         if: always() && steps.suite.outcome != 'skipped'
         run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"

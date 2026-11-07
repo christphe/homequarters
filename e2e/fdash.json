@@ -1,6 +1,81 @@
 {
   "tasks": {
-    "test": {
+    "lint": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "--noEmit"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/critters/tsconfig.json"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/drawn-pet/tsconfig.json"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/drawn-pet/public/tsconfig.json"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/drawn-sheet/public/tsconfig.json"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/ui-demo/tsconfig.json"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/ui-demo/public/tsconfig.json"
+        ],
+        [
+          "node",
+          "../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "fixtures/plugins/installed/ui-demo/public/views/tsconfig.json"
+        ],
+        [
+          "node",
+          "../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/web/src/**",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml",
+        "/plugins/bundled/*/public/**",
+        "/plugins/sdk/**",
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "test:unit": {
       "run": [
         [
           "node",
@@ -10,29 +85,7 @@
         ]
       ]
     },
-    "tsc": {
-      "run": [
-        [
-          "pnpm",
-          "exec",
-          "tsc",
-          "--noEmit"
-        ]
-      ],
-      "tools": [
-        [
-          "pnpm",
-          "--version"
-        ]
-      ],
-      "inputs": [
-        "/web/src/**",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml",
-        "/plugins/bundled/*/public/**"
-      ]
-    },
-    "browser": {
+    "test:e2e": {
       "run": [
         [
           "node",
@@ -40,7 +93,8 @@
         ]
       ],
       "env": {
-        "E2E_VIEWPORT": "small"
+        "E2E_VIEWPORT": "small",
+        "E2E_PREBUILT": "1"
       },
       "args": true,
       "inputs": [

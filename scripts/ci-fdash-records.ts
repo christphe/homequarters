@@ -1,6 +1,7 @@
-// CI only: puts into .fdash/cache the fdash records that main's latest finished run published as the artifact
-// named in argv (fdash-static, fdash-e2e-<shard>). Only runs of a push to main publish records, so a pull
-// request cannot add one (.github/workflows/ci.yml, decision 0035). A run is used only if its commit is on
+// CI only: puts into .fdash/cache the fdash records (and the build outputs stored with them) that main's latest
+// finished run published as the artifact named in argv, one per CI job: fdash-unit, fdash-integration,
+// fdash-e2e-<shard>. Only runs of a push to main publish records, so a pull request cannot add one
+// (.github/workflows/ci.yml, decision 0035). A run is used only if its commit is on
 // main: a pushed tag named "main" also has "main" as its run's branch. Without such a run, nothing is restored
 // and every check runs. Needs GH_TOKEN with actions: read and contents: read, and GITHUB_REPOSITORY.
 // Usage: node scripts/ci-fdash-records.ts <artifact name>

@@ -58,9 +58,9 @@ Two products are released separately from this repository, each with its own cha
 cd server && go vet ./... && go test -race ./...
 node scripts/gauntlet.ts [scenario ...]  # all gates through fdash (or scripts/gauntlet.sh): gofmt, vet, staticcheck, race tests, tsc, build, protocol docs, oxlint, plugin types, unit tests, site, browser suite (E2E_VIEWPORT=small, CI's 800x450); what already passed on the same inputs is CACHED (FDASH_FORCE=1 reruns all), static gates run FDASH_JOBS at once
 node tools/fdash/cli.ts list             # the tasks of fdash-workspace.json and each project's fdash.json; `run <task>` runs one (e.g. hq-cards:test)
-node scripts/oxlint.ts                  # Oxlint, type-aware, on web/, the plugins and the tooling (e2e/, scripts/, site/, the desktop scripts) (.oxlintrc.json; decision 0033), with the project's rules in scripts/oxlint-hq.ts (effects return a cleanup or nothing, UI text through t(), dialogs through Modal, no fetch in web/src/ui)
+node scripts/oxlint.ts [folder ...]     # Oxlint, type-aware, on the folders given (each project's lint runs it on its own) or on web/, the plugins and the tooling (e2e/, scripts/, tools/fdash/, site/, the desktop scripts) (.oxlintrc.json; decision 0033), with the project's rules in scripts/oxlint-hq.ts (effects return a cleanup or nothing, UI text through t(), dialogs through Modal, no fetch in web/src/ui)
 node scripts/check-protocol-docs.ts     # docs/protocol.md lists every message of ws.go's dispatch and of protocol.ts
-node scripts/check-plugin-types.ts      # tsc on every plugin tsconfig.json under plugins/ and e2e/fixtures/plugins/
+node tools/fdash/cli.ts run lint --pkg hq-chess   # a plugin's lint: tsc on each of its tsconfig.json and oxlint on its folder (e2e's lint checks e2e/fixtures/plugins/)
 cd server && go tool staticcheck ./...   # staticcheck, the version pinned in go.mod
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
 node --test 'web/test/*.test.ts' 'plugins/bundled/*/test/*.test.ts'  # web and plugin unit tests (a plugin's own tests sit in its test/ folder), in about a second (Node 24 strips the types; type-checked by web/tsconfig.test.json)
