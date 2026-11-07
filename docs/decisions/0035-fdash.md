@@ -31,7 +31,7 @@ from the repository and names none of its paths (a test checks it).
   `go list -deps` reaches) already passed with the same definition, arguments, environment keys, tool
   versions, OS and Node is reported `CACHED` and not run. Only passes are recorded, in `.fdash/cache/`.
 - A command can have items, cached one by one: the browser suite's scenarios, each with its own file and the
-  plugins it turns on. `e2e/run.mjs` writes each scenario's result to `FDASH_REPORT`.
+  plugins it turns on. `e2e/run.ts` writes each scenario's result to `FDASH_REPORT`.
 
 The gauntlet keeps the process: `scripts/gauntlet.ts` (and `gauntlet.sh`, now one line calling it) runs the
 workspace's `default` task through fdash's API and writes `.gauntlet/last-gates.log` for the critics as
@@ -61,7 +61,7 @@ folder, so a plugin's change reruns its tests and those of the plugins that depe
   `node_modules`).
 - **CI:** the records come only from runs of a push to `main`, which publish them as an artifact of their
   own run (only the records that run used or made); every job, a pull request's too, downloads the artifact
-  of `main`'s latest finished run (`scripts/ci-fdash-records.mjs`), a run kept only if its commit is on
+  of `main`'s latest finished run (`scripts/ci-fdash-records.ts`), a run kept only if its commit is on
   `main` (a pushed tag named `main` also reports `main` as its run's branch). A pull request's run publishes nothing,
   so nothing it runs can mark one of its checks as passed; reading records from elsewhere would need a change
   to the workflow in its final diff. `actions/cache` was tried first and dropped: it searches a pull

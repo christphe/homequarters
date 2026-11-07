@@ -48,6 +48,27 @@
         ]
       ]
     },
+    "tsc-sdk": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "-p",
+          "tsconfig.sdk.json"
+        ]
+      ],
+      "inputs": [
+        "/plugins/sdk/client.d.ts",
+        "/plugins/sdk/view.d.ts"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
     "build": {
       "run": [
         [

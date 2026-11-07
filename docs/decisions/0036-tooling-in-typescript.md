@@ -5,7 +5,7 @@ Date: 2026-11-07. Status: accepted.
 ## Context
 
 The client, the plugins, fdash and `scripts/gauntlet.ts` were TypeScript, but the rest of the tooling was
-plain JavaScript (`.mjs`): the browser suite (`e2e/`, about 7,700 lines, its runner and 34 scenarios), the
+plain JavaScript (`.mjs`): the browser suite (`e2e/`, about 7,700 lines, its runner and 34 scenario files), the
 gate scripts in `scripts/`, the site generator and the plugins' sprite tools. No gate type-checked or linted
 them: a scenario could read a field of `window.__hq` that the client no longer has, and only a run of the
 suite (minutes, a browser, LiveKit) would tell. Five more files are JavaScript on purpose: the plugin SDKs
@@ -25,10 +25,12 @@ suite (minutes, a browser, LiveKit) would tell. Five more files are JavaScript o
   `web:tsc-tests`). The browser suite's page code is typed with the client's own test handle: `web/src/session.ts`
   exports `HqHandle`, the type of `window.__hq`, and `e2e/globals.d.ts` declares it, so the suite and the
   client cannot drift apart without a type error. `erasableSyntaxOnly` is on for `site/` but not for `e2e/`,
-  whose check also reads the client (which uses parameter properties); Node refuses such syntax when it loads
-  a file, so it cannot hide in the suite either.
+  whose check also reads the client (which uses parameter properties), nor for `web/tsconfig.test.json`: a
+  unit test in `scripts/gauntlet.test.ts` strips every tooling `.ts` file the way Node does (`stripTypeScriptTypes`,
+  which refuses such syntax) and checks that every relative import carries its extension, for the files no gate
+  runs too (art tools, captures, sprite tools).
 - The five served scripts stay JavaScript, with `// @ts-check` and JSDoc types, checked through `checkJs`:
-  the SDKs by `web:tsc` (typed against `plugins/sdk/*.d.ts`, the API they implement), the desktop's two by
+  the SDKs by the new `web:tsc-sdk` gate (`web/tsconfig.sdk.json`, typed against `plugins/sdk/*.d.ts`, the API they implement; a program of their own, so the iframe globals `hq` and `hqView` are never declared in the client's), the desktop's two by
   the new `desktop-types` gate (`desktop/tsconfig.json`, with `desktop/globals.d.ts` for what the shell
   provides), `site.js` by `site:tsc`. The two one-line plugin fixtures under `server/internal/httpapi/testdata`
   are left as they are.

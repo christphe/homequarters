@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { stripTypeScriptTypes } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +25,7 @@ test("the workspace holds the gates of gauntlet.sh, now named by project, with t
     ["server:staticcheck", "server", "go tool staticcheck ./...", false, false, "{}"],
     ["web:tsc", "web", "pnpm exec tsc --noEmit", false, false, "{}"],
     ["web:tsc-tests", "web", "pnpm exec tsc -p tsconfig.test.json --noEmit", false, false, "{}"],
+    ["web:tsc-sdk", "web", "pnpm exec tsc -p tsconfig.sdk.json", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["e2e:tsc", "e2e", "pnpm exec tsc --noEmit", false, false, "{}"],
     ["site:tsc", "site", "pnpm exec tsc --noEmit", false, false, "{}"],
@@ -190,4 +192,20 @@ test("no scenario of the suite imports another (each is cached on its own file)"
 
 test("the guards above read the whole repository, so scripts:test follows every file", () => {
   assert.ok(((loadWorkspace(root).get("scripts:test") as Command).inputs ?? []).includes("**"), "scripts:test needs /** in its inputs");
+});
+
+test("the tooling Node runs as is loads in Node: erasable syntax only, relative imports with their extension", () => {
+  // tsc cannot say it for every tree (e2e/ and web/tsconfig.test.json also read the client, which is not run by
+  // Node), and several of these files run in no gate (art tools, captures, sprite tools): Node's own stripping
+  // throws on what it refuses, and an extensionless relative import would not resolve
+  const tracked = execFileSync("git", ["ls-files", "--", "e2e/*.ts", "scripts/*.ts", "site/*.ts", "tools/*.ts", "plugins/bundled/*/tools/*.ts", "plugins/bundled/*/test/*.ts"], { cwd: root, encoding: "utf8" })
+    .split("\n").filter((f) => f && !f.startsWith("e2e/fixtures/") && !f.endsWith(".d.ts"));
+  assert.ok(tracked.length > 70, `found only ${tracked.length} files`);
+  const bad: string[] = [];
+  for (const f of tracked) {
+    const code = fs.readFileSync(path.join(root, f), "utf8");
+    try { stripTypeScriptTypes(code); } catch (e) { bad.push(`${f}: ${(e as Error).message.split("\n")[0]}`); }
+    for (const m of code.matchAll(/(?:from|import\()\s*["'](\.\.?\/[^"']+)["']/g)) if (!/\.(ts|js|json|mjs)$/.test(m[1])) bad.push(`${f}: import "${m[1]}" without its extension`);
+  }
+  assert.deepEqual(bad, []);
 });
