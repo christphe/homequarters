@@ -12,7 +12,7 @@ permissions:
 # The checks run through fdash (tools/fdash, fdash-workspace.json, decision 0035), by the conventional task
 # names every project uses: `unit` runs lint, build and test:unit; `integration` builds the server and runs
 # test:integration (against the testbed); `e2e` builds the server and the client, then runs one shard of
-# test:e2e. A check or a browser scenario that already passed on main with the same inputs is reported
+# test:e2e (scenarios of the e2e project and plugin e2e projects). A check or a browser scenario that already passed on main with the same inputs is reported
 # CACHED and not run again; a cached build restores its outputs (the binary, web/dist, site/dist) with it.
 # The records come only from runs of a push to main, which publish them as an artifact of their own run, one
 # per job; every job (a pull request's too) downloads its artifact from main's latest finished run. Nothing a
@@ -179,7 +179,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-fdash-records.ts fdash-e2e-${{ matrix.shard }}
       # the build first, in a run of its own: test:e2e uses bin/ and web/dist as they are (E2E_PREBUILT)
-      - name: Suite (fdash run build, then test:e2e with this shard's scenarios)
+      # A shard holds scenarios of e2e/run.ts (the e2e project's items) and plugin e2e projects
+      # (plugins/e2e/*, run by e2e/plugin-run.ts against the testbed, without LiveKit), balanced together
+      # by e2e/shards.ts's plan.
+      - name: Suite (fdash run build, then test:e2e with this shard's scenarios and e2e projects)
         id: suite
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
@@ -188,11 +191,17 @@ jobs:
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
           export CHROME_VERSION="$("$CHROME" --version)"
-          scenarios=$(node -e "import('./e2e/shards.ts').then((m) => console.log(m.shard(m.ALL, ${{ matrix.shard }}, 4).join(' ')))")
-          echo "shard ${{ matrix.shard }}/4: $scenarios"
-          if [ -z "$scenarios" ]; then exit 0; fi # no item would mean every scenario
+          plan=$(node -e "import('./e2e/shards.ts').then((m) => { const p = m.plan(${{ matrix.shard }}, 4); console.log(p.scenarios.join(' ') + '|' + p.projects.join(' ')); })")
+          scenarios=${plan%%|*}
+          projects=${plan#*|}
+          echo "shard ${{ matrix.shard }}/4: scenarios: ${scenarios:-none}; e2e projects: ${projects:-none}"
+          if [ -z "$scenarios$projects" ]; then exit 0; fi
           node tools/fdash/cli.ts run build --pkg server --pkg web
-          node tools/fdash/cli.ts run test:e2e --pkg e2e -- $scenarios
+          status=0
+          # no item would mean every scenario: run the e2e project only when the shard has some
+          if [ -n "$scenarios" ]; then node tools/fdash/cli.ts run test:e2e --pkg e2e -- $scenarios || status=1; fi
+          if [ -n "$projects" ]; then node tools/fdash/cli.ts run test:e2e $(printf -- '--pkg %s ' $projects) || status=1; fi
+          exit $status
       - name: Log of the suite
         if: always() && steps.suite.outcome != 'skipped'
         run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"

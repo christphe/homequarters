@@ -13,6 +13,8 @@ import { BROWSER, closing, header, plan, recordLines } from "./gauntlet.ts";
 import { ALL } from "../e2e/shards.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
+/** A plugin's browser suite (plugins/e2e/hq-chess-e2e), run by e2e/plugin-run.ts against the testbed. */
+const PLUGIN_SUITE = "hq-chess-e2e:test:e2e";
 
 test("the workspace holds the gauntlet's gates, as the conventional tasks of each project, with their commands", () => {
   const config = loadWorkspace(root);
@@ -38,6 +40,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     plugin("hq-cards", ["tsconfig.json", "public/tsconfig.json"]),
     plugin("hq-chess", ["tsconfig.json", "public/tsconfig.json"]),
     plugin("hq-pets", ["tsconfig.json", "public/tsconfig.json"]),
+    ["hq-chess-e2e:lint", "plugins/e2e/hq-chess-e2e", `node ../../../e2e/node_modules/typescript/bin/tsc -p tsconfig.json && ${ox("../../../")}`, false, false, "{}"],
     ["server:build", "server", "go build -o ../bin/ ./cmd/homequarters", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
@@ -51,10 +54,12 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     unit("hq-card-pouilleux:test:unit", "plugins/bundled/hq-card-pouilleux"),
     unit("hq-cards:test:unit", "plugins/bundled/hq-cards"),
     unit("hq-chess:test:unit", "plugins/bundled/hq-chess"),
+    ["sdk:test:integration", "plugins/sdk", "node --test **/*.ispec.ts", false, false, "{}"],
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
+    [PLUGIN_SUITE, "plugins/e2e/hq-chess-e2e", "node ../../../e2e/plugin-run.ts --plugin ../../bundled/hq-chess chess.ts", false, false, '{"E2E_VIEWPORT":"small"}'],
   ]);
-  // the browser suites start once the build is done: default runs its members one after the other
-  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", BROWSER], jobs: 1, after: [] });
+  // the integration and browser suites start once the build is done: default runs its members one after the other
+  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", "sdk:test:integration", BROWSER, PLUGIN_SUITE], jobs: 1, after: [] });
   assert.equal((config.get("static") as { jobs?: number }).jobs, undefined);
 });
 
@@ -68,9 +73,9 @@ test("every plugin has its own tsconfig.json files checked by its lint, the e2e 
 
 test("the gauntlet runs default; named scenarios go to the e2e project's suite only", () => {
   const config = loadWorkspace(root);
-  assert.deepEqual(plan(config, [], false), { names: ["default"], skip: [], suites: [BROWSER] });
-  assert.deepEqual(plan(config, [], true).skip, [BROWSER]);
-  assert.deepEqual(plan(config, ["social"], false).skip, []);
+  assert.deepEqual(plan(config, [], false), { names: ["default"], skip: [], suites: [BROWSER, PLUGIN_SUITE] });
+  assert.deepEqual(plan(config, [], true).skip, [BROWSER, PLUGIN_SUITE]);
+  assert.deepEqual(plan(config, ["social"], false).skip, [PLUGIN_SUITE]);
 });
 
 test("build tasks declare what they produce; site checks its build after making it", () => {
@@ -124,6 +129,24 @@ test("each plugin's tests run in its project, and import nothing outside it and 
       for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|new URL\(\s*)["'](\.[^"']+)["']/g)) {
         const target = path.resolve(dir, m[1]);
         assert.ok(allowed.some((a) => target.startsWith(a + path.sep)), `${p}/test/${f} reaches ${m[1]}, outside ${p} and its dependsOn`);
+      }
+    }
+  }
+});
+
+test("an e2e project's scenarios import only its folder, its dependsOn and the inputs of its test:e2e", () => {
+  const config = loadWorkspace(root);
+  const e2e = path.join(root, "plugins/e2e");
+  const dirOf = (name: string) => (name === "web" ? path.join(root, "web") : path.join(root, "plugins/bundled", name));
+  for (const p of fs.readdirSync(e2e).filter((x) => fs.existsSync(path.join(e2e, x, "fdash.json")))) {
+    const deps: string[] = JSON.parse(fs.readFileSync(path.join(e2e, p, "fdash.json"), "utf8")).dependsOn ?? [];
+    const inputs = ((config.get(`${p}:test:e2e`) as Command).inputs ?? []).filter((i): i is string => typeof i === "string" && !i.startsWith("!"));
+    const allowed = [path.join(e2e, p), ...deps.map(dirOf)];
+    for (const f of fs.readdirSync(path.join(e2e, p)).filter((x) => x.endsWith(".ts"))) {
+      for (const m of fs.readFileSync(path.join(e2e, p, f), "utf8").matchAll(/(?:from\s+|import\s*\(\s*)["'](\.[^"']+)["']/g)) {
+        const target = path.resolve(e2e, p, m[1]);
+        const rel = path.relative(root, target).split(path.sep).join("/");
+        assert.ok(allowed.some((a) => target.startsWith(a + path.sep)) || inputs.some((i) => path.posix.matchesGlob(rel, i)), `${p}/${f} reaches ${m[1]}: not in ${p}, its dependsOn or its test:e2e inputs`);
       }
     }
   }

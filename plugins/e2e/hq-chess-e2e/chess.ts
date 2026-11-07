@@ -8,11 +8,12 @@
 // pick up, sends, says and undoes, and the window's buttons, in plugins/bundled/hq-chess/test/chessView.test.ts; the server side
 // (seats, presence, hello, reset, the playing list, restarts) in server/internal/plugin/chess_test.go. This
 // scenario keeps what needs the browser: real controls, pixels, the live region, sync between pages, badges.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type RunContext, type User } from "../lib.ts";
-import type { Frame, HTTPRequest } from "puppeteer-core";
-import { paintPiece, TONES, PIECE_W, PIECE_H, SMALL_W, SMALL_H } from "../../plugins/bundled/hq-chess/public/pieces.ts";
-import { START, move as playMove, place as playPlace, type Board, type Side } from "../../plugins/bundled/hq-chess/public/game.ts";
-import type { ToServer } from "../../plugins/bundled/hq-chess/public/messages.ts";
+// It runs against the testbed, without LiveKit (e2e/plugin-run.ts): node tools/fdash/cli.ts run test:e2e --pkg hq-chess-e2e
+// (after "node tools/fdash/cli.ts run build --pkg server --pkg web"). Of its RunContext it uses only adminCookie.
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type Frame, type HTTPRequest, type RunContext, type User } from "../../../e2e/lib.ts";
+import { paintPiece, TONES, PIECE_W, PIECE_H, SMALL_W, SMALL_H } from "../../bundled/hq-chess/public/pieces.ts";
+import { START, move as playMove, place as playPlace, type Board, type Side } from "../../bundled/hq-chess/public/game.ts";
+import type { ToServer } from "../../bundled/hq-chess/public/messages.ts";
 
 /** A member of this scenario: whether their view is turned (Black), and the plugin frames their page sent (countFrames). */
 type Player = User & { flip?: boolean; sent: ToServer[]; sentAt: number[]; usedAt?: number };

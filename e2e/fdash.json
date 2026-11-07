@@ -83,6 +83,9 @@
           "shards.test.ts",
           "slots.test.ts"
         ]
+      ],
+      "inputs": [
+        "/plugins/e2e/*/fdash.json"
       ]
     },
     "test:e2e": {
@@ -100,6 +103,7 @@
       "inputs": [
         "!scenarios/**",
         "!*.test.ts",
+        "!plugin-run.ts",
         {
           "go": "./cmd/homequarters",
           "cwd": "../server"
@@ -176,12 +180,6 @@
           "inputs": [
             "scenarios/plugins.ts",
             "/plugins/bundled/**"
-          ]
-        },
-        "chess": {
-          "inputs": [
-            "scenarios/chess.ts",
-            "/plugins/bundled/hq-chess/**"
           ]
         },
         "cards": {

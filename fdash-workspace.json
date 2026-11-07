@@ -9,7 +9,8 @@
     "scripts",
     "tools/fdash",
     "plugins/sdk",
-    "plugins/bundled/*"
+    "plugins/bundled/*",
+    "plugins/e2e/*"
   ],
   "tasks": {
     "default": {
