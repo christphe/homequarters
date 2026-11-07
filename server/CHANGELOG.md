@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - minor
+## [0.6.0] - 2026-11-07
 
 ### Changed
 - Desktop notifications also show when the office's window is visible but not focused (another app in front), not only when it is minimised or hidden (#48)
