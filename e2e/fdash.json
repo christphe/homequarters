@@ -41,7 +41,10 @@
         "HQ_MEDIA_RECONCILE_SECONDS",
         "CHROME_VERSION",
         "SKIP_BUILD",
-        "CI"
+        "CI",
+        "HQ_TEST_LK_PORT",
+        "GOFLAGS",
+        "CGO_ENABLED"
       ],
       "tools": [
         [

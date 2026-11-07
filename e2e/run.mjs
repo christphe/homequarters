@@ -96,6 +96,8 @@ if (parallelRun) {
   onSignal = null; // runParallel stops its shards and LiveKit itself
   const { runParallel } = await import("./parallel.mjs");
   const ok = await runParallel({ n: PARALLEL, scenarios: listed, slots, mode: lkMode });
+  // the shards report their scenarios; a run whose build was skipped by its caller records nothing (see below)
+  if (process.env.FDASH_REPORT && process.env.SKIP_BUILD) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ nocache: true }) + "\n");
   console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
   process.exit(ok ? 0 : 1);
 }
@@ -188,6 +190,12 @@ try {
   }
   stopLiveKit(lk);
 }
-if (process.env.FDASH_REPORT) for (const [item, passed] of outcome) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ item, ok: passed }) + "\n");
+if (process.env.FDASH_REPORT) {
+  for (const [item, passed] of outcome) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ item, ok: passed }) + "\n");
+  // without a build (SKIP_BUILD) the scenarios ran on whatever bin/ and web/dist held: nothing proves they match
+  // the sources fdash keyed them on, so nothing is recorded; neither for a stack someone else runs (HQ_EXTERNAL_URL)
+  // (a shard of an E2E_PARALLELISM run has SKIP_BUILD because its parent built: that build is current)
+  if ((process.env.SKIP_BUILD && !SHARD_CHILD) || EXTERNAL) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ nocache: true }) + "\n");
+}
 console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
 process.exit(ok ? 0 : 1);

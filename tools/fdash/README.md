@@ -116,7 +116,9 @@ values of its `envKeys`, the output of its `tools`, the OS, the CPU architecture
 content of its input files. A pass records the key in `.fdash/cache/` (or `FDASH_CACHE_DIR`); a command
 whose key is recorded is reported `CACHED` and not run, and its record is touched (its time set to now):
 records older than a run's start were not used by it, so a CI job can delete them before saving its cache.
-Failures are never recorded. Add `.fdash/` to
+Failures are never recorded, nor a pass whose inputs changed while it ran (their content or their time),
+nor anything after Ctrl+C. The cache only grows: deleting `.fdash/cache` (or its old files) is always safe,
+it only makes the next run longer. Add `.fdash/` to
 `.gitignore`.
 
 Inputs:
@@ -134,8 +136,8 @@ When in doubt, declare an input wider: a missing input is a check skipped while 
 A command with `items` (and `inputs`, even `[]`) caches each item on its own, with the command's inputs
 plus the item's. fdash appends the names of the items that have not passed to the last step, runs the
 command once, and gives it `FDASH_REPORT`, a file where the command appends one JSON line per item:
-`{"item":"login","ok":true}`. An item missing from that file takes the command's exit status. Items are
-reported as `<command>:<item>`. Extra arguments that are all items pick those items; any other extra
+`{"item":"login","ok":true}`. An item missing from that file takes the command's exit status. A line `{"nocache":true}` asks fdash to record nothing for that run (a run on a stale build). Items are
+reported as `<command>:<item>`, and run with `fdash run <command> -- <item>`. Extra arguments that are all items pick those items; any other extra
 argument runs the command uncached, with the arguments as given.
 
 ## API

@@ -14,6 +14,13 @@
           "go",
           "version"
         ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
       ]
     },
     "vet": {
@@ -29,6 +36,13 @@
           "go",
           "version"
         ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
       ]
     },
     "staticcheck": {
@@ -45,6 +59,13 @@
           "go",
           "version"
         ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
       ]
     },
     "test": {
@@ -58,8 +79,7 @@
         ]
       ],
       "inputs": [
-        "/plugins/bundled/**",
-        "/plugins/sdk/**",
+        "/plugins/**",
         "/web/dev/**"
       ],
       "tools": [
@@ -67,6 +87,13 @@
           "go",
           "version"
         ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
       ]
     }
   }

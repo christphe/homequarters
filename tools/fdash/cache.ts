@@ -95,6 +95,19 @@ export function cacheKey(root: string, c: Command, extra: string[], files: strin
   return h.digest("hex");
 }
 
+/** When and how big each input was: a file changed and changed back during a run keeps its content (and the
+ * key) but not its time, which this catches. */
+export function signature(root: string, files: string[]): string {
+  return files.map((f) => {
+    try {
+      const s = fs.statSync(path.join(root, f));
+      return `${s.mtimeMs}:${s.size}`;
+    } catch {
+      return "missing";
+    }
+  }).join("|");
+}
+
 const recordPath = (dir: string, name: string, key: string) => path.join(dir, `${name.replace(/[^\w.-]/g, "_")}-${key}.json`);
 
 /** Whether this exact run already passed. A record found is touched (its time set to now), so a cache can

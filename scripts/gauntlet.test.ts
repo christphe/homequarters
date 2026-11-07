@@ -148,7 +148,8 @@ test("files a test reads outside its project are inputs of the task that runs it
   const config = loadWorkspace(root);
   const covered = (task: string, rel: string) => {
     const inputs = ((config.get(task) as Command).inputs ?? []).filter((i): i is string => typeof i === "string" && !i.startsWith("!"));
-    return inputs.some((p) => path.posix.matchesGlob(rel, p) || path.posix.matchesGlob(rel + "/x", p) || p.startsWith(rel + "/"));
+    // a folder read whole needs a pattern that covers any file in it, not only one of its sub-folders
+    return inputs.some((p) => path.posix.matchesGlob(rel, p) || path.posix.matchesGlob(rel + "/any/file", p));
   };
   const missing: string[] = [];
   const files = (dir: string, re: RegExp): string[] => fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true })
@@ -184,4 +185,8 @@ test("no scenario of the suite imports another (each is cached on its own file)"
     const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".mjs"), "utf8");
     for (const m of text.matchAll(/from\s+["']\.\/([\w-]+)\.mjs["']/g)) assert.fail(`${s} imports ./${m[1]}.mjs: editing it would not rerun ${s}`);
   }
+});
+
+test("the guards above read the whole repository, so scripts:test follows every file", () => {
+  assert.ok(((loadWorkspace(root).get("scripts:test") as Command).inputs ?? []).includes("**"), "scripts:test needs /** in its inputs");
 });

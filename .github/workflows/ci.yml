@@ -7,12 +7,16 @@ on:
 
 permissions:
   contents: read
+  actions: read # to download the records main's runs published
 
 # The gates run through fdash (tools/fdash, fdash-workspace.json, decision 0035): a gate or a browser scenario
-# that already passed on main with the same inputs is reported CACHED and not run again. Only runs on main
-# save the cache; a pull request only reads main's (actions/cache/restore), so nothing a pull request runs
-# can mark one of its own checks as passed. Each job saves only the records it used or made (fdash touches
-# the records it finds; older ones are deleted before saving), so the cache stays the size of one run.
+# that already passed on main with the same inputs is reported CACHED and not run again. The records come only
+# from runs of a push to main, which publish them as an artifact of their own run; every job (a pull request's
+# too) downloads that artifact from main's latest finished run. Nothing a pull request runs can add to it: a run
+# of a pull request publishes no records, and reading them from anywhere else would need a change to this file
+# in the pull request's final diff. actions/cache is not used because a pull request's own scope is searched
+# first and an earlier commit of it could save one. Each main job publishes only the records its run used or
+# made (fdash touches the records it finds; older ones are deleted first), so they stay the size of one run.
 
 jobs:
   static:
@@ -39,12 +43,10 @@ jobs:
         working-directory: web
       - run: pnpm install --frozen-lockfile
         working-directory: site
-      - name: Restore the gates that passed on main
-        uses: actions/cache/restore@v4
-        with:
-          path: .fdash/cache
-          key: fdash-static-${{ runner.os }}-${{ github.sha }}
-          restore-keys: fdash-static-${{ runner.os }}-
+      - name: Records of the gates that passed on main (its latest run's artifact)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-fdash-records.sh fdash-static
       - name: Static gates (fdash run static)
         id: gates
         run: |
@@ -62,14 +64,17 @@ jobs:
           name: static-gate-logs
           path: ${{ runner.temp }}/fdash-logs
       - name: Keep only the records this run used
-        if: always() && github.ref == 'refs/heads/main' && steps.gates.outcome != 'skipped'
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
         run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete
-      - name: Save the cache (main only)
-        if: always() && github.ref == 'refs/heads/main' && steps.gates.outcome != 'skipped'
-        uses: actions/cache/save@v4
+      - name: Publish the records (main only)
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
         with:
+          name: fdash-static
           path: .fdash/cache
-          key: fdash-static-${{ runner.os }}-${{ github.sha }}
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Build binaries
         working-directory: server
         run: |
@@ -115,12 +120,10 @@ jobs:
         working-directory: web
       - run: pnpm install
         working-directory: e2e
-      - name: Restore the scenarios that passed on main
-        uses: actions/cache/restore@v4
-        with:
-          path: .fdash/cache
-          key: fdash-e2e-${{ matrix.shard }}-${{ runner.os }}-${{ github.sha }}
-          restore-keys: fdash-e2e-${{ matrix.shard }}-${{ runner.os }}-
+      - name: Records of the scenarios that passed on main (its latest run's artifact)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-fdash-records.sh fdash-e2e-${{ matrix.shard }}
       - name: Suite (fdash run e2e:browser with this shard's scenarios)
         id: suite
         env:
@@ -138,11 +141,14 @@ jobs:
         if: always() && steps.suite.outcome != 'skipped'
         run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"
       - name: Keep only the records this run used
-        if: always() && github.ref == 'refs/heads/main' && steps.suite.outcome != 'skipped'
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.suite.outcome != 'skipped'
         run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete
-      - name: Save the cache (main only)
-        if: always() && github.ref == 'refs/heads/main' && steps.suite.outcome != 'skipped'
-        uses: actions/cache/save@v4
+      - name: Publish the records (main only)
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.suite.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
         with:
+          name: fdash-e2e-${{ matrix.shard }}
           path: .fdash/cache
-          key: fdash-e2e-${{ matrix.shard }}-${{ runner.os }}-${{ github.sha }}
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14

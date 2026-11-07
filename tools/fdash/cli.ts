@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CONFIG_FILE, type Config } from "./config.ts";
+import { CONFIG_FILE, expand, type Config } from "./config.ts";
 import { findRoot, load, WORKSPACE_FILE } from "./workspace.ts";
 import { run, type Result } from "./run.ts";
 
@@ -67,6 +67,15 @@ export function printResult(r: Result): void {
   }
 }
 
+/** Refuses a name that is no task, saying how to run it when it names an item. */
+function checkName(config: Config, n: string): void {
+  if (config.has(n)) return;
+  const at = n.lastIndexOf(":");
+  const owner = at > 0 ? config.get(n.slice(0, at)) : undefined;
+  if (owner?.kind === "command" && owner.items?.has(n.slice(at + 1))) throw new Error(`${n} is an item: run ${n.slice(0, at)} -- ${n.slice(at + 1)}`);
+  throw new Error(`no task named ${n} (fdash list shows them; a project's tasks are <project>:<task>)`);
+}
+
 async function main(): Promise<number> {
   let args: Args, root: string, config: Config;
   try {
@@ -78,10 +87,15 @@ async function main(): Promise<number> {
     root = findRoot(process.cwd());
     config = load(root);
     if (args.cmd === "list") {
+      if (args.extra.length || args.skip.length || process.argv.length > 3) throw new Error("list takes no arguments");
       for (const l of listLines(config)) console.log(l);
       return 0;
     }
-    for (const n of [...args.tasks, ...args.skip]) if (!config.has(n)) throw new Error(`no task named ${n} (fdash list shows them; a project's tasks are <project>:<task>)`);
+    for (const n of [...args.tasks, ...args.skip]) checkName(config, n);
+    // extra arguments only go to commands with "args": true; given to none, they would be dropped silently
+    if (args.extra.length && !expand(config, args.tasks, args.skip).some((c) => c.args)) {
+      throw new Error(`${args.tasks.join(", ")} takes no extra arguments (only commands with "args": true do)`);
+    }
   } catch (e) {
     console.error("fdash: " + (e as Error).message);
     return 2;

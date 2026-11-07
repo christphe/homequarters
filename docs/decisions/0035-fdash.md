@@ -59,7 +59,11 @@ folder, so a plugin's change reruns its tests and those of the plugins that depe
   A file a test reads at run time outside its project must be declared; a test checks the reads it can
   find (Go tests' `filepath.Join("..", ...)`, tests' `new URL(...)`, imports of another project's
   `node_modules`).
-- **CI:** pull requests restore the cache that `main` saved and never save one; `main` saves only the
-  records its run used, so the cache stays the size of one run.
+- **CI:** the records come only from runs of a push to `main`, which publish them as an artifact of their
+  own run (only the records that run used or made); every job, a pull request's too, downloads the artifact
+  of `main`'s latest finished run (`scripts/ci-fdash-records.sh`). A pull request's run publishes nothing,
+  so nothing it runs can mark one of its checks as passed; reading records from elsewhere would need a change
+  to the workflow in its final diff. `actions/cache` was tried first and dropped: it searches a pull
+  request's own scope first, where an earlier commit of the pull request could have saved forged records.
 - **Maintenance:** about 700 lines of TypeScript with their own tests; a new gate is a few lines of JSON.
 - **Install:** nothing; Node 24 and git, which the repository already needs.

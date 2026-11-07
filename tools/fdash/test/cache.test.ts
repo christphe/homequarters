@@ -162,3 +162,18 @@ test("items: an item's input changed during the run is not recorded", async () =
   write(root, "s/y", "1");
   assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED e:x", "PASS e:y"]);
 });
+
+test("an input changed and changed back during the run: no record (same content, but not what it read)", async () => {
+  const root = repo({ "a.txt": "before", ".gitignore": ".fdash/\ncount-*\n" });
+  const tasks = { t: { run: [node(`const fs=require("fs");fs.appendFileSync("count-t","x");fs.writeFileSync("a.txt","during");setTimeout(()=>fs.writeFileSync("a.txt","before"),50)`)], inputs: ["a.txt"] } };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS t"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS t"]);
+});
+
+test("items: a report line {nocache: true} records nothing (a run on a stale build, for one)", async () => {
+  const root = repo({ ".gitignore": ".fdash/\ncalls\n" });
+  const cmd = node(`const fs=require("fs");fs.appendFileSync("calls","x");for (const i of process.argv.slice(1)) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({item:i,ok:true})+"\\n");fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({nocache:true})+"\\n")`);
+  const tasks = { e: { run: [cmd], args: true, inputs: [], items: { x: {} } } };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"]);
+});

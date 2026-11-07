@@ -107,3 +107,17 @@ test("the exit code is 1 however many commands failed (2 means a usage error)", 
   fs.writeFileSync(path.join(root, "fdash.json"), JSON.stringify({ tasks: { default: { tasks: ["a", "b", "c"] }, a: bad, b: bad, c: bad } }));
   assert.equal(spawnSync(process.execPath, [cli, "run"], { cwd: root, encoding: "utf8" }).status, 1);
 });
+
+test("arguments that would be ignored are refused: extra args for tasks that take none, an item named as a task, list with arguments", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-cli-"));
+  const ok = { run: [[process.execPath, "-e", "0"]] };
+  fs.writeFileSync(path.join(root, "fdash.json"), JSON.stringify({ tasks: { plain: ok, suite: { ...ok, args: true, inputs: [], items: { one: {} } } } }));
+  const run = (...a: string[]) => spawnSync(process.execPath, [cli, ...a], { cwd: root, encoding: "utf8" });
+  const extra = run("run", "plain", "--", "x");
+  assert.equal(extra.status, 2);
+  assert.match(extra.stderr, /plain takes no extra arguments/);
+  const item = run("run", "suite:one");
+  assert.equal(item.status, 2);
+  assert.match(item.stderr, /suite:one is an item: run suite -- one/);
+  assert.equal(run("list", "x").status, 2);
+});

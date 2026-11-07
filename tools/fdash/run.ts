@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expand, type Command, type Config } from "./config.ts";
-import { cacheKey, passed, recordPass, resolveInputs } from "./cache.ts";
+import { cacheKey, passed, recordPass, resolveInputs, signature } from "./cache.ts";
 import { launch, spawnSpec } from "./spawn.ts";
 
 export { spawnSpec };
@@ -92,23 +92,26 @@ async function pool<T>(items: T[], jobs: number, work: (item: T) => Promise<bool
   return ok;
 }
 
-function readReport(file: string): Map<string, boolean> {
+/** The items' outcomes a command wrote to FDASH_REPORT, and whether it asked that nothing be recorded. */
+function readReport(file: string): { said: Map<string, boolean>; nocache: boolean } {
   const seen = new Map<string, boolean>();
+  let nocache = false;
   let text = "";
   try {
     text = fs.readFileSync(file, "utf8");
   } catch {
-    return seen;
+    return { said: seen, nocache };
   }
   for (const line of text.split(/\r?\n/)) {
     try {
       const r = JSON.parse(line);
+      if (r?.nocache === true) nocache = true;
       if (typeof r?.item === "string" && typeof r?.ok === "boolean") seen.set(r.item, (seen.get(r.item) ?? true) && r.ok);
     } catch {
       // a partial line from a command that was stopped
     }
   }
-  return seen;
+  return { said: seen, nocache };
 }
 
 export async function run(o: RunOptions): Promise<{ results: Result[]; interrupted: boolean }> {
@@ -158,16 +161,22 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       if (c.items) return plain();
       const key = cacheKey(o.root, c, extra, common, process.env);
       if (!o.force && passed(cacheDir, c.name, key)) return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
+      const before = key + signature(o.root, common);
       const [r] = await plain();
-      if (r.ok && unchanged(key, () => cacheKey(o.root, c, extra, resolveInputs(o.root, c.inputs!), process.env))) recordPass(cacheDir, c.name, key, r.ms);
+      const now = () => { const files = resolveInputs(o.root, c.inputs!); return cacheKey(o.root, c, extra, files, process.env) + signature(o.root, files); };
+      if (r.ok && unchanged(before, now)) recordPass(cacheDir, c.name, key, r.ms);
       return [r];
     }
     // items: each keyed on its own, the command run once with the items that have not passed
     const items = [...c.items.keys()].filter((i) => extra.length === 0 || extra.includes(i));
-    const itemKey = (item: string, shared: string[]) =>
-      cacheKey(o.root, c, [item], [...new Set([...shared, ...resolveInputs(o.root, c.items!.get(item)!.inputs)])].sort(), process.env);
-    const keys = new Map<string, string>();
-    for (const item of items) keys.set(item, itemKey(item, common));
+    const itemFiles = (item: string, shared: string[]) => [...new Set([...shared, ...resolveInputs(o.root, c.items!.get(item)!.inputs)])].sort();
+    const itemKey = (item: string, files: string[]) => cacheKey(o.root, c, [item], files, process.env);
+    const keys = new Map<string, string>(), befores = new Map<string, string>();
+    for (const item of items) {
+      const files = itemFiles(item, common);
+      keys.set(item, itemKey(item, files));
+      befores.set(item, keys.get(item)! + signature(o.root, files));
+    }
     const todo = items.filter((i) => o.force || !passed(cacheDir, `${c.name}:${i}`, keys.get(i)!));
     const outcome = new Map<string, boolean>();
     let ms = 0;
@@ -175,12 +184,14 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       fs.rmSync(reportFile, { force: true });
       const ok = await runCommand(c, { root: o.root, log, extraArgs: todo, env: { FDASH_REPORT: reportFile } });
       ms = Date.now() - t0;
-      const said = readReport(reportFile);
-      const after = stop() ? [] : resolveInputs(o.root, c.inputs);
+      const { said, nocache } = readReport(reportFile);
+      if (nocache) fs.appendFileSync(log, "fdash: the command asked that nothing be recorded (nocache)\n");
+      const after = stop() || nocache ? [] : resolveInputs(o.root, c.inputs);
       for (const i of todo) {
         const itemOk = said.get(i) ?? ok;
         outcome.set(i, itemOk);
-        if (itemOk && unchanged(keys.get(i)!, () => itemKey(i, after))) recordPass(cacheDir, `${c.name}:${i}`, keys.get(i)!, ms);
+        const now = () => { const files = itemFiles(i, after); return itemKey(i, files) + signature(o.root, files); };
+        if (itemOk && !nocache && unchanged(befores.get(i)!, now)) recordPass(cacheDir, `${c.name}:${i}`, keys.get(i)!, ms);
       }
     }
     return items.map((i) => outcome.has(i)
