@@ -24,6 +24,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "testbed" { // a subcommand, before the server's own flags
+		os.Exit(testbedMain(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	healthcheck := flag.Bool("healthcheck", false, "probe /healthz on HQ_ADDR and exit (for container health checks)")
 	inviteRole := flag.String("invite", "", "print a new invite link path for this role (admin|member) and exit; use it to bootstrap the first admin")
 	inviteUses := flag.Int("invite-uses", 1, "max uses of the invite created with -invite")
