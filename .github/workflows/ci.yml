@@ -17,6 +17,7 @@ permissions:
 # in the pull request's final diff. actions/cache is not used because a pull request's own scope is searched
 # first and an earlier commit of it could save one. Each main job publishes only the records its run used or
 # made (fdash touches the records it finds; older ones are deleted first), so they stay the size of one run.
+# (The Go and pnpm caches of setup-go and setup-node still use actions/cache, as before.)
 
 jobs:
   static:
@@ -46,7 +47,7 @@ jobs:
       - name: Records of the gates that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/ci-fdash-records.sh fdash-static
+        run: node scripts/ci-fdash-records.mjs fdash-static
       - name: Static gates (fdash run static)
         id: gates
         run: |
@@ -123,7 +124,7 @@ jobs:
       - name: Records of the scenarios that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/ci-fdash-records.sh fdash-e2e-${{ matrix.shard }}
+        run: node scripts/ci-fdash-records.mjs fdash-e2e-${{ matrix.shard }}
       - name: Suite (fdash run e2e:browser with this shard's scenarios)
         id: suite
         env:

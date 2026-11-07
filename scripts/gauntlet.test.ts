@@ -33,7 +33,7 @@ test("the workspace holds the gates of gauntlet.sh, now named by project, with t
     ["server:test", "server", "go test -race -count=1 ./...", false, false, "{}"],
     test("web:test", "web"),
     ["e2e:test", "e2e", "node --test shards.test.mjs slots.test.mjs", false, false, "{}"],
-    ["scripts:test", "scripts", "node --test oxlint-hq.test.mjs check-protocol-docs.test.mjs gauntlet.test.ts", false, false, "{}"],
+    ["scripts:test", "scripts", "node --test oxlint-hq.test.mjs check-protocol-docs.test.mjs gauntlet.test.ts ci-fdash-records.test.mjs", false, false, "{}"],
     test("fdash:test", "tools/fdash"),
     test("hq-card-lastcard:test", "plugins/bundled/hq-card-lastcard"),
     test("hq-card-pouilleux:test", "plugins/bundled/hq-card-pouilleux"),

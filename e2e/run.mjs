@@ -20,6 +20,8 @@ chrome(); // the suite cannot run without it: stop before building anything
 const EXTERNAL = process.env.HQ_EXTERNAL_URL ?? "";
 // A shard of an E2E_PARALLELISM run: the parent holds its slot and gives it its ports and LiveKit.
 const SHARD_CHILD = !!process.env.E2E_SHARD_CHILD;
+// ports given by hand (a shard gets its own from its parent): what answers there may not be what this run built
+const USER_PORTS = !SHARD_CHILD && !!(process.env.HQ_TEST_PORT || process.env.HQ_TEST_LK_PORT);
 
 const args = process.argv.slice(2);
 const shardAt = args.findIndex((a) => a === "--shard" || a.startsWith("--shard="));
@@ -195,7 +197,7 @@ if (process.env.FDASH_REPORT) {
   // without a build (SKIP_BUILD) the scenarios ran on whatever bin/ and web/dist held: nothing proves they match
   // the sources fdash keyed them on, so nothing is recorded; neither for a stack someone else runs (HQ_EXTERNAL_URL)
   // (a shard of an E2E_PARALLELISM run has SKIP_BUILD because its parent built: that build is current)
-  if ((process.env.SKIP_BUILD && !SHARD_CHILD) || EXTERNAL) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ nocache: true }) + "\n");
+  if ((process.env.SKIP_BUILD && !SHARD_CHILD) || EXTERNAL || USER_PORTS) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ nocache: true }) + "\n");
 }
 console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
 process.exit(ok ? 0 : 1);

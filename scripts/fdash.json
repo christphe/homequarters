@@ -10,7 +10,8 @@
           "--test",
           "oxlint-hq.test.mjs",
           "check-protocol-docs.test.mjs",
-          "gauntlet.test.ts"
+          "gauntlet.test.ts",
+          "ci-fdash-records.test.mjs"
         ]
       ],
       "inputs": [
