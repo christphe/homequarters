@@ -1,0 +1,66 @@
+# Dependency updates. Security updates arrive as soon as an advisory is published (enabled in the
+# repository settings); the routine ones below are weekly and grouped per ecosystem and directory,
+# because every pull request runs the whole CI (browser suite shards with a real LiveKit).
+# Majors come in a pull request of their own: check the changelog and the license (THIRD_PARTY_LICENSES.md).
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /server
+    schedule: { interval: weekly, day: monday }
+    groups:
+      go:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directories: [/bench/mediagen, /bench/plugin-runtime]
+    schedule: { interval: monthly }
+    groups:
+      bench-go:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories: [/web, /e2e, /site]
+    schedule: { interval: weekly, day: monday }
+    groups:
+      web:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /desktop
+    schedule: { interval: weekly, day: monday }
+    groups:
+      desktop-npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /desktop/src-tauri
+    schedule: { interval: weekly, day: monday }
+    groups:
+      desktop-cargo:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule: { interval: weekly, day: monday }
+    groups:
+      docker:
+        patterns: ["*"]
+
+  # The LiveKit server version is pinned in four places (both Compose files, e2e/livekit.mjs and
+  # .github/workflows/ci.yml) that must move together, so it is updated by hand.
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: livekit/livekit-server
+    groups:
+      compose:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
