@@ -260,3 +260,20 @@ func TestTestbedProductionPrintsNothing(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 }
+
+// A word the binary does not know (a subcommand of a newer version, a typo) is refused: started as the
+// server instead, it would open the default database wherever it was run.
+func TestUnknownArgumentIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command(binPath, "nonsense")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "HQ_ENV=dev")
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+		t.Fatalf("exit %v, output %s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "data")); !os.IsNotExist(err) {
+		t.Fatal("a database folder was created")
+	}
+}
