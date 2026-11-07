@@ -137,7 +137,7 @@ The browser code runs in a hidden iframe with `sandbox="allow-scripts"`, after t
 | `hq.stop(id)` | Stands still. |
 | `hq.setAnim(id, name)` | Plays that animation while standing (until it moves). |
 | `hq.setFlip(id, on)`, `hq.setVisible(id, on)` | Mirrors it, shows or hides it. |
-| `hq.walkTo(id, x, y, { speed })` | Walks there along a path around walls (the page's path search, bounded); somewhere it cannot reach, it stays where it is. |
+| `hq.walkTo(id, x, y, { speed })` | Walks there along a path around walls (the page's path search, bounded); somewhere it cannot reach (off the map, in a wall), as close as it can. |
 | `hq.follow(id, { sprite }, { gap, beside })` | Follows another sprite of the same plugin the way it would follow a member; it waits while that sprite is gone or hidden. A sprite cannot follow itself. |
 | `hq.setLabel(id, text, { owner })` | One line, 1-24 characters with no control characters, drawn above the sprite only while a mouse is over it (never on touch); `null` removes it. `owner` (a member id) adds that member's current name under it, in brackets. |
 | `hq.setTint(id, colour)` | Multiplies its colours by `"#rrggbb"`; `null` removes the tint. A sheet drawn in light greys takes any colour this way. |

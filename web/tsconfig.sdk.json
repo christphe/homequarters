@@ -1,0 +1,19 @@
+{
+  // The two plugin SDKs stay plain JavaScript (host.ts inlines them into a plugin iframe's srcdoc as text) and
+  // are checked here, against the API they implement (plugins/sdk/client.d.ts and view.d.ts, which they
+  // reference): apart from the client's program, so the iframe globals (hq, hqView) never look declared there.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "types": []
+  },
+  "include": ["src/plugins/sdk.js", "src/plugins/viewSdk.js"]
+}

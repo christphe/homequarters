@@ -24,7 +24,11 @@
         "server:staticcheck",
         "web:tsc",
         "web:tsc-tests",
+        "web:tsc-sdk",
         "web:build",
+        "e2e:tsc",
+        "site:tsc",
+        "desktop-types",
         "protocol-docs",
         "oxlint",
         "plugin-types",
@@ -36,11 +40,11 @@
       "run": [
         [
           "node",
-          "scripts/check-protocol-docs.mjs"
+          "scripts/check-protocol-docs.ts"
         ]
       ],
       "inputs": [
-        "scripts/check-protocol-docs.mjs",
+        "scripts/check-protocol-docs.ts",
         "docs/protocol.md",
         "server/internal/httpapi/**",
         "web/src/net/**"
@@ -50,16 +54,23 @@
       "run": [
         [
           "node",
-          "scripts/oxlint.mjs"
+          "scripts/oxlint.ts"
         ]
       ],
       "inputs": [
-        "scripts/oxlint.mjs",
-        "scripts/oxlint-hq.mjs",
+        "scripts/oxlint.ts",
+        "scripts/oxlint-hq.ts",
         ".oxlintrc.json",
         "web/**",
         "plugins/**",
-        "e2e/fixtures/**"
+        "e2e/**",
+        "scripts/**",
+        "tools/fdash/**",
+        "site/**",
+        "desktop/tsconfig.json",
+        "desktop/globals.d.ts",
+        "desktop/ui/**",
+        "desktop/src-tauri/src/*.js"
       ],
       "tools": [
         [
@@ -72,11 +83,11 @@
       "run": [
         [
           "node",
-          "scripts/check-plugin-types.mjs"
+          "scripts/check-plugin-types.ts"
         ]
       ],
       "inputs": [
-        "scripts/check-plugin-types.mjs",
+        "scripts/check-plugin-types.ts",
         "plugins/**",
         "e2e/fixtures/**",
         "web/package.json",
@@ -87,6 +98,24 @@
           "pnpm",
           "--version"
         ]
+      ]
+    },
+    "desktop-types": {
+      "run": [
+        [
+          "node",
+          "web/node_modules/typescript/bin/tsc",
+          "-p",
+          "desktop"
+        ]
+      ],
+      "inputs": [
+        "desktop/tsconfig.json",
+        "desktop/globals.d.ts",
+        "desktop/ui/setup.js",
+        "desktop/src-tauri/src/missing-apis.js",
+        "web/package.json",
+        "web/pnpm-lock.yaml"
       ]
     }
   }

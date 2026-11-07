@@ -8,7 +8,7 @@ People want Home Quarters in its own window, with its own icon, rather than as o
 
 ## Decision
 
-- **A web app manifest** (`web/public/manifest.webmanifest`): Home Quarters, standalone, start and scope `/`, 192 and 512 px icons, a maskable one, and an Apple touch icon. The icons are drawn from the HQ favicon by `e2e/export-icons.mjs` and committed.
+- **A web app manifest** (`web/public/manifest.webmanifest`): Home Quarters, standalone, start and scope `/`, 192 and 512 px icons, a maskable one, and an Apple touch icon. The icons are drawn from the HQ favicon by `e2e/export-icons.ts` and committed.
 - **No service worker.** Chrome no longer needs one to offer installation, and the client is useless offline (everything goes through the server). A worker that cached the client would also undo what the server does for deploys: the page and every unhashed file are revalidated on each load, so the next load runs the new client.
 - The server serves `.webmanifest` files as `application/manifest+json` (Go's mime table does not know them), revalidated like the page; a missing file under `/icons/` is a 404, as under `/assets/`, instead of the page.
 
@@ -20,5 +20,5 @@ People want Home Quarters in its own window, with its own icon, rather than as o
 ## Impact
 
 - Performance: none on the running client; the manifest and icons (about 20 KB) are fetched by the browser when it checks installability, revalidated with a 304 afterwards.
-- Maintenance: rerun `e2e/export-icons.mjs` after changing the favicon. The `update` scenario reads Chrome's own installability verdict, so a broken manifest or icon fails the suite.
+- Maintenance: rerun `e2e/export-icons.ts` after changing the favicon. The `update` scenario reads Chrome's own installability verdict, so a broken manifest or icon fails the suite.
 - Installation: nothing for operators beyond HTTPS, which production already requires.

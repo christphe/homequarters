@@ -1,7 +1,15 @@
+// @ts-check
 // The plugin SDK. It runs INSIDE a plugin's sandboxed iframe (sandbox="allow-scripts", opaque
 // origin), before the plugin's own script, and gives it the `hq` global. Everything a plugin does
 // goes to the page as batched commands over a MessageChannel; the page validates and draws them.
 // Plain JavaScript: it is inlined into the iframe's srcdoc as text (see host.ts).
+// Typed with JSDoc against the declared plugin API (plugins/sdk/client.d.ts): `hq` and `hq.ui` must match it.
+/// <reference path="../../../plugins/sdk/client.d.ts" />
+/**
+ * A node of a modal or a map box as the plugin passed it: what hq.ui made, or anything else the plugin put there.
+ * `any` because it is untrusted plugin input read loosely; the page validates what it gets.
+ * @typedef {any} LooseNode
+ */
 (() => {
   "use strict";
   /** @type {MessagePort | null} */
@@ -9,8 +17,16 @@
   /** @type {object[]} */
   let queue = [];
   let scheduled = false;
-  const on = { load: [], update: [], message: [], objectInit: [], objectDestroy: [], objectUpdate: [] };
-  /** hq.provideSheet: draws a sheet another plugin asked for by metadata (a guest pet of hq-pets) */
+  const on = {
+    /** @type {Array<() => void>} */ load: [],
+    /** @type {Array<(dt: number, world: HQ.World) => void>} */ update: [],
+    /** @type {Array<(msg: unknown) => void>} */ message: [],
+    /** @type {Array<(obj: HQ.PlacedObject) => void>} */ objectInit: [],
+    /** @type {Array<(obj: HQ.PlacedObject) => void>} */ objectDestroy: [],
+    /** @type {Array<(dt: number, obj: HQ.PlacedObject) => void>} */ objectUpdate: [],
+  };
+  /** hq.provideSheet: draws a sheet another plugin asked for by metadata (a guest pet of hq-pets)
+   * @type {Parameters<HQ.Client["provideSheet"]>[0] | null} */
   let provider = null;
 
   const flush = () => {
@@ -21,6 +37,7 @@
     port.postMessage({ t: "cmds", c });
   };
   // one batch per task: every call made in the same callback travels together
+  /** @param {object} cmd */
   const push = (cmd) => {
     queue.push(cmd);
     if (!scheduled) {
@@ -28,10 +45,16 @@
       queueMicrotask(flush);
     }
   };
+  /** @param {unknown} e what was thrown: an Error, or anything a plugin throws */
   const report = (e) => {
-    const text = String((e && e.stack) || e).slice(0, 500);
+    const text = String((e && /** @type {{ stack?: string }} */ (e).stack) || e).slice(0, 500);
     if (port) port.postMessage({ t: "error", m: text });
   };
+  /**
+   * @template {unknown[]} A
+   * @param {ReadonlyArray<(...args: A) => void>} list
+   * @param {A} args
+   */
   const call = (list, ...args) => {
     for (const f of list) {
       try {
@@ -41,6 +64,11 @@
       }
     }
   };
+  /**
+   * @template {(...args: never[]) => void} F
+   * @param {F[]} list
+   * @returns {(f: F) => void}
+   */
   const handler = (list) => (f) => {
     if (typeof f !== "function") throw new TypeError("expected a function");
     list.push(f);
@@ -48,22 +76,35 @@
 
   // UI callbacks stay here; the page only gets their ids. Each owner (a slot, the modal) frees its old
   // callbacks when it is drawn again, so they never pile up.
+  /** @type {Map<string, (value?: unknown) => void>} */
   const callbacks = new Map();
+  /** @type {Map<string, string[]>} */
   const owners = new Map();
   let nextCb = 0;
+  /** @param {string} owner */
   const own = (owner) => {
     for (const id of owners.get(owner) || []) callbacks.delete(id);
     owners.set(owner, []);
   };
+  /**
+   * @param {string} owner one that own() has just reset
+   * @param {unknown} fn
+   * @returns {string | undefined}
+   */
   const reg = (owner, fn) => {
     if (fn === undefined || fn === null) return undefined;
     if (typeof fn !== "function") throw new TypeError("a callback must be a function");
     if (callbacks.size >= 256) throw new Error("hq.ui: more than 256 callbacks");
     const id = "c" + ++nextCb;
-    callbacks.set(id, fn);
-    owners.get(owner).push(id);
+    callbacks.set(id, /** @type {(value?: unknown) => void} */ (fn));
+    /** @type {string[]} */ (owners.get(owner)).push(id);
     return id;
   };
+  /**
+   * @param {string} owner
+   * @param {ReadonlyArray<LooseNode> | undefined} nodes
+   * @returns {object[]}
+   */
   const ser = (owner, nodes) =>
     (nodes || []).map((n) => {
       if (n && n.type === "button") return { type: "button", label: n.label, click: reg(owner, n.onClick), primary: n.primary, pressed: n.pressed, disabled: n.disabled, sprite: n.sprite };
@@ -77,7 +118,7 @@
       return n;
     });
 
-  const ui = Object.freeze({
+  const ui = Object.freeze(/** @satisfies {HQ.UI} */ ({
     text: (text, opts = {}) => ({ type: "text", text: String(text), muted: opts.muted ? true : undefined }),
     button: (opts) => ({ type: "button", label: opts.label, onClick: opts.onClick, primary: opts.primary, pressed: opts.pressed, disabled: opts.disabled, sprite: opts.sprite }),
     /** One cell of a PNG of public/: { src, frame: [x, y, w, h], scale, tint, alt }. */
@@ -110,6 +151,11 @@
       push({ op: "post", d: JSON.parse(s) });
     },
     /** A button at an anchor (topbar, topright, bottombar, sidebar, minimap), or a box on the map (screen). */
+    /**
+     * @param {string} id
+     * @param {HQ.ButtonAnchor | "screen"} anchor
+     * @param {{ label?: string, icon?: string, pressed?: boolean, onClick?: () => void, corner?: HQ.Corner, dx?: number, dy?: number, content?: HQ.UINode[] }} [opts]
+     */
     slot(id, anchor, opts = {}) {
       const owner = "slot:" + id;
       own(owner);
@@ -132,8 +178,9 @@
       own("modal");
       push({ op: "close" });
     },
-  });
+  }));
 
+  /** @type {HQ.Client} */
   const hq = {
     onLoad: handler(on.load),
     /** fn(dt, world): about 10 times a second; world = { me, avatars: [{ id, name, x, y, dir, moving }] } */
@@ -155,6 +202,11 @@
       push({ op: "send", d: JSON.parse(s) });
     },
     /** Loads a sprite sheet from the plugin's public/ folder. anims: { name: { row, frames: [..], fps } } */
+    /**
+     * @param {string} key
+     * @param {string | Blob | ImageBitmap | { from: string, metadata: HQ.Json }} path
+     * @param {{ frameW?: number, frameH?: number, anims?: HQ.Anims, from?: string }} [opts]
+     */
     loadSprite(key, path, opts = {}) {
       // a path of public/ (or of another plugin's shared/ with from), image data the plugin made (Blob,
       // ImageBitmap), or { from, metadata }: a sheet that plugin's browser code draws (hq.provideSheet)
@@ -162,7 +214,7 @@
       const data = !provided && typeof path !== "string";
       push({
         op: "sprite", key, url: data || provided ? undefined : path, image: data ? path : undefined,
-        provided: provided ? { from: path.from, metadata: path.metadata } : undefined,
+        provided: provided ? { from: /** @type {{ from: string, metadata: HQ.Json }} */ (path).from, metadata: /** @type {{ from: string, metadata: HQ.Json }} */ (path).metadata } : undefined,
         frameW: opts.frameW, frameH: opts.frameH, anims: opts.anims || {}, from: opts.from,
       });
     },
@@ -182,7 +234,7 @@
     moveTo(id, x, y, opts = {}) {
       push({ op: "moveTo", id, x, y, speed: opts.speed });
     },
-    /** Walks there along a path around walls; somewhere it cannot reach, it stays where it is. */
+    /** Walks there along a path around walls; somewhere it cannot reach (off the map, in a wall), as close as it can. */
     walkTo(id, x, y, opts = {}) {
       push({ op: "walkTo", id, x, y, speed: opts.speed });
     },
@@ -236,7 +288,7 @@
       else if (d.t === "msg") call(on.message, d.d);
       else if (d.t === "sheet") {
         // the page asks for a sheet by metadata: answer it (or say why not), whenever it is drawn
-        const reply = (r) => port && port.postMessage({ t: "sheet", id: d.id, ...r });
+        const reply = (/** @type {object} */ r) => port && port.postMessage({ t: "sheet", id: d.id, ...r });
         Promise.resolve()
           .then(() => {
             if (!provider) throw new Error("no hq.provideSheet");
@@ -254,7 +306,7 @@
         if (f) call([f], d.v); // a colour or number field's new value; nothing for a click
       }
       flush();
-      if (d.t === "update") port.postMessage({ t: "ack" });
+      if (d.t === "update") /** @type {MessagePort} */ (port).postMessage({ t: "ack" });
     };
   });
   // after every script of the page ran (the plugin's included), so its handlers are registered

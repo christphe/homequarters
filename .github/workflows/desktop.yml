@@ -107,7 +107,7 @@ jobs:
           REQUIRE_APIS: ${{ matrix.apis }}
         run: |
           run=""; [ "$RUNNER_OS" = Linux ] && run="xvfb-run -a"
-          $run node e2e/desktop/probe.mjs "${{ matrix.bin }}" probe-out
+          $run node e2e/desktop/probe.ts "${{ matrix.bin }}" probe-out
       - name: Summary
         if: always()
         shell: bash

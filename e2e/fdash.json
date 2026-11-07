@@ -5,16 +5,38 @@
         [
           "node",
           "--test",
-          "shards.test.mjs",
-          "slots.test.mjs"
+          "shards.test.ts",
+          "slots.test.ts"
         ]
+      ]
+    },
+    "tsc": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "--noEmit"
+        ]
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ],
+      "inputs": [
+        "/web/src/**",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml",
+        "/plugins/bundled/*/public/**"
       ]
     },
     "browser": {
       "run": [
         [
           "node",
-          "run.mjs"
+          "run.ts"
         ]
       ],
       "env": {
@@ -23,7 +45,7 @@
       "args": true,
       "inputs": [
         "!scenarios/**",
-        "!*.test.mjs",
+        "!*.test.ts",
         {
           "go": "./cmd/homequarters",
           "cwd": "../server"
@@ -63,148 +85,148 @@
       "items": {
         "proximity": {
           "inputs": [
-            "scenarios/proximity.mjs"
+            "scenarios/proximity.ts"
           ]
         },
         "consent": {
           "inputs": [
-            "scenarios/consent.mjs"
+            "scenarios/consent.ts"
           ]
         },
         "rooms": {
           "inputs": [
-            "scenarios/rooms.mjs"
+            "scenarios/rooms.ts"
           ]
         },
         "access": {
           "inputs": [
-            "scenarios/access.mjs"
+            "scenarios/access.ts"
           ]
         },
         "editor": {
           "inputs": [
-            "scenarios/editor.mjs"
+            "scenarios/editor.ts"
           ]
         },
         "social": {
           "inputs": [
-            "scenarios/social.mjs"
+            "scenarios/social.ts"
           ]
         },
         "admin": {
           "inputs": [
-            "scenarios/admin.mjs"
+            "scenarios/admin.ts"
           ]
         },
         "plugins": {
           "inputs": [
-            "scenarios/plugins.mjs",
+            "scenarios/plugins.ts",
             "/plugins/bundled/**"
           ]
         },
         "chess": {
           "inputs": [
-            "scenarios/chess.mjs",
+            "scenarios/chess.ts",
             "/plugins/bundled/hq-chess/**"
           ]
         },
         "cards": {
           "inputs": [
-            "scenarios/cards.mjs",
+            "scenarios/cards.ts",
             "/plugins/bundled/hq-cards/**",
             "/plugins/bundled/hq-card-*/**"
           ]
         },
         "a11y": {
           "inputs": [
-            "scenarios/a11y.mjs",
+            "scenarios/a11y.ts",
             "/plugins/bundled/**"
           ]
         },
         "security": {
           "inputs": [
-            "scenarios/security.mjs"
+            "scenarios/security.ts"
           ]
         },
         "resilience": {
           "inputs": [
-            "scenarios/resilience.mjs"
+            "scenarios/resilience.ts"
           ]
         },
         "features": {
           "inputs": [
-            "scenarios/features.mjs"
+            "scenarios/features.ts"
           ]
         },
         "spotlight": {
           "inputs": [
-            "scenarios/spotlight.mjs"
+            "scenarios/spotlight.ts"
           ]
         },
         "mute": {
           "inputs": [
-            "scenarios/mute.mjs"
+            "scenarios/mute.ts"
           ]
         },
         "movement": {
           "inputs": [
-            "scenarios/movement.mjs"
+            "scenarios/movement.ts"
           ]
         },
         "presence": {
           "inputs": [
-            "scenarios/presence.mjs"
+            "scenarios/presence.ts"
           ]
         },
         "offices": {
           "inputs": [
-            "scenarios/offices.mjs"
+            "scenarios/offices.ts"
           ]
         },
         "idle": {
           "inputs": [
-            "scenarios/idle.mjs"
+            "scenarios/idle.ts"
           ]
         },
         "update": {
           "inputs": [
-            "scenarios/update.mjs"
+            "scenarios/update.ts"
           ]
         },
         "auth": {
           "inputs": [
-            "scenarios/auth.mjs"
+            "scenarios/auth.ts"
           ]
         },
         "autooff": {
           "inputs": [
-            "scenarios/autooff.mjs"
+            "scenarios/autooff.ts"
           ]
         },
         "devices": {
           "inputs": [
-            "scenarios/devices.mjs"
+            "scenarios/devices.ts"
           ]
         },
         "templates": {
           "inputs": [
-            "scenarios/templates.mjs"
+            "scenarios/templates.ts"
           ]
         },
         "depth": {
           "inputs": [
-            "scenarios/depth.mjs"
+            "scenarios/depth.ts"
           ]
         },
         "offline": {
           "inputs": [
-            "scenarios/offline.mjs",
+            "scenarios/offline.ts",
             "/plugins/bundled/**"
           ]
         },
         "sounds": {
           "inputs": [
-            "scenarios/sounds.mjs"
+            "scenarios/sounds.ts"
           ]
         }
       }

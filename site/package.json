@@ -1,1 +1,1 @@
-{"name":"homequarters-site","private":true,"type":"module","license":"AGPL-3.0-only","scripts":{"build":"node build.mjs"},"dependencies":{"marked":"^18.0.14"}}
+{"name":"homequarters-site","private":true,"type":"module","license":"AGPL-3.0-only","scripts":{"build":"node build.ts"},"dependencies":{"marked":"^18.0.14"},"devDependencies":{"@types/node":"^24.19.2","typescript":"^7.0.2"}}

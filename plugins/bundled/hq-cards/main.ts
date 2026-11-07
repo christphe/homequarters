@@ -15,9 +15,9 @@ import { allows, clientGame, CLIENT_GAME_MAX, FREE, utf8Bytes, validateCards, va
 import { append, parseLog, type LogEntry } from "./public/log.ts";
 import {
   canReset, choose, counted, createPile, deal, dealAll, defaultCount, draw, flip, gather, offer, order, parseTable, pick, place,
-  movePile, moveCards, removePile, turnPile, reorderPile, reset, seatOf, setAside, setAsideRanks, setSnap, shuffle, take, UP, type Done, type Table,
+  movePile, moveCards, removePile, turnPile, reorderPile, reset, seatOf, setAside, setAsideRanks, setSnap, shuffle, take, tableState, UP, type Done, type Table,
 } from "./public/table.ts";
-import type { Act, Looking, TableState, ToClient, ToServer } from "./public/messages.ts";
+import type { Act, TableState, ToClient, ToServer } from "./public/messages.ts";
 
 const tables = new Map<string, Table>(); // "x,y" -> table, loaded on first use
 const logs = new Map<string, LogEntry[]>();
@@ -58,18 +58,8 @@ function gameOf(t: Table): Game | null {
 }
 
 function stateOf(k: string): TableState {
-  const t = table(k), here = seen(k);
-  const looking: Looking[] = [];
-  for (const [id, pile] of lookers.get(k) ?? []) {
-    const seat = seatOf(t, id);
-    if (seat !== null) looking.push({ seat, pile });
-  }
-  return {
-    t,
-    here: t.seats.flatMap((s) => (s && here.has(s.id) ? [s.id] : [])),
-    looking,
-    unavailable: t.game !== null && gameOf(t) === null,
-  };
+  const t = table(k);
+  return tableState(t, seen(k), lookers.get(k) ?? [], t.game !== null && gameOf(t) === null);
 }
 
 function queue(id: number, k: string, what: { h?: boolean; s?: boolean; l?: boolean; o?: boolean }): void {

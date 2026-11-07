@@ -4,7 +4,7 @@ import type { Ctx } from "./pixel";
 
 // The sheets of the bundled pets plugin (plugins/bundled/hq-pets): the built-in pets and the
 // seedling, one block of 4 rows (down, left, right, up) by 3 columns (idle, step A, step B) each, in
-// PLUGIN_PET_KINDS order. Exported by e2e/export-art.mjs as pets.png (their own colours) and
+// PLUGIN_PET_KINDS order. Exported by e2e/export-art.ts as pets.png (their own colours) and
 // pets-tint.png (light greys that hq.setTint turns into any colour).
 
 export const PLUGIN_PET_KINDS = [...PET_KINDS.slice(1), "seedling"] as const;

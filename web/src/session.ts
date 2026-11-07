@@ -20,6 +20,12 @@ import { DESKTOP_EVENT, onWindowHidden, onWindowShown } from "./desktopWindow";
 
 const AWAY_AFTER_MS = 5 * 60 * 1000;
 
+/** What `window.__hq` hands the tests; the browser suite types its page code with it (e2e/globals.d.ts). */
+function testHandle(view: WorldView, session: Session) {
+  return { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, bitmapFonts, chimes: chimeLog, sounds: soundLog, get state() { return getState(); }, session, plugins: session.plugins };
+}
+export type HqHandle = ReturnType<typeof testHandle>;
+
 /** Glue between the socket, the Pixi world, the media manager and the React store. */
 class Session {
   view: WorldView | null = null;
@@ -95,7 +101,7 @@ class Session {
       this.applyAutoStatus(this.stopOsIdle ? this.machineIdle : Date.now() - this.lastActivity > AWAY_AFTER_MS);
     }, 15000);
     if (getState().settings.osIdle) void osIdleGranted().then((ok) => ok && this.setOsIdle(true));
-    (window as unknown as { __hq: unknown }).__hq = { view, keys: { setKeyLayout }, media, spotlightMedia, autoOff, boardModel, cachedLooks, bitmapFonts, chimes: chimeLog, sounds: soundLog, get state() { return getState(); }, session: this, plugins: this.plugins };
+    (window as unknown as { __hq: HqHandle }).__hq = testHandle(view, this);
   }
 
   private applyAutoStatus(inactive: boolean) {

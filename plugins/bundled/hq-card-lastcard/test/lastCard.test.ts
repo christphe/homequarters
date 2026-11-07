@@ -66,7 +66,7 @@ test("hq-cards accepts the definition with 64 cards, then the other 44", () => {
   assert.ok(JSON.stringify({ from: 64, cards: DEFINITION.deck.cards.slice(64) }).length < 4096);
 });
 
-/** The RGBA pixels of a PNG written by tools/sprite.mjs (8-bit RGBA, filter 0 on every row). */
+/** The RGBA pixels of a PNG written by tools/sprite.ts (8-bit RGBA, filter 0 on every row). */
 function decode(buf: Buffer): { w: number; h: number; px: Buffer } {
   assert.equal(buf.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
   let at = 8, w = 0, h = 0;

@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { stripTypeScriptTypes } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,9 +10,7 @@ import { expand, type Command } from "../tools/fdash/config.ts";
 import { loadWorkspace } from "../tools/fdash/workspace.ts";
 import { fingerprint } from "./gauntlet-fingerprint.ts";
 import { BROWSER, closing, header, recordLines } from "./gauntlet.ts";
-// a plain .mjs without types: imported through a variable so the type-checker does not look for them
-const shards = "../e2e/shards.mjs";
-const { ALL } = (await import(shards)) as { ALL: string[] };
+import { ALL } from "../e2e/shards.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -26,21 +25,25 @@ test("the workspace holds the gates of gauntlet.sh, now named by project, with t
     ["server:staticcheck", "server", "go tool staticcheck ./...", false, false, "{}"],
     ["web:tsc", "web", "pnpm exec tsc --noEmit", false, false, "{}"],
     ["web:tsc-tests", "web", "pnpm exec tsc -p tsconfig.test.json --noEmit", false, false, "{}"],
+    ["web:tsc-sdk", "web", "pnpm exec tsc -p tsconfig.sdk.json", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
-    ["protocol-docs", ".", "node scripts/check-protocol-docs.mjs", false, false, "{}"],
-    ["oxlint", ".", "node scripts/oxlint.mjs", false, false, "{}"],
-    ["plugin-types", ".", "node scripts/check-plugin-types.mjs", false, false, "{}"],
+    ["e2e:tsc", "e2e", "pnpm exec tsc --noEmit", false, false, "{}"],
+    ["site:tsc", "site", "pnpm exec tsc --noEmit", false, false, "{}"],
+    ["desktop-types", ".", "node web/node_modules/typescript/bin/tsc -p desktop", false, false, "{}"],
+    ["protocol-docs", ".", "node scripts/check-protocol-docs.ts", false, false, "{}"],
+    ["oxlint", ".", "node scripts/oxlint.ts", false, false, "{}"],
+    ["plugin-types", ".", "node scripts/check-plugin-types.ts", false, false, "{}"],
     ["server:test", "server", "go test -race -count=1 ./...", false, false, "{}"],
     test("web:test", "web"),
-    ["e2e:test", "e2e", "node --test shards.test.mjs slots.test.mjs", false, false, "{}"],
-    ["scripts:test", "scripts", "node --test oxlint-hq.test.mjs check-protocol-docs.test.mjs gauntlet.test.ts ci-fdash-records.test.mjs", false, false, "{}"],
+    ["e2e:test", "e2e", "node --test shards.test.ts slots.test.ts", false, false, "{}"],
+    ["scripts:test", "scripts", "node --test oxlint-hq.test.ts check-protocol-docs.test.ts gauntlet.test.ts ci-fdash-records.test.ts", false, false, "{}"],
     test("fdash:test", "tools/fdash"),
     test("hq-card-lastcard:test", "plugins/bundled/hq-card-lastcard"),
     test("hq-card-pouilleux:test", "plugins/bundled/hq-card-pouilleux"),
     test("hq-cards:test", "plugins/bundled/hq-cards"),
     test("hq-chess:test", "plugins/bundled/hq-chess"),
-    ["site:build", "site", "node build.mjs && node check.mjs", false, false, "{}"],
-    [BROWSER, "e2e", "node run.mjs", false, true, '{"E2E_VIEWPORT":"small"}'],
+    ["site:build", "site", "node build.ts && node check.ts", false, false, "{}"],
+    [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small"}'],
   ]);
   assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", BROWSER], jobs: 1 });
   assert.equal((config.get("static") as { jobs?: number }).jobs, undefined);
@@ -51,12 +54,12 @@ test("every gate is cached, and every scenario of the suite is an item with its 
   for (const g of gates) assert.ok(g.inputs && g.inputs.length > 0 && g.cache, `${g.name} is cached`);
   const e2e = gates.find((g) => g.name === BROWSER)!;
   assert.deepEqual([...e2e.items!.keys()], ALL);
-  for (const [s, item] of e2e.items!) assert.ok(item.inputs.includes(`e2e/scenarios/${s}.mjs`), s);
+  for (const [s, item] of e2e.items!) assert.ok(item.inputs.includes(`e2e/scenarios/${s}.ts`), s);
   assert.ok(e2e.inputs!.includes("!e2e/scenarios/**"), "a scenario's file reruns that scenario only");
   // scenarios that turn a bundled plugin on, or list the plugins' catalog, follow that plugin's code
   const follows = (s: string, p: string) => e2e.items!.get(s)!.inputs.some((i) => typeof i === "string" && path.posix.matchesGlob(`plugins/bundled/${p}/main.ts`, i));
   for (const s of ALL) {
-    const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".mjs"), "utf8");
+    const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".ts"), "utf8");
     for (const p of fs.readdirSync(path.join(root, "plugins/bundled"))) if (text.includes(p)) assert.ok(follows(s, p), `${s} names ${p}: its folder is an input`);
     if (/\[role=tab\]", "Plugins"|Plugins tab|plugins tab/.test(text)) assert.ok(follows(s, "hq-"), `${s} lists the plugins: every plugin is an input`);
   }
@@ -133,7 +136,7 @@ test("closing: green, red, skipped, tree changed, interrupted", () => {
 
 test("no file names a test of web/test, a plugin's test/ or tools/fdash/test that does not exist", () => {
   // docs/status.md and the design notes keep their history; everything else follows the files
-  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\.test\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
+  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\\.test\\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
   const missing: string[] = [];
   for (const line of out.split("\n").filter(Boolean)) {
     const [file, , ref] = line.split(":");
@@ -165,7 +168,7 @@ test("files a test reads outside its project are inputs of the task that runs it
   const owners: [string, string, string][] = [["web/test", "web:test", "web"], ["scripts", "scripts:test", "scripts"],
     ...fs.readdirSync(path.join(root, "plugins/bundled")).filter((p) => fs.existsSync(path.join(root, "plugins/bundled", p, "test"))).map((p): [string, string, string] => [`plugins/bundled/${p}/test`, `${p}:test`, `plugins/bundled/${p}`])];
   for (const [dir, task, project] of owners) {
-    for (const f of files(dir, /\.test\.(ts|mjs)$/)) {
+    for (const f of files(dir, /\.test\.ts$/)) {
       const text = fs.readFileSync(path.join(root, f), "utf8");
       for (const m of text.matchAll(/new URL\("(\.\.?\/[^"]+)", import\.meta\.url\)/g)) {
         const rel = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
@@ -182,11 +185,27 @@ test("files a test reads outside its project are inputs of the task that runs it
 
 test("no scenario of the suite imports another (each is cached on its own file)", () => {
   for (const s of ALL) {
-    const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".mjs"), "utf8");
-    for (const m of text.matchAll(/from\s+["']\.\/([\w-]+)\.mjs["']/g)) assert.fail(`${s} imports ./${m[1]}.mjs: editing it would not rerun ${s}`);
+    const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".ts"), "utf8");
+    for (const m of text.matchAll(/from\s+["']\.\/([\w-]+)\.ts["']/g)) assert.fail(`${s} imports ./${m[1]}.ts: editing it would not rerun ${s}`);
   }
 });
 
 test("the guards above read the whole repository, so scripts:test follows every file", () => {
   assert.ok(((loadWorkspace(root).get("scripts:test") as Command).inputs ?? []).includes("**"), "scripts:test needs /** in its inputs");
+});
+
+test("the tooling Node runs as is loads in Node: erasable syntax only, relative imports with their extension", () => {
+  // tsc cannot say it for every tree (e2e/ and web/tsconfig.test.json also read the client, which is not run by
+  // Node), and several of these files run in no gate (art tools, captures, sprite tools): Node's own stripping
+  // throws on what it refuses, and an extensionless relative import would not resolve
+  const tracked = execFileSync("git", ["ls-files", "--", "e2e/*.ts", "scripts/*.ts", "site/*.ts", "tools/*.ts", "plugins/bundled/*/tools/*.ts", "plugins/bundled/*/test/*.ts"], { cwd: root, encoding: "utf8" })
+    .split("\n").filter((f) => f && !f.startsWith("e2e/fixtures/") && !f.endsWith(".d.ts"));
+  assert.ok(tracked.length > 70, `found only ${tracked.length} files`);
+  const bad: string[] = [];
+  for (const f of tracked) {
+    const code = fs.readFileSync(path.join(root, f), "utf8");
+    try { stripTypeScriptTypes(code); } catch (e) { bad.push(`${f}: ${(e as Error).message.split("\n")[0]}`); }
+    for (const m of code.matchAll(/(?:from|import\()\s*["'](\.\.?\/[^"']+)["']/g)) if (!/\.(ts|js|json|mjs)$/.test(m[1])) bad.push(`${f}: import "${m[1]}" without its extension`);
+  }
+  assert.deepEqual(bad, []);
 });

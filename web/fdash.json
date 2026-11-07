@@ -38,7 +38,29 @@
       "inputs": [
         "/tools/fdash/**",
         "/scripts/**",
-        "/plugins/**"
+        "/plugins/**",
+        "/e2e/shards.ts"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "tsc-sdk": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "-p",
+          "tsconfig.sdk.json"
+        ]
+      ],
+      "inputs": [
+        "/plugins/sdk/client.d.ts",
+        "/plugins/sdk/view.d.ts"
       ],
       "tools": [
         [

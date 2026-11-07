@@ -1,0 +1,32 @@
+// Writes the sprite sheets and the baked office map to site/assets from the art code.
+// Needs only the Vite dev server (cd web && pnpm exec vite --port 5180); no game server.
+import { chrome } from "./env.ts";
+import fs from "node:fs";
+import path from "node:path";
+import puppeteer from "puppeteer-core";
+
+// What web/dev/art-preview.html leaves on its window once ready: PNG data URLs.
+type ArtExport = { sheets: Record<string, string>; map: string; mapLodge: string; mapManor: string; pluginPets: string; pluginPetsTint: string };
+
+const URL = process.env.ART_PREVIEW_URL ?? "http://127.0.0.1:5180/dev/art-preview.html";
+const OUT = path.resolve(import.meta.dirname, "../site/assets");
+const browser = await puppeteer.launch({
+  executablePath: chrome(),
+  headless: true,
+  args: ["--no-first-run"],
+});
+const page = await browser.newPage();
+await page.goto(URL, { waitUntil: "networkidle0" });
+await page.waitForFunction("window.ready === true", { timeout: 15000 });
+const art = await page.evaluate(() => (window as unknown as { artExport: ArtExport }).artExport);
+const save = (name: string, url: string) => fs.writeFileSync(path.join(OUT, name), Buffer.from(url.split(",")[1], "base64"));
+for (const [name, url] of Object.entries(art.sheets)) save("sheet-" + name + ".png", url);
+save("map.png", art.map);
+save("map-lodge.png", art.mapLodge);
+save("map-manor.png", art.mapManor);
+// the bundled pets plugin's sheets (plugins/bundled/hq-pets), drawn by web/src/game/art/pluginPets.ts
+const pets = path.resolve(import.meta.dirname, "../plugins/bundled/hq-pets/public");
+fs.writeFileSync(path.join(pets, "pets.png"), Buffer.from(art.pluginPets.split(",")[1], "base64"));
+fs.writeFileSync(path.join(pets, "pets-tint.png"), Buffer.from(art.pluginPetsTint.split(",")[1], "base64"));
+await browser.close();
+console.log("exported", Object.keys(art.sheets).length, "sheets and the three template maps to", OUT);

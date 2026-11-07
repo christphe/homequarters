@@ -2,7 +2,7 @@
 // definition, then the rest of its cards: always two parts, the definition with all 108 names would do in
 // one, but the split is the path big decks need) on its first update() and again whenever hq-cards
 // (re)starts, and answers hq-cards's "count" hook. The rules, the cards and the count are in rules.ts; the
-// card art is public/shared/cards.png, drawn by tools/sprite.mjs.
+// card art is public/shared/cards.png, drawn by tools/sprite.ts.
 
 import { count, DEFINITION, type CountArgs } from "./rules.ts";
 

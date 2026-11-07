@@ -1,5 +1,5 @@
 // Dev-only page: renders the procedural art without a server.
-// Open /dev/art-preview.html under Vite (pnpm exec vite). e2e/export-art.mjs reads window.artExport
+// Open /dev/art-preview.html under Vite (pnpm exec vite). e2e/export-art.ts reads window.artExport
 // to write the sprite sheets and the baked map used by the README and the website.
 import { drawPluginPetSheets } from "../src/game/art/pluginPets";
 import { drawSproutSheet, SPROUT_VARIANTS } from "../src/game/art/sampleCreature";
