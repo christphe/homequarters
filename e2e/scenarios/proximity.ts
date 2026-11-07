@@ -28,7 +28,7 @@ try {
   const a1 = await pos(ana);
   const seenByBruno = (await others(bruno)).find((e) => e.id === ana.id);
   check("Ana moved right", a1.x > a0.x + 10, `${a0.x.toFixed(1)} -> ${a1.x.toFixed(1)}`);
-  check("Bruno sees Ana at her real position", (seenByBruno && Math.hypot(seenByBruno.x - a1.x, seenByBruno.y - a1.y) < 6) as boolean, JSON.stringify(seenByBruno));
+  check("Bruno sees Ana at her real position", !!seenByBruno && Math.hypot(seenByBruno.x - a1.x, seenByBruno.y - a1.y) < 6, JSON.stringify(seenByBruno));
 
   // Dead reckoning: Bruno only receives state changes, yet must track a 2 s walk closely.
   let maxErr = 0;
@@ -44,7 +44,7 @@ try {
   const realEnd = await pos(ana);
   const seenEnd = (await others(bruno)).find((e) => e.id === ana.id);
   check("remote view tracks a walk from state changes only (max error while moving)", maxErr < 16, maxErr.toFixed(1) + " px");
-  check("remote view converges to the exact stop position", (seenEnd && Math.hypot(seenEnd.x - realEnd.x, seenEnd.y - realEnd.y) < 3) as boolean, JSON.stringify([realEnd, seenEnd]));
+  check("remote view converges to the exact stop position", !!seenEnd && Math.hypot(seenEnd.x - realEnd.x, seenEnd.y - realEnd.y) < 3, JSON.stringify([realEnd, seenEnd]));
 
   // Go to the social area, opt in to media, approach each other.
   await walkTo(ana, 20 * 16 + 8, 28 * 16 + 8);

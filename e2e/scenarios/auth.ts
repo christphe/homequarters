@@ -8,7 +8,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { createRequire } from "node:module";
-import type { Page, CookieData } from "puppeteer-core";
+import type { Page } from "puppeteer-core";
 import { check, summary, resetChecks, launch, waitFor, sleep, type RunContext } from "../lib.ts";
 
 const require = createRequire(import.meta.url);
@@ -87,8 +87,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const about = await policy.$eval('.join-foot a[href="/about"]', (a) => ({ target: a.target, text: a.textContent })).catch(() => null);
     check("the sign-in screen links the public page about the office", about?.target === "_blank" && about.text === "About this office", JSON.stringify(about));
     const foot = await policy.$eval('.join-foot a[href="/privacy"]', (a) => {
-      // `v /= 255` coerces the matched digits to a number, as the JavaScript always did
-      const lum = (c: string) => { const [r, g, b] = (c.match(/\d+/g)! as unknown as number[]).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const lum = (c: string) => { const [r, g, b] = c.match(/\d+/g)!.slice(0, 3).map((d) => { const v = Number(d) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
       const fg = lum(getComputedStyle(a).color), bg = lum(getComputedStyle(a.closest(".join-card")!).backgroundColor);
       return { href: a.getAttribute("href"), target: a.target, text: a.textContent, ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) };
     });
@@ -145,7 +144,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
 
     // Olga, admin from before sign-in, links an account and keeps hers.
     const olgaCtx = await browser.createBrowserContext();
-    await olgaCtx.setCookie({ name: "hq_session", value: legacy.Olga.cookie, url: BASE, httpOnly: true, sameSite: "Lax" } as unknown as CookieData);
+    await olgaCtx.setCookie({ name: "hq_session", value: legacy.Olga.cookie, domain: new URL(BASE).hostname, path: "/", httpOnly: true, sameSite: "Lax" });
     const olga = await olgaCtx.newPage();
     await olga.setViewport({ width: 1280, height: 720 });
     await olga.goto(BASE, { waitUntil: "domcontentloaded" });

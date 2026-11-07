@@ -234,7 +234,7 @@
     moveTo(id, x, y, opts = {}) {
       push({ op: "moveTo", id, x, y, speed: opts.speed });
     },
-    /** Walks there along a path around walls; somewhere it cannot reach, it stays where it is. */
+    /** Walks there along a path around walls; somewhere it cannot reach (off the map, in a wall), as close as it can. */
     walkTo(id, x, y, opts = {}) {
       push({ op: "walkTo", id, x, y, speed: opts.speed });
     },

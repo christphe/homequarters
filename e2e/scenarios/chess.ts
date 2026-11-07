@@ -213,7 +213,7 @@ async function within(fn: () => Promise<unknown>, limit: number) {
   const t0 = Date.now();
   for (;;) {
     let ok = false;
-    try { ok = (await fn()) as boolean; } catch { ok = false; }
+    try { ok = !!(await fn()); } catch { ok = false; }
     if (ok) return Date.now() - t0;
     if (Date.now() - t0 > limit) return -1;
     await sleep(40);

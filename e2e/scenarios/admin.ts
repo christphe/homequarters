@@ -77,8 +77,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const why = seen ? "" : JSON.stringify(await Promise.all([mia.page.evaluate(() => document.querySelector(".topbar .brand")?.textContent), admin.page.evaluate(() => ({ field: document.querySelector<HTMLInputElement>("#office-name")?.value, toast: document.querySelector(".toast")?.textContent, brand: document.querySelector(".topbar .brand")?.textContent }))]));
     check("a rename reaches an online member's top bar without a reload", seen, why + " " + errors.join(" | ") + " " + admin.page.url());
     check("and her browser tab", (await mia.page.title()) === "Home Quarters - Harbour " + t, await mia.page.title());
-    // oxlint-disable-next-line typescript/await-thenable -- status is a number; the extra await is harmless and kept as it was
-    const stored = await (await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: "" })).status;
+    const stored = (await api(ctx.adminCookie, "PATCH", "/api/admin/office", { name: "" })).status;
     check("an empty name is refused (400)", stored === 400, String(stored));
     const byMember = (await api(miaCookie, "PATCH", "/api/admin/office", { name: "Mine" })).status;
     check("a member cannot rename the office (403)", byMember === 403, String(byMember));

@@ -147,7 +147,7 @@ export async function run(): Promise<boolean> {
     await bruno.page.waitForSelector(".tile-menu[role=menu]", { timeout: 5000 });
     check("the menu now offers the camera and the screen share", JSON.stringify(await menuItems(bruno)) === JSON.stringify(["Turn off camera", "Stop screen share"]), JSON.stringify(await menuItems(bruno)));
     await bruno.page.keyboard.press("Escape");
-    check("Escape closes the menu and gives the focus back to ⋯", await bruno.page.evaluate(() => !document.querySelector(".tile-menu") && document.activeElement?.classList.contains("tile-more")) as boolean);
+    check("Escape closes the menu and gives the focus back to ⋯", await bruno.page.evaluate(() => !document.querySelector(".tile-menu") && !!document.activeElement?.classList.contains("tile-more")));
     await bruno.page.keyboard.press("Enter");
     await bruno.page.waitForSelector(".tile-menu[role=menu]", { timeout: 5000 });
     await bruno.page.keyboard.press("ArrowDown");

@@ -105,7 +105,7 @@ export async function run(): Promise<boolean> {
       // oxlint-disable-next-line typescript/unbound-method -- called with the socket as this (send.call(this, d))
       const send = WebSocket.prototype.send;
       (window as unknown as Taps).__sentA = [];
-      WebSocket.prototype.send = function (d) { if (String(d as string).includes('"t":"in"')) (window as unknown as Taps).__sentA.push([Math.round(performance.now()), String(d as string)]); return send.call(this, d); };
+      WebSocket.prototype.send = function (d) { if (String(d).includes('"t":"in"')) (window as unknown as Taps).__sentA.push([Math.round(performance.now()), String(d)]); return send.call(this, d); };
     });
     await delaySends(a);
     const jitter = await read(a, () => new Promise<number[]>((resolve) => {

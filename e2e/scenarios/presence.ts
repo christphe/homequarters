@@ -213,11 +213,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await key("keyup", "ArrowUp", "Numpad8");
     check("the keypad without Num Lock still walks", keypad === -1, `dy ${keypad}`);
     await sleep(800);
-    check("the key at the W position (Z on AZERTY) walks up and does not dance", up === -1 && after === 0 && !(await read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil as number) > performance.now(), a.id)), `dy ${up} then ${after}`);
+    check("the key at the W position (Z on AZERTY) walks up and does not dance", up === -1 && after === 0 && !(await read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil ?? 0) > performance.now(), a.id)), `dy ${up} then ${after}`);
 
     // ---- dance (Z) ----
     await a.page.keyboard.press("z");
-    await waitFor(() => read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil as number) > performance.now(), a.id), { what: "dance seen" });
+    await waitFor(() => read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil ?? 0) > performance.now(), a.id), { what: "dance seen" });
     check("Z makes the avatar dance for the people nearby", true);
 
     // ---- minimap ----

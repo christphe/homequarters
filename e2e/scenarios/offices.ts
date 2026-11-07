@@ -87,7 +87,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await button(guest, /^Knock · Office 2/);
     await waitFor(() => owner.page.evaluate(() => !!window.__hq.state.knock), { what: "owner asked" });
     await waitFor(() => owner.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent === "Let in")), { what: "knock dialog" });
-    check("the owner is asked who is knocking", await owner.page.evaluate((n) => document.querySelector(".modal")?.textContent.includes(n), guest.name) as boolean);
+    check("the owner is asked who is knocking", await owner.page.evaluate((n) => !!document.querySelector(".modal")?.textContent.includes(n), guest.name));
     await owner.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal button")].find((b) => b.textContent === "Let in")?.click());
     await waitFor(() => guest.page.evaluate((oi) => !window.__hq.view.deny.has(oi), oi), { what: "visitor admitted" }).catch(async (e) => {
       console.log("DIAG", JSON.stringify({ ownerKnock: await owner.page.evaluate(() => window.__hq.state.knock), guestDeny: await guest.page.evaluate(() => [...window.__hq.view.deny]), toast: await guest.page.evaluate(() => document.querySelector(".toast")?.textContent), ownerArea: await here(owner), oi }));
@@ -98,7 +98,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await Promise.all([owner, guest, other].map((u) => u.page.evaluate(() => window.__hq.session.setConsent(true))));
     await waitFor(async () => (await st(owner)).conv?.kind === "r" && (await st(guest)).conv?.kind === "r" && (await st(guest)).conv?.state === "live", { timeout: 30000, what: "office call" });
     const conv = (await st(owner)).conv;
-    check("owner and visitor share the office's own call", conv!.name?.startsWith("Office 2") as boolean, JSON.stringify(conv));
+    check("owner and visitor share the office's own call", !!conv!.name?.startsWith("Office 2"), JSON.stringify(conv));
 
     // ---- Ctrl+D brings the owner back to their office from the hall, with the real keys
     await walkTo(owner, ...at(13, 37));

@@ -62,7 +62,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("with nobody near, the map with PCs looks the same with and without depth sprites", await sameWithAndWithout(withMap));
     check("desks with pc props bake exactly like desks with built-in screens", (await bakeHash(admin, withMap)) === (await bakeHash(admin, stripPCs(withMap))));
     const nudged = structuredClone(withMap);
-    nudged.props.find((p) => p.t === "pc")!.dx! += 1;
+    const pc = nudged.props.find((p) => p.t === "pc")!;
+    pc.dx = (pc.dx ?? 0) + 1; // a pc on an odd-width desk has no dx (0)
     check("(the bake comparison sees a 1 px shift of one pc)", (await bakeHash(admin, nudged)) !== (await bakeHash(admin, withMap)));
 
     // ---- a baked neighbour drawn over a desk (the reception's monitor over a desk leg) stays over it
@@ -116,7 +117,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("one click of the eraser on a desk removes the desk and its pc", !gone.props.some((p) => p.t === "desk" && p.x === target.x && p.y === target.y) && (await pcsOn(target)).length === 0);
     check("and the change shows at once", (await pixels(admin, { depth: true, ents: false, rect: deskArea })) !== before);
     const saved = await editorButton(admin, "Save") && await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => /saved|error|invalid|refused/i.test(x))), { timeout: 5000, what: "save toast" }).catch(() => "");
-    check("the edited map saves", !!saved && !/error|invalid|refused/i.test(saved), saved as string);
+    check("the edited map saves", !!saved && !/error|invalid|refused/i.test(saved), String(saved));
     await editorButton(admin, "Close");
 
     // ---- switching layout rebuilds the depth sprites; turned desks hide whoever sits behind them

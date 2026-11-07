@@ -1,6 +1,6 @@
 // Shared helpers for real-browser end-to-end tests (Chrome + fake camera/mic).
 import { chrome } from "./env.ts";
-import puppeteer, { type Browser, type BrowserContext, type CookieData, type Page, type Viewport } from "puppeteer-core";
+import puppeteer, { type Browser, type BrowserContext, type Page, type Viewport } from "puppeteer-core";
 import type { ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
 
@@ -68,12 +68,13 @@ export async function launch(extra: string[] = [], { waitEmpty = true } = {}): P
   });
 }
 
-export async function waitFor<T>(fn: () => T | Promise<T>, { timeout = 15000, every = 100, what = "condition" } = {}): Promise<T> {
+/** Polls fn until it gives a truthy value, and returns that value. */
+export async function waitFor<T>(fn: () => T | Promise<T>, { timeout = 15000, every = 100, what = "condition" } = {}): Promise<Exclude<T, false | 0 | "" | null | undefined>> {
   const t0 = Date.now();
   for (;;) {
     let v: T | false;
     try { v = await fn(); } catch { v = false; }
-    if (v) return v;
+    if (v) return v as Exclude<T, false | 0 | "" | null | undefined>;
     if (Date.now() - t0 > timeout) throw new Error("timeout waiting for " + what);
     await sleep(every);
   }
@@ -84,8 +85,7 @@ export async function joinAs(browser: Browser, name: string, { path = "/", avata
   // CI runners render in software (SwiftShader) on 2 cores; a smaller canvas keeps the browsers near 30 fps.
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
-  // CDP (Storage.setCookies) takes a url in place of the domain the type asks for
-  if (cookie) await ctx.setCookie({ name: "hq_session", value: cookie, url: APP, httpOnly: true, sameSite: "Lax" } as unknown as CookieData);
+  if (cookie) await ctx.setCookie({ name: "hq_session", value: cookie, domain: new URL(APP).hostname, path: "/", httpOnly: true, sameSite: "Lax" });
   await page.setViewport(viewport);
   // the top page only: it would also run in a plugin's sandboxed iframe, where storage throws
   if (avatar) await page.evaluateOnNewDocument((a) => { if (window === window.top) localStorage.setItem("hq.avatar", JSON.stringify(a)); }, avatar);

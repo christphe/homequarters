@@ -6,6 +6,7 @@
 // the tests. Pure functions only (shuffling takes the random source as an argument).
 import { allows, deckSize, FELT_H, FELT_W, FREE, MAX_PILES, PILE_NAME_MAX, utf8Bytes, type Action, type Game, type StartPile } from "./games.ts";
 import type { LogEntry } from "./log.ts";
+import type { Looking, TableState } from "./messages.ts";
 
 export const UP = 128; // card numbers are below MAX_CARDS (128)
 export const TABLE_MAX = 3650; // UTF-8 bytes of JSON: a table is saved in one hq.kv value and sent, with who is here and looking, in one 4 KB message
@@ -97,6 +98,18 @@ export function choose(t: Table, g: Game, rnd: () => number = Math.random): void
 export function seatOf(t: Table, id: number): number | null {
   const i = t.seats.findIndex((s) => s?.id === id);
   return i < 0 ? null : i;
+}
+
+/** What the table's viewers are sent: the table, its seated players who have it open, and the pile each of
+ * them looks through (from `lookers`, member -> pile). Viewers without a seat add nothing: the message is
+ * as big for 2 viewers as for 50 (test "the biggest table message fits a send"). */
+export function tableState(t: Table, here: ReadonlySet<number>, lookers: Iterable<[number, string]>, unavailable: boolean): TableState {
+  const looking: Looking[] = [];
+  for (const [id, pile] of lookers) {
+    const seat = seatOf(t, id);
+    if (seat !== null) looking.push({ seat, pile });
+  }
+  return { t, here: t.seats.flatMap((s) => (s && here.has(s.id) ? [s.id] : [])), looking, unavailable };
 }
 
 const seated = (t: Table, seat: unknown): seat is number => isInt(seat) && seat >= 0 && seat < t.seats.length && t.seats[seat] !== null;

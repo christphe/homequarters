@@ -11,7 +11,7 @@
 // server/internal/plugin/cards_test.go and oldmaid_test.go. This scenario keeps what needs the browser: real
 // controls, drags and the keyboard, what each page draws, sync between pages, a game's own card sheet.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type RunContext, type User } from "../lib.ts";
-import type { CDPSession, ClickOptions, ElementHandle, Frame, MouseClickOptions } from "puppeteer-core";
+import type { CDPSession, ElementHandle, Frame } from "puppeteer-core";
 import { CARD_W, CARD_H } from "../../plugins/bundled/hq-cards/public/art.ts";
 import { FX, FY, NARROW, GRID, CASCADE, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
 import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
@@ -105,7 +105,7 @@ async function pressInView(u: User, text: string) {
 async function type(u: User, label: string, value: string) {
   const f = (await viewFrame(u))!;
   const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent!.trim().startsWith(label))?.querySelector("input"), label) as ElementHandle<HTMLInputElement>;
-  await input.click({ clickCount: 3 } as ClickOptions);
+  await input.click({ count: 3 }); // selects what the field holds, so typing replaces it
   await input.type(value);
 }
 
@@ -141,11 +141,11 @@ async function drag(u: Player, a: Point, b: Point) {
   await sleep(250);
   return { during, total: u.sent.length - n0, msgs: u.sent.slice(n0) };
 }
-/** count real clicks at a view point (Puppeteer's clickCount only labels one click: a double click is two). */
+/** count real clicks at a view point, 60 ms apart: the view itself takes two clicks within 400 ms as a double click. */
 async function click(u: User, p: Point, count = 1) {
   const [q] = await onPage(u, p);
   for (let i = 0; i < count; i++) {
-    await u.page.mouse.click(q.x, q.y, { clickCount: i + 1 } as MouseClickOptions);
+    await u.page.mouse.click(q.x, q.y);
     if (i + 1 < count) await sleep(60);
   }
   await sleep(150);
@@ -168,7 +168,7 @@ async function within(fn: () => Promise<unknown>, limit: number) {
   const t0 = Date.now();
   for (;;) {
     let ok = false;
-    try { ok = (await fn()) as boolean; } catch { ok = false; }
+    try { ok = !!(await fn()); } catch { ok = false; }
     if (ok) return Date.now() - t0;
     if (Date.now() - t0 > limit) return -1;
     await sleep(40);
@@ -252,14 +252,14 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await press(ann, "Free table");
     await waitFor(async () => hasButton(ann, "Seat 1"), { what: "the free table's seats" });
     await press(ann, "Seat 1");
-    await waitFor(async () => (hasButton(bo, "Seat 2") as unknown as boolean) && (await modal(bo))!.buttons.some((b) => b.text === "Seat 1: " + ann.name), { what: "Ann seated, on Bo's page" });
+    await waitFor(async () => (await hasButton(bo, "Seat 2")) && (await modal(bo))!.buttons.some((b) => b.text === "Seat 1: " + ann.name), { what: "Ann seated, on Bo's page" });
     await press(bo, "Seat 2");
-    await waitFor(async () => (hasButton(cy, "Seat 3") as unknown as boolean) && (await modal(cy))!.buttons.some((b) => b.text === "Seat 2: " + bo.name), { what: "Bo seated" });
+    await waitFor(async () => (await hasButton(cy, "Seat 3")) && (await modal(cy))!.buttons.some((b) => b.text === "Seat 2: " + bo.name), { what: "Bo seated" });
     await press(cy, "Seat 3");
     await waitFor(async () => (await drawn(cy))?.seat === 2, { what: "Cy seated" });
     const annSeats = (await modal(ann))!.buttons;
     // (a seated player cannot take another seat: seatButtons in hq-cards/test/controls.test.ts)
-    check("4: each takes a seat through its button; Ann's shows pressed", annSeats.find((b) => b.text === "Seat 1: " + ann.name)?.pressed as boolean, JSON.stringify(annSeats.slice(0, 4)));
+    check("4: each takes a seat through its button; Ann's shows pressed", annSeats.find((b) => b.text === "Seat 1: " + ann.name)?.pressed === true, JSON.stringify(annSeats.slice(0, 4)));
     await press(cy, "Close");
     const away = await within(async () => (await modal(ann))!.buttons.some((b) => b.text === `Seat 3: ${cy.name} (away)`), 1000);
     check("4: Cy closes the window: Ann sees Cy away within 1 s, the seat kept", away >= 0, `${away} ms`);
@@ -561,8 +561,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // R6: the stock's top set aside: out of the game through Gather all
     await click(ann, stockAt);
     await pressInView(ann, "Set the top aside");
-    // oxlint-disable-next-line unicorn/prefer-string-starts-ends-with -- kept as written (typing only, no behaviour change)
-    await waitFor(async () => / aside$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "a card set aside" }).catch(() => {});
+    await waitFor(async () => ((await logOf(bo)).at(-1) ?? "").endsWith(" aside"), { timeout: 3000, what: "a card set aside" }).catch(() => {});
     await press(ann, "Gather all");
     await waitFor(async () => (await logOf(bo)).at(-1) === `${ann.name} gathered all the cards`, { what: "gathered" });
     await press(ann, "Count");
@@ -577,8 +576,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await pressInView(ann, "Turn the pile over"); // back face down
     // a 32-card game: the jokers, then the 2s to 6s chosen one by one, set aside from the panel
     await press(ann, "Play with 52 cards");
-    // oxlint-disable-next-line unicorn/prefer-string-starts-ends-with -- kept as written (typing only, no behaviour change)
-    await waitFor(async () => /set aside the jokers$/.test((await logOf(bo)).at(-1) ?? ""), { timeout: 3000, what: "the jokers set aside" }).catch(() => {});
+    await waitFor(async () => ((await logOf(bo)).at(-1) ?? "").endsWith("set aside the jokers"), { timeout: 3000, what: "the jokers set aside" }).catch(() => {});
     for (const r of ["2", "3", "4", "5", "6"]) await press(ann, r);
     await press(ann, "Set the chosen aside");
     const ranksOut = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} set aside the 2s, 3s, 4s, 5s and 6s`, 3000);

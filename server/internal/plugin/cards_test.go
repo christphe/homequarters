@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -16,8 +15,6 @@ import (
 // Message is what the page's code sends.
 
 const cards = "hq-cards"
-
-var dan = Player{ID: 4, Name: "Dan", Role: "member"}
 
 func cardsHost(t *testing.T, kv *memKV, start []string, online ...Player) (*Host, *fakeSink, *errCounter) {
 	t.Helper()
@@ -246,41 +243,6 @@ func TestCardsReset(t *testing.T) {
 		tb, _ := tableOf(sink, carol.ID, 7, 7)
 		return tb != nil && tb["game"] == nil && lastOf(sink, carol.ID, "games", 7, 7) != nil
 	})
-}
-
-func TestCardsMessageSizes(t *testing.T) {
-	players := []Player{alice, bob, carol, dan}
-	for i := 5; i <= 8; i++ {
-		players = append(players, Player{ID: uint32(i), Name: fmt.Sprintf("%024d", i), Role: "member"})
-	}
-	h, sink, errs := cardsHost(t, newMemKV(), []string{cards}, players...)
-	freeTable(t, h, sink, 9, 9, players...)
-	for i := 1; i < 16; i++ {
-		cardSend(h, alice, `{"t":"newPile","x":9,"y":9,"name":"%016d","face":"up","at":[300,170]}`, i)
-	}
-	for i := 0; i < 54; i++ {
-		cardSend(h, players[i%8], `{"t":"place","x":9,"y":9,"from":{"k":"pile","id":"p0"},"to":{"k":"felt","at":[%d,%d]},"up":true}`, 100+i, 100+i)
-		if i%4 == 3 {
-			time.Sleep(50 * time.Millisecond) // a page's own budget (8 a second) spaces them out too
-		}
-	}
-	// about 10 s on one core under the race detector: every drop saves the table and sends it to 8 pages
-	slowly(t, 30*time.Second, "54 cards on the felt", func() bool {
-		tb, _ := tableOf(sink, alice.ID, 9, 9)
-		return tb != nil && len(tb["loose"].([]any)) == 54
-	})
-	if n := errs.n.Load(); n != 0 {
-		t.Fatalf("%d plugin errors", n)
-	}
-	sink.mu.Lock()
-	defer sink.mu.Unlock()
-	for _, s := range sink.sends {
-		if len(s.frame) > 4096 {
-			var f struct{ D json.RawMessage }
-			_ = json.Unmarshal([]byte(s.frame), &f)
-			t.Fatalf("a frame of %d bytes: %.200s", len(s.frame), s.frame)
-		}
-	}
 }
 
 // A game registering again (games do whenever another plugin starts or stops) never makes its tables

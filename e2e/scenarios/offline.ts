@@ -1,6 +1,5 @@
 // Requests that fail on the network (no answer at all, as when the connection drops) through the real controls:
 // each panel shows its error and the page has no unhandled rejection. The requests are aborted in the browser.
-import type { ClickOptions } from "puppeteer-core";
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, type RunContext, type User } from "../lib.ts";
 
 const click = (u: User, selector: string, text: string) => u.page.evaluate((selector, text) => {
@@ -70,7 +69,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await click(admin, ".modal [role=tab]", "Office");
     const field = await waitFor(() => page.$("#office-name"), { what: "office name field" });
     const name = await field!.evaluate((el) => (el as HTMLInputElement).value);
-    await field!.click({ clickCount: 3 } as ClickOptions);
+    await field!.click({ count: 3 }); // selects the name, so typing replaces it
     await field!.type(name + " 2");
     await offline("Admin > Office > Rename", "PATCH /api/admin/office", () => click(admin, ".modal button", "Rename"), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Announce");

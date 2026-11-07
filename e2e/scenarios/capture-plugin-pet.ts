@@ -22,7 +22,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await setPlugin(ctx, true);
     // setup through the plugin's own messages (the modal is tested in plugins.ts): a cat in its own
     // colours, a tinted fox and a seedling
-    const frame = await waitFor(() => owner.page.frames().find((f) => f.url() === "about:srcdoc")!, { what: "plugin frame" });
+    const frame = await waitFor(() => owner.page.frames().find((f) => f.url() === "about:srcdoc"), { what: "plugin frame" });
     for (const m of [{ t: "add", k: 0 }, { t: "add", k: 3 }, { t: "colour", i: 1, c: "6a5acd" }, { t: "add", k: 8 }]) {
       await frame.evaluate((m) => (window as unknown as PluginWindow).hq.send(m), m);
       await sleep(300);

@@ -843,3 +843,31 @@ test("setSnap keeps the table under TABLE_MAX", () => {
   assert.equal(setSnap(t, 0, false).ok, false, '"snap":false is one byte longer: refused');
   assert.ok(encodedSize(t) <= TABLE_MAX);
 });
+
+// ---- the biggest message a viewer is sent
+
+import { tableState } from "../public/table.ts";
+import { MAX_SEATS } from "../public/games.ts";
+import type { ToClient } from "../public/messages.ts";
+
+test("the biggest table message fits a send (the host refuses a message over 4 KB), however many watch", () => {
+  const SEND_MAX = 4096; // maxSendBytes in server/internal/plugin/host.go
+  const t = newTable();
+  // every seat taken by a member with the longest id, every one of them at the table and looking through a pile
+  t.seats = Array.from({ length: MAX_SEATS }, (_, i) => ({ id: 4294967295 - i, name: "x".repeat(24) }));
+  t.hands = t.seats.map(() => []);
+  t.next = 9999999999; // pile ids are "p" + a counter: ten digits is billions of piles made at one table
+  t.count = "";
+  t.count = "x".repeat(TABLE_MAX - encodedSize(t)); // the table itself exactly full
+  assert.equal(encodedSize(t), TABLE_MAX);
+  const seated = t.seats.map((s) => s!.id);
+  const watchers = Array.from({ length: 200 }, (_, i) => 1_000_000 + i); // viewers without a seat
+  const lookers: [number, string][] = [...seated, ...watchers].map((id) => [id, "p" + t.next]);
+  const s = tableState(t, new Set([...seated, ...watchers]), lookers, false);
+  assert.equal(s.here.length, MAX_SEATS, "only seated players are listed as here");
+  assert.equal(s.looking.length, MAX_SEATS, "only seated players are listed as looking");
+  // the biggest of the messages carrying it: a window opening, on the largest map (200 x 200 tiles)
+  const msg: ToClient = { t: "open", x: 199, y: 199, s, n: 4294967295 };
+  const bytes = Buffer.byteLength(JSON.stringify(msg));
+  assert.ok(bytes <= SEND_MAX, `${bytes} bytes`);
+});
