@@ -13,7 +13,7 @@
 // and drops, Escape cancels; a live region says what is under the cursor and every change. The last
 // action's squares are tinted (a move: where it started and where it went; a place: where it went; a stash:
 // where it started). The canvas takes the largest whole scale its view allows (the window is full screen).
-// What it shows, says and sends, without the canvas, is public/sync.ts (unit-tested in web/test/chessView.test.ts).
+// What it shows, says and sends, without the canvas, is public/sync.ts (unit-tested in hq-chess/test/chessView.test.ts).
 import { sideOf, squareName, PIECE_NAMES, PROMOTIONS, type Side } from "./game.ts";
 import type { Promotion, ViewIn, ViewOut } from "./messages.ts";
 import { SMALL_H, SMALL_W, paintPiece } from "./pieces.ts";

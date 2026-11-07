@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "test": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "test/*.test.ts"
+        ]
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    }
+  }
+}

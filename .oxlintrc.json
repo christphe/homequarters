@@ -37,7 +37,7 @@
   },
   "overrides": [
     // tests spell coordinates as column * T + offset, column 0 included
-    { "files": ["web/test/**"], "rules": { "oxc/erasing-op": "off" } },
+    { "files": ["web/test/**", "plugins/bundled/*/test/**"], "rules": { "oxc/erasing-op": "off" } },
     // the gauntlet critics' UI invariants (AGENTS.md): text through the i18n dictionary, dialogs through Modal
     { "files": ["web/src/**/*.tsx"], "rules": { "hq/ui-text": "error", "hq/dialog-through-modal": "error" } },
     { "files": ["web/src/ui/Modal.tsx"], "rules": { "hq/dialog-through-modal": "off" } },

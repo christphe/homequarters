@@ -1,0 +1,80 @@
+{
+  "files": [
+    "**",
+    "!test/**",
+    "!dev/**"
+  ],
+  "dependsOn": [
+    "sdk"
+  ],
+  "tasks": {
+    "tsc": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "--noEmit"
+        ]
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "tsc-tests": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "-p",
+          "tsconfig.test.json",
+          "--noEmit"
+        ]
+      ],
+      "inputs": [
+        "/tools/fdash/**",
+        "/scripts/**",
+        "/plugins/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "build": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "vite",
+          "build"
+        ]
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "test": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "test/*.test.ts"
+        ]
+      ],
+      "inputs": [
+        "/server/internal/gamemap/map.go",
+        "/server/internal/httpapi/avatar.go"
+      ]
+    }
+  }
+}

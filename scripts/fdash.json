@@ -1,0 +1,22 @@
+{
+  "dependsOn": [
+    "fdash"
+  ],
+  "tasks": {
+    "test": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "oxlint-hq.test.mjs",
+          "check-protocol-docs.test.mjs",
+          "gauntlet.test.ts",
+          "ci-fdash-records.test.mjs"
+        ]
+      ],
+      "inputs": [
+        "/**"
+      ]
+    }
+  }
+}

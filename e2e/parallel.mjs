@@ -62,7 +62,7 @@ export async function runParallel({ n, scenarios, slots, mode }) {
     for (let i = 1; i <= n; i++) {
       const p = ports(slots[i - 1]);
       const s = { i, names: shard(scenarios, i, n), out: [], code: null, t0: Date.now(), log: path.join(logDir, `shard-${i}.log`) };
-      s.proc = spawn(process.execPath, [path.join(here, "run.mjs"), "--shard", `${i}/${n}`], {
+      s.proc = spawn(process.execPath, [path.join(here, "run.mjs"), "--shard", `${i}/${n}`, ...scenarios], {
         cwd: here, detached: !WIN, stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, SKIP_BUILD: "1", E2E_PARALLELISM: "1", E2E_SHARD_CHILD: "1",
           HQ_TEST_PORT: String(p.server), HQ_TEST_LK_PORT: String(p.lk), HQ_LK_HTTP: `http://127.0.0.1:${p.lk}` },

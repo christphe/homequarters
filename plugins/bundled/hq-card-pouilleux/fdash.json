@@ -1,0 +1,17 @@
+{
+  "dependsOn": [
+    "hq-cards",
+    "sdk"
+  ],
+  "tasks": {
+    "test": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "test/*.test.ts"
+        ]
+      ]
+    }
+  }
+}

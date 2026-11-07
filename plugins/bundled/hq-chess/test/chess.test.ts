@@ -1,9 +1,9 @@
-// hq-chess rules: seats, moves, reset. Run: node --test web/test
+// hq-chess rules: seats, moves, reset. Run: node --test plugins/bundled/hq-chess/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   START, newBoard, parseBoard, sideOf, seatOf, take, move, canReset, reset, squareName, place, toReserve, changeBetween, canUndo, undo,
-} from "../../plugins/bundled/hq-chess/public/game.ts";
+} from "../public/game.ts";
 
 const ann = { id: 1, name: "Ann" };
 const bob = { id: 2, name: "Bob" };

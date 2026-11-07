@@ -3,7 +3,8 @@
 // stock, deal, gather, count, a new pile, offering my hand), the snapping switch, Reset, the count, a note
 // when somebody offers me their hand, and the log. Buttons are rebuilt only when what they show changes,
 // so the focus stays on a button that is still there; the two text fields keep what the player typed.
-import { allows, type ClientGame } from "./games.ts";
+import type { ClientGame } from "./games.ts";
+import { seatButtons, tableActions } from "./controls.ts";
 import { labels } from "./labels.ts";
 import { sentence, type LogEntry } from "./log.ts";
 import type { Act, TableState } from "./messages.ts";
@@ -120,9 +121,9 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
       const o = t.offer;
       if (o && mine !== null && o.to === mine) kids.push(text(`${short(t.seats[o.from]?.name ?? "")} offers you their hand: click their name on the table to draw a card.`, "notice"));
       // seats: a free one can be taken by somebody without a seat; a taken one says who, and whether they are here
-      kids.push(row(...t.seats.map((seat, k) => seat
-        ? button(labels.seat(k, seat.name, !st.here.includes(seat.id)), () => {}, { pressed: seat.id === me, disabled: true })
-        : button(labels.freeSeat(k), () => send({ t: "seat", seat: k }), { disabled: mine !== null }))));
+      kids.push(row(...seatButtons(t, me, st.here).map((b) => t.seats[b.seat]
+        ? button(b.label, () => {}, { pressed: b.pressed, disabled: true })
+        : button(b.label, () => send({ t: "seat", seat: b.seat }), { disabled: b.disabled }))));
       const taken = t.seats.flatMap((seat, k) => (seat ? [`${k + 1} ${short(seat.name)} (${st.here.includes(seat.id) ? "here" : "away"})`] : []));
       const free = t.seats.filter((x) => !x).length;
       const freeText = free === 1 ? "1 seat free" : `${free} seats free`;
@@ -132,13 +133,14 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
         kids.push(text(t.snap ? "Snapping is on." : "Snapping is off.", "muted"));
       } else {
         const stock = t.piles[0];
+        const has = new Set(tableActions(game, !!stock));
         const acts: HTMLElement[] = [];
-        if (stock && allows(game, "shuffle")) acts.push(button(labels.shuffle(stock.name), () => send({ t: "shuffle", pile: stock.id })));
-        if (stock && allows(game, "dealAll")) acts.push(button("Deal all", () => send({ t: "dealAll", pile: stock.id })));
-        if (allows(game, "gather")) acts.push(button("Gather all", () => send({ t: "gather" })));
-        if (allows(game, "count")) acts.push(button("Count", () => send({ t: "count" })));
+        if (has.has("shuffle")) acts.push(button(labels.shuffle(stock!.name), () => send({ t: "shuffle", pile: stock!.id })));
+        if (has.has("dealAll")) acts.push(button("Deal all", () => send({ t: "dealAll", pile: stock!.id })));
+        if (has.has("gather")) acts.push(button("Gather all", () => send({ t: "gather" })));
+        if (has.has("count")) acts.push(button("Count", () => send({ t: "count" })));
         if (acts.length) kids.push(row(...acts));
-        if (stock && allows(game, "deal")) {
+        if (has.has("deal")) {
           const n = document.createElement("input");
           n.type = "number";
           n.min = "1";
@@ -148,9 +150,9 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
             const v = Math.round(Number((e.currentTarget as HTMLInputElement).value)); // the input on the page (a rebuild patches it)
             if (v >= 1 && v <= DEAL_MAX) dealN = v;
           };
-          kids.push(row(field("Cards each", n), button("Deal", () => send({ t: "deal", pile: stock.id, n: dealN }))));
+          kids.push(row(field("Cards each", n), button("Deal", () => send({ t: "deal", pile: stock!.id, n: dealN }))));
         }
-        if (allows(game, "createPile")) {
+        if (has.has("createPile")) {
           const f = document.createElement("input");
           f.type = "text";
           f.maxLength = 16;
@@ -171,7 +173,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
         }
         kids.push(row(button(t.snap ? "Snapping: on" : "Snapping: off", () => send({ t: "snap", on: !t.snap }), { pressed: t.snap })));
         // a smaller deck from the standard one: whole ranks out of the game until a reset
-        if (allows(game, "remove") && "standard" in game.deck) {
+        if (has.has("remove")) {
           const aside = (ranks: string[]) => () => send({ t: "setAsideRanks", ranks });
           kids.push(row(button("Play with 32 cards", aside(["2", "3", "4", "5", "6", "X"])), button("Play with 52 cards", aside(["X"]))));
           kids.push(text("Or set aside every card of these ranks:", "muted"));
@@ -187,7 +189,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
             update(i);
           }, { disabled: !chosen.length })));
         }
-        if (allows(game, "offer")) {
+        if (has.has("offer")) {
           if (o?.from === mine) kids.push(row(button(labels.withdraw(t.seats[o.to]?.name ?? ""), () => send({ t: "offer", to: null }))));
           else if (t.hands[mine]?.length) {
             const to = t.seats.flatMap((seat, k) => (seat && k !== mine ? [button(labels.offer(seat.name), () => send({ t: "offer", to: k }))] : []));

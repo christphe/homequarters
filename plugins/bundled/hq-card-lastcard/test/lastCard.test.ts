@@ -1,11 +1,11 @@
 // hq-card-lastcard: the 108 cards and their values, the count hook, the definition hq-cards accepts in two
-// parts, and the card sheet. Run: node --test web/test
+// parts, and the card sheet. Run: node --test plugins/bundled/hq-card-lastcard/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
-import { BACK, CARDS, CELL, DEFINITION, SHEET, count } from "../../plugins/bundled/hq-card-lastcard/rules.ts";
-import { validateCards, validateDefinition } from "../../plugins/bundled/hq-cards/public/games.ts";
+import { BACK, CARDS, CELL, DEFINITION, SHEET, count } from "../rules.ts";
+import { validateCards, validateDefinition } from "../../hq-cards/public/games.ts";
 
 const COLOURS = ["Red", "Yellow", "Green", "Blue"];
 
@@ -90,7 +90,7 @@ function decode(buf: Buffer): { w: number; h: number; px: Buffer } {
 }
 
 test("the sheet: 109 cells of 20 x 28, 16 per row, all different", () => {
-  const { w, h, px } = decode(readFileSync(new URL("../../plugins/bundled/hq-card-lastcard/public/shared/cards.png", import.meta.url)));
+  const { w, h, px } = decode(readFileSync(new URL("../public/shared/cards.png", import.meta.url)));
   assert.equal(w, 320);
   assert.equal(h, 196);
   const cells = new Set<string>();

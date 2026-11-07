@@ -10,8 +10,8 @@ export const DURATIONS = {
   proximity: 39, consent: 43, rooms: 110, access: 1, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
   security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
   update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
-  cards: 32, // measured alone on a Windows 11 desktop (2026-10-26, after the rules moved to unit tests), not in CI
-  chess: 34, // the same (it was 67 in CI with checks now in web/test/chessView.test.ts and chess_test.go)
+  cards: 32, // measured alone on a Windows 11 desktop (2026-10-26, after the rules moved to unit tests; 32 s again on 2026-11-07 after the button rules did), not in CI
+  chess: 34, // the same (it was 67 in CI with checks now in plugins/bundled/hq-chess/test/chessView.test.ts and chess_test.go)
   depth: 60, // an estimate (two layout switches and an editor save) until a CI run measures it
   offline: 50, // an estimate (one page, eight failed requests, each after the previous toast has gone) until a CI run measures it
   sounds: 30, // an estimate (two people, three reloads and three waves) until a CI run measures it
@@ -44,4 +44,10 @@ export function parseShard(spec) {
   const i = Number(m[1]), n = Number(m[2]);
   if (i < 1 || n < 1 || i > n) throw new Error(`bad shard ${spec}`);
   return { i, n };
+}
+
+/** How many shards to run for `count` scenarios when `requested` were asked for: never more than there are
+ * scenarios (a shard without one would hold an e2e slot and start a LiveKit for nothing), at least one. */
+export function shardsFor(requested, count) {
+  return Math.max(1, Math.min(Number.isInteger(requested) ? requested : 1, count));
 }
