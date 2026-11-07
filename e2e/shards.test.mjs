@@ -1,7 +1,7 @@
 // node --test e2e/shards.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ALL, DURATIONS, UNKNOWN, shard, parseShard } from "./shards.mjs";
+import { ALL, DURATIONS, UNKNOWN, shard, parseShard, shardsFor } from "./shards.mjs";
 
 const cost = (names) => names.reduce((s, n) => s + (DURATIONS[n] ?? UNKNOWN), 0);
 
@@ -37,4 +37,12 @@ test("shard specs are validated", () => {
   for (const bad of ["0/4", "5/4", "1/0", "x", "1-4", undefined]) assert.throws(() => parseShard(bad));
   assert.throws(() => shard(ALL, 0, 3));
   assert.throws(() => shard(ALL, 4, 3));
+});
+
+test("shardsFor: never more shards than scenarios, at least one", () => {
+  assert.equal(shardsFor(2, 1), 1);
+  assert.equal(shardsFor(2, 28), 2);
+  assert.equal(shardsFor(3, 2), 2);
+  assert.equal(shardsFor(1, 0), 1);
+  assert.equal(shardsFor(NaN, 5), 1);
 });

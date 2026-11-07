@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "build": {
+      "run": [
+        [
+          "node",
+          "build.mjs"
+        ],
+        [
+          "node",
+          "check.mjs"
+        ]
+      ],
+      "inputs": [
+        "/**"
+      ]
+    }
+  }
+}

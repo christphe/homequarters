@@ -1,0 +1,100 @@
+{
+  "tasks": {
+    "fmt": {
+      "run": [
+        [
+          "gofmt",
+          "-l",
+          "."
+        ]
+      ],
+      "failOnOutput": true,
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
+      ]
+    },
+    "vet": {
+      "run": [
+        [
+          "go",
+          "vet",
+          "./..."
+        ]
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
+      ]
+    },
+    "staticcheck": {
+      "run": [
+        [
+          "go",
+          "tool",
+          "staticcheck",
+          "./..."
+        ]
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
+      ]
+    },
+    "test": {
+      "run": [
+        [
+          "go",
+          "test",
+          "-race",
+          "-count=1",
+          "./..."
+        ]
+      ],
+      "inputs": [
+        "/plugins/**",
+        "/web/dev/**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
+      ]
+    }
+  }
+}

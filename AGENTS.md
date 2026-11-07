@@ -45,6 +45,7 @@ Two products are released separately from this repository, each with its own cha
 | `web/src/session.ts` | glue between socket, world view, media and store |
 | `e2e/` | real-browser test suite (`run.mjs` + `scenarios/`) and art generation |
 | `bench/`, `server/cmd/loadgen`, `scripts/bench.sh` | benchmarks: scripts, raw results, WebSocket load generator, cost model |
+| `tools/fdash`, `fdash-workspace.json`, `*/fdash.json` | fdash, the task runner under the gauntlet: projects, their tasks and inputs, a cache of passes in `.fdash/` ([decision 0035](docs/decisions/0035-fdash.md), `tools/fdash/README.md`) |
 | `desktop/` | desktop app (Tauri 2, Rust) around the system web view: offices page in `ui/`, shell in `src-tauri/` ([`docs/desktop.md`](docs/desktop.md)); `e2e/desktop/` probes its web view |
 | `deploy/` | Dockerfile, Compose (local and production), Caddyfile, production README |
 | `site/` | landing page and docs generator (GitHub Pages) |
@@ -55,13 +56,14 @@ Two products are released separately from this repository, each with its own cha
 ~~~bash
 ./scripts/dev.sh                          # LiveKit (dev) + Go server + Vite; logs in .run/
 cd server && go vet ./... && go test -race ./...
-scripts/gauntlet.sh [scenario ...]       # all gates: gofmt, vet, staticcheck, race tests, tsc, build, protocol docs, oxlint, plugin types, browser suite (E2E_VIEWPORT=small, CI's 800x450)
+node scripts/gauntlet.ts [scenario ...]  # all gates through fdash (or scripts/gauntlet.sh): gofmt, vet, staticcheck, race tests, tsc, build, protocol docs, oxlint, plugin types, unit tests, site, browser suite (E2E_VIEWPORT=small, CI's 800x450); what already passed on the same inputs is CACHED (FDASH_FORCE=1 reruns all), static gates run FDASH_JOBS at once
+node tools/fdash/cli.ts list             # the tasks of fdash-workspace.json and each project's fdash.json; `run <task>` runs one (e.g. hq-cards:test)
 node scripts/oxlint.mjs                  # Oxlint, type-aware, on web/ and the plugins (.oxlintrc.json; decision 0033), with the project's rules in scripts/oxlint-hq.mjs (effects return a cleanup or nothing, UI text through t(), dialogs through Modal, no fetch in web/src/ui)
 node scripts/check-protocol-docs.mjs     # docs/protocol.md lists every message of ws.go's dispatch and of protocol.ts
 node scripts/check-plugin-types.mjs      # tsc on every plugin tsconfig.json under plugins/ and e2e/fixtures/plugins/
 cd server && go tool staticcheck ./...   # staticcheck, the version pinned in go.mod
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
-node --test 'web/test/*.test.ts'          # web and plugin unit tests, in about a second (Node 24 strips the types; type-checked by web/tsconfig.test.json)
+node --test 'web/test/*.test.ts' 'plugins/bundled/*/test/*.test.ts'  # web and plugin unit tests (a plugin's own tests sit in its test/ folder), in about a second (Node 24 strips the types; type-checked by web/tsconfig.test.json)
 cd e2e && node run.mjs                    # real Chrome + real LiveKit; takes an e2e slot, builds, starts its own server (fresh database) and LiveKit
 cd e2e && E2E_PARALLELISM=2 node run.mjs   # the whole suite as 2 shards at once, each with its own server, LiveKit and Chrome (gauntlet.sh passes it on)
 cd e2e && node run.mjs --shard 2/4         # one of 4 duration-balanced shards (e2e/shards.mjs); CI runs one job per shard

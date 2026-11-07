@@ -1,7 +1,7 @@
 // hq-chess's board view without its canvas: the position it shows (the server's, or my last action until the
 // server confirms it), what its live region says when a state comes, which pieces I may pick up and what a
 // drop sends. Pure: no DOM, no hqView, no timer. public/board.ts draws it and owns the pointer, the keyboard
-// and the confirmation timer; web/test/chessView.test.ts tests it.
+// and the confirmation timer; hq-chess/test/chessView.test.ts tests it.
 import { START, changeBetween, move, place, seatOf, sideOf, toReserve, type Board, type Last, type Position, type Side } from "./game.ts";
 import type { ViewIn, ViewOut } from "./messages.ts";
 

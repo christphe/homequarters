@@ -4,8 +4,8 @@
 // buttons, real mouse drags and the keyboard on the board view. What a page shows is read from the view's
 // canvas pixels (each piece's drawing is matched against public/pieces.ts) and its live region.
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-objects-chess-design.md it proves.
-// Rules and logic are unit-tested, not here: the rules in web/test/chess.test.ts; what the view lets a member
-// pick up, sends, says and undoes, and the window's buttons, in web/test/chessView.test.ts; the server side
+// Rules and logic are unit-tested, not here: the rules in plugins/bundled/hq-chess/test/chess.test.ts; what the view lets a member
+// pick up, sends, says and undoes, and the window's buttons, in plugins/bundled/hq-chess/test/chessView.test.ts; the server side
 // (seats, presence, hello, reset, the playing list, restarts) in server/internal/plugin/chess_test.go. This
 // scenario keeps what needs the browser: real controls, pixels, the live region, sync between pages, badges.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API } from "../lib.mjs";

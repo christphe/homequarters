@@ -1,0 +1,213 @@
+{
+  "tasks": {
+    "test": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "shards.test.mjs",
+          "slots.test.mjs"
+        ]
+      ]
+    },
+    "browser": {
+      "run": [
+        [
+          "node",
+          "run.mjs"
+        ]
+      ],
+      "env": {
+        "E2E_VIEWPORT": "small"
+      },
+      "args": true,
+      "inputs": [
+        "!scenarios/**",
+        "!*.test.mjs",
+        {
+          "go": "./cmd/homequarters",
+          "cwd": "../server"
+        },
+        "/web/**",
+        "!/web/test/**",
+        "!/web/dev/**",
+        "/plugins/bundled/*/plugin.json",
+        "/plugins/sdk/**"
+      ],
+      "envKeys": [
+        "E2E_VIEWPORT",
+        "HQ_EXTERNAL_URL",
+        "HQ_MEDIA_TOKEN_TTL_SECONDS",
+        "HQ_MEDIA_RECONCILE_SECONDS",
+        "CHROME_VERSION",
+        "SKIP_BUILD",
+        "CI",
+        "HQ_TEST_LK_PORT",
+        "GOFLAGS",
+        "CGO_ENABLED"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ],
+        [
+          "pnpm",
+          "--version"
+        ],
+        [
+          "livekit-server",
+          "--version"
+        ]
+      ],
+      "items": {
+        "proximity": {
+          "inputs": [
+            "scenarios/proximity.mjs"
+          ]
+        },
+        "consent": {
+          "inputs": [
+            "scenarios/consent.mjs"
+          ]
+        },
+        "rooms": {
+          "inputs": [
+            "scenarios/rooms.mjs"
+          ]
+        },
+        "access": {
+          "inputs": [
+            "scenarios/access.mjs"
+          ]
+        },
+        "editor": {
+          "inputs": [
+            "scenarios/editor.mjs"
+          ]
+        },
+        "social": {
+          "inputs": [
+            "scenarios/social.mjs"
+          ]
+        },
+        "admin": {
+          "inputs": [
+            "scenarios/admin.mjs"
+          ]
+        },
+        "plugins": {
+          "inputs": [
+            "scenarios/plugins.mjs",
+            "/plugins/bundled/**"
+          ]
+        },
+        "chess": {
+          "inputs": [
+            "scenarios/chess.mjs",
+            "/plugins/bundled/hq-chess/**"
+          ]
+        },
+        "cards": {
+          "inputs": [
+            "scenarios/cards.mjs",
+            "/plugins/bundled/hq-cards/**",
+            "/plugins/bundled/hq-card-*/**"
+          ]
+        },
+        "a11y": {
+          "inputs": [
+            "scenarios/a11y.mjs",
+            "/plugins/bundled/**"
+          ]
+        },
+        "security": {
+          "inputs": [
+            "scenarios/security.mjs"
+          ]
+        },
+        "resilience": {
+          "inputs": [
+            "scenarios/resilience.mjs"
+          ]
+        },
+        "features": {
+          "inputs": [
+            "scenarios/features.mjs"
+          ]
+        },
+        "spotlight": {
+          "inputs": [
+            "scenarios/spotlight.mjs"
+          ]
+        },
+        "mute": {
+          "inputs": [
+            "scenarios/mute.mjs"
+          ]
+        },
+        "movement": {
+          "inputs": [
+            "scenarios/movement.mjs"
+          ]
+        },
+        "presence": {
+          "inputs": [
+            "scenarios/presence.mjs"
+          ]
+        },
+        "offices": {
+          "inputs": [
+            "scenarios/offices.mjs"
+          ]
+        },
+        "idle": {
+          "inputs": [
+            "scenarios/idle.mjs"
+          ]
+        },
+        "update": {
+          "inputs": [
+            "scenarios/update.mjs"
+          ]
+        },
+        "auth": {
+          "inputs": [
+            "scenarios/auth.mjs"
+          ]
+        },
+        "autooff": {
+          "inputs": [
+            "scenarios/autooff.mjs"
+          ]
+        },
+        "devices": {
+          "inputs": [
+            "scenarios/devices.mjs"
+          ]
+        },
+        "templates": {
+          "inputs": [
+            "scenarios/templates.mjs"
+          ]
+        },
+        "depth": {
+          "inputs": [
+            "scenarios/depth.mjs"
+          ]
+        },
+        "offline": {
+          "inputs": [
+            "scenarios/offline.mjs",
+            "/plugins/bundled/**"
+          ]
+        },
+        "sounds": {
+          "inputs": [
+            "scenarios/sounds.mjs"
+          ]
+        }
+      }
+    }
+  }
+}

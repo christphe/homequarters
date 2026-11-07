@@ -1,9 +1,9 @@
-// hq-cards: game definitions, the table model, the log, the art and the felt layout. Run: node --test web/test
+// hq-cards: game definitions, the table model, the log, the art and the felt layout. Run: node --test plugins/bundled/hq-cards/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   STANDARD, FREE, CLIENT_GAME_MAX, validateDefinition, validateCards, deckSize, cardName, allows, clientGame, type Game, type GameDefinition,
-} from "../../plugins/bundled/hq-cards/public/games.ts";
+} from "../public/games.ts";
 
 // ---- games.ts
 
@@ -107,7 +107,7 @@ test("FREE is the free table: a 54-card stock, 2 to 8 seats, everything allowed"
 });
 
 // ---- log.ts
-import { append, parseLog, sentence, LOG_MAX, type LogEntry } from "../../plugins/bundled/hq-cards/public/log.ts";
+import { append, parseLog, sentence, LOG_MAX, type LogEntry } from "../public/log.ts";
 
 const names = ["Ann", "Bo", "Cy"];
 const say = (e: LogEntry) => sentence(e, (s) => names[s] ?? "Seat " + (s + 1), (c) => (c === 7 ? "8 of spades" : "card " + c)); // cardName gives "8 of spades", "Red 7"
@@ -160,7 +160,7 @@ test("parseLog survives broken storage", () => {
 import {
   UP, TABLE_MAX, newTable, parseTable, choose, seatOf, take, place, flip, order, offer, pick, dealAll, deal, shuffle, gather,
   createPile, removePile, reorderPile, draw, counted, defaultCount, canReset, reset, encodedSize, type Table,
-} from "../../plugins/bundled/hq-cards/public/table.ts";
+} from "../public/table.ts";
 
 function lcg(seed = 7) {
   let s = seed;
@@ -491,8 +491,8 @@ test("a table at TABLE_MAX still fits a 4 KB state message with 8 seats here and
 });
 
 // ---- art.ts and layout.ts
-import { CARD_W, CARD_H, PALETTE, paintCard, paintBack } from "../../plugins/bundled/hq-cards/public/art.ts";
-import { FELT_W, FELT_H, VIEW_W, VIEW_H, FX, FY, seatSpots, handSpots, cardAt, hit } from "../../plugins/bundled/hq-cards/public/layout.ts";
+import { CARD_W, CARD_H, PALETTE, paintCard, paintBack } from "../public/art.ts";
+import { FELT_W, FELT_H, VIEW_W, VIEW_H, FX, FY, seatSpots, handSpots, cardAt, hit } from "../public/layout.ts";
 
 function picture(paint: (set: (x: number, y: number, hex: string) => void) => void): { key: string; outside: number; colours: Set<string> } {
   const px: string[] = Array(CARD_W * CARD_H).fill(".");
@@ -575,7 +575,7 @@ test("parseTable survives broken storage", () => {
 });
 
 // ---- sizes are UTF-8 bytes (the 4 KB limits of messages and hq.kv are bytes)
-import { utf8Bytes } from "../../plugins/bundled/hq-cards/public/games.ts";
+import { utf8Bytes } from "../public/games.ts";
 
 test("utf8Bytes counts what JSON sends", () => {
   assert.equal(utf8Bytes("abc"), 3);
@@ -624,7 +624,7 @@ test("a deck whose wide names would not fit a page's message is refused", () => 
 });
 
 // ---- labels.ts: the window's labels stay within the 40 characters of a button, whatever the names
-import { labels, LABEL_MAX } from "../../plugins/bundled/hq-cards/public/labels.ts";
+import { labels, LABEL_MAX } from "../public/labels.ts";
 
 test("every window label fits 40 characters with the longest names", () => {
   const name = "Bartholomew Featherstone"; // 24, the longest display name
@@ -639,7 +639,7 @@ test("every window label fits 40 characters with the longest names", () => {
 });
 
 // ---- the narrow layout (phones): no side columns, the other seats in rows on top, my hand drawn larger
-import { WIDE, NARROW, layoutFor } from "../../plugins/bundled/hq-cards/public/layout.ts";
+import { WIDE, NARROW, layoutFor } from "../public/layout.ts";
 
 test("layoutFor picks the narrow layout when the wide one would be drawn under 1x", () => {
   assert.equal(layoutFor(416 + 20), WIDE);
@@ -672,7 +672,7 @@ test("narrow hand: larger cards, all inside the view, and hit finds them", () =>
 });
 
 // ---- round 2: snapping setting, moving groups and piles, removing any pile, setting cards aside
-import { setSnap, moveCards, movePile, setAside } from "../../plugins/bundled/hq-cards/public/table.ts";
+import { setSnap, moveCards, movePile, setAside } from "../public/table.ts";
 
 test("a new game snaps; any seated player turns it off and on, logged", () => {
   const t = free3();
@@ -748,7 +748,7 @@ test("setAside takes a card out of the game until a reset; gather leaves it out"
 });
 
 // ---- round 2: snapping and groups (layout.ts)
-import { snapAt, groupFrom, groups, GRID, CASCADE } from "../../plugins/bundled/hq-cards/public/layout.ts";
+import { snapAt, groupFrom, groups, GRID, CASCADE } from "../public/layout.ts";
 
 function feltOf(at: [number, number][]): Table {
   const t = free3();
@@ -786,7 +786,7 @@ test("groupFrom: a card and the cards put on it; groups: the bottom of each", ()
 });
 
 // ---- setting aside a whole set of ranks (a 32- or 52-card game from the standard deck)
-import { setAsideRanks } from "../../plugins/bundled/hq-cards/public/table.ts";
+import { setAsideRanks } from "../public/table.ts";
 
 test("setAsideRanks takes every card of those ranks out of the game, wherever it is", () => {
   const t = free3();
@@ -810,7 +810,7 @@ test("setAsideRanks takes every card of those ranks out of the game, wherever it
 });
 
 // ---- turning a named pile over (the discard pile back into a stock)
-import { turnPile } from "../../plugins/bundled/hq-cards/public/table.ts";
+import { turnPile } from "../public/table.ts";
 
 test("turnPile turns a whole pile over: its order reversed, every card the other face, the pile's face too", () => {
   const t = free3();

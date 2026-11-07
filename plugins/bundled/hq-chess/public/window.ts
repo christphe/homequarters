@@ -1,6 +1,6 @@
 // What the Chess window shows for a board's state, as seen by one member: the seat buttons, whether Undo and
 // Reset may be pressed, and the line naming the seat holders. Pure: public/client.ts draws it with hq.ui;
-// web/test/chessView.test.ts tests it.
+// hq-chess/test/chessView.test.ts tests it.
 import { canReset, type Board, type Side } from "./game.ts";
 import type { BoardState } from "./messages.ts";
 

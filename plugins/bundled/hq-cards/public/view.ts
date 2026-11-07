@@ -15,6 +15,7 @@
 // my hand, the felt's cards and piles and the seats; Enter picks up and drops; F turns over, L looks, D
 // draws, T puts the held card on the table; Escape cancels. A live region says what is under the cursor
 // and every new line of the log, which is also listed under the canvas.
+import { canPick, pileActions, seatPick, type PileAct } from "./controls.ts";
 import { CARD_H, CARD_W, paintBack, paintCard } from "./art.ts";
 import { cardName, type ClientGame } from "./games.ts";
 import { cardAt, FELT_H, FELT_W, GRID, groupFrom, groups, handSpots, hit, layoutFor, seatSpots, snapAt, WIDE, type Layout, type Spot } from "./layout.ts";
@@ -493,7 +494,7 @@ function draw(): void {
   } else text("Watching: take a free seat beside the table to play", L.fx + FELT_W / 2, L.fy + FELT_H + 22, C.muted);
   // overlays: looking through a pile, picking from an offered hand
   if (look) drawRow(look.cards.map((c) => ({ c: c & ~UP, up: true })), "look", look.grab);
-  else if (picking && t.offer && t.offer.to === mySeat) drawRow(t.hands[t.offer.from].map((c) => ({ c, up: false })), "pick", null);
+  else if (picking && t.offer && canPick(t.offer, t.offer.from, mySeat)) drawRow(t.hands[t.offer.from].map((c) => ({ c, up: false })), "pick", null);
   // what is being dragged (a card, or a stack or cascade moving together), or was just dropped
   if (dragging && dragCentre && !dragging.pile) {
     if (dragging.group.length > 1) {
@@ -576,16 +577,18 @@ function toolbar(): void {
   } else if (t && seated && selected) {
     if (selected.k === "pile") {
       const p = pileById(selected.id);
-      if (p) {
+      if (p && game) {
         const id = p.id;
-        if (allowed("draw") && p.cards.length) out.push(button(`Draw from ${short(p.name, 12)}`, () => send({ t: "draw", pile: id })));
-        if (allowed("viewPile") && p.cards.length) out.push(button(`Look through ${short(p.name, 12)}`, () => startLook(id)));
-        if (allowed("shuffle") && p.cards.length > 1) out.push(button(`Shuffle ${short(p.name, 12)}`, () => send({ t: "shuffle", pile: id })));
-        if (allowed("place") && p.cards.length) out.push(button("Turn the top over", () => send({ t: "flip", from: { k: "pile", id } })));
-        if (allowed("place") && p.cards.length) out.push(button("Turn the pile over", () => send({ t: "turnPile", pile: id })));
-        if (allowed("remove") && p.cards.length) out.push(button("Set the top aside", () => send({ t: "setAside", from: { k: "pile", id } })));
-        // any pile but the stock: its cards go back to the stock
-        if (allowed("createPile") && p !== t.piles[0]) out.push(button(`Remove the pile ${short(p.name, 12)}`, () => ((selected = null), send({ t: "delPile", pile: id }))));
+        const does: Record<PileAct, () => void> = {
+          draw: () => send({ t: "draw", pile: id }),
+          look: () => startLook(id),
+          shuffle: () => send({ t: "shuffle", pile: id }),
+          flip: () => send({ t: "flip", from: { k: "pile", id } }),
+          turn: () => send({ t: "turnPile", pile: id }),
+          aside: () => send({ t: "setAside", from: { k: "pile", id } }),
+          remove: () => ((selected = null), send({ t: "delPile", pile: id })),
+        };
+        for (const a of pileActions(game, p, p === t.piles[0])) out.push(button(a.label, does[a.act]));
       }
     } else if (selected.k === "loose") {
       if (allowed("place")) {
@@ -614,8 +617,8 @@ function toolbar(): void {
         }));
       }
     } else if (selected.k === "seat") {
-      const s = selected.seat;
-      if (t.offer?.from === s && t.offer.to === mySeat) out.push(button(`Draw a card from ${short(seatName(s), 12)}`, () => ((picking = true), draw())));
+      const pick = seatPick(t.offer, selected.seat, mySeat, seatName(selected.seat));
+      if (pick) out.push(button(pick, () => ((picking = true), draw())));
     }
   }
   // rebuilt when what it acts on may have changed; kept otherwise, so the focus stays on its button
@@ -709,7 +712,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   const s = hit(t, mySeat, p.x, p.y, L);
   selected = s && s.k !== "felt" ? s : null;
-  if (s?.k === "seat" && t.offer?.from === s.seat && t.offer.to === mySeat) picking = true;
+  if (s?.k === "seat" && canPick(t.offer, s.seat, mySeat)) picking = true;
   const src = srcOf(s);
   const card = src && cardOf(src);
   if (src && card && mySeat !== null) {
@@ -817,7 +820,7 @@ function describe(s: Spot | undefined): string {
   if (s.k === "seat") {
     const seat = t.seats[s.seat];
     if (!seat) return `seat ${s.seat + 1}, free`;
-    const offer = t.offer?.from === s.seat && t.offer.to === mySeat ? ", offers you a pick: press Enter" : "";
+    const offer = canPick(t.offer, s.seat, mySeat) ? ", offers you a pick: press Enter" : "";
     return `${seat.name}${st!.here.includes(seat.id) ? "" : " (away)"}, ${t.hands[s.seat].length} cards${offer}`;
   }
   return "the table";
@@ -875,7 +878,7 @@ canvas.addEventListener("keydown", (e) => {
     }
     if (cur.k === "seat") {
       selected = cur;
-      if (st.t.offer?.from === cur.seat && st.t.offer.to === mySeat) {
+      if (canPick(st.t.offer, cur.seat, mySeat)) {
         picking = true;
         cursor = 0;
         draw();

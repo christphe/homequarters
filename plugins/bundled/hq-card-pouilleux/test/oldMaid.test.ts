@@ -1,8 +1,8 @@
-// hq-card-pouilleux (Old Maid) rules: its deck, its definition as hq-cards validates it, its count. Run: node --test web/test
+// hq-card-pouilleux (Old Maid) rules: its deck, its definition as hq-cards validates it, its count. Run: node --test plugins/bundled/hq-card-pouilleux/test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CODES, DEFINITION, count } from "../../plugins/bundled/hq-card-pouilleux/rules.ts";
-import { STANDARD, validateDefinition } from "../../plugins/bundled/hq-cards/public/games.ts";
+import { CODES, DEFINITION, count } from "../rules.ts";
+import { STANDARD, validateDefinition } from "../../hq-cards/public/games.ts";
 
 const n = (code: string) => {
   const i = CODES.indexOf(code);
@@ -55,4 +55,10 @@ test("count: the jack of spades alone names who keeps it", () => {
 test("count: no card in any hand", () => {
   assert.equal(count({ seats: ["Ann", "Bo"], hands: [[], []], piles, loose: [n("JS")] }), "No cards in hand");
   assert.equal(count({ seats: [], hands: [], piles: [], loose: [] }), "No cards in hand");
+});
+
+test("Old Maid's controls: Deal all and Count, no Deal N, no new pile, no draw from or look through a pile", async () => {
+  const { tableActions, pileActions } = await import("../../hq-cards/public/controls.ts");
+  assert.deepEqual(tableActions(DEFINITION, true), ["shuffle", "dealAll", "gather", "count", "offer"]);
+  assert.deepEqual(pileActions(DEFINITION, { name: "Stock", cards: [1, 2] }, true).map((a) => a.act), ["shuffle", "flip", "turn"]);
 });
