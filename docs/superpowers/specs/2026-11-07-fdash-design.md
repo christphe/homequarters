@@ -1,4 +1,4 @@
-# fdash, and the gauntlet on top of it (step A of 3)
+# fdash, its cache, and the gauntlet on top of it (steps A, B and C, one pull request)
 
 ## Intent
 
@@ -13,14 +13,13 @@ critics read, `GATES GREEN`). fdash follows the model of fchange: one small conf
 it lives in this repository (`tools/fdash/`) until it is proven, so anyone who clones can run it with Node
 alone, and it evolves in the same pull requests as its use.
 
-- **Step A (this document)**: fdash runs tasks, the gates move into `fdash.json`, the gauntlet calls fdash.
+All three steps land in one pull request (the user's choice), in this order:
+
+- **Step A**: fdash runs tasks, the gates move into `fdash.json`, the gauntlet calls fdash.
   Same gates and same report as `gauntlet.sh` today; new: static gates in parallel, any OS, no bash.
-- Step B (later): fdash's cache. Each task declares inputs: paths, or providers that ask the toolchain
-  (`go list -deps` for a Go package, the modules of a Vite build, later `cargo metadata`). A pass is
-  recorded under the hash of the inputs and the declared environment; a task whose key already passed is
-  skipped. The cache folder can be shared with CI through `actions/cache`.
-- Step C (later): scenario by scenario, starting with `cards`, move rules to unit tests and give each
-  scenario its own inputs.
+- **Step B**: fdash's cache (section "Step B" below).
+- **Step C**: the browser suite cached per scenario, and `cards` slimmed down to what needs a browser
+  (section "Step C" below).
 
 ## Approaches considered
 
@@ -46,19 +45,27 @@ alone, and it evolves in the same pull requests as its use.
   ```json
   {
     "tasks": {
+      "default": { "jobs": 1, "tasks": ["static", "e2e"] },
+      "static": { "tasks": ["gofmt", "site-build"] },
       "gofmt": { "cwd": "server", "run": [["gofmt", "-l", "."]], "failOnOutput": true },
       "site-build": { "cwd": "site", "run": [["node", "build.mjs"], ["node", "check.mjs"]] },
-      "e2e": { "cwd": "e2e", "run": [["node", "run.mjs"]], "env": { "E2E_VIEWPORT": "small" }, "exclusive": true, "args": true }
+      "e2e": { "cwd": "e2e", "run": [["node", "run.mjs"]], "env": { "E2E_VIEWPORT": "small" }, "args": true }
     }
   }
   ```
 
-  Tasks run in the order of the file. `run` is a list of steps, each an argv (no shell parsing); the first
-  failing step fails the task. `failOnOutput`: anything on stdout fails it. `env` is added to the inherited
-  environment. `exclusive`: runs alone, after the others. `args`: extra arguments given to fdash are
-  appended to its last step. Unknown keys and bad types are refused with a message naming the task.
-- **Running**: non-exclusive tasks run in parallel, `--jobs N` or `FDASH_JOBS` at once (default half the
-  logical CPUs, at least 1; `1` is serial); exclusive tasks then run one at a time. Each task's stdout and
+  Two kinds of task. A **command** has `run`, a list of steps, each an argv (no shell parsing); the first
+  failing step fails it. `failOnOutput`: anything on stdout fails it. `env` is added to the inherited
+  environment. `args`: extra arguments given to fdash are appended to its last step. A **group** has
+  `tasks`, the names of its members (commands or groups), and an optional `jobs`: how many of its members
+  run at once; without `jobs`, the global value. A group runs every member even when one fails, and fails
+  when any member failed. A task is a command or a group, never both. Unknown keys, bad types, a name that
+  does not exist and a cycle between groups are refused with a message naming the task. A command reached
+  twice in one run runs once.
+- **Running**: `fdash run` without a name runs the task `default`; with names, those tasks. The global
+  `jobs` is `--jobs N` or `FDASH_JOBS` (default half the logical CPUs, at least 1). `--skip <name>` leaves a
+  task out wherever it appears. Results are reported per command. In step C, `e2e` becomes a group of one
+  command per scenario with `"jobs": 1`. Each task's stdout and
   stderr go to its own log file in a temp folder. A missing command is a failed task with the spawn error
   in its log, not a crash. On Windows a command that resolves to a `.cmd` or `.bat` (`pnpm`) is spawned
   through the shell; nothing else is. Ctrl+C: no new task starts, running children get the signal from the
@@ -74,7 +81,11 @@ alone, and it evolves in the same pull requests as its use.
 
 - `fdash.json` holds the gates of `gauntlet.sh` at the baseline, same names, order and commands: gofmt,
   go-vet, staticcheck, go-test-race, tsc, tsc-tests, vite-build, protocol-docs, oxlint, plugin-types,
-  web-unit (plus fdash's and the gauntlet's own tests), site-build, e2e.
+  web-unit (plus fdash's and the gauntlet's own tests), site-build, e2e. The group `static` holds the
+  twelve static gates (no `jobs`: the global value); `default` is `{ "jobs": 1, "tasks": ["static", "e2e"] }`.
+  With step B every gate declares its `inputs` (wider when in doubt: `site-build`, which checks links to
+  any repository file, takes the whole tree but `site/dist` and `node_modules`), and `tools` for the
+  toolchain versions it depends on (`go version`, `pnpm --version`).
 - `scripts/gauntlet.ts` keeps what belongs to the process: the scenario arguments (passed to e2e),
   `GAUNTLET_SKIP_E2E=1` (skips e2e, prints `SKIPPED e2e`), the tree fingerprint (same rules as today:
   index, diff against HEAD, untracked non-ignored files, leaving out `server/CHANGELOG.md`,
@@ -85,10 +96,59 @@ alone, and it evolves in the same pull requests as its use.
 - `scripts/gauntlet.sh` stays as one line, `exec node "$(dirname "$0")/gauntlet.ts" "$@"`, so docs, skills
   and the PR template keep working. `E2E_PARALLELISM` still reaches e2e through the environment.
 
-## Non-goals (step A)
+## Step B: the cache
 
-No cache, no inputs, no skipping. No change to CI's jobs beyond running the new unit tests. No change to
-e2e, its slots or its shards. No gate added or removed (Rust's `cargo` checks are a later gate).
+- A command may declare **`inputs`**; a command without `inputs` is never cached. Each input is either a
+  path pattern relative to the root (git glob pathspec, `**` allowed; a leading `!` excludes), resolved to
+  the tracked and untracked non-ignored files that match (so git is required for cached commands), or a
+  **provider** `{ "go": "<package pattern>", "cwd": "<module dir>", "tests": <bool> }`: the files of every
+  package of that module reached by `go list -deps` from the pattern (`GoFiles`, `CgoFiles`, `EmbedFiles`,
+  and the test files when `tests` is true) plus the module's `go.mod` and `go.sum`. No Vite or Cargo
+  provider in this pull request: the web client is described with path patterns (decision: a Vite module
+  list would miss `public/`, CSS and HTML, so patterns are needed anyway).
+- Optional **`envKeys`** (names of environment variables whose values enter the key) and **`tools`** (argv
+  list whose stdout enters the key, for example `[["go", "version"]]`).
+- **Key** = SHA-256 of: the command's definition (cwd, run, env, failOnOutput, the extra arguments it
+  gets), the values of `envKeys`, the output of `tools`, the OS, the architecture, Node's version, and the
+  sorted list of (path, SHA-1 of content, or "missing") of its inputs.
+- A pass writes `<cacheDir>/<name>-<key>.json` (`{ "ok": true, "at": <ISO>, "ms": <n> }`); failures are not
+  recorded. `cacheDir` is `.fdash/cache` at the root (git-ignored), or `FDASH_CACHE_DIR`. A command whose
+  key is there is not run and is reported `CACHED <name>`. `--force` runs everything and still records.
+  CI may keep the folder with `actions/cache` (not done in this pull request; CI runs as today).
+- **Items**: a command may declare `items`, an ordered map `{ "<item>": { "inputs": [...] } }`, each item
+  keyed separately (command inputs + item inputs). When it runs, fdash appends the names of the items not
+  already passed to its last step, runs it once, and sets `FDASH_REPORT` to a file where the command
+  appends one JSON line per item (`{"item":"cards","ok":true}`). An item missing from the report takes
+  the command's exit status. Each item is reported as `<command>:<item>` (`PASS e2e:cards`,
+  `CACHED e2e:chess`). With extra arguments, only the items named are considered; an extra argument that
+  is not an item makes the run uncached and passes the arguments as given.
+
+## Step C: the browser suite per scenario, and cards
+
+- `fdash.json` declares e2e with one item per scenario of `ALL` (`e2e/shards.mjs`). Shared inputs: the
+  server's Go packages reached from `./cmd/homequarters` (provider), the web client (`web/**` without
+  `web/test`, `web/dev`, `web/dist`, `web/node_modules`), `e2e/*.mjs`, `e2e/package.json`,
+  `e2e/fixtures/**`, every `plugins/bundled/*/plugin.json` (the catalog the admin pages list) and
+  `plugins/sdk/**`; `envKeys` `E2E_VIEWPORT`, `E2E_PARALLELISM`, `HQ_EXTERNAL_URL`; `tools`
+  `go version`. Each item adds its scenario file; a scenario that turns a bundled plugin on adds that
+  plugin's folder (cards: `hq-cards`, `hq-card-*`; chess: `hq-chess`; plugins: every bundled plugin; the
+  builder checks each scenario with a search for plugin names and `setPlugin`).
+- `e2e/run.mjs` writes one line per scenario to `FDASH_REPORT` when it is set: a scenario passes when its
+  checks and its deferred checks passed. `E2E_PARALLELISM` also applies when scenarios are named (today
+  it only applies to the whole suite), so a subset still runs in shards.
+- `cards.mjs`: every check that tests a rule, a label, a list of buttons or a log sentence rather than
+  what only a browser shows moves to `web/test` (extracting a pure function from the plugin's view where
+  it is tangled with the DOM), the browser keeping the wiring: real controls, drags, the keyboard, what
+  each page draws, sync between pages, a game's own sheet. Each moved check is named in the commit and
+  its unit test is seen red first (by breaking the rule) and green after. The duration of `cards` before
+  and after goes in `e2e/shards.mjs` and the PR.
+- Other scenarios keep their checks in this pull request; a list of the next candidates (plugins, chess,
+  presence) goes in the PR text.
+
+## Non-goals
+
+No change to CI's jobs beyond running the new unit tests (no `actions/cache` yet). No change to the e2e
+slots. No gate added or removed (Rust's `cargo` checks are a later gate). No Vite or Cargo provider.
 
 ## Anti-goals
 
@@ -101,9 +161,11 @@ e2e, its slots or its shards. No gate added or removed (Rust's `cargo` checks ar
 1. `fdash.json` lists the gates of `gauntlet.sh` with the same names, order and commands. Seam: a unit test
    reading `fdash.json` against the expected table.
 2. fdash: a failing step, a missing command and output under `failOnOutput` each fail their task; a pass
-   passes; `--jobs 1` runs one at a time and the default runs several; exclusive tasks run alone after the
-   others; results come back in config order; a bad config is refused naming the task. Seam: fdash unit
-   tests with `node -e` tasks.
+   passes; a group runs at most its `jobs` members at once (the global value when it has none), runs them
+   all when one fails, and fails if any failed; `default: { jobs: 1, tasks: [static, e2e] }` starts e2e
+   only after every static gate ended; a command reached twice runs once; results come back in config
+   order; a bad config (unknown name, cycle, both `run` and `tasks`) is refused naming the task. Seam: fdash
+   unit tests with `node -e` tasks.
 3. A failing gate prints `FAIL`, its log tail, and the gauntlet ends `GATES RED: 1 failed` with exit code 1.
    Seam: gauntlet unit test on the closing lines; one real run with an unformatted Go file.
 4. `GAUNTLET_SKIP_E2E=1` ends `STATIC GATES GREEN; browser verification SKIPPED`. Seam: unit test and a run.
@@ -117,3 +179,22 @@ e2e, its slots or its shards. No gate added or removed (Rust's `cargo` checks ar
    Bash on PATH, one on Linux if a Linux shell is available; macOS reported as not verified unless run.
 9. `tools/fdash/` imports nothing outside itself and names no Home Quarters path. Seam: a unit test that
    scans its sources for imports leaving the folder.
+10. Cache: a second run with nothing changed reports every cached command `CACHED` and runs none; editing
+    one input file, an `envKeys` value, the definition or the extra arguments reruns that command only; a
+    failed command is not recorded; `--force` reruns; a Go file of a package reached by the provider
+    changes the key, a Go file outside them does not. Seam: fdash unit tests on a temporary git
+    repository (the Go provider test skipped when `go` is missing).
+11. Items: with `FDASH_REPORT` lines, a failed item reruns alone next time; all items cached means the
+    command does not run. Seam: fdash unit tests.
+12. The gauntlet record shows `CACHED <gate>` lines and counts them as passed. Seam: unit test on the
+    record lines; a second real run of the static gates showing them cached.
+13. e2e per scenario: after a whole green suite, editing `plugins/bundled/hq-cards/main.ts` reruns
+    `e2e:cards` (and `e2e:plugins`) only; editing a Go file of the server reruns every scenario. Seam: two
+    real runs, the lines in the PR.
+14. `cards.mjs` keeps only browser checks; each moved check has a unit test seen red then green; the
+    whole suite stays green; the before/after duration of `cards` is recorded. Seam: the tests, the runs.
+
+## Anti-goals (cache)
+
+- A false green: a scenario or gate skipped while something it runs has changed. When in doubt, an input
+  is declared wider, never narrower.
