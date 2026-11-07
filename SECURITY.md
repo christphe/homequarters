@@ -11,3 +11,7 @@ Include what you ran, what you expected and what happened, and the commit or ima
 ## Supported versions
 
 Only the latest `main` and the `latest` image on `ghcr.io/christphe/homequarters` receive fixes.
+
+## Dependencies
+
+Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) opens security updates as soon as an advisory is published, and grouped routine updates weekly. The LiveKit server version is pinned by hand in the Compose files, `e2e/livekit.mjs` and CI, and is moved in all of them at once.
