@@ -4,6 +4,7 @@ import { LIMITS, framesFit } from "../plugins/commands";
 import { followOwner, newPet, type PetState } from "./petFollow";
 import { clearLine, findPath, type Point } from "./tilePath";
 import { SearchQueue } from "./searchQueue";
+import type { Layer, ViewContext } from "./layer";
 
 // Sprites that plugins ask for (see src/plugins/). The page draws and animates them: a plugin only
 // says "load this sheet", "spawn it here", "walk there", "follow that member". Sprites sort with
@@ -118,7 +119,7 @@ function seedOf(s: string): number {
 
 const facing = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0);
 
-export class PluginLayer {
+export class PluginLayer implements Layer {
   private plugins = new Map<string, Gfx>();
   /** Gets the sheet another plugin's browser code draws for metadata (set by the PluginManager). */
   provider: ((from: string, metadata: unknown) => Promise<{ image: Blob | ImageBitmap; frameW: number; frameH: number }>) | null = null;
@@ -385,12 +386,18 @@ export class PluginLayer {
     }
   }
 
-  /** Moves and animates every plugin sprite; returns whether anything on screen changed. */
-  step(dtMs: number, now: number): boolean {
+  /** Layer: nothing to set up, its sprites go to the entLayer it was given (the session hands this layer to
+   *  the PluginManager before the view starts, so its parent comes with the constructor). */
+  init(_ctx: ViewContext) {}
+
+  /** Layer: the stage's children (these sprites) go with the application. */
+  destroy() {}
+
+  /** Moves and animates every plugin sprite (dt in seconds, at most 0.1); returns whether anything on screen changed. */
+  update(dt: number, now: number): boolean {
     let changed = this.loaded;
     this.loaded = false;
     this.searches.run();
-    const dt = Math.min(dtMs / 1000, 0.1);
     for (const g of this.plugins.values()) {
       for (const e of g.ents.values()) {
         let on = e.shown;
