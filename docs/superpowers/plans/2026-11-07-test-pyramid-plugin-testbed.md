@@ -24,7 +24,7 @@
 - Not in this PR: `server/integration/`, the browser-suite audit, `release:*`, coverage.
 - Everything in English; changelog entry with `fchange added "..." (#54) --pkg server` (draft PR already open).
 - Tooling TypeScript: erasable syntax only, `import type`, relative imports with `.ts`.
-- Calls made while planning (the spec left them open): integration tests live in `test/integration/*.test.ts` (so the unit glob `test/*.test.ts` never picks them up); the e2e projects live in `plugins/e2e/<plugin>-e2e/` (outside the plugin folder, so neither the plugin's inputs nor the Docker image include them); test-only endpoints are served by `internal/testbed`'s own mux, `httpapi` gets only `PluginDirs`.
+- Calls made while planning (the spec left them open): integration tests are `**/*.ispec.ts` (user, 2026-11-07; run with `node --test "**/*.ispec.ts"`, never matched by the unit glob `test/*.test.ts`); the e2e projects live in `plugins/e2e/<plugin>-e2e/` (outside the plugin folder, so neither the plugin's inputs nor the Docker image include them); test-only endpoints are served by `internal/testbed`'s own mux, `httpapi` gets only `PluginDirs`.
 
 ## Review Focus
 
@@ -154,8 +154,8 @@
 ### Task 7: TS client `plugins/sdk/testbed.ts`
 
 **Files:**
-- Create: `plugins/sdk/testbed.ts`, `plugins/sdk/test/integration/testbed.test.ts`
-- Modify: `plugins/sdk/fdash.json` (`dependsOn: ["server"]`, `test:integration` = `node --test test/integration/*.test.ts`)
+- Create: `plugins/sdk/testbed.ts`, `plugins/sdk/test/testbed.ispec.ts`
+- Modify: `plugins/sdk/fdash.json` (`dependsOn: ["server"]`, `test:integration` = `node --test **/*.ispec.ts`)
 
 **Interfaces:**
 - Consumes: the subcommand (Task 6); binary at `HQ_BIN`, else `<repo>/bin/homequarters[.exe]` (found by walking up from the client file), else `homequarters` on PATH; none → throws `no homequarters binary: run "fdash run build" first (or set HQ_BIN)`.
@@ -195,7 +195,7 @@
 ### Task 8: hq-chess integration tests
 
 **Files:**
-- Create: `plugins/bundled/hq-chess/test/integration/chess.test.ts`
+- Create: `plugins/bundled/hq-chess/test/chess.ispec.ts`
 - Modify: `plugins/bundled/hq-chess/fdash.json` (`test:integration`)
 - Delete: `server/internal/plugin/chess_test.go` (its helpers used elsewhere move to the file that still needs them)
 
@@ -209,7 +209,7 @@
 ### Task 9: hq-cards, Old Maid and Last Card integration tests
 
 **Files:**
-- Create: `plugins/bundled/hq-cards/test/integration/cards.test.ts`, `plugins/bundled/hq-card-pouilleux/test/integration/oldMaid.test.ts`, `plugins/bundled/hq-card-lastcard/test/integration/lastCard.test.ts`
+- Create: `plugins/bundled/hq-cards/test/cards.ispec.ts`, `plugins/bundled/hq-card-pouilleux/test/oldMaid.ispec.ts`, `plugins/bundled/hq-card-lastcard/test/lastCard.ispec.ts`
 - Modify: their `fdash.json` (`test:integration`; variants start the bed with `plugins: [hq-cards dir, own dir]`)
 - Delete: `server/internal/plugin/{cards,oldmaid,lastcard}_test.go`
 
@@ -221,7 +221,7 @@
 ### Task 10: hq-pets integration tests; the server reads no bundled plugin
 
 **Files:**
-- Create: `plugins/bundled/hq-pets/test/integration/pets.test.ts`
+- Create: `plugins/bundled/hq-pets/test/pets.ispec.ts`
 - Modify: `plugins/bundled/hq-pets/fdash.json` (Task 4 created it), `server/fdash.json` (no `/plugins/**`, no `/web/dev/**` unless still read)
 - Delete: `server/internal/plugin/sample_test.go`
 

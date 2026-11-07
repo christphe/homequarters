@@ -15,7 +15,7 @@ What the user wants: a three-tier pyramid (unit, integration without a browser, 
 
 - `homequarters testbed`: a subcommand of the server binary that starts a real server ready for tests: dev mode, no LiveKit, a throwaway database, the given plugins installed and enabled.
 - A TypeScript test client next to the plugin SDK (`plugins/sdk/testbed.ts`) that starts the testbed and drives members through the real HTTP and WebSocket API, for the plugins of this repository.
-- Each bundled plugin owns its tests: unit (`test/*.test.ts`, unchanged), integration (`test/*.integration.test.ts`, against the testbed), and, where it has some, browser scenarios (`e2e/*.ts`, against the testbed with Chrome, no LiveKit). Each is an fdash task of the plugin's own project.
+- Each bundled plugin owns its tests: unit (`test/*.test.ts`, unchanged), integration (`**/*.ispec.ts`, against the testbed), and, where it has some, browser scenarios (`e2e/*.ts`, against the testbed with Chrome, no LiveKit). Each is an fdash task of the plugin's own project.
 - The Go server tests that drive bundled plugins move into those plugins. `server/internal/plugin` keeps only tests of the host itself, on fixtures.
 - Later, not in this PR: a Go integration tier (black-box tests through HTTP/WS against a real in-process server) and the browser checks that need no browser moved down to it.
 
@@ -87,7 +87,7 @@ Each bundled plugin is an fdash project, and each plugin with browser scenarios 
 
 - `lint`: what the plugin chooses; for these, oxlint on its folder and the type check of its `tsconfig.json` (what `scripts/check-plugin-types.ts` does today).
 - `test:unit`: `test/*.test.ts`, unchanged.
-- `test:integration`: `test/*.integration.test.ts`, the server behaviour now in `server/internal/plugin/*_test.go` rewritten in TS against the testbed.
+- `test:integration`: `**/*.ispec.ts`, the server behaviour now in `server/internal/plugin/*_test.go` rewritten in TS against the testbed.
 
 **The e2e project** of a plugin, one per plugin and per what it tests:
 
