@@ -8,7 +8,7 @@ const g = globalThis as { __HQ_DESKTOP__?: unknown };
 
 test("in a browser the texts stay as they are", () => {
   delete g.__HQ_DESKTOP__;
-  assert.match(t("settings.notify"), /this tab/);
+  assert.match(t("settings.notify"), /\btab\b/);
   assert.match(t("settings.osIdleUnsupported"), /browser/);
 });
 
