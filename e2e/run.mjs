@@ -29,7 +29,7 @@ const listed = names.length ? names : EXTERNAL ? ["proximity", "consent", "rooms
 let wanted = listed;
 if (shardSpec) { const { i, n } = parseShard(shardSpec); wanted = shard(listed, i, n); console.log(`# shard ${i}/${n}: ${wanted.join(", ") || "(empty)"}`); }
 const PARALLEL = Number(process.env.E2E_PARALLELISM ?? "1") || 1;
-const parallelRun = PARALLEL > 1 && !names.length && !shardSpec && !EXTERNAL;
+const parallelRun = PARALLEL > 1 && !shardSpec && !EXTERNAL;
 
 // Windows: go build names the binary as given, while spawning "bin/homequarters" runs a stale homequarters.exe;
 // pnpm is a .cmd that only a shell finds; and a signal from Node is a hard kill (see stopServer).
@@ -95,7 +95,7 @@ if (!process.env.SKIP_BUILD && !EXTERNAL) {
 if (parallelRun) {
   onSignal = null; // runParallel stops its shards and LiveKit itself
   const { runParallel } = await import("./parallel.mjs");
-  const ok = await runParallel({ n: PARALLEL, scenarios: ALL, slots, mode: lkMode });
+  const ok = await runParallel({ n: PARALLEL, scenarios: listed, slots, mode: lkMode });
   console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
   process.exit(ok ? 0 : 1);
 }
@@ -116,7 +116,9 @@ fs.cpSync(path.join(root, "plugins/bundled"), path.join(pluginsDir, "bundled"), 
 fs.cpSync(path.join(root, "e2e/fixtures/plugins/installed"), path.join(pluginsDir, "installed"), { recursive: true });
 // Checks that only need time to pass (an expiring token) run after the other scenarios instead of sleeping in theirs.
 const deferred = [];
-const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push({ name, due, fn }); }, async startServer() {
+// the scenario running, so that a deferred check counts for the scenario that registered it
+let current = null;
+const ctx = { dir, bin: BIN, server: null, defer(name, due, fn) { deferred.push({ name, due, fn, scenario: current }); }, async startServer() {
   const child = spawn(BIN, [], {
     env: { ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: path.join(dir, "e2e.db"), HQ_STATIC_DIR: path.join(root, "web/dist"), HQ_PLUGINS_DIR: pluginsDir,
       HQ_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: process.env.HQ_TEST_LK_URL, LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret",
@@ -152,6 +154,8 @@ if (!EXTERNAL) await ctx.startServer();
 console.log("# server logs:", path.join(dir, "server.log"));
 
 let ok = true;
+// each scenario's result, written to FDASH_REPORT when fdash runs the suite (it caches scenarios one by one)
+const outcome = new Map();
 try {
   // Bootstrap the office admin (the first member of an office becomes admin).
   const r = await fetch(process.env.HQ_API + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Admin", avatar: { sk: 2, hs: 2, hc: 0, sh: 6, pa: 0 } }) });
@@ -160,8 +164,10 @@ try {
   ctx.adminId = (await r.json()).id;
   for (const name of wanted) {
     console.log(`\n== ${name} ==`);
+    current = name;
     const mod = await import(`./scenarios/${name}.mjs`);
     const passed = await mod.run(ctx);
+    outcome.set(name, passed);
     ok = ok && passed;
   }
 } catch (e) {
@@ -176,9 +182,12 @@ try {
     await sleep(Math.max(0, d.due - Date.now()));
     resetChecks();
     await d.fn().catch((e) => check("deferred check ran", false, String(e)));
-    ok = summary() && ok;
+    const passed = summary();
+    if (!passed && outcome.has(d.scenario)) outcome.set(d.scenario, false);
+    ok = passed && ok;
   }
   stopLiveKit(lk);
 }
+if (process.env.FDASH_REPORT) for (const [item, passed] of outcome) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ item, ok: passed }) + "\n");
 console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
 process.exit(ok ? 0 : 1);

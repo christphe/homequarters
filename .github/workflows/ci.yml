@@ -61,7 +61,7 @@ jobs:
       - name: docs/protocol.md lists every WebSocket message
         run: node scripts/check-protocol-docs.mjs && node --test scripts/check-protocol-docs.test.mjs
       - name: Web unit tests (pure game logic)
-        run: node --test 'web/test/*.test.ts'
+        run: node --test 'web/test/*.test.ts' 'tools/fdash/test/*.test.ts' scripts/gauntlet.test.ts
       - name: E2E shard assignment and slots
         run: node --test e2e/shards.test.mjs e2e/slots.test.mjs
       - name: Type-check the web unit tests

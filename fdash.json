@@ -1,0 +1,464 @@
+{
+  "tasks": {
+    "default": {
+      "jobs": 1,
+      "tasks": [
+        "static",
+        "e2e"
+      ]
+    },
+    "static": {
+      "tasks": [
+        "gofmt",
+        "go-vet",
+        "staticcheck",
+        "go-test-race",
+        "tsc",
+        "tsc-tests",
+        "vite-build",
+        "protocol-docs",
+        "oxlint",
+        "plugin-types",
+        "web-unit",
+        "site-build"
+      ]
+    },
+    "gofmt": {
+      "cwd": "server",
+      "run": [
+        [
+          "gofmt",
+          "-l",
+          "."
+        ]
+      ],
+      "inputs": [
+        "server/**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ],
+      "failOnOutput": true
+    },
+    "go-vet": {
+      "cwd": "server",
+      "run": [
+        [
+          "go",
+          "vet",
+          "./..."
+        ]
+      ],
+      "inputs": [
+        "server/**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "staticcheck": {
+      "cwd": "server",
+      "run": [
+        [
+          "go",
+          "tool",
+          "staticcheck",
+          "./..."
+        ]
+      ],
+      "inputs": [
+        "server/**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "go-test-race": {
+      "cwd": "server",
+      "run": [
+        [
+          "go",
+          "test",
+          "-race",
+          "-count=1",
+          "./..."
+        ]
+      ],
+      "inputs": [
+        "server/**",
+        "plugins/**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "tsc": {
+      "cwd": "web",
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "--noEmit"
+        ]
+      ],
+      "inputs": [
+        "web/**",
+        "plugins/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "tsc-tests": {
+      "cwd": "web",
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "-p",
+          "tsconfig.test.json",
+          "--noEmit"
+        ]
+      ],
+      "inputs": [
+        "web/**",
+        "plugins/**",
+        "tools/**",
+        "scripts/**",
+        "e2e/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "vite-build": {
+      "cwd": "web",
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "vite",
+          "build"
+        ]
+      ],
+      "inputs": [
+        "web/**",
+        "plugins/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "protocol-docs": {
+      "run": [
+        [
+          "node",
+          "scripts/check-protocol-docs.mjs"
+        ]
+      ],
+      "inputs": [
+        "scripts/check-protocol-docs.mjs",
+        "docs/protocol.md",
+        "server/internal/httpapi/**",
+        "web/src/net/**"
+      ]
+    },
+    "oxlint": {
+      "run": [
+        [
+          "node",
+          "scripts/oxlint.mjs"
+        ]
+      ],
+      "inputs": [
+        "web/**",
+        "plugins/**",
+        "e2e/fixtures/**",
+        "scripts/**",
+        ".oxlintrc.json"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "plugin-types": {
+      "run": [
+        [
+          "node",
+          "scripts/check-plugin-types.mjs"
+        ]
+      ],
+      "inputs": [
+        "web/**",
+        "plugins/**",
+        "e2e/fixtures/**",
+        "scripts/check-plugin-types.mjs"
+      ]
+    },
+    "web-unit": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "web/test/*.test.ts",
+          "tools/fdash/test/*.test.ts",
+          "e2e/shards.test.mjs",
+          "e2e/slots.test.mjs",
+          "scripts/oxlint-hq.test.mjs",
+          "scripts/check-protocol-docs.test.mjs",
+          "scripts/gauntlet.test.ts"
+        ]
+      ],
+      "inputs": [
+        "web/**",
+        "plugins/**",
+        "tools/**",
+        "scripts/**",
+        "e2e/**",
+        "server/**",
+        "docs/**",
+        ".oxlintrc.json",
+        "fdash.json"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "site-build": {
+      "cwd": "site",
+      "run": [
+        [
+          "node",
+          "build.mjs"
+        ],
+        [
+          "node",
+          "check.mjs"
+        ]
+      ],
+      "inputs": [
+        "**"
+      ]
+    },
+    "e2e": {
+      "cwd": "e2e",
+      "run": [
+        [
+          "node",
+          "run.mjs"
+        ]
+      ],
+      "env": {
+        "E2E_VIEWPORT": "small"
+      },
+      "args": true,
+      "inputs": [
+        {
+          "go": "./cmd/homequarters",
+          "cwd": "server"
+        },
+        "web/**",
+        "!web/test/**",
+        "!web/dev/**",
+        "e2e/*.mjs",
+        "e2e/package.json",
+        "e2e/fixtures/**",
+        "plugins/bundled/*/plugin.json",
+        "plugins/sdk/**"
+      ],
+      "envKeys": [
+        "E2E_VIEWPORT",
+        "HQ_EXTERNAL_URL",
+        "HQ_MEDIA_TOKEN_TTL_SECONDS",
+        "HQ_MEDIA_RECONCILE_SECONDS"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ],
+        [
+          "pnpm",
+          "--version"
+        ]
+      ],
+      "items": {
+        "proximity": {
+          "inputs": [
+            "e2e/scenarios/proximity.mjs"
+          ]
+        },
+        "consent": {
+          "inputs": [
+            "e2e/scenarios/consent.mjs"
+          ]
+        },
+        "rooms": {
+          "inputs": [
+            "e2e/scenarios/rooms.mjs"
+          ]
+        },
+        "access": {
+          "inputs": [
+            "e2e/scenarios/access.mjs"
+          ]
+        },
+        "editor": {
+          "inputs": [
+            "e2e/scenarios/editor.mjs"
+          ]
+        },
+        "social": {
+          "inputs": [
+            "e2e/scenarios/social.mjs"
+          ]
+        },
+        "admin": {
+          "inputs": [
+            "e2e/scenarios/admin.mjs"
+          ]
+        },
+        "plugins": {
+          "inputs": [
+            "e2e/scenarios/plugins.mjs",
+            "plugins/bundled/**"
+          ]
+        },
+        "chess": {
+          "inputs": [
+            "e2e/scenarios/chess.mjs",
+            "plugins/bundled/hq-chess/**"
+          ]
+        },
+        "cards": {
+          "inputs": [
+            "e2e/scenarios/cards.mjs",
+            "plugins/bundled/hq-cards/**",
+            "plugins/bundled/hq-card-*/**"
+          ]
+        },
+        "a11y": {
+          "inputs": [
+            "e2e/scenarios/a11y.mjs",
+            "plugins/bundled/**"
+          ]
+        },
+        "security": {
+          "inputs": [
+            "e2e/scenarios/security.mjs"
+          ]
+        },
+        "resilience": {
+          "inputs": [
+            "e2e/scenarios/resilience.mjs"
+          ]
+        },
+        "features": {
+          "inputs": [
+            "e2e/scenarios/features.mjs"
+          ]
+        },
+        "spotlight": {
+          "inputs": [
+            "e2e/scenarios/spotlight.mjs"
+          ]
+        },
+        "mute": {
+          "inputs": [
+            "e2e/scenarios/mute.mjs"
+          ]
+        },
+        "movement": {
+          "inputs": [
+            "e2e/scenarios/movement.mjs"
+          ]
+        },
+        "presence": {
+          "inputs": [
+            "e2e/scenarios/presence.mjs"
+          ]
+        },
+        "offices": {
+          "inputs": [
+            "e2e/scenarios/offices.mjs"
+          ]
+        },
+        "idle": {
+          "inputs": [
+            "e2e/scenarios/idle.mjs"
+          ]
+        },
+        "update": {
+          "inputs": [
+            "e2e/scenarios/update.mjs"
+          ]
+        },
+        "auth": {
+          "inputs": [
+            "e2e/scenarios/auth.mjs"
+          ]
+        },
+        "autooff": {
+          "inputs": [
+            "e2e/scenarios/autooff.mjs"
+          ]
+        },
+        "devices": {
+          "inputs": [
+            "e2e/scenarios/devices.mjs"
+          ]
+        },
+        "templates": {
+          "inputs": [
+            "e2e/scenarios/templates.mjs"
+          ]
+        },
+        "depth": {
+          "inputs": [
+            "e2e/scenarios/depth.mjs"
+          ]
+        },
+        "offline": {
+          "inputs": [
+            "e2e/scenarios/offline.mjs",
+            "plugins/bundled/**"
+          ]
+        },
+        "sounds": {
+          "inputs": [
+            "e2e/scenarios/sounds.mjs"
+          ]
+        }
+      }
+    }
+  }
+}
