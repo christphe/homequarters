@@ -10,8 +10,9 @@ import { launch, spawnSpec } from "./spawn.ts";
 
 export { spawnSpec };
 
-/** One line of the report: a command, or one item of a command (`<command>:<item>`). */
-export type Result = { name: string; ok: boolean; cached: boolean; log: string; ms: number };
+/** One line of the report: a command, or one item of a command (`<command>:<item>`). `failedAfter`: the
+ * command was not run because this predecessor failed. */
+export type Result = { name: string; ok: boolean; cached: boolean; log: string; ms: number; failedAfter?: string };
 
 export type RunOptions = {
   root: string;
@@ -117,6 +118,8 @@ function readReport(file: string): { said: Map<string, boolean>; nocache: boolea
 export async function run(o: RunOptions): Promise<{ results: Result[]; interrupted: boolean }> {
   const skip = new Set(o.skip ?? []);
   const order = expand(o.config, o.names, o.skip ?? []);
+  // what this run starts: a predecessor outside it is not waited for, and never started
+  const inRun = new Set(order.map((c) => c.name));
   const logDir = o.logDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "fdash."));
   const cacheDir = o.cacheDir ?? process.env.FDASH_CACHE_DIR ?? path.join(o.root, ".fdash", "cache");
   const stop = () => o.signal?.aborted === true;
@@ -205,6 +208,18 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       : { name: `${c.name}:${i}`, ok: true, cached: true, log: "", ms: 0 });
   }
 
+  /** A command first waits for its predecessors that are part of this run; one not started yet is run here, in
+   * this command's lane, so that a lane never waits for work that no lane is free to start. */
+  async function afterPredecessors(c: Command): Promise<Result[]> {
+    for (const a of c.after) {
+      if (!inRun.has(a)) continue;
+      const ok = await task(a);
+      if (stop()) return [];
+      if (!ok) return [{ name: c.name, ok: false, cached: false, log: "", ms: 0, failedAfter: a }];
+    }
+    return stop() ? [] : command(c);
+  }
+
   async function task(name: string): Promise<boolean> {
     if (skip.has(name)) return true;
     const t = o.config.get(name)!;
@@ -212,7 +227,7 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
     let p = started.get(name);
     if (!p) {
       if (stop()) return false;
-      p = command(t).then((rs) => { done.set(name, rs); return report(rs); });
+      p = afterPredecessors(t).then((rs) => { done.set(name, rs); return report(rs); });
       started.set(name, p);
     }
     return (await p).every((r) => r.ok);

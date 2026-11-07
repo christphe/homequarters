@@ -49,6 +49,7 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
 }
 
 export function resultLine(r: Result): string {
+  if (r.failedAfter) return `FAIL ${r.name} (after ${r.failedAfter} failed)`;
   return r.cached ? `CACHED ${r.name}` : r.ok ? `PASS ${r.name}` : `FAIL ${r.name} (log: ${r.log})`;
 }
 

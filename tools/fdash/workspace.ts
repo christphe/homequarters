@@ -137,6 +137,30 @@ export function loadWorkspace(root: string): Config {
       throw new Error(`${t.name}: no task named ${m}`);
     });
   }
+  // order: a project's task starts after the tasks of its own project it names in `after`, and after the same
+  // task of the nearest projects it depends on that define it (walking through those that do not)
+  const nearest = (p: Project, name: string): string[] => {
+    const out: string[] = [];
+    for (const d of p.dependsOn) {
+      const q = byName.get(d)!;
+      for (const n of q.tasks.has(name) ? [`${q.name}:${name}`] : nearest(q, name)) if (!out.includes(n)) out.push(n);
+    }
+    return out;
+  };
+  for (const n of wsTasks.keys()) {
+    const t = config.get(n)!;
+    for (const a of t.after) if (!wsTasks.has(a)) throw new Error(`${n}: after names ${a}, which is no task of ${WORKSPACE_FILE}`);
+  }
+  for (const p of projects) {
+    for (const local of p.tasks.keys()) {
+      const t = config.get(`${p.name}:${local}`)!;
+      const own = t.after.map((a) => {
+        if (config.get(`${p.name}:${a}`)?.project !== p.name) throw new Error(`${t.name}: after names ${a}, which is no task of ${p.name}`);
+        return `${p.name}:${a}`;
+      });
+      t.after = [...own, ...nearest(p, local).filter((n) => !own.includes(n))];
+    }
+  }
   return finishConfig(config);
 }
 

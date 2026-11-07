@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseConfig } from "../config.ts";
+import { parseConfig, type Command } from "../config.ts";
 import { run, runCommand, spawnSpec } from "../run.ts";
+import { loadWorkspace, select } from "../workspace.ts";
+import { resultLine } from "../cli.ts";
 
 const NODE = process.execPath;
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "fdash-test-"));
@@ -135,4 +137,73 @@ test("a % in an argument of a .cmd is refused (cmd.exe would expand it), the tas
   } finally {
     process.env.PATH = old;
   }
+});
+
+// a workspace of three projects, each depending on the next: the card game on the card library on the
+// server; the library has no integration tests. Each command appends its name to <root>/order.
+function chain(o: { serverMs?: number; serverExit?: number; serverAfter?: string[]; pouilleuxAfter?: string[] } = {}) {
+  const root = tmp();
+  const write = (name: string, ms = 0, exit = 0) => ({
+    cache: false,
+    run: [node(`setTimeout(()=>{require("fs").appendFileSync(${JSON.stringify(path.join(root, "order"))},"${name}\\n");process.exit(${exit})},${ms})`)],
+  });
+  const projects: Record<string, unknown> = {
+    // listed dependents first: without the graph they would start (and end) first
+    "hq-card-pouilleux": { dependsOn: ["hq-cards"], tasks: { "test:integration": { ...write("pouilleux"), ...(o.pouilleuxAfter ? { after: o.pouilleuxAfter } : {}) }, build: write("pouilleux-build") } },
+    "hq-cards": { dependsOn: ["server"], tasks: { "test:unit": write("cards-unit") } },
+    server: { tasks: { build: write("build", 200), "test:integration": { ...write("server", o.serverMs ?? 300, o.serverExit ?? 0), ...(o.serverAfter ? { after: o.serverAfter } : {}) } } },
+  };
+  fs.writeFileSync(path.join(root, "fdash-workspace.json"), JSON.stringify({ projects: Object.keys(projects) }));
+  for (const [p, f] of Object.entries(projects)) {
+    fs.mkdirSync(path.join(root, p));
+    fs.writeFileSync(path.join(root, p, "fdash.json"), JSON.stringify(f));
+  }
+  const config = loadWorkspace(root);
+  const order = () => { try { return fs.readFileSync(path.join(root, "order"), "utf8").trim().split("\n"); } catch { return []; } };
+  const go = async (names: string[], pkgs: string[] = [], jobs = 4) => (await run({ root, config, names: select(config, names, pkgs), jobs })).results;
+  return { root, config, order, go };
+}
+
+test("order: a task runs after the same task of the projects it depends on, through those lacking it", async () => {
+  for (const jobs of [4, 1]) {
+    const w = chain();
+    assert.deepEqual((w.config.get("hq-card-pouilleux:test:integration") as Command).after, ["server:test:integration"]);
+    assert.deepEqual((w.config.get("hq-card-pouilleux:build") as Command).after, ["server:build"]);
+    const r = await w.go(["test:integration"], [], jobs);
+    assert.deepEqual(w.order(), ["server", "pouilleux"], `jobs ${jobs}`);
+    assert.deepEqual(r.map((x) => [x.name, x.ok]), [["hq-card-pouilleux:test:integration", true], ["server:test:integration", true]]);
+  }
+});
+
+test("order: a project's own after runs its predecessor first only when the run has it; nothing else is started", async () => {
+  const w = chain({ serverAfter: ["build"] });
+  assert.deepEqual((w.config.get("server:test:integration") as Command).after, ["server:build"]);
+  await w.go(["test:integration"], ["server"]);
+  assert.deepEqual(w.order(), ["server"], "build is not part of the run: not started");
+  const v = chain({ serverAfter: ["build"], serverMs: 0 });
+  await v.go(["test:integration", "build"], ["server"]);
+  assert.deepEqual(v.order(), ["build", "server"]);
+  const p = chain();
+  await p.go(["test:integration"], ["hq-card-pouilleux"]);
+  assert.deepEqual(p.order(), ["pouilleux"], "--pkg alone does not run the server's");
+});
+
+test("order: an after cycle is refused at load", () => {
+  assert.throws(() => chain({ pouilleuxAfter: ["test:integration"] }), /after forms a cycle/);
+  const root = tmp();
+  fs.writeFileSync(path.join(root, "fdash-workspace.json"), JSON.stringify({ projects: ["a"] }));
+  fs.mkdirSync(path.join(root, "a"));
+  fs.writeFileSync(path.join(root, "a", "fdash.json"), JSON.stringify({ tasks: { x: { run: [["x"]], after: ["y"] }, y: { run: [["y"]], after: ["x"] } } }));
+  assert.throws(() => loadWorkspace(root), /cycle/);
+  fs.writeFileSync(path.join(root, "a", "fdash.json"), JSON.stringify({ tasks: { x: { run: [["x"]], after: ["nope"] } } }));
+  assert.throws(() => loadWorkspace(root), /a:x: after names nope, which is no task of a/);
+});
+
+test("order: a failed predecessor fails its dependent without running it", async () => {
+  const w = chain({ serverExit: 1, serverMs: 0 });
+  const r = await w.go(["test:integration"]);
+  assert.deepEqual(w.order(), ["server"]);
+  const dep = r.find((x) => x.name === "hq-card-pouilleux:test:integration")!;
+  assert.equal(dep.ok, false);
+  assert.equal(resultLine(dep), "FAIL hq-card-pouilleux:test:integration (after server:test:integration failed)");
 });
