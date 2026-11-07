@@ -31,6 +31,15 @@
         "/web/package.json",
         "/web/pnpm-lock.yaml"
       ]
+    },
+    "test:integration": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "**/*.ispec.ts"
+        ]
+      ]
     }
   }
 }
