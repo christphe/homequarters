@@ -68,6 +68,7 @@ folder, so a plugin's change reruns its tests and those of the plugins that depe
   request's own scope first, where an earlier commit of the pull request could have saved forged records.
   The Go build cache and the pnpm store that `setup-go` and `setup-node` restore still come through
   `actions/cache`, as before this change; this decision does not change that. The jobs are now `static` and
-  `e2e (shard i/4)`: the branch protection of `main`, which required `server` and `web`, must name them.
+  `e2e (shard i/4)`; `static` does what `server` and `web` did, so the branch protection of `main` requires
+  `static` alone in their place (changed when this was merged); the e2e shards stay optional, as before.
 - **Maintenance:** about 700 lines of TypeScript with their own tests; a new gate is a few lines of JSON.
 - **Install:** nothing; Node 24 and git, which the repository already needs.

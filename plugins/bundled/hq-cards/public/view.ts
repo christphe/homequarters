@@ -968,7 +968,7 @@ hqView.onMessage<ViewIn>((m) => {
     if (selected && selected.k === "loose" && !st.t.loose.some((l) => (l.c & ~UP) === (selected as { c: number }).c)) selected = null;
     if (selected && selected.k === "pile" && !pileById(selected.id)) selected = null;
     if (look && !pileById(look.pile)) look = null;
-    if (picking && st.t.offer?.to !== mySeat) picking = false;
+    if (picking && !(st.t.offer && canPick(st.t.offer, st.t.offer.from, mySeat))) picking = false;
     cursor = Math.min(cursor, Math.max(0, targetList().length - 1));
     refreshPanel();
   } else if (m.t === "log") {

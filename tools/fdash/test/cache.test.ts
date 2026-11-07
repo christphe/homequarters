@@ -177,3 +177,13 @@ test("items: a report line {nocache: true} records nothing (a run on a stale bui
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"]);
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"]);
 });
+
+test("items: inputs that cannot be resolved after the run give results, not a crash, and record nothing", async () => {
+  const root = repo({ "s/x": "1", ".gitignore": ".fdash/\n" });
+  // the command leaves the folder without its repository: git ls-files fails once it is done
+  const cmd = node(`const fs=require("fs");for (const i of process.argv.slice(1)) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({item:i,ok:true})+"\\n");fs.renameSync(".git",".git-off")`);
+  const tasks = { e: { run: [cmd], args: true, inputs: ["s/**"], items: { x: { inputs: ["s/x"] } } } };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"]);
+  fs.renameSync(path.join(root, ".git-off"), path.join(root, ".git"));
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"], "not recorded");
+});

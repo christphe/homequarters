@@ -186,12 +186,18 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       ms = Date.now() - t0;
       const { said, nocache } = readReport(reportFile);
       if (nocache) fs.appendFileSync(log, "fdash: the command asked that nothing be recorded (nocache)\n");
-      const after = stop() || nocache ? [] : resolveInputs(o.root, c.inputs);
+      // inputs that no longer resolve once it ran (a go.mod broken meanwhile): report, record nothing
+      let after: string[] | undefined;
+      try {
+        after = stop() || nocache ? undefined : resolveInputs(o.root, c.inputs);
+      } catch (e) {
+        fs.appendFileSync(log, `fdash: inputs could not be resolved after the run, nothing recorded: ${(e as Error).message}\n`);
+      }
       for (const i of todo) {
         const itemOk = said.get(i) ?? ok;
         outcome.set(i, itemOk);
-        const now = () => { const files = itemFiles(i, after); return itemKey(i, files) + signature(o.root, files); };
-        if (itemOk && !nocache && unchanged(befores.get(i)!, now)) recordPass(cacheDir, `${c.name}:${i}`, keys.get(i)!, ms);
+        const now = () => { const files = itemFiles(i, after!); return itemKey(i, files) + signature(o.root, files); };
+        if (itemOk && after && unchanged(befores.get(i)!, now)) recordPass(cacheDir, `${c.name}:${i}`, keys.get(i)!, ms);
       }
     }
     return items.map((i) => outcome.has(i)
