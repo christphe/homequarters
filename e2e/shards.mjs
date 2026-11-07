@@ -2,7 +2,7 @@
 // E2E_PARALLELISM=N shards on one machine (see parallel.mjs). Pure: no dependency, no I/O.
 
 // The whole suite, in the order a single run executes it.
-export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "cards", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline"];
+export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "chess", "cards", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline", "sounds"];
 
 // Seconds per scenario, measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
 // scenario grows; a scenario missing here counts as UNKNOWN seconds.
@@ -14,6 +14,7 @@ export const DURATIONS = {
   chess: 34, // the same (it was 67 in CI with checks now in web/test/chessView.test.ts and chess_test.go)
   depth: 60, // an estimate (two layout switches and an editor save) until a CI run measures it
   offline: 50, // an estimate (one page, eight failed requests, each after the previous toast has gone) until a CI run measures it
+  sounds: 30, // an estimate (two people, three reloads and three waves) until a CI run measures it
 };
 export const UNKNOWN = 60;
 

@@ -1,52 +1,23 @@
 import { getState } from "./store";
+import { playCue, type Cue } from "./audioOut";
 
 // Gentle cues for things that need you: a wave, a direct message, a knock, a conversation starting or
-// ending around you (so an open microphone is never a surprise). Sounds are synthesised
-// (no audio files to license or download); desktop notifications only fire while the tab is hidden,
+// ending around you (so an open microphone is never a surprise). Sounds are synthesised and played by
+// audioOut (no audio files to license or download); desktop notifications only fire while the tab is hidden,
 // only after the user opted in, and never carry message text (lock screens are public).
 
-let ctx: AudioContext | null = null;
-
-const TUNES: Record<"wave" | "dm" | "knock" | "convIn" | "convOut", number[]> = {
-  wave: [660, 880],
-  dm: [988],
-  knock: [294, 294],
-  // like the wave (two quick triangle notes) but a major third, so they are told apart:
-  convIn: [523, 659], // rising: you are heard now
-  convOut: [659, 523], // falling: you are not any more
-};
-
-/** The last cues played, newest last (read by the browser tests). */
+/** The last cues asked for, newest last (read by the browser tests; what was heard is audioOut's soundLog). */
 export const chimeLog: string[] = [];
 const lastAt: Record<string, number> = {};
 
-export function chime(kind: keyof typeof TUNES) {
+export function chime(kind: Cue) {
   if (!getState().settings.sounds) return;
   const now = performance.now();
   if (now - (lastAt[kind] ?? -1e9) < 400) return; // one cue for a burst of changes
   lastAt[kind] = now;
   chimeLog.push(kind);
   if (chimeLog.length > 20) chimeLog.shift();
-  try {
-    ctx ??= new AudioContext();
-    if (ctx.state === "suspended") void ctx.resume();
-    let t0 = ctx.currentTime + 0.01;
-    for (const f of TUNES[kind]) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "triangle";
-      o.frequency.value = f;
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
-      o.connect(g).connect(ctx.destination);
-      o.start(t0);
-      o.stop(t0 + 0.22);
-      t0 += 0.15;
-    }
-  } catch {
-    /* audio is a nicety */
-  }
+  playCue(kind);
 }
 
 export function desktopNotify(title: string, body: string) {

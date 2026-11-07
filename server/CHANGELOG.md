@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - patch
+
+### Fixed
+- Sounds for waves, messages, knocks and conversations play again after a reload nobody touched yet (the update banner's): the first key press or click lets them play, and they play on the speaker chosen for calls (#47)
+
 ## [0.5.1] - 2026-11-03
 
 ### Fixed
