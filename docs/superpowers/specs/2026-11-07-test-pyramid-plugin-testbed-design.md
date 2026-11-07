@@ -150,6 +150,7 @@ No other edge exists: a task never triggers another project's `build` by itself.
 **Output caching (user, 2026-11-07).** Today fdash records only that a run passed (a key in `.fdash/cache/`) and skips it next time; it stores no file. A cached `build` would then be skipped on a fresh CI runner (which gets main's records) with no binary on disk, and every task after it would fail. So fdash learns outputs:
 
 - A task may declare `outputs` (patterns, relative to its project, like `inputs`): the files it produces (`server/bin/homequarters`, `web/dist/**`, `site/dist/**`).
+- The declared `outputs` are part of the cache key (user, 2026-11-07): changing them invalidates the record and the task runs again.
 - On a pass, fdash stores those files with the record, under the same key.
 - On a cache hit, fdash restores them before the tasks that come after, replacing what is on disk, so what is on disk always matches the key. A record whose outputs are missing from the cache counts as a miss: the task runs.
 - The CI jobs already save and restore `.fdash/cache` from main's runs; the outputs ride along (size to watch: the binary and `web/dist`, measured and reported in the PR).
