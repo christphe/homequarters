@@ -20,8 +20,11 @@ export type Command = {
   envKeys: string[];
   tools: string[][];
   items: Map<string, { inputs: Input[] }> | undefined;
+  /** In a workspace, the project the command belongs to (its name is then `<project>:<task>`); unset for the
+   * workspace's own tasks and in a lone fdash.json. */
+  project?: string;
 };
-export type Group = { kind: "group"; name: string; tasks: string[]; jobs?: number };
+export type Group = { kind: "group"; name: string; tasks: string[]; jobs?: number; project?: string };
 export type Task = Command | Group;
 /** Tasks by name, in the order of the file. */
 export type Config = Map<string, Task>;
@@ -114,6 +117,9 @@ export function parseTasks(tasks: Record<string, unknown>): Config {
   }
   return config;
 }
+
+/** A task's name as its project's fdash.json writes it (`test:unit` for `server:test:unit`). */
+export const localName = (t: Task): string => (t.project === undefined ? t.name : t.name.slice(t.project.length + 1));
 
 /** Checks that every group member exists and that groups form no cycle. */
 export function finishConfig(config: Config): Config {
