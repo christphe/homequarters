@@ -1,6 +1,9 @@
 # Changelog
 
-## [Unreleased] - patch
+## [Unreleased] - minor
+
+### Changed
+- Desktop notifications also show when the office's window is visible but not focused (another app in front), not only when it is minimised or hidden (#48)
 
 ### Fixed
 - Sounds for waves, messages, knocks and conversations play again after a reload nobody touched yet (the update banner's): the first key press or click lets them play, and they play on the speaker chosen for calls (#47)
