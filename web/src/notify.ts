@@ -1,9 +1,11 @@
 import { getState } from "./store";
 import { playCue, type Cue } from "./audioOut";
+import { mayNotify } from "./notifyGate";
 
 // Gentle cues for things that need you: a wave, a direct message, a knock, a conversation starting or
 // ending around you (so an open microphone is never a surprise). Sounds are synthesised and played by
-// audioOut (no audio files to license or download); desktop notifications only fire while the tab is hidden,
+// audioOut (no audio files to license or download); desktop notifications only fire while the page is in
+// the background (hidden, or visible without the focus: notifyGate.ts),
 // only after the user opted in, and never carry message text (lock screens are public).
 
 /** The last cues asked for, newest last (read by the browser tests; what was heard is audioOut's soundLog). */
@@ -21,7 +23,8 @@ export function chime(kind: Cue) {
 }
 
 export function desktopNotify(title: string, body: string) {
-  if (!document.hidden || !getState().settings.notify || !("Notification" in window) || Notification.permission !== "granted") return;
+  const permission = "Notification" in window ? Notification.permission : undefined;
+  if (!mayNotify({ enabled: getState().settings.notify, permission, hidden: document.hidden, focused: document.hasFocus() })) return;
   try {
     const n = new Notification(title, { body, tag: "homequarters-" + title, silent: true });
     n.onclick = () => {

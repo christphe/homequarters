@@ -100,13 +100,14 @@ export async function run() {
     await ana.page.evaluate(() => window.__hq.media.setCam(true));
     await waitFor(() => bruno.page.evaluate((id) => window.__hq.media.tiles.some((t) => t.identity === String(id) && t.cam), ana.id), { timeout: 20000, what: "Bruno sees Ana's camera again" });
 
-    // 2. Camera, by right click and the keyboard; Ana's tab is hidden and has notifications on.
+    // 2. Camera, by right click and the keyboard; Ana's window is visible but another app has the focus,
+    // and she has notifications on.
     await ana.page.evaluate(() => {
       window.__notes = [];
       class N { constructor(title, o) { window.__notes.push({ title, body: o?.body }); } close() {} }
       N.permission = "granted";
       window.Notification = N;
-      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.hasFocus = () => false;
       window.__hq.state.settings.notify = true;
     });
     await ana.page.evaluate(() => { window.__camTrack = window.__hq.media.room.localParticipant.getTrackPublication("camera").track.mediaStreamTrack; });
@@ -123,8 +124,8 @@ export async function run() {
     await waitFor(() => bruno.page.evaluate((id) => window.__hq.media.tiles.some((t) => t.identity === String(id) && !t.cam), ana.id), { timeout: 10000, what: "Bruno's tile shows Ana's camera off" });
     check("Ana is told, by toast", (await toastSoon(ana, `Bruno${tag} turned off your camera`)) === `Bruno${tag} turned off your camera`, await toastText(ana));
     const notes = await ana.page.evaluate(() => window.__notes);
-    check("and by a system notification while her window is hidden", notes.length === 1 && notes[0].title === `Bruno${tag} turned off your camera`, JSON.stringify(notes));
-    await ana.page.evaluate(() => { delete document.hidden; window.__hq.state.settings.notify = false; });
+    check("and by a system notification while her window is visible but not focused", notes.length === 1 && notes[0].title === `Bruno${tag} turned off your camera`, JSON.stringify(notes));
+    await ana.page.evaluate(() => { delete document.hasFocus; window.__hq.state.settings.notify = false; });
     check("nothing left to turn off: no ⋯ button on Ana's tile", await bruno.page.$(`.dock .tile-more[aria-label="More for ${ana.name}"]`) === null);
 
     // 3. Screen share, keyboard only: focus the ⋯ button, Enter, arrows, Enter.
