@@ -10,7 +10,8 @@ import { run, type Result } from "./run.ts";
 export const USAGE = `usage: fdash run [task ...] [--pkg project]... [--skip task]... [--jobs N] [--force] [-- extra args]
        fdash list [--pkg project]...
 Runs the tasks of ${WORKSPACE_FILE} and its projects' ${CONFIG_FILE}, or of a single ${CONFIG_FILE} (the task "default" when none is named).
-A project's task (test:unit) runs in every project defining it; --pkg restricts it to the projects named. FDASH_JOBS sets --jobs;
+A project's task (test:unit) runs in every project defining it; --pkg restricts it to the projects named. Several names
+run as stages, one after the other (build test:integration); a failed stage stops the next. FDASH_JOBS sets --jobs;
 FDASH_CACHE_DIR moves the cache (default .fdash/cache at the root); FDASH_LOG_DIR keeps the
 commands' logs in that folder instead of a temporary one.`;
 
@@ -100,6 +101,13 @@ export function resolveNames(config: Config, names: string[], pkgs: string[]): s
   return out;
 }
 
+/** The stages of a run: the tasks each name of the command line stands for, in order, a task already in an
+ * earlier stage left out. */
+export function stages(config: Config, names: string[], pkgs: string[]): string[][] {
+  const seen = new Set<string>();
+  return names.map((n) => resolveNames(config, [n], pkgs).filter((t) => !seen.has(t) && (seen.add(t), true))).filter((s) => s.length > 0);
+}
+
 async function main(): Promise<number> {
   let args: Args, root: string, config: Config, names: string[], skip: string[];
   try {
@@ -130,12 +138,17 @@ async function main(): Promise<number> {
   process.on("SIGINT", () => ac.abort());
   // one folder per run inside FDASH_LOG_DIR: two runs given the same folder must not share report files
   const logDir = process.env.FDASH_LOG_DIR ? (fs.mkdirSync(process.env.FDASH_LOG_DIR, { recursive: true }), fs.mkdtempSync(path.join(process.env.FDASH_LOG_DIR, "run-"))) : undefined;
-  const { results, interrupted } = await run({ root, config, logDir, names, skip, jobs: args.jobs, extraArgs: args.extra, force: args.force, signal: ac.signal, onResult: printResult });
-  if (interrupted) {
-    console.log("fdash: interrupted");
-    return 130;
+  // each name of the command line is a stage, run after the one before (`build test:integration` tests what
+  // was built); a stage that fails stops the next ones
+  for (const stage of stages(config, args.tasks, args.pkgs)) {
+    const { results, interrupted } = await run({ root, config, logDir, names: stage, skip, jobs: args.jobs, extraArgs: args.extra, force: args.force, signal: ac.signal, onResult: printResult });
+    if (interrupted) {
+      console.log("fdash: interrupted");
+      return 130;
+    }
+    if (results.some((r) => !r.ok)) return 1;
   }
-  return results.some((r) => !r.ok) ? 1 : 0;
+  return 0;
 }
 
 if (import.meta.main) process.exitCode = await main();

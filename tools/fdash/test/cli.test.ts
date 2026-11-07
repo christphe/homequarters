@@ -118,6 +118,31 @@ test("a workspace on the command line: a name across projects, --pkg, list --pkg
   assert.equal(fdash("list", "--pkg", "nope").status, 2);
 });
 
+test("names on the command line run as stages, one after the other; a failed stage stops the next", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-stages-"));
+  const log = path.join(root, "order.txt");
+  // each command appends its name after a delay: run at once, the slower first stage would land last
+  const step = (s: string, ms: number, fail = false) => ({ run: [[process.execPath, "-e", `setTimeout(() => { require("fs").appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(s + "\n")}); process.exit(${fail ? 1 : 0}); }, ${ms})`]] });
+  const files: Record<string, unknown> = {
+    "fdash-workspace.json": { projects: ["a", "b"] },
+    "a/fdash.json": { tasks: { build: step("a build", 400), "test:integration": step("a it", 0) } },
+    "b/fdash.json": { tasks: { build: step("b build", 300, true), "test:integration": step("b it", 0) } },
+  };
+  for (const [f, v] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
+    fs.writeFileSync(path.join(root, f), JSON.stringify(v));
+  }
+  const fdash = (...a: string[]) => spawnSync(process.execPath, [cli, ...a], { cwd: root, encoding: "utf8" });
+  const order = () => fs.readFileSync(log, "utf8").trim().split("\n");
+  const ok = fdash("run", "build", "test:integration", "--pkg", "a", "--jobs", "4");
+  assert.equal(ok.status, 0);
+  assert.deepEqual(order(), ["a build", "a it"]);
+  fs.rmSync(log);
+  const failed = fdash("run", "build", "test:integration", "--jobs", "4");
+  assert.equal(failed.status, 1);
+  assert.ok(!order().some((l) => l.endsWith(" it")), "a failed build stage stops the test stage: " + order().join(", "));
+});
+
 test("a command missing from PATH fails its task without crashing the run", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-cli-"));
   fs.writeFileSync(path.join(root, "fdash.json"), JSON.stringify({ tasks: {
