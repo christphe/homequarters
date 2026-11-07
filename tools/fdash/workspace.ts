@@ -114,7 +114,7 @@ export function loadWorkspace(root: string): Config {
       else {
         const own = (t.inputs ?? []).map((i) => inputFromRoot(p.dir, i));
         const c: Command = {
-          ...t, name, project: p.name, cwd: posix(p.dir, t.cwd),
+          ...t, name, project: p.name, cwd: posix(p.dir, t.cwd), outputs: t.outputs.map((o) => fromRoot(p.dir, o)),
           inputs: t.cache ? [...inherited, ...own] : undefined,
           items: t.items && new Map([...t.items].map(([k, v]) => [k, { inputs: v.inputs.map((i) => inputFromRoot(p.dir, i)) }])),
         };

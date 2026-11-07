@@ -33,7 +33,7 @@ test("projects: qualified names, cwd, default inputs with dependsOn, bare names 
     "fdash-workspace.json": { projects: ["lib", "addons/*"], tasks: { default: { jobs: 1, tasks: ["static", "e2e"] }, static: { tasks: ["test", "docs"] }, docs: { run: [["node", "d.mjs"]], inputs: ["docs/**"] } } },
     "lib/fdash.json": { name: "core", files: ["src/**"], tasks: { test: { run: [["node", "t"]] } } },
     "addons/app/fdash.json": { dependsOn: ["core"], tasks: {
-      test: { run: [["node", "t"]], cwd: "sub", inputs: ["/shared/x.txt", "!src/gen/**", { go: "./cmd", cwd: "srv" }] },
+      test: { run: [["node", "t"]], cwd: "sub", inputs: ["/shared/x.txt", "!src/gen/**", { go: "./cmd", cwd: "srv" }], outputs: ["bin/app", "/dist/**", "!bin/*.tmp"] },
       all: { tasks: ["test", "e2e"] },
       e2e: { run: [["node", "e"]], args: true, inputs: ["!scenarios/**"], items: { one: { inputs: ["scenarios/one.mjs"] } } },
       dev: { run: [["node", "dev"]], cache: false },
@@ -46,6 +46,7 @@ test("projects: qualified names, cwd, default inputs with dependsOn, bare names 
   assert.deepEqual((c.get("app:all") as Group).tasks, ["app:test", "app:e2e"]);
   const t = c.get("app:test") as Command;
   assert.equal(t.cwd, "addons/app/sub");
+  assert.deepEqual(t.outputs, ["addons/app/bin/app", "dist/**", "!addons/app/bin/*.tmp"]);
   assert.deepEqual(t.inputs, ["addons/app/**", "lib/src/**", "shared/x.txt", "!addons/app/src/gen/**", { go: "./cmd", cwd: "addons/app/srv", tests: false }]);
   assert.deepEqual((c.get("core:test") as Command).inputs, ["lib/**"]);
   assert.equal((c.get("core:test") as Command).cwd, "lib");

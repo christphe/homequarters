@@ -90,6 +90,8 @@ export function cacheKey(root: string, c: Command, extra: string[], files: strin
     envKeys: c.envKeys.map((k) => [k, env[k] ?? null]),
     tools: c.tools.map(toolOutput),
     platform: process.platform, arch: process.arch, node: process.version,
+    // only when declared, so that a command without outputs keeps the key it had before outputs existed
+    ...(c.outputs.length ? { outputs: c.outputs } : {}),
   }));
   for (const f of files) h.update("\0" + f + "\0" + hashFile(path.join(root, f)));
   return h.digest("hex");
@@ -127,4 +129,89 @@ export function passed(dir: string, name: string, key: string): boolean {
 export function recordPass(dir: string, name: string, key: string, ms: number): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(recordPath(dir, name, key), JSON.stringify({ ok: true, at: new Date().toISOString(), ms }) + "\n");
+}
+
+// glob matching that treats a name starting with "." like any other (a build may write .files): the dot that
+// starts a segment is swapped for a character no path holds, in the path and in the pattern alike
+const undot = (s: string) => s.replace(/(^|\/)\./g, "$1\u0001");
+const matches = (file: string, pattern: string) => path.posix.matchesGlob(undot(file), undot(pattern));
+
+/** The files the output patterns match on disk, sorted, relative to the root with "/" separators. Read from
+ * the disk, not from git: what a command produces is usually ignored by git. */
+export function resolveOutputs(root: string, patterns: string[]): string[] {
+  const include = patterns.filter((p) => !p.startsWith("!"));
+  const exclude = patterns.filter((p) => p.startsWith("!")).map((p) => p.slice(1));
+  const found = new Set<string>();
+  const walk = (rel: string, pattern: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true });
+    } catch {
+      if (fs.existsSync(path.join(root, rel)) && matches(rel, pattern)) found.add(rel); // a file named whole
+      return;
+    }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(r, pattern);
+      else if (e.isFile() && matches(r, pattern)) found.add(r);
+    }
+  };
+  // each pattern is looked for under its part without wildcards
+  for (const p of include) {
+    const segs = p.split("/");
+    const fixed = segs.findIndex((s) => /[*?[\]{}]/.test(s));
+    walk((fixed === -1 ? segs : segs.slice(0, fixed)).join("/"), p);
+  }
+  return [...found].filter((f) => !exclude.some((x) => matches(f, x))).sort();
+}
+
+// the outputs of a pass: plain copies under <record>.out/ (paths relative to the root kept), and the list of
+// them in <record>.out.json, written last: a store cut short, or a cache pruned of some of its files, lacks
+// a file the list names and counts as missing
+const outputsPath = (dir: string, name: string, key: string) => recordPath(dir, name, key).replace(/\.json$/, ".out");
+
+/** Sets a file's time to now, as `passed` does for records: a cache pruned of what a run did not use keeps it. */
+function touch(file: string): void {
+  const now = new Date();
+  try {
+    fs.utimesSync(file, now, now);
+  } catch {
+    // a read-only cache still answers
+  }
+}
+
+/** Keeps a copy of `files` (relative to the root) with the record of `key`. */
+export function storeOutputs(dir: string, name: string, key: string, root: string, files: string[]): void {
+  const target = outputsPath(dir, name, key);
+  fs.rmSync(target + ".json", { force: true });
+  fs.rmSync(target, { recursive: true, force: true });
+  for (const f of files) {
+    fs.mkdirSync(path.dirname(path.join(target, f)), { recursive: true });
+    fs.copyFileSync(path.join(root, f), path.join(target, f));
+    touch(path.join(target, f));
+  }
+  fs.mkdirSync(target, { recursive: true });
+  fs.writeFileSync(target + ".json", JSON.stringify({ files }) + "\n");
+}
+
+/** Copies the outputs kept with the record of `key` back under the root, over what is there; "missing" when
+ * the cache does not hold all of them (then nothing is copied). */
+export function restoreOutputs(dir: string, name: string, key: string, root: string): "restored" | "missing" {
+  const target = outputsPath(dir, name, key);
+  let files: unknown;
+  try {
+    files = (JSON.parse(fs.readFileSync(target + ".json", "utf8")) as { files?: unknown }).files;
+  } catch {
+    return "missing";
+  }
+  // a path leaving the root is never written, whatever the list says
+  const safe = (f: unknown) => typeof f === "string" && f !== "" && !path.isAbsolute(f) && !f.split(/[\\/]/).includes("..");
+  if (!Array.isArray(files) || !files.every((f) => safe(f) && fs.existsSync(path.join(target, f as string)))) return "missing";
+  for (const f of files as string[]) {
+    fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
+    fs.copyFileSync(path.join(target, f), path.join(root, f));
+    touch(path.join(target, f));
+  }
+  touch(target + ".json");
+  return "restored";
 }

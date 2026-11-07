@@ -1,18 +1,18 @@
 // Running tasks: a command's steps in sequence, a group's members `jobs` at once, each command once per run,
-// and the cache (inputs, items) around commands that declare inputs.
+// and the cache (inputs, items, outputs) around commands that declare inputs.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expand, type Command, type Config } from "./config.ts";
-import { cacheKey, passed, recordPass, resolveInputs, signature } from "./cache.ts";
+import { cacheKey, passed, recordPass, resolveInputs, resolveOutputs, restoreOutputs, signature, storeOutputs } from "./cache.ts";
 import { launch, spawnSpec } from "./spawn.ts";
 
 export { spawnSpec };
 
 /** One line of the report: a command, or one item of a command (`<command>:<item>`). `failedAfter`: the
- * command was not run because this predecessor failed. */
-export type Result = { name: string; ok: boolean; cached: boolean; log: string; ms: number; failedAfter?: string };
+ * command was not run because this predecessor failed. `warn`: why a command that had passed ran again. */
+export type Result = { name: string; ok: boolean; cached: boolean; log: string; ms: number; failedAfter?: string; warn?: string };
 
 export type RunOptions = {
   root: string;
@@ -163,12 +163,32 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       if (c.items) fs.appendFileSync(log, `fdash: arguments that are not items, running without the cache: ${extra.join(" ")}\n`);
       if (c.items) return plain();
       const key = cacheKey(o.root, c, extra, common, process.env);
-      if (!o.force && passed(cacheDir, c.name, key)) return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
+      let warn: string | undefined;
+      if (!o.force && passed(cacheDir, c.name, key)) {
+        // a hit puts the outputs of that pass on disk, over what is there; without them it is a miss
+        let restored: string;
+        try {
+          restored = c.outputs.length ? restoreOutputs(cacheDir, c.name, key, o.root) : "restored";
+        } catch (e) {
+          fs.appendFileSync(log, `fdash: the outputs could not be restored: ${(e as Error).message}\n`);
+          restored = "missing";
+        }
+        if (restored === "restored") return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
+        warn = "outputs not in the cache";
+      }
       const before = key + signature(o.root, common);
       const [r] = await plain();
       const now = () => { const files = resolveInputs(o.root, c.inputs!); return cacheKey(o.root, c, extra, files, process.env) + signature(o.root, files); };
-      if (r.ok && unchanged(before, now)) recordPass(cacheDir, c.name, key, r.ms);
-      return [r];
+      if (r.ok && unchanged(before, now)) {
+        try {
+          // the outputs first: a record is only ever written once its outputs are kept
+          if (c.outputs.length) storeOutputs(cacheDir, c.name, key, o.root, resolveOutputs(o.root, c.outputs));
+          recordPass(cacheDir, c.name, key, r.ms);
+        } catch (e) {
+          fs.appendFileSync(log, `fdash: the outputs could not be stored, nothing recorded: ${(e as Error).message}\n`);
+        }
+      }
+      return [warn ? { ...r, warn } : r];
     }
     // items: each keyed on its own, the command run once with the items that have not passed
     const items = [...c.items.keys()].filter((i) => extra.length === 0 || extra.includes(i));

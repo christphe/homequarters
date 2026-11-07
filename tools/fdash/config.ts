@@ -27,6 +27,9 @@ export type Command = {
    * the same file or project; once the config is finished, the commands they stand for, with those coming
    * from groups and (in a workspace) from the projects it depends on. */
   after: string[];
+  /** Path patterns (relative to the root, a leading "!" excludes) of the files the command produces: part of
+   * the cache key, stored with a pass and restored on a hit. */
+  outputs: string[];
 };
 /** `after`: the tasks every command of the group starts after (see Command). */
 export type Group = { kind: "group"; name: string; tasks: string[]; jobs?: number; project?: string; after: string[] };
@@ -36,7 +39,7 @@ export type Config = Map<string, Task>;
 
 export const CONFIG_FILE = "fdash.json";
 
-const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache", "after"]);
+const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache", "after", "outputs"]);
 const GROUP_KEYS = new Set(["tasks", "jobs", "after"]);
 
 function parseAfter(name: string, v: unknown): string[] {
@@ -67,6 +70,9 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
   for (const k of ["failOnOutput", "args", "cache"] as const) if (t[k] !== undefined && typeof t[k] !== "boolean") throw new Error(`${name}: ${k} must be true or false`);
   if (t.envKeys !== undefined && !isStrings(t.envKeys)) throw new Error(`${name}: envKeys must be a list of names`);
   if (t.tools !== undefined && !(Array.isArray(t.tools) && t.tools.every(isArgv))) throw new Error(`${name}: tools must be a list of commands, each a non-empty list of strings`);
+  if (t.outputs !== undefined && !(isStrings(t.outputs) && t.outputs.every((p) => p.replace(/^!/, "") !== ""))) throw new Error(`${name}: outputs must be a list of path patterns`);
+  // items are cached one by one, and which of them produced which file is unknown
+  if (t.outputs !== undefined && t.items !== undefined) throw new Error(`${name}: outputs cannot be combined with items`);
   let items: Command["items"];
   if (t.items !== undefined && t.args !== true) throw new Error(`${name}: items needs "args": true (the items to run are given as arguments)`);
   if (t.items !== undefined) {
@@ -91,6 +97,7 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
     tools: (t.tools as string[][] | undefined) ?? [],
     items,
     after: parseAfter(name, t.after),
+    outputs: (t.outputs as string[] | undefined) ?? [],
   };
 }
 

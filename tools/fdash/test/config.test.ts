@@ -13,7 +13,7 @@ test("parseConfig: defaults and order", () => {
     a: { cwd: "w", run: [["y", "1"], ["z"]], env: { K: "v" }, failOnOutput: true, args: true },
   }));
   assert.deepEqual([...c.keys()], ["b", "g", "h", "a"]);
-  assert.deepEqual(c.get("b"), { kind: "command", name: "b", cwd: ".", run: [["x"]], env: {}, failOnOutput: false, args: false, cache: true, inputs: undefined, envKeys: [], tools: [], items: undefined, after: [] });
+  assert.deepEqual(c.get("b"), { kind: "command", name: "b", cwd: ".", run: [["x"]], env: {}, failOnOutput: false, args: false, cache: true, inputs: undefined, envKeys: [], tools: [], items: undefined, after: [], outputs: [] });
   assert.deepEqual(c.get("g"), { kind: "group", name: "g", tasks: ["b", "a"], jobs: 2, after: [] });
   assert.equal((c.get("h") as Group).jobs, undefined);
   const a = c.get("a") as Command;
@@ -63,6 +63,9 @@ test("parseConfig: every refusal names the task", () => {
     [{ t: { run: [["x"]], items: [] } }, /t: items/],
     [{ t: { run: [["x"]], items: { a: {} } } }, /t: items needs "args": true/],
     [{ t: { run: [["x"]], after: "a" } }, /t: after/],
+    [{ t: { run: [["x"]], outputs: "out/**" } }, /t: outputs/],
+    [{ t: { run: [["x"]], outputs: [""] } }, /t: outputs/],
+    [{ t: { run: [["x"]], args: true, items: { a: {} }, outputs: ["out/**"] } }, /t: outputs.*items/],
     [{ t: { run: [["x"]], after: ["nope"] } }, /t: after names nope/],
     [{ g: { tasks: [], after: [1] } }, /g: after/],
     [{ a: { run: [["x"]], after: ["b"] }, b: { run: [["x"]], after: ["a"] } }, /after forms a cycle/],

@@ -67,6 +67,7 @@ export function listLines(config: Config, pkgs: string[] = []): string[] {
 export { findRoot };
 
 export function printResult(r: Result): void {
+  if (r.warn) console.log(`WARN cache miss ${r.name}: ${r.warn}`);
   console.log(resultLine(r));
   if (!r.ok && r.log) {
     try {
