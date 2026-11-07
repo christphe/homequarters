@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { after, test } from "node:test";
-import { NAMES, act, cardBed, cardsDir, closeBeds, handSizes, lastOf, noErrors, seatedCount, until, useDeck, waitTable } from "../../hq-cards/test/harness.ts";
+import { NAMES, act, cardBed, cardsDir, closeBeds, handSizes, lastOf, noErrors, seatedCount, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
 import type { Frame } from "../../hq-cards/test/harness.ts";
 
 after(closeBeds);
@@ -31,9 +31,9 @@ function expectedCount(tb: Frame): string {
 test("Last Card registers in two parts, its table deals and counts", async () => {
   const { bed, members: [alice, bob, carol] } = await cardBed([cardsDir, path.resolve(import.meta.dirname, "..")], NAMES);
   // registration is asynchronous: the open window is told when the game arrives
-  useDeck(alice!);
+  openDeck(alice!);
   await until("Last Card in the game list", () => (lastOf(alice!, "games")?.list as Frame[] | undefined)?.some((g) => g.name === LAST_CARD && g.title === "Last Card"));
-  useDeck(bob!, carol!);
+  openDeck(bob!, carol!);
   act(alice!, { t: "choose", game: LAST_CARD });
   const g = (await until("the game message", () => lastOf(alice!, "game"))).g;
   const deck = g.deck;
@@ -65,6 +65,6 @@ test("Last Card registers in two parts, its table deals and counts", async () =>
   act(alice!, { t: "dealAll", pile: "p0" });
   act(alice!, { t: "draw", pile: "p0" }); // allowed: proves the dealAll was handled first
   tb = await waitTable(alice!, "Alice's draw", (t) => handSizes(t)[0] === before[0]! + 1);
-  assert.ok(handSizes(tb)[1] === before[1] && handSizes(tb)[2] === before[2], `dealAll is refused: before ${before}, after ${handSizes(tb)}`);
+  assert.ok(handSizes(tb)[1] === before[1] && handSizes(tb)[2] === before[2], `dealAll is refused: before ${JSON.stringify(before)}, after ${JSON.stringify(handSizes(tb))}`);
   await noErrors(bed);
 });

@@ -4,6 +4,6 @@ export function onMessage(p, m) {
   if (m.t === "b") {
     // it answers once both calls are settled, so a test needs no sleep
     const call = (g) => hq.plugins.call(g, "count", { seats: [], hands: [], piles: [], loose: [] }).then(() => {}, () => {});
-    Promise.all(["hq-card-pouilleux", "hq-card-lastcard"].map(call)).then(() => hq.send(p.id, { t: "rb" }));
+    void Promise.all(["hq-card-pouilleux", "hq-card-lastcard"].map(call)).then(() => hq.send(p.id, { t: "rb" }));
   }
 }

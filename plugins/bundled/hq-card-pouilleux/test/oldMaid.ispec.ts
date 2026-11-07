@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { after, test } from "node:test";
-import { CARDS, NAMES, act, cardBed, cardsDir, closeBeds, count, handSizes, lastOf, logVerbs, noErrors, seatAll, stateAfter, tableOf, until, useDeck, waitTable } from "../../hq-cards/test/harness.ts";
+import { CARDS, NAMES, act, cardBed, cardsDir, closeBeds, count, handSizes, lastOf, logVerbs, noErrors, seatAll, stateAfter, tableOf, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
 import type { Frame } from "../../hq-cards/test/harness.ts";
 
 after(closeBeds);
@@ -25,14 +25,14 @@ for (const order of ["Old Maid, then the table", "the table, then Old Maid"]) {
       await bed.setPlugin(OLD_MAID, false);
       await bed.setPlugin(OLD_MAID, true);
     }
-    useDeck(alice!);
+    openDeck(alice!);
     await until("Old Maid listed", () => listsOldMaid(alice!));
 
     // the table restarted: its games are gone with it until Old Maid registers again
     await bed.setPlugin(CARDS, false);
     await bed.setPlugin(CARDS, true);
     let from = count(alice!);
-    useDeck(alice!);
+    openDeck(alice!);
     await until("Old Maid listed after hq-cards restarted", () => listsOldMaid(alice!, from));
 
     // a game in progress while Old Maid is off: unavailable, only reset acts; back intact when it returns

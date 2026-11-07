@@ -40,6 +40,15 @@
           "test/*.test.ts"
         ]
       ]
+    },
+    "test:integration": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "**/*.ispec.ts"
+        ]
+      ]
     }
   }
 }

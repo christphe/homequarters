@@ -6,7 +6,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 import {
   CARDS, DECK, NAMES, act, cardBed, cardsDir, closeBeds, count, fixture, frames, freeTable, handSizes, lastOf, logVerbs, noErrors, stateAfter, tableOf, until,
-  useDeck, waitTable,
+  openDeck, waitTable,
 } from "./harness.ts";
 import type { Frame } from "./harness.ts";
 
@@ -17,7 +17,7 @@ const key = (prefix: string): string => `${prefix}:${DECK.x},${DECK.y}`;
 
 test("a free table: games listed, seats, the game told, a deal, the log", async () => {
   const { bed, members: [alice, bob] } = await cardBed([cardsDir], NAMES);
-  useDeck(alice!);
+  openDeck(alice!);
   const list = (await until("the game list", () => lastOf(alice!, "games")?.list)) as Frame[];
   assert.ok(list.length === 1 && list[0]!.name === "free" && list[0]!.title === "Free table", `a new table offers the free table: ${JSON.stringify(list)}`);
   await freeTable([alice!, bob!]);
@@ -40,7 +40,7 @@ test("only members with the window open act", async () => {
   await carol!.quiet(CARDS, 200); // the messages above are handled, and carol is told nothing
   act(alice!, { t: "draw", pile: "p0" });
   const tb = await waitTable(alice!, "Alice's draw", (t) => handSizes(t)[0] === 1);
-  assert.ok(handSizes(tb)[1] === 0 && tb.seats[2] === null, `only members with the window open act: hands ${handSizes(tb)}, seats ${JSON.stringify(tb.seats)}`);
+  assert.ok(handSizes(tb)[1] === 0 && tb.seats[2] === null, `only members with the window open act: hands ${JSON.stringify(handSizes(tb))}, seats ${JSON.stringify(tb.seats)}`);
 });
 
 test("a card taken twice: the second move is refused", async () => {
@@ -68,7 +68,7 @@ test("the table survives a restart: game, hands and log", async () => {
   await bed.restart();
   await alice!.reconnect();
   const from = count(alice!);
-  useDeck(alice!);
+  openDeck(alice!);
   const tb = await waitTable(alice!, "the table after a restart", (t) => t.game === "free", from);
   assert.deepEqual(handSizes(tb).slice(0, 2), [5, 5], "hands kept");
   await until("the log after a restart", () => lastOf(alice!, "log", from)?.log.some((e: Frame) => e.v === "dealt"));
@@ -93,7 +93,7 @@ test("a member who leaves no longer looks; their offer stays", async () => {
 test("a reset: refused for a spectator while seated players are here, allowed when they are not", async () => {
   const { members: [alice, bob, carol] } = await cardBed([cardsDir], NAMES);
   await freeTable([alice!, bob!]);
-  useDeck(carol!);
+  openDeck(carol!);
   const refused = await stateAfter(carol!, { t: "reset" }); // a spectator while seated players are here
   assert.equal(refused.tb.game, "free", "a spectator cannot reset while a seated player is here");
   act(alice!, { t: "draw", pile: "p0" });
@@ -120,7 +120,7 @@ test("a game registering again never makes its tables unavailable while its spli
   };
   await part(1);
   await part(2);
-  useDeck(alice!, bob!);
+  openDeck(alice!, bob!);
   await until("the part game listed", () => lastOf(alice!, "games")?.list.length === 2);
   act(alice!, { t: "choose", game: "partgame" });
   await waitTable(alice!, "the part game chosen", (t, s) => t.game === "partgame" && s.unavailable === false);
@@ -155,7 +155,7 @@ test("wide names stay under the limits", async () => {
   for (let i = 0; i < 12; i++) act(members[1 + (i % 4)]!, { t: "count" });
   // the plugin still answers: opening the deck again gets the table (a move would be refused by a full table)
   const from = count(members[0]!);
-  useDeck(members[0]!);
+  openDeck(members[0]!);
   await until("the plugin answers", () => frames(members[0]!, from).find((d) => d.t === "open"), 20_000);
   await noErrors(bed);
   for (const m of members) {
@@ -171,7 +171,7 @@ test("wide names stay under the limits", async () => {
 // A malformed choice is ignored, never thrown: eleven of them would stop the plugin.
 test("a malformed choice is ignored", async () => {
   const { bed, members: [alice, bob] } = await cardBed([cardsDir], NAMES);
-  useDeck(alice!, bob!);
+  openDeck(alice!, bob!);
   await until("the game list", () => lastOf(alice!, "games"));
   // two members: the server limits a socket to 10 plugin messages a second (burst 20)
   for (let i = 0; i < 12; i++) {
@@ -194,7 +194,7 @@ test("a deck of wide names too big for a message is refused", async () => {
   };
   const accepted = (await answer("a")) && (await answer("b")) && (await answer("c"));
   assert.ok(!accepted, "a deck of 100 names of 72 bytes was accepted");
-  useDeck(alice!);
+  openDeck(alice!);
   const list = (await until("the list", () => lastOf(alice!, "games")?.list)) as Frame[];
   assert.equal(list.length, 1, `only the free table is offered: ${JSON.stringify(list)}`);
   await noErrors(bed);
@@ -211,12 +211,12 @@ test("other plugins cannot pose as the table or call a game's count", async () =
   for (let i = 0; i < 12; i++) alice!.send("free", { t: "b" });
   for (let i = 0; i < 12; i++) await alice!.waitFor("free", (d) => d.t === "rb");
   // all three still run: both games are listed by the table, which answers
-  useDeck(alice!);
+  openDeck(alice!);
   const names = await until("the games listed", () => {
     const l = lastOf(alice!, "games")?.list as Frame[] | undefined;
     return l && l.length === 3 && l.map((g) => g.name);
   });
-  assert.deepEqual([...names].sort(), ["free", "hq-card-lastcard", "hq-card-pouilleux"]);
+  assert.deepEqual([...names].sort((a, b) => a.localeCompare(b)), ["free", "hq-card-lastcard", "hq-card-pouilleux"]);
   await noErrors(bed);
 });
 
@@ -270,7 +270,7 @@ test("round 2: snapping, cards and piles moved, cards set aside until a reset", 
 // A game turned off and on while its table is open: the open window gets its table back, available.
 test("a game turned off and on: the open window gets its table back, available", async () => {
   const { bed, members: [alice] } = await cardBed([cardsDir, path.join(games, "hq-card-lastcard")], NAMES);
-  useDeck(alice!);
+  openDeck(alice!);
   await until("Last Card listed", () => lastOf(alice!, "games")?.list.length === 2);
   act(alice!, { t: "choose", game: "hq-card-lastcard" });
   await waitTable(alice!, "Last Card chosen", (t, s) => t.game === "hq-card-lastcard" && s.unavailable === false);
@@ -278,7 +278,7 @@ test("a game turned off and on: the open window gets its table back, available",
   await waitTable(alice!, "unavailable", (_, s) => s.unavailable === true);
   act(alice!, { t: "close" });
   const reopened = count(alice!);
-  useDeck(alice!); // the window opened again while the game is off
+  openDeck(alice!); // the window opened again while the game is off
   await waitTable(alice!, "the table in the window, the game off", (_, s) => s.unavailable === true, reopened);
   const from = count(alice!);
   await bed.setPlugin("hq-card-lastcard", true);
@@ -319,7 +319,7 @@ test("a stale close after a reopen does not drop the member", async () => {
   await freeTable([alice!]);
   const opens = (): Frame[] => frames(alice!).filter((d) => d.t === "open");
   const first = opens()[0]!.n as number;
-  useDeck(alice!);
+  openDeck(alice!);
   await until("the second open", () => opens().length === 2);
   act(alice!, { t: "close", n: first }); // the first window's close, late
   act(alice!, { t: "draw", pile: "p0" });

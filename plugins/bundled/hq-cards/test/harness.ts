@@ -92,14 +92,14 @@ export const seatedCount = (tb: Frame): number => tb.seats.filter((s: unknown) =
 export const logVerbs = (m: Member): string[] => (lastOf(m, "log")?.log ?? []).map((e: Frame) => e.v);
 
 /** Every member opens the deck. */
-export const useDeck = (...members: Member[]): void => {
+export const openDeck = (...members: Member[]): void => {
   for (const m of members) m.use(DECK);
 };
 
 /** The members open the deck, the first chooses `game` once the games are listed, and all take a seat in order. */
 export async function seatAll(members: Member[], game: string): Promise<void> {
   const first = members[0]!;
-  useDeck(...members);
+  openDeck(...members);
   await until(`${game} in the games list`, () => lastOf(first, "games")?.list.some((g: Frame) => g.name === game));
   act(first, { t: "choose", game });
   for (const [i, m] of members.entries()) {
