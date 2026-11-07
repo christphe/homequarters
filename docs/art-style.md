@@ -46,15 +46,15 @@ To refresh the images used by the README and the website:
 
 ~~~bash
 cd e2e
-node export-art.mjs   # sprite sheets and the baked map (needs only the Vite preview above)
-node art.mjs          # cast and walking GIF (needs Chrome and ffmpeg)
+node export-art.ts   # sprite sheets and the baked map (needs only the Vite preview above)
+node art.ts          # cast and walking GIF (needs Chrome and ffmpeg)
 # in-game shots (needs a game server that serves the built client):
-HQ_APP=http://127.0.0.1:8091 HQ_API=http://127.0.0.1:8091 node screens.mjs
+HQ_APP=http://127.0.0.1:8091 HQ_API=http://127.0.0.1:8091 node screens.ts
 # social banner (site/assets/banner.png, the og:image), from a real in-game scene:
-CHROME=/path/to/chrome node banner.mjs   # SKIP_BUILD=1 reuses web/dist and bin/; HQ_BANNER_PORT (38090)
+CHROME=/path/to/chrome node banner.ts   # SKIP_BUILD=1 reuses web/dist and bin/; HQ_BANNER_PORT (38090)
 ~~~
 
-`banner.mjs` builds the client and the server, starts its own server on a free port with a fresh database in the temp dir and no media (LiveKit points at a closed port and nobody opts in, so no camera or microphone is touched). An administrator assigns desks to named people through the map API, nine players with varied looks (beards, hats, a hijab) and pets take their places (two talking at a desk, others at their desks, two walking down the aisle with their pets trailing), and an observer outside the frame captures the world only at 3x: UI, area labels and the players' name tags hidden except for the two walkers, desk owner labels kept. The 768x640 crop sits 1:1 beside a solid navy panel with the wordmark (Schibsted Grotesk 800, mint) and "The open source virtual office you host yourself". Look at the result before committing: the walkers' place depends on timing (`BANNER_WALK_MS`).
+`banner.ts` builds the client and the server, starts its own server on a free port with a fresh database in the temp dir and no media (LiveKit points at a closed port and nobody opts in, so no camera or microphone is touched). An administrator assigns desks to named people through the map API, nine players with varied looks (beards, hats, a hijab) and pets take their places (two talking at a desk, others at their desks, two walking down the aisle with their pets trailing), and an observer outside the frame captures the world only at 3x: UI, area labels and the players' name tags hidden except for the two walkers, desk owner labels kept. The 768x640 crop sits 1:1 beside a solid navy panel with the wordmark (Schibsted Grotesk 800, mint) and "The open source virtual office you host yourself". Look at the result before committing: the walkers' place depends on timing (`BANNER_WALK_MS`).
 
 `web/dev/default-map.json` is a copy of the starter map from the Go server (`gamemap.Default()`); refresh it if that map changes.
 
@@ -62,5 +62,5 @@ CHROME=/path/to/chrome node banner.mjs   # SKIP_BUILD=1 reuses web/dist and bin/
 
 - **A prop**: add its size to the dimensions table and a painter in `tiles.ts`, register the type in the Go map validator (`server/internal/gamemap`), and keep it solid or not in the Go table.
 - **A hairstyle, beard or hat**: add its id to `HAIR_STYLE_IDS`, `BEARD_IDS` or `HAT_IDS` in `characters.ts` and draw it in every view: `hairFront`/`hairBack`/`hairSide`, `beardFront`/`beardSide` (no beard from the back), or the three views of `hat` (the side view faces left; the right is mirrored). Add its label to `web/src/i18n.ts` (`hair.<id>`, `beard.<id>`, `hat.<id>`); the editor lists every id. Widen `nHair`, `nBeard` or `nHat` in `server/internal/httpapi/avatar.go`, or the server turns the new value back into 0. Content rows down to y = -6 are drawable above the head (the party hat's pompom and the top hat's crown reach it); name tags rise only when a drawing does. Under any hat, hair above the crown (y < 1) is clipped. Beards use the hair colour; hats use their own colour from `HAT_COLORS`.
-- **Check the result**: the art preview shows a wardrobe with every hair style, beard and hat in the four directions. The ten looks above it are pixel goldens: `node e2e/export-art.mjs` must leave `site/assets/sheet-*.png` unchanged.
+- **Check the result**: the art preview shows a wardrobe with every hair style, beard and hat in the four directions. The ten looks above it are pixel goldens: `node e2e/export-art.ts` must leave `site/assets/sheet-*.png` unchanged.
 - **A floor**: add an entry to the `FLOORS` table in `tiles.ts` and use its name in the map's areas.

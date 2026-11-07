@@ -17,8 +17,8 @@ Every change runs the [gauntlet loop](gauntlet.md): written acceptance criteria,
 ./scripts/dev.sh                 # full local stack
 cd server && go vet ./... && go tool staticcheck ./... && go test -race ./...   # server checks and tests
 cd web && pnpm exec tsc --noEmit                   # type-check the client
-node scripts/oxlint.mjs                            # lint the client and the plugins (type-aware)
-cd e2e && pnpm install && node run.mjs             # real-browser suite: own server, fresh database, real LiveKit
+node scripts/oxlint.ts                            # lint the client and the plugins (type-aware)
+cd e2e && pnpm install && node run.ts             # real-browser suite: own server, fresh database, real LiveKit
 ~~~
 
 ## Invariants worth protecting
@@ -51,7 +51,7 @@ A new variant is a new function (`func Studio() *Map { return wideOffice(wideLay
 
 1. `cd server && go test ./internal/gamemap`: every template compiles, every area and desk seat can be walked to from the spawn; add the new template's counts to `TestWideTemplatesMatchThePlans`.
 2. `HQ_UPDATE_FIXTURE=1 go test ./internal/gamemap` writes `web/dev/<id>-map.json`; register the fixture in `web/dev/art-preview.ts` and `art-preview.html` like `manor`.
-3. `cd web && pnpm exec vite --port 5180`, open `/dev/art-preview.html` and look at the map; `node e2e/export-art.mjs` (with `ART_PREVIEW_URL` pointing there) writes `site/assets/map-<id>.png` once you add its `save` line there. Zoom into the result: desks, chairs, doors and corners are where the plan says.
+3. `cd web && pnpm exec vite --port 5180`, open `/dev/art-preview.html` and look at the map; `node e2e/export-art.ts` (with `ART_PREVIEW_URL` pointing there) writes `site/assets/map-<id>.png` once you add its `save` line there. Zoom into the result: desks, chairs, doors and corners are where the plan says.
 4. Apply it from Admin > Office in a dev stack (`scripts/dev.sh`) and walk around; the `templates` browser scenario covers switching.
 
 ## Pull requests

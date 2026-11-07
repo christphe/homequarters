@@ -3,7 +3,7 @@ name: Deploy site to GitHub Pages
 on:
   push:
     branches: [main]
-    # deploy/README.md is published as the self-hosting page; README.md is checked by site/check.mjs
+    # deploy/README.md is published as the self-hosting page; README.md is checked by site/check.ts
     paths: ["site/**", "docs/**", "deploy/README.md", "README.md", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
@@ -33,8 +33,8 @@ jobs:
         working-directory: site
         run: |
           pnpm install --frozen-lockfile
-          node build.mjs
-          node check.mjs
+          node build.ts
+          node check.ts
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

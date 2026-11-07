@@ -8,10 +8,10 @@
         [
           "node",
           "--test",
-          "oxlint-hq.test.mjs",
-          "check-protocol-docs.test.mjs",
+          "oxlint-hq.test.ts",
+          "check-protocol-docs.test.ts",
           "gauntlet.test.ts",
-          "ci-fdash-records.test.mjs"
+          "ci-fdash-records.test.ts"
         ]
       ],
       "inputs": [

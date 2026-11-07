@@ -36,11 +36,11 @@
       "run": [
         [
           "node",
-          "scripts/check-protocol-docs.mjs"
+          "scripts/check-protocol-docs.ts"
         ]
       ],
       "inputs": [
-        "scripts/check-protocol-docs.mjs",
+        "scripts/check-protocol-docs.ts",
         "docs/protocol.md",
         "server/internal/httpapi/**",
         "web/src/net/**"
@@ -50,12 +50,12 @@
       "run": [
         [
           "node",
-          "scripts/oxlint.mjs"
+          "scripts/oxlint.ts"
         ]
       ],
       "inputs": [
-        "scripts/oxlint.mjs",
-        "scripts/oxlint-hq.mjs",
+        "scripts/oxlint.ts",
+        "scripts/oxlint-hq.ts",
         ".oxlintrc.json",
         "web/**",
         "plugins/**",
@@ -72,11 +72,11 @@
       "run": [
         [
           "node",
-          "scripts/check-plugin-types.mjs"
+          "scripts/check-plugin-types.ts"
         ]
       ],
       "inputs": [
-        "scripts/check-plugin-types.mjs",
+        "scripts/check-plugin-types.ts",
         "plugins/**",
         "e2e/fixtures/**",
         "web/package.json",

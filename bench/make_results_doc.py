@@ -70,7 +70,7 @@ Baseline = every moving player's position sent every tick to every observer ([de
 
 ## Browser under a crowd (real Chrome)
 
-One real Chrome page (headless, GPU through {gpu}, viewport 1440x900) walking around the map for {bp['seconds']} s per mode, while {bp['bots']} WebSocket bots walk around too. *Entities / visible* = avatars inside the server's area of interest / drawn on screen. Script: [e2e/scenarios/perf.mjs](../e2e/scenarios/perf.mjs); raw JSON in [bench/results/browser-perf/](../bench/results/browser-perf/).
+One real Chrome page (headless, GPU through {gpu}, viewport 1440x900) walking around the map for {bp['seconds']} s per mode, while {bp['bots']} WebSocket bots walk around too. *Entities / visible* = avatars inside the server's area of interest / drawn on screen. Script: [e2e/scenarios/perf.ts](../e2e/scenarios/perf.ts); raw JSON in [bench/results/browser-perf/](../bench/results/browser-perf/).
 
 | Mode | FPS | JS frame ms | Main thread busy % | Script % | JS heap MB | Entities / visible |
 |---|---|---|---|---|---|---|

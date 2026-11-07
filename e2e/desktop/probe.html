@@ -6,7 +6,7 @@
 <h1>Desktop probe</h1>
 <pre id="out">probing...</pre>
 <script>
-// What the office needs from the webview, read inside the desktop shell itself (e2e/desktop/probe.mjs).
+// What the office needs from the webview, read inside the desktop shell itself (e2e/desktop/probe.ts).
 // The WebRTC check is a real call within the page: a generated tone and a canvas go from one peer
 // connection to another, and the receiver must count RTP bytes. No microphone or camera needed.
 const timeout = (p, ms, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + " timed out")), ms))]);

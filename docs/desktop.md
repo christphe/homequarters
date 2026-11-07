@@ -53,4 +53,4 @@ Options: `--office=<url>` opens that office without saving it, `--data-dir=<path
 
 Release builds sign their update files with the updater key: the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. A key lost is the end of automatic updates for every app installed: keep a copy outside GitHub.
 
-`node e2e/desktop/probe.mjs <app executable>` runs the app on a probe page. The page reports which web APIs the web view has and makes a WebRTC call inside itself. CI runs the probe on Windows, macOS and Ubuntu.
+`node e2e/desktop/probe.ts <app executable>` runs the app on a probe page. The page reports which web APIs the web view has and makes a WebRTC call inside itself. CI runs the probe on Windows, macOS and Ubuntu.

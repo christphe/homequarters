@@ -1,10 +1,10 @@
-// Oxlint for the web client and the plugins, run by scripts/oxlint.mjs (a gauntlet gate and a CI step).
+// Oxlint for the web client and the plugins, run by scripts/oxlint.ts (a gauntlet gate and a CI step).
 // The type-aware rules (oxlint-tsgolint) read each file's nearest tsconfig.json with TypeScript 7.
 {
   "$schema": "./web/node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "react", "promise"],
-  // the project's own rules: scripts/oxlint-hq.mjs
-  "jsPlugins": ["./scripts/oxlint-hq.mjs"],
+  // the project's own rules: scripts/oxlint-hq.ts
+  "jsPlugins": ["./scripts/oxlint-hq.ts"],
   "categories": { "correctness": "error" },
   "rules": {
     // promises: a forgotten await, or an async function where a callback's result is dropped

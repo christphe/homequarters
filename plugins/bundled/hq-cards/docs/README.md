@@ -72,4 +72,4 @@ Every browser at a table gets the whole table and hides what its member should n
 
 ## Card pictures
 
-Draw your cards in code (a tool like [`hq-card-lastcard/tools/sprite.mjs`](../../hq-card-lastcard/tools/sprite.mjs) writes the PNG) and keep them original: no artwork, layout or name of a commercial card game (Home Quarters' AGENTS.md, invariant 10). The table draws every card in a 20 x 28 px box (times the view's scale): a `cell` of another shape is stretched to it, so draw at 20 x 28.
+Draw your cards in code (a tool like [`hq-card-lastcard/tools/sprite.ts`](../../hq-card-lastcard/tools/sprite.ts) writes the PNG) and keep them original: no artwork, layout or name of a commercial card game (Home Quarters' AGENTS.md, invariant 10). The table draws every card in a 20 x 28 px box (times the view's scale): a `cell` of another shape is stretched to it, so draw at 20 x 28.

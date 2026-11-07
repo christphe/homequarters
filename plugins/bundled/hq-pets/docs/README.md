@@ -121,7 +121,7 @@ The member creates the token in your plugin's modal (`hq.ui.appToken()`, which n
 curl -X POST -H "Authorization: Bearer $TOKEN" -d "Sparky" https://office.example.com/plugins/sparkmice/api/pet
 ~~~
 
-The suite's test plugin [`critters`](../../../../e2e/fixtures/plugins/installed/critters) does exactly this, and `e2e/scenarios/plugins.mjs` checks it end to end.
+The suite's test plugin [`critters`](../../../../e2e/fixtures/plugins/installed/critters) does exactly this, and `e2e/scenarios/plugins.ts` checks it end to end.
 
 Installed plugins must not start with `hq-` (reserved for bundled ones), and their art is theirs: nothing taken from games or other people's work goes into this repository.
 
@@ -133,8 +133,8 @@ Installed plugins must not start with `hq-` (reserved for bundled ones), and the
 | `main.ts` | Server: members' pets (`hq.kv` `p:<member>`), guest pets (`g:<member>`), modes, the setting, the hooks, and one broadcast per update cut to 3.5 KB of UTF-8 (a message carries 4 KB). |
 | `public/messages.ts` | The messages between server and pages, typed once for both, and the kind list. |
 | `public/client.ts` | The page side: sprites, labels, the modal, the top bar button, the moods (run by the owner's page). |
-| `public/pets.png`, `public/pets-tint.png` | The 9 kinds in their colours and in light greys for `hq.setTint`, 16 x 20 cells; written by `e2e/export-art.mjs` from `web/src/game/art/pluginPets.ts`. |
+| `public/pets.png`, `public/pets-tint.png` | The 9 kinds in their colours and in light greys for `hq.setTint`, 16 x 20 cells; written by `e2e/export-art.ts` from `web/src/game/art/pluginPets.ts`. |
 
 - **Who decides what.** The server keeps pets, names, colours, modes and the limit, and checks every message (rate-limited: 5 changes a second per member). The owner's page runs its pets' moods and picks their wander spots; the server relays them and every page walks the pets there (`hq.walkTo`, `hq.follow` with a sprite to go along). The server also keeps each wandering pet's last spot and gives them to a page that starts later, which puts the pets there at once: every page shows them in the same place, not behind their owner until the next step. Following, resting and pottering are computed on each page from the sprite and the clock (`hq.follow` with `roam`), so pages agree without messages.
 - **Sizes.** A member has at most 8 pets and 4 guests; names are 24 characters; a broadcast never goes over 3.5 KB, whatever the script of the names; a page draws at most 240 of the plugin's sprites, its own member's first.
-- **Tests.** `server/internal/plugin/sample_test.go` (limit, names, sizes in any script, hooks, malformed and spammed messages), `server/internal/plugin/hooks_test.go` (hooks in general), `e2e/scenarios/plugins.mjs` (everything through the real controls, the hooks from outside the browser), `web/test/petFollow.test.ts` (following, resting, pottering).
+- **Tests.** `server/internal/plugin/sample_test.go` (limit, names, sizes in any script, hooks, malformed and spammed messages), `server/internal/plugin/hooks_test.go` (hooks in general), `e2e/scenarios/plugins.ts` (everything through the real controls, the hooks from outside the browser), `web/test/petFollow.test.ts` (following, resting, pottering).

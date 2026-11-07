@@ -4,11 +4,11 @@
       "run": [
         [
           "node",
-          "build.mjs"
+          "build.ts"
         ],
         [
           "node",
-          "check.mjs"
+          "check.ts"
         ]
       ],
       "inputs": [

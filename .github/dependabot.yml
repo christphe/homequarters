@@ -47,7 +47,7 @@ updates:
       docker:
         patterns: ["*"]
 
-  # The LiveKit server version is pinned in four places (both Compose files, e2e/livekit.mjs and
+  # The LiveKit server version is pinned in four places (both Compose files, e2e/livekit.ts and
   # .github/workflows/ci.yml) that must move together, so it is updated by hand.
   - package-ecosystem: docker-compose
     directory: /deploy

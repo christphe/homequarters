@@ -1,4 +1,4 @@
-// Test plugin of the browser suite (e2e/scenarios/plugins.mjs). An app outside the browser posts a
+// Test plugin of the browser suite (e2e/scenarios/plugins.ts). An app outside the browser posts a
 // member's state with their app token; the plugin shows it on that member's page.
 // sent the moment a member connects, before their page has started this plugin: it must still arrive
 export function onJoin(p: HQ.Player): void {

@@ -3,7 +3,7 @@
 //   node scripts/gauntlet.ts social movement  # static gates + only these scenarios
 //   GAUNTLET_SKIP_E2E=1 node scripts/gauntlet.ts
 //   FDASH_JOBS=1 node scripts/gauntlet.ts     # static gates one at a time (default: half the logical CPUs)
-//   E2E_PARALLELISM=2 node scripts/gauntlet.ts   # the browser suite as 2 shards at once (see e2e/parallel.mjs)
+//   E2E_PARALLELISM=2 node scripts/gauntlet.ts   # the browser suite as 2 shards at once (see e2e/parallel.ts)
 //   FDASH_FORCE=1 node scripts/gauntlet.ts    # rerun everything, even what already passed on the same inputs
 // Gates and scenarios that already passed on the same inputs are reported CACHED and not run again
 // (tools/fdash/README.md). Prints one line per gate and exits non-zero if any failed. The same lines go to

@@ -47,7 +47,7 @@ jobs:
       - name: Records of the gates that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci-fdash-records.mjs fdash-static
+        run: node scripts/ci-fdash-records.ts fdash-static
       - name: Static gates (fdash run static)
         id: gates
         run: |
@@ -86,7 +86,7 @@ jobs:
         run: go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@$(cd ../../server && go list -m -f '{{.Version}}' honnef.co/go/tools) ./... && go build -o /dev/null .
 
   # Real-browser end-to-end suite: Chrome with fake devices against a real LiveKit server, split into
-  # shards balanced by measured scenario durations (e2e/shards.mjs); each job runs one on its own runner,
+  # shards balanced by measured scenario durations (e2e/shards.ts); each job runs one on its own runner,
   # through fdash so that scenarios which passed on main with the same inputs are not run again.
   e2e:
     name: e2e (shard ${{ matrix.shard }}/4)
@@ -124,7 +124,7 @@ jobs:
       - name: Records of the scenarios that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci-fdash-records.mjs fdash-e2e-${{ matrix.shard }}
+        run: node scripts/ci-fdash-records.ts fdash-e2e-${{ matrix.shard }}
       - name: Suite (fdash run e2e:browser with this shard's scenarios)
         id: suite
         env:
@@ -134,7 +134,7 @@ jobs:
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
           export CHROME_VERSION="$("$CHROME" --version)"
-          scenarios=$(node -e "import('./e2e/shards.mjs').then((m) => console.log(m.shard(m.ALL, ${{ matrix.shard }}, 4).join(' ')))")
+          scenarios=$(node -e "import('./e2e/shards.ts').then((m) => console.log(m.shard(m.ALL, ${{ matrix.shard }}, 4).join(' ')))")
           echo "shard ${{ matrix.shard }}/4: $scenarios"
           if [ -z "$scenarios" ]; then exit 0; fi # no item would mean every scenario
           node tools/fdash/cli.ts run e2e:browser -- $scenarios

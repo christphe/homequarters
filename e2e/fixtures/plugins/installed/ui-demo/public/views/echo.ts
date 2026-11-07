@@ -1,4 +1,4 @@
-// The ui-demo plugin's view (e2e/scenarios/plugins.mjs): it says hello with whether it could reach the
+// The ui-demo plugin's view (e2e/scenarios/plugins.ts): it says hello with whether it could reach the
 // page (it must not), echoes what the client code posts, counts a flood, and floods on request.
 let reachedPage = false;
 try {
