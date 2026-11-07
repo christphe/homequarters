@@ -40,6 +40,16 @@ func (s *Server) setupPlugins() {
 	s.hosts = map[int64]*plugin.Host{}
 	s.kvQ = make(chan kvWrite, 1024)
 	s.plugLim = newLimiter(5, 10)
+	if len(s.cfg.PluginDirs) > 0 { // the testbed's explicit folders
+		s.plugins = plugin.LoadDirs(s.cfg.PluginDirs)
+		for _, i := range s.plugins {
+			if i.Err != "" {
+				s.log.Warn("plugin is broken", "plugin", i.Name, "source", i.Source, "err", i.Err)
+			}
+		}
+		s.log.Info("plugins loaded from folders", "count", len(s.plugins))
+		return
+	}
 	if s.cfg.PluginsDir == "" {
 		return
 	}
