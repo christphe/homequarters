@@ -16,8 +16,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
   try {
     const a = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
     const b = await joinAs(browser, "Explorer" + Date.now() % 10000);
-    await walkTo(a, 4 * 16 + 8, 6 * 16 + 8);
-    await walkTo(b, 6 * 16 + 8, 6 * 16 + 8);
+    await Promise.all([walkTo(a, 4 * 16 + 8, 6 * 16 + 8), walkTo(b, 6 * 16 + 8, 6 * 16 + 8)]); // each page walks its own avatar
     await waitFor(() => read(a, () => window.__hq.state.nearby?.t === "note"), { what: "nearby note hint" });
     await a.page.keyboard.press("1");
     await waitFor(() => read(b, (id) => window.__hq.view.emotes.has(id), a.id), { what: "remote wave bubble" });
@@ -80,8 +79,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(async () => near(await pos(b), 36 * 16 + 8, 32 * 16 + 8), { what: "portal arrival" });
     check("walking onto the portal teleports once and stops movement", await read(b, () => window.__hq.view.dx === 0 && window.__hq.view.dy === 0));
 
-    await walkTo(a, 46 * 16 + 8, 5 * 16 + 8);
-    await walkTo(b, 42 * 16 + 8, 4 * 16 + 8);
+    await Promise.all([walkTo(a, 46 * 16 + 8, 5 * 16 + 8), walkTo(b, 42 * 16 + 8, 4 * 16 + 8)]);
     await waitFor(() => click(a, "Lock room"), { what: "lock control" });
     await waitFor(() => read(b, () => window.__hq.state.locked.includes(3)), { what: "room lock reaches other player" });
     await read(b, () => window.__hq.view.setDirection(1, 0));
@@ -125,8 +123,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("saved note edits are delivered through the real interaction", true);
     await close(a);
 
-    await walkTo(a, 49 * 16 + 8, 16 * 16 + 8);
-    await walkTo(b, 50 * 16 + 8, 16 * 16 + 8);
+    await Promise.all([walkTo(a, 49 * 16 + 8, 16 * 16 + 8), walkTo(b, 50 * 16 + 8, 16 * 16 + 8)]);
     for (const u of [a, b]) {
       await waitFor(() => read(u, () => window.__hq.state.nearby?.t === "whiteboard"), { what: "nearby whiteboard" });
       await u.page.keyboard.press("x");

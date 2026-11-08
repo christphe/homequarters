@@ -57,8 +57,7 @@ export async function run(): Promise<boolean> {
     const b = await joinAs(browser, "Watcher" + (Date.now() % 10000));
 
     // social area, open floor: x 6..18, y 26..30 is clear
-    await walkTo(a, 8 * 16 + 8, 28 * 16 + 8);
-    await walkTo(b, 8 * 16 + 8, 31 * 16 + 8);
+    await Promise.all([walkTo(a, 8 * 16 + 8, 28 * 16 + 8), walkTo(b, 8 * 16 + 8, 31 * 16 + 8)]); // each page walks its own avatar
 
     // ---- running ----
     await walkTo(a, 3 * 16 + 8, 28 * 16 + 8);

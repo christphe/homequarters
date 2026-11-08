@@ -19,8 +19,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const sfx = Date.now() % 10000;
     const a = await joinAs(browser, "Waver" + sfx);
     const b = await joinAs(browser, "Desk" + sfx);
-    await walkTo(a, 8 * 16 + 8, 28 * 16 + 8); // social area
-    await walkTo(b, 9 * 16 + 8, 6 * 16 + 8); // reception, behind a wall and out of a's area of interest
+    // each page walks its own avatar: a to the social area, b to the reception (behind a wall, out of a's area of interest)
+    await Promise.all([walkTo(a, 8 * 16 + 8, 28 * 16 + 8), walkTo(b, 9 * 16 + 8, 6 * 16 + 8)]);
 
     // ---- the mouse wheel zooms the map (not the UI) and the server widens the area of interest to match ----
     const sees = (u: User, id: number) => read(u, (id) => window.__hq.view.debugEntities().some((e) => e.id === id), id);
