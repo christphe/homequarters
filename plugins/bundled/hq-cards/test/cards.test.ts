@@ -495,7 +495,7 @@ import { CARD_W, CARD_H, PALETTE, paintCard, paintBack } from "../public/art.ts"
 import { FELT_W, FELT_H, VIEW_W, VIEW_H, FX, FY, seatSpots, handSpots, cardAt, hit } from "../public/layout.ts";
 
 function picture(paint: (set: (x: number, y: number, hex: string) => void) => void): { key: string; outside: number; colours: Set<string> } {
-  const px: string[] = Array(CARD_W * CARD_H).fill(".");
+  const px: string[] = Array.from({ length: CARD_W * CARD_H }, () => ".");
   let outside = 0;
   const colours = new Set<string>();
   paint((x, y, hex) => {
