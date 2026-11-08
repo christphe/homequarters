@@ -49,6 +49,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("Save stores the painted walls on the server", [20, 21, 22, 23, 24].every((y) => saved.walls[y][35] === "#"));
     const errs = admin.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     check("no unexpected console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+  } catch (e) {
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
     // leave the shared office as we found it so later scenarios do not depend on this one

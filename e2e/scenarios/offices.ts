@@ -1,22 +1,23 @@
 // Private offices and desks through their real controls, one browser check per feature: an administrator assigns an
 // office in the editor and everybody sees it labelled with its owner; a visitor knocks with the Knock button, the
 // owner is asked and lets them in, and the visitor walks in; Ctrl+D runs the owner back into their office from the
-// hall; a member with no place (the administrator) takes a free desk with Take this desk and its confirmation, and
-// everybody sees it taken. The walks run at once where the story allows: they are most of the scenario's time.
+// hall; a member with no place (the administrator) takes a free desk with Take this desk and its confirmation, sees
+// Release desk next to Lock desk without moving, and frees it again with Release desk; an administrator at the closed
+// door forces it with Enter anyway and the owner inside is told. The walks run at once where the story allows: they
+// are most of the scenario's time.
 // Moved down (no longer checked here):
 // - the map stores the owner's id, not their name; a rename follows on the office for everybody: Go
 //   TestOwnerNamesAreJoinedNotStored (httpapi/owners_test.go), TestPlacesAreNamedAfterTheirOwnersCurrentName
 //   (world/desk_test.go), the label in web/test/places.test.ts;
-// - which door and desk buttons show (Knock at a closed door, Enter anyway for an administrator, Lock desk and
-//   Release desk in my desk room, Take this desk next to a free desk): web/test/doors.test.ts, web/test/home.test.ts;
-//   Release desk and Enter anyway asking the session: web/test/SocialControlsPlaces.test.tsx;
+// - which door and desk buttons show where (Knock, Enter anyway, Lock desk, Release desk, Take this desk):
+//   web/test/doors.test.ts, web/test/home.test.ts; Release desk and Enter anyway asking the session:
+//   web/test/SocialControlsPlaces.test.tsx;
 // - owner and admitted visitor share the office's own call: Go TestAssignedOfficeOwnerKnockAndAdmit
 //   (world/office_test.go);
-// - an administrator forces the door, walks in, and the owner is told: TestAssignedOfficeOwnerKnockAndAdmit,
+// - the forcing administrator walks in, the forced door is in the activity log: TestAssignedOfficeOwnerKnockAndAdmit,
 //   TestAForcedDoorIsInTheActivityLog (httpapi/doors_test.go), the toast's text in web/test/replies.test.ts;
-// - the new owner of a desk stands in its room and can lock it; releasing frees the desk and its room for everybody:
-//   Go TestClaimAFreeDeskNextToIt, TestReleaseMyDesk (world/desk_test.go), TestClaimDeskThroughTheAPI
-//   (httpapi/desk_test.go).
+// - releasing removes the desk's room and its lock: Go TestReleaseMyDesk (world/desk_test.go),
+//   TestClaimDeskThroughTheAPI (httpapi/desk_test.go).
 // The other rules (who may walk in, lock or take a desk) are Go tests as well: world/office_test.go,
 // world/desk_test.go, gamemap/offices_test.go; the editor's assign tool is web/test/mapModel.test.ts.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API, type RunContext, type User } from "../lib.ts";
@@ -46,7 +47,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
 
     // the owner heads for Office 2 (still free) and the visitor for its door, while the administrator takes a desk
     // and assigns the office: the walks are the scenario's time, so they run at once
-    const placed = Promise.all([walkTo(owner, ...at(13, 42)), walkTo(guest, ...at(15, 37))]);
+    const placed = Promise.all([walkTo(owner, ...at(13, 42)), walkTo(guest, ...at(15, 37))]).then(() => null, (e: Error) => e); // rethrown below
 
     // ---- a member without a place (the administrator, near the entrance) takes a free desk with the button next to it
     const desk = await boss.page.evaluate(() => window.__hq.view.map!.props.find((p) => p.t === "desk" && !p.assign && p.y < 14)!);
@@ -58,6 +59,15 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await button(boss, /^Take it$/);
     await waitFor(async () => (await assigned(guest)) === boss.id, { what: "everybody sees the desk taken" });
     check("Take this desk and its confirmation give the desk to the member, for everybody", true);
+
+    // ---- standing in their new desk room, they free it with Release desk, next to Lock desk
+    await waitFor(() => hasButton(boss, /^Release desk$/), { what: "Release desk button" });
+    check("without moving, the new owner sees Release desk next to Lock desk", await hasButton(boss, /^Lock desk$/));
+    await button(boss, /^Release desk$/);
+    await waitFor(() => boss.page.$("[role=dialog]"), { what: "release confirmation" });
+    await button(boss, /^Release it$/);
+    await waitFor(async () => !(await assigned(guest)), { what: "everybody sees the desk free again" });
+    check("Release desk and its confirmation free the desk, for everybody", true);
 
     // ---- the administrator assigns Office 2 to Owner in the editor (same tool as desks)
     await walkTo(boss, ...at(12, 37));
@@ -78,7 +88,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const oi = await areaIndex(guest, "office-2");
 
     // ---- the owner sits in their office; a visitor knocks from the hall with the Knock button and is let in
-    await placed;
+    const walkErr = await placed;
+    if (walkErr) throw walkErr;
     await waitFor(async () => (await here(owner)) === oi, { what: "owner in their office" });
     await waitFor(() => hasButton(guest, /^Knock · Office 2/), { what: "knock button" });
     await button(guest, /^Knock · Office 2/);
@@ -93,6 +104,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
 
     // ---- the visitor walks in while Ctrl+D brings the owner back to their office from the hall, with the real keys
     const walkedIn = walkTo(guest, ...at(15, 42)).then(async () => (await here(guest)) === oi, () => false);
+    const bossAtDoor = walkTo(boss, ...at(14, 37)).then(() => null, (e: Error) => e); // for Enter anyway, below
     await walkTo(owner, ...at(13, 37));
     await owner.page.keyboard.down("Control");
     await owner.page.keyboard.press("d");
@@ -100,6 +112,14 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(async () => (await here(owner)) === oi && !(await owner.page.evaluate(() => window.__hq.view.guided)), { timeout: 20000, what: "owner back in their office" });
     check("Ctrl+D runs the owner back into their own office", true);
     check("the admitted visitor walks in", await walkedIn);
+
+    // ---- an administrator at the closed door forces it on purpose with Enter anyway; the owner inside is told
+    const bossErr = await bossAtDoor;
+    if (bossErr) throw bossErr;
+    await waitFor(() => hasButton(boss, /^Enter anyway \(admin\)$/), { what: "Enter anyway button" });
+    await button(boss, /^Enter anyway \(admin\)$/);
+    const told = await waitFor(() => owner.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => x.includes("(admin) entered"))), { what: "owner told" }).catch(() => "");
+    check("Enter anyway forces the door and the owner inside is told", told.includes("Office 2") && await boss.page.evaluate((oi) => !window.__hq.view.deny.has(oi), oi), told);
     const errs = [boss, owner, guest].flatMap((u) => u.logs);
     check("no console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
   } catch (e) {
@@ -107,7 +127,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
   } finally {
     // the original map, with the office and the desk free again
     const put = await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + cookie }, body: JSON.stringify(full) });
-    if (!put.ok) console.log("could not restore the map", put.status);
+    check("the original map is put back", put.ok, String(put.status));
     await browser.close();
   }
   return summary();

@@ -4,8 +4,9 @@
 // session to force it. Which buttons show where is web/test/doors.test.ts; the server's side is
 // TestReleaseMyDesk (world/desk_test.go), the release through the API in TestClaimDeskThroughTheAPI
 // (httpapi/desk_test.go), the forced door in TestAssignedOfficeOwnerKnockAndAdmit (world/office_test.go) and
-// TestAForcedDoorIsInTheActivityLog (httpapi/doors_test.go). The browser keeps the same panel's real controls
-// against the server: Knock and Let in, and Take this desk, in e2e/scenarios/offices.ts.
+// TestAForcedDoorIsInTheActivityLog (httpapi/doors_test.go). The browser keeps both through their real controls
+// against the server (Release desk frees the desk for everybody; Enter anyway, and the owner told) in
+// e2e/scenarios/offices.ts.
 import { person, renderUI, roster } from "./support";
 import { mockSession } from "./support/session";
 import { screen, within } from "@testing-library/react";

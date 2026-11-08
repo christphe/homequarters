@@ -137,6 +137,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const s = await seen(topRect(turned));
     check("(without depth, the person on the chair of a turned desk is drawn over it)", s.off !== s.offEmpty);
     check("a person on the chair of a turned desk is hidden by the desk's top", s.on === s.onEmpty);
+  } catch (e) {
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
     // the Loft (same size as the original), then the original map itself

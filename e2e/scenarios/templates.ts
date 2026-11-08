@@ -1,13 +1,14 @@
 // Office layouts through their real controls: an administrator switches the office to the Manor from Admin > Office
-// (Use the Manor layout, then the confirmation's Switch to Manor); a member online gets the new map without a reload
-// and walks in the whole of it, past the old map's edge. The shared office is put back as it was at the end.
+// (Use the Manor layout, then the confirmation's Switch to Manor); a member online is told, gets the new map without a
+// reload and walks in the whole of it, past the old map's edge. The shared office is put back as it was at the end.
 // Moved down (no longer checked here):
 // - the layouts listed with what they offer, the confirmation's text (the whole map replaced, the desks that carry
 //   over), the administrator's toast, a refused switch explained: web/test/AdminOffice.test.tsx;
 // - a member cannot switch (403), the desk carried over by number, the switch in the activity log:
 //   Go TestAdminAppliesATemplateAndDesksCarryOver (httpapi/templates_test.go), the log's row in AdminOffice.test.tsx;
-// - everybody online told the office moved, then reconnected at the new entrance: Go
-//   TestReplaceMapChangesSizeAndRespawnsEverybody (world/template_test.go), the toast's text in web/test/replies.test.ts.
+// - everybody online told before the reconnection, which lands at the new entrance: Go
+//   TestReplaceMapChangesSizeAndRespawnsEverybody (world/template_test.go), the toast's text in web/test/replies.test.ts
+//   (here, the member only checks that a toast naming the Manor shows).
 import os from "node:os";
 import path from "node:path";
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API, type RunContext, type User } from "../lib.ts";
@@ -34,13 +35,16 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
     await waitFor(() => click(admin, ".modal [role=tab]", "Office"), { what: "Office tab" });
     await waitFor(() => click(admin, ".modal .layout button", "Use the Manor layout"), { what: "the Manor in the layout list" });
-    await waitFor(() => click(admin, ".modal button", "Switch to Manor"), { what: "confirmation" });
+    await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((b) => b.textContent.trim() === "Switch to Manor")), { what: "confirmation" });
     const before = await sizeOf(mia);
+    await click(admin, ".modal button", "Switch to Manor");
 
-    // ---- Mia is online: she reconnects into the new map
+    // ---- Mia is online: she is told, and reconnects into the new map
     await waitFor(async () => (await sizeOf(mia)).w === 85, { timeout: 20000, what: "Mia gets the Manor" });
     const after = await sizeOf(mia);
     check("an online member gets the new map without a reload", before.w === 60 && after.w === 85 && after.h === 51, `${before.w} -> ${after.w}x${after.h}`);
+    const told = await waitFor(() => mia.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => x.includes("moved to"))), { timeout: 3000, what: "Mia is told" }).catch(() => "");
+    check("she is told the office moved to the new layout", told.includes("Manor"), told);
     await waitFor(() => mia.page.evaluate(() => window.__hq.state.conn === "open"), { timeout: 20000, what: "Mia connected" });
     // she can walk in the whole new map, to the right corridor, east of the old 60-tile edge
     const reached = await walkTo(mia, 71 * 16 + 8, 20 * 16 + 8).then(() => true).catch((e) => String(e));
@@ -49,6 +53,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await mia.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-template-manor.png") });
     const errs = [admin, mia].flatMap((u) => u.logs).filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     check("no unexpected console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
+  } catch (e) {
+    check("scenario completed", false, (e as Error).message);
   } finally {
     await browser.close();
     // put the shared office back: the Loft (same size as the original), then the original map itself
