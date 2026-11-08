@@ -23,7 +23,7 @@ export function SidePanel() {
   }, [tab, unread]);
   return (
     <aside className={"side" + (tab ? " open" : "")}>
-      <nav className="tabs" role="tablist">
+      <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === "people"} className={tab === "people" ? "on" : ""} onClick={() => setTab(tab === "people" ? "" : "people")} title={t("roster.title")}>
           <UsersIcon />
         </button>
@@ -36,7 +36,7 @@ export function SidePanel() {
             <PuzzleIcon />
           </button>
         )}
-      </nav>
+      </div>
       {tab === "people" && <People onDm={(peer) => { setScope({ sc: "d", peer }); setTab("chat"); }} />}
       {tab === "chat" && <Chat scope={scope} setScope={setScope} />}
       {tab === "plugins" && hasPlugins && <Plugins />}
@@ -154,7 +154,7 @@ function Chat({ scope, setScope }: { scope: Scope; setScope: (s: Scope) => void 
     end.current?.scrollIntoView({ block: "end" });
   }, [msgs.length, scope]);
   const name = (id: number) => roster.get(id)?.n ?? "?";
-  const send = (e: React.FormEvent) => {
+  const send = (e: React.SubmitEvent) => {
     e.preventDefault();
     const v = text.trim();
     if (!v) return;

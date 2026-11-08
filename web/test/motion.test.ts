@@ -3,7 +3,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  BOX_HH, BOX_HW, LocalMotion, MAX_ADVANCE, OFFSET_TAU, REMOTE_SNAP_PX, SNAP_PX,
+  BOX_HH, BOX_HW, DIAGONAL, LocalMotion, MAX_ADVANCE, OFFSET_TAU, REMOTE_SNAP_PX, SNAP_PX,
   canStand, canStandStatic, contact, moveBody, retarget, solidGrid, stepRemote, type Grid, type Remote,
 } from "../src/game/motion.ts";
 import type { MapData } from "../src/net/protocol.ts";
@@ -62,8 +62,8 @@ test("moveBody walks the exact distance, diagonals at 1/sqrt2 per axis", () => {
   close(p.x, mid(1) + 30, "x");
   const q = { x: mid(1), y: mid(0) + 2 };
   moveBody(ROOM, q, 1, 1, 20, -1);
-  close(q.x, mid(1) + 20 * 0.70710678, "diagonal x");
-  close(q.y, mid(0) + 2 + 20 * 0.70710678, "diagonal y");
+  close(q.x, mid(1) + 20 * DIAGONAL, "diagonal x");
+  close(q.y, mid(0) + 2 + 20 * DIAGONAL, "diagonal y");
 });
 
 test("moveBody stops flush against a wall however far it goes in one step (no tunnelling)", () => {
@@ -78,11 +78,11 @@ test("moveBody slides along a wall walking diagonally into it (corner sliding)",
   const p = { x: 6 * T - BOX_HW - 1, y: mid(0) };
   moveBody(ROOM, p, 1, 1, 20, -1);
   assert.equal(p.x, 6 * T - BOX_HW, "x stops at the wall");
-  close(p.y, mid(0) + 20 * 0.70710678, "y keeps going");
+  close(p.y, mid(0) + 20 * DIAGONAL, "y keeps going");
   // under the wall's foot (row 3 is open), walking up-right slides along the foot
   const q = { x: 6 * T - BOX_HW, y: 3 * T + BOX_HH };
   moveBody(ROOM, q, 1, -1, 10, -1);
-  close(q.x, 6 * T - BOX_HW + 10 * 0.70710678, "x goes on under the wall");
+  close(q.x, 6 * T - BOX_HW + 10 * DIAGONAL, "x goes on under the wall");
   assert.equal(q.y, 3 * T + BOX_HH, "y stays flush against its foot");
 });
 

@@ -206,7 +206,7 @@ export class MediaManager {
   }
 
   private bind(room: Room, gen: number) {
-    const on = (ev: RoomEvent, fn: (...a: never[]) => void) => room.on(ev, fn as never);
+    const on = (ev: RoomEvent, fn: (...a: never[]) => void) => room.on(ev, fn);
     const guard = (fn: () => void) => () => {
       if (gen === this.gen) fn();
     };
@@ -235,7 +235,7 @@ export class MediaManager {
     on(RoomEvent.Reconnected, guard(() => { this.setPlaybackState("live"); this.refresh(); }));
     // LiveKit reports a failed screen capture here too, before setShare's own catch: ignore it while a
     // share is starting, so a closed picker never flashes the camera/microphone message.
-    on(RoomEvent.MediaDevicesError, ((e: unknown) => { if (!this.startingShare) setState({ deviceError: describeMediaError(e) }); }) as never);
+    on(RoomEvent.MediaDevicesError, ((e: unknown) => { if (!this.startingShare) setState({ deviceError: describeMediaError(e) }); }));
     on(RoomEvent.Disconnected, ((reason?: DisconnectReason) => {
       if (gen !== this.gen || this.leaving) return;
       // a removal is the server ending this call (it logs its own oddities); anything else is worth a report
@@ -245,7 +245,7 @@ export class MediaManager {
       this.room = null;
       this.roomName = "";
       this.onNeedToken();
-    }) as never);
+    }));
   }
 
   /** Audio is always subscribed; camera video is limited and ranked (speakers first). */
@@ -315,7 +315,7 @@ export class MediaManager {
       if (v !== undefined && p.getVolume() !== v) p.setVolume(v);
       for (const pub of p.trackPublications.values()) {
         if (pub.kind === Track.Kind.Audio && pub.track && !this.audioEls.has(pub.trackSid)) {
-          const a = pub.track.attach() as HTMLAudioElement;
+          const a = pub.track.attach();
           this.audioHost.appendChild(a);
           this.audioEls.add(pub.trackSid);
         }

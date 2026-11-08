@@ -61,7 +61,7 @@ test("at my desk the place shown is still the plain area around it, and the desk
 test("deskRoom finds the desk room of an assigned desk", () => {
   const desk = { t: "desk", x: 2, y: 3 } as Prop;
   assert.equal(deskRoom(office, desk), 2);
-  assert.equal(deskRoom(office, { t: "desk", x: 0, y: 0 } as Prop), -1);
+  assert.equal(deskRoom(office, { t: "desk", x: 0, y: 0 }), -1);
 });
 
 test("walking into a desk room changes the area but not the signboard", () => {

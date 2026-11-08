@@ -109,7 +109,7 @@ class Session {
 
   private applyAutoStatus(inactive: boolean) {
     const st = getState();
-    const next = autoStatus({ status: st.status, autoAway: this.autoAway, inCall: !!(st.conv || st.spotlight), inactive });
+    const next = autoStatus({ status: st.status, autoAway: this.autoAway, inCall: !!(st.conv ?? st.spotlight), inactive });
     if (!next) return;
     this.autoAway = next === "away";
     this.setStatus(next);
@@ -200,7 +200,7 @@ class Session {
         view.setPeople(roster);
         const me = roster.get(getState().meId);
         if (me && this.handWanted !== null && !!me.h === this.handWanted) this.handWanted = null; // confirmed
-        if (me && me.s !== "offline" && me.s !== getState().status) setState({ status: me.s as Status });
+        if (me && me.s !== "offline" && me.s !== getState().status) setState({ status: me.s });
         break;
       }
       case "c": {

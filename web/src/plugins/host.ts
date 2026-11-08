@@ -122,7 +122,7 @@ export class PluginHost {
     if (this.port || !this.frame || ev.source !== this.frame.contentWindow || ev.data !== "hq-ready") return;
     const ch = new MessageChannel();
     this.port = ch.port1;
-    this.port.onmessage = (m) => this.onPort(m.data);
+    this.port.onmessage = (m) => this.onPort(m.data as unknown);
     this.frame.contentWindow!.postMessage("hq-port", "*", [ch.port2]);
     this.port.postMessage({ t: "load" });
     this.tellObjects(); // one init per object already placed
@@ -156,20 +156,22 @@ export class PluginHost {
     if (init.length > 0 || destroy.length > 0) this.port.postMessage({ t: "objs", init, destroy });
   }
 
-  private onPort(m: { t?: string; c?: unknown; m?: unknown; id?: unknown; image?: unknown; frameW?: unknown; frameH?: unknown; error?: unknown }) {
-    if (this.stoppedWith) return;
-    if (m?.t === "sheet") {
+  /** A message from the plugin's iframe: untrusted, any value at all. */
+  private onPort(data: unknown) {
+    if (this.stoppedWith || !data || typeof data !== "object") return;
+    const m = data as { t?: unknown; c?: unknown; m?: unknown; id?: unknown; image?: unknown; frameW?: unknown; frameH?: unknown; error?: unknown };
+    if (m.t === "sheet") {
       const ask = this.sheetAsks.get(m.id as number);
       if (!ask) return;
       this.sheetAsks.delete(m.id as number);
       const ok = isImage(m.image) && [m.frameW, m.frameH].every((n) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 256);
       if (ok) ask.resolve({ image: m.image as Blob | ImageBitmap, frameW: m.frameW as number, frameH: m.frameH as number });
       else ask.reject(new Error(typeof m.error === "string" ? m.error : "hq.provideSheet must return { image, frameW, frameH }"));
-    } else if (m?.t === "ack") {
+    } else if (m.t === "ack") {
       this.waitingAck = false;
-    } else if (m?.t === "error") {
+    } else if (m.t === "error") {
       console.warn(`[plugin ${this.name}]`, String(m.m).slice(0, 500));
-    } else if (m?.t === "cmds") {
+    } else if (m.t === "cmds") {
       const now = performance.now();
       this.batchTimes = this.batchTimes.filter((t) => now - t < 1000);
       this.batchTimes.push(now);

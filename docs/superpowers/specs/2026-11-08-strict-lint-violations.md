@@ -103,7 +103,7 @@ failed)`; run one alone with `node tools/fdash/cli.ts run lint --pkg <project>`.
 | oxlint | typescript/strict-boolean-expressions | 421 (100 with nullable strings, numbers, booleans allowed) | "" and 0 mean "absent" on purpose; the 100 left are feature detection the DOM types call always present (`el.setSinkId`, `navigator.mediaDevices`), `any` and mixed unions |
 | oxlint | typescript/no-unnecessary-condition | 219 | same cause: checks at run time of values the types declare present (feature detection, `window.__hq` before load, members set after construction); worth it once those types are honest |
 | oxlint | typescript/no-unsafe-type-assertion | 464 | `as` narrows on purpose (DOM queries, e2e page globals, `e as Error`) |
-| oxlint | jsx-a11y plugin | 28 | role and tag preferences (`role="status"` on a `<p>`), `tabIndex` on scrollable regions (required by axe), the modal scrim's click, the join screen's `autoFocus`: the `a11y` axe scenario is the gate (as in decision 0033) |
+| oxlint | jsx-a11y/prefer-tag-over-role | 17 | taste: the tags it suggests do not fit (`<img>` for a canvas or an emoji, `<output>` outside a form, `<dialog>` for Modal) or mean the same. The plugin's other rules are on (27 findings in all, re-evaluated: decision 0040) |
 | oxlint | react/react-in-jsx-scope | 779 | the automatic JSX runtime |
 | oxlint | eslint/no-underscore-dangle | 557 | `window.__hq` |
 | oxlint | eslint/no-await-in-loop | 222 | sequential browser steps |

@@ -65,7 +65,7 @@ function ProfileForm() {
   const signup = useStore((s) => s.auth.signup);
   const invite = new URLSearchParams(location.search).get("invite") ?? "";
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!name.trim() || busy) return;
     setBusy(true);
@@ -104,6 +104,7 @@ function ProfileForm() {
         <p className="muted">{signup ? t("signin.as", { email: signup.email }) : t("join.subtitle")}</p>
         <label className="field">
           <span>{t("join.name")}</span>
+          {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the name is what the join screen is for, and the only text field on it */}
           <input autoFocus maxLength={24} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <AvatarEditor value={av} onChange={saveAvatar} />

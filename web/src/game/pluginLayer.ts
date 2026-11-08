@@ -1,4 +1,4 @@
-import { Container, Rectangle, Sprite, Texture } from "pixi.js";
+import { type Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { Anim, Cmd } from "../plugins/commands";
 import { LIMITS, framesFit } from "../plugins/commands";
 import { followOwner, newPet, type PetState } from "./petFollow";
@@ -481,7 +481,7 @@ export class PluginLayer implements Layer {
         e.spr.texture = tex;
         e.spr.position.set(px, py);
         e.placed = true;
-        e.spr.zIndex = z === z ? z : e.y;
+        e.spr.zIndex = Number.isNaN(z) ? e.y : z;
       }
     }
     return changed;

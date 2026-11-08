@@ -82,7 +82,7 @@ function record(cue: Cue, result: "played" | "blocked" | "failed", el: SinkAudio
 function element(cue: Cue): SinkAudio {
   let el = elements.get(cue);
   if (!el) {
-    el = new Audio(URL.createObjectURL(new Blob([wavFile(cueSamples(TUNES[cue]))], { type: "audio/wav" }))) as SinkAudio;
+    el = new Audio(URL.createObjectURL(new Blob([wavFile(cueSamples(TUNES[cue]))], { type: "audio/wav" })));
     el.preload = "auto";
     elements.set(cue, el);
   }

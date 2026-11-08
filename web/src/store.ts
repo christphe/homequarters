@@ -122,7 +122,7 @@ try { migrateStorage(localStorage); } catch { /* no storage at all */ }
 const load = <T,>(k: string, d: T): T => {
   try {
     const v = localStorage.getItem(k);
-    return v ? { ...d, ...JSON.parse(v) } : d;
+    return v ? { ...d, ...(JSON.parse(v) as Partial<T>) } : d;
   } catch {
     return d;
   }

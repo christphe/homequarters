@@ -11,9 +11,9 @@ const walkable = (tx: number, ty: number) => tx >= 0 && ty >= 0 && tx < W && ty 
 test("goes around a wall instead of through it", () => {
   const p = findPath(1 * T + 8, 1 * T + 8, 8 * T + 8, 1 * T + 8, walkable);
   assert.ok(p && p.length > 2, "a path");
-  for (const q of p!) assert.ok(walkable(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
-  assert.ok(p!.some((q) => Math.floor(q.y / T) === 5), "passes through the gap at the bottom");
-  const last = p![p!.length - 1];
+  for (const q of p) assert.ok(walkable(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
+  assert.ok(p.some((q) => Math.floor(q.y / T) === 5), "passes through the gap at the bottom");
+  const last = p[p.length - 1];
   assert.deepEqual([last.x, last.y], [8 * T + 8, 1 * T + 8], "ends at the target");
 });
 
@@ -37,9 +37,9 @@ test("clearLine says whether a straight walk crosses a wall", () => {
 test("asked to, it goes as close as it can to a target it cannot reach (off the map, walled in)", () => {
   const off = findPath(2 * T + 8, 2 * T + 8, -100, 2 * T + 8, walkable, 4096, true);
   assert.ok(off && off.length >= 1, "a path toward it");
-  const end = off![off!.length - 1];
+  const end = off[off.length - 1];
   assert.deepEqual([Math.floor(end.x / T), Math.floor(end.y / T)], [0, 2], "the nearest free tile, at the map's edge");
-  for (const q of off!) assert.ok(walkable(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
+  for (const q of off) assert.ok(walkable(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
   const closed = (tx: number, ty: number) => walkable(tx, ty) && !(tx >= 7 && ty <= 2) || (tx === 8 && ty === 1);
   const near = findPath(1 * T + 8, 1 * T + 8, 8 * T + 8, 1 * T + 8, closed, 4096, true);
   const last = near![near!.length - 1];
@@ -51,7 +51,7 @@ test("asked to, a search that runs out of tiles still heads toward the target", 
   const big = (tx: number, ty: number) => Math.abs(tx) < 1000 && Math.abs(ty) < 1000 && !(tx === 5 && ty !== 990);
   const p = findPath(0, 0, 900 * T, 900 * T, big, 16, true);
   assert.ok(p && p.length >= 1, "a partial walk");
-  const end = p![p!.length - 1];
+  const end = p[p.length - 1];
   assert.ok(Math.hypot(end.x - 900 * T, end.y - 900 * T) < Math.hypot(900 * T, 900 * T), `closer than the start: ${JSON.stringify(end)}`);
-  for (const q of p!) assert.ok(big(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
+  for (const q of p) assert.ok(big(Math.floor(q.x / T), Math.floor(q.y / T)), `waypoint ${q.x},${q.y} on a free tile`);
 });

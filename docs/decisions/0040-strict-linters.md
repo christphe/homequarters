@@ -53,8 +53,14 @@ in the `.json` beside it.
   `import/no-cycle`, and from `pedantic` only `eqeqeq` (with `== null`) and `no-self-compare`. Twenty-five rules
   of the two categories are off with their reason in `.oxlintrc.json`. Not added: `strict-boolean-expressions`
   and `no-unnecessary-condition` (their findings, once nullable strings and numbers are allowed, are feature
-  detection that the DOM types call always present), `no-unsafe-type-assertion`, the jsx-a11y plugin (as in
-  0033: the `a11y` axe scenario is the gate).
+  detection that the DOM types call always present), `no-unsafe-type-assertion`.
+- **jsx-a11y** on `web/src/**/*.tsx` (it reads the JSX; the `a11y` axe scenario still checks the rendered pages).
+  Its 27 findings: one real (`<nav role="tablist">`, a landmark whose role the tablist replaced, now a `<div>`),
+  one kept with a line disable (the join screen's `autoFocus` on the name field), seven false positives with one
+  cause each, narrowed in `.oxlintrc.json` (a radio label's text three levels down; `tabIndex` on scrolling lists
+  and the chat log, which axe requires; the menus' Escape handler and the modal scrim's `onMouseDown`, delegated
+  from controls a keyboard already reaches: those two rules check `onClick` only), and `prefer-tag-over-role` off
+  (17, taste: `<img>` for a canvas, `<output>` outside a form, `<dialog>` for Modal).
 - **Types for every linted file.** The type-aware rules read each file's nearest `tsconfig.json`; the test and
   tool folders had only a `tsconfig.test.json`, so they were linted against error types (the promise rules of
   0033 saw nothing there). A `tsconfig.json` that extends the test config now sits in `web/test`, `scripts`,
