@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The component-test helpers of web/test/support, checked through the web/src modules that use what they fake.
 // Several tests come in pairs: the first changes something, the second checks it did not leak.
-import { canvasCalls, fakeDevice, offlineFetch, person, renderUI, roster, stubFetch, stubIdleDetector, stubKeyboardLayout, stubMediaDevices } from "./support";
+import { canvasCalls, fakeDevice, offlineFetch, person, renderUI, roster, stubFetch, stubIdleDetector, stubKeyboardLayout, stubMediaDevices, unhandledRejections } from "./support";
 import { mockMedia, tile } from "./support/media";
 import { mockSession } from "./support/session";
 import { describe, expect, it } from "vitest";
@@ -57,6 +57,13 @@ describe("fetch", () => {
     expect((await request("POST", "/api/nope")).status).toBe(404);
     expect(net.unmatched).toEqual(["POST /api/nope"]);
     net.unmatched.length = 0; // this test expects it
+  });
+  it("unhandledRejections collects a rejection nobody handled (and would fail the test)", async () => {
+    const seen = unhandledRejections();
+    void Promise.reject(new Error("dropped"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen.map(String)).toEqual(["Error: dropped"]);
+    seen.length = 0; // this test expects it
   });
   it("offlineFetch fails as the network does: request() answers status 0", async () => {
     offlineFetch();
@@ -121,5 +128,8 @@ describe("navigator stubs", () => {
     stubKeyboardLayout({ KeyW: "z", KeyQ: "a" });
     await loadKeyLayout();
     expect([keyLabel("KeyW"), keyLabel("KeyQ")]).toEqual(["Z", "A"]);
+  });
+  it("the keyboard stub is undone too", () => {
+    expect("keyboard" in navigator).toBe(false);
   });
 });

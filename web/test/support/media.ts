@@ -2,7 +2,8 @@
 // for the spotlight) for component tests: every public method is a spy typed with the real signature, and the tiles
 // are a list the test sets (setTiles), which subscribers see as they would see LiveKit's. Use it in a test file with
 //
-//   vi.mock("../src/media/MediaManager", async (original) => (await import("./support/media")).mediaModule(await original()));
+//   vi.mock("../src/media/MediaManager", async (original) =>
+//     (await import("./support/media")).mediaModule(await original<typeof import("../src/media/MediaManager")>()));
 //
 // and get the fakes with mockMedia(). The module's pure helpers (describeMediaError, canShareScreen, micCapture...)
 // stay the real ones.
@@ -22,9 +23,17 @@ const METHODS = ["subscribe", "getTiles", "join", "leave", "applySubscriptions",
 type Missing = Exclude<MediaMethod, (typeof METHODS)[number]>;
 const complete: [Missing] extends [never] ? true : Missing = true;
 void complete;
+// Its public fields and getters too (a new one fails here until the fake gets it). The on* callbacks are set by the
+// session, which is faked as well, so the fake leaves them out.
+type MediaField = Exclude<keyof MediaManager, MethodsOf<MediaManager>>;
+type FakedField = "tiles" | "currentRoom";
+const fields: [MediaField] extends [FakedField] ? ([FakedField] extends [MediaField] ? true : never) : MediaField = true;
+void fields;
 
 export type MediaFake = { [K in MediaMethod]: Mock<Fn<MediaManager[K]>> } & {
   tiles: Tile[];
+  /** The room's name, as the real getter: "" out of a room (set it in a test that needs one). */
+  currentRoom: MediaManager["currentRoom"];
   /** Replaces the tiles and tells the subscribers, as the real manager does when the room changes. */
   setTiles(tiles: Tile[]): void;
 };
@@ -38,6 +47,7 @@ function make(): MediaFake {
     for (const n of METHODS) m[n].mockReset();
     listeners.clear();
     m.tiles = [];
+    m.currentRoom = "";
     m.subscribe.mockImplementation((cb) => { listeners.add(cb); return () => listeners.delete(cb); });
     m.getTiles.mockImplementation(() => m.tiles);
     for (const n of ["join", "leave", "applyNoiseSuppression", "pauseForMicTest", "setMic", "setCam", "setShare", "switchDevice"] as const) m[n].mockResolvedValue(undefined);

@@ -83,12 +83,16 @@ export function offlineFetch(): FetchStub {
 
 /**
  * Collects the promise rejections nobody handled during the test (a click handler whose request threw), so a test
- * can assert there were none; Vitest also reports them, but after the test, not as its failure.
+ * can assert there were none. While it listens, Vitest no longer reports them itself, so it fails closed: a
+ * rejection still in the list when the test ends fails the test (empty the list to accept one on purpose).
  */
 export function unhandledRejections(): unknown[] {
   const seen: unknown[] = [];
   const on = (reason: unknown) => { seen.push(reason); };
   process.on("unhandledRejection", on);
-  onCleanup(() => { process.off("unhandledRejection", on); });
+  onCleanup(() => {
+    process.off("unhandledRejection", on);
+    if (seen.length) throw new Error(`unhandled rejection during the test: ${seen.map(String).join("; ")}`);
+  });
   return seen;
 }

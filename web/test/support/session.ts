@@ -26,10 +26,14 @@ const SESSION_METHODS = ["start", "setOsIdle", "stop", "setStatus", "toggleBusy"
 type MissingSessionMethod = Exclude<SessionMethod, (typeof SESSION_METHODS)[number]>;
 const sessionComplete: [MissingSessionMethod] extends [never] ? true : MissingSessionMethod = true;
 void sessionComplete;
+// Its public fields too: the fake has exactly these (a new public field fails here until the fake gets it).
+type SessionField = Exclude<keyof Session, SessionMethod>;
+const sessionFields: [SessionField] extends ["view" | "socket" | "plugins"] ? (["view" | "socket" | "plugins"] extends [SessionField] ? true : never) : SessionField = true;
+void sessionFields;
 
 // The parts of WorldView the UI reads through session.view (add one here when a component starts using it).
 const VIEW_METHODS = ["currentMap", "mapImage", "goTo", "position", "setHover", "setEditing", "previewMap", "screenToTile", "toggleRun",
-  "setDirection", "setEco"] as const satisfies readonly MethodsOf<WorldView>[];
+  "setDirection", "setEco", "interact"] as const satisfies readonly MethodsOf<WorldView>[];
 const PLUGIN_METHODS = ["event", "closeModal", "sheetImage", "attachView", "dropNext"] as const satisfies readonly MethodsOf<PluginManager>[];
 
 export type ViewFake = Spies<WorldView, (typeof VIEW_METHODS)[number]> & Pick<WorldView, "stats">;
