@@ -3,8 +3,9 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "."
         ],
@@ -19,8 +20,15 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     }
   }

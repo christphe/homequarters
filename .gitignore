@@ -4,10 +4,8 @@
 .gauntlet
 bin
 server/data
-web/node_modules
+node_modules/
 web/dist
-e2e/node_modules
-site/node_modules
 site/dist
 bench/results/**/*.log
 bench/mediagen/assets
@@ -15,7 +13,6 @@ bench/mediagen/mediagen
 .claude/worktrees/
 # a developer's own plugins next to the bundled ones (scripts/dev.sh)
 plugins/installed/
-desktop/node_modules
 desktop/src-tauri/target
 desktop/src-tauri/gen
 .fdash/

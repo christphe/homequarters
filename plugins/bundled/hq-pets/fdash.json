@@ -7,20 +7,23 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../../../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.json"
         ],
         [
-          "node",
-          "../../../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "public/tsconfig.json"
         ],
         [
-          "node",
-          "../../../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.test.json"
         ],
@@ -34,10 +37,17 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/plugins/sdk/testbed.ts",
-        "/plugins/sdk/server.d.ts"
+        "/plugins/sdk/server.d.ts",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:integration": {
@@ -51,7 +61,10 @@
       "inputs": [
         {
           "disk": "/bin/homequarters*"
-        }
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ],
       "env": {
         "HQ_BIN_REPO_ONLY": "1"

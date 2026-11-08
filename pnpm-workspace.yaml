@@ -1,0 +1,25 @@
+# One install for the whole repository: `pnpm install` at the root. The root declares no dependency: each
+# member declares what it uses itself, and the versions members share are written once, in the catalog below,
+# referenced as "catalog:" from their package.json.
+packages:
+  - web
+  - e2e
+  - site
+  - desktop
+  - scripts
+  - tools/fdash
+  - plugins/sdk
+  - plugins/bundled/*
+  - plugins/e2e/*
+
+catalog:
+  "@testing-library/dom": ^10.4.2
+  "@testing-library/react": ^16.3.3
+  "@testing-library/user-event": ^14.6.8
+  "@types/node": ^24.19.2
+  jsdom: ^31.0.0
+  oxlint: 1.89.0
+  oxlint-tsgolint: 7.0.2005
+  typescript: ^7.0.2
+  vite: ^8.3.1
+  vitest: ^5.1.0

@@ -1,0 +1,13 @@
+{
+  "name": "hq-card-lastcard",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

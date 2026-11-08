@@ -1,7 +1,7 @@
 // Home Quarters' own Oxlint rules (a JS plugin, ESLint's rule format), loaded by .oxlintrc.json.
 // Each one turns a line of AGENTS.md or of a gauntlet critic's checklist into a gate; tests in
 // scripts/oxlint-hq.test.ts. Oxlint's JS plugins are alpha: the oxlint version is pinned in web/package.json.
-import type { RuleTester } from "../web/node_modules/oxlint/dist/plugins-dev.js";
+import type { RuleTester } from "oxlint/plugins-dev";
 
 // Oxlint exports no name for a rule or its AST nodes: the types RuleTester.run takes, and its visitor's
 type Rule = Parameters<RuleTester["run"]>[1];

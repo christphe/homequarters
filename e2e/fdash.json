@@ -9,44 +9,51 @@
           "--noEmit"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/critters/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/drawn-pet/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/drawn-pet/public/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/drawn-sheet/public/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/ui-demo/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/ui-demo/public/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/ui-demo/public/views/tsconfig.json"
         ],
@@ -59,14 +66,14 @@
       "inputs": [
         "/web/src/**",
         "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/plugins/bundled/*/public/**",
         "/plugins/sdk/**",
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ],
       "tools": [
         [
@@ -85,7 +92,10 @@
         ]
       ],
       "inputs": [
-        "/plugins/e2e/*/fdash.json"
+        "/plugins/e2e/*/fdash.json",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ]
     },
     "test:e2e": {
@@ -118,7 +128,10 @@
         },
         {
           "disk": "/web/dist/**"
-        }
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ],
       "envKeys": [
         "E2E_VIEWPORT",

@@ -1,0 +1,14 @@
+{
+  "name": "hq-cards",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "jsdom": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -39,10 +39,11 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/plugins/sdk/client.d.ts",
-        "/plugins/sdk/view.d.ts"
+        "/plugins/sdk/view.d.ts",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ],
       "tools": [
         [
@@ -68,6 +69,11 @@
           "pnpm",
           "--version"
         ]
+      ],
+      "inputs": [
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ]
     },
     "test:unit": {
@@ -80,7 +86,10 @@
       ],
       "inputs": [
         "/server/internal/gamemap/map.go",
-        "/server/internal/httpapi/avatar.go"
+        "/server/internal/httpapi/avatar.go",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ]
     }
   }

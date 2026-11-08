@@ -7,8 +7,9 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../../../e2e/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.json"
         ],
@@ -24,12 +25,18 @@
         "/e2e/env.ts",
         "/e2e/globals.d.ts",
         "/e2e/package.json",
-        "/e2e/pnpm-lock.yaml",
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:e2e": {
@@ -55,7 +62,6 @@
         "/e2e/slots.ts",
         "/e2e/globals.d.ts",
         "/e2e/package.json",
-        "/e2e/pnpm-lock.yaml",
         "/plugins/e2e/hq-cards-e2e/lib.ts",
         "!capture-*.ts",
         {
@@ -63,7 +69,10 @@
         },
         {
           "disk": "/web/dist/**"
-        }
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        "/pnpm-lock.yaml"
       ],
       "envKeys": [
         "E2E_VIEWPORT",
