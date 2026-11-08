@@ -198,7 +198,8 @@ jobs:
       - name: Records of the scenarios that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci-fdash-records.ts fdash-e2e-${{ matrix.shard }}
+          SHARD: ${{ matrix.shard }}
+        run: node scripts/ci-fdash-records.ts "fdash-e2e-$SHARD"
       # the build first, in a run of its own: test:e2e uses bin/ and web/dist as they are (E2E_PREBUILT)
       # A shard holds scenarios of e2e/run.ts (the e2e project's items) and plugin e2e projects
       # (plugins/e2e/*, run by e2e/plugin-run.ts against the testbed, without LiveKit), balanced together
@@ -209,20 +210,26 @@ jobs:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
           E2E_VIEWPORT: small
           FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
+          SHARD: ${{ matrix.shard }}
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
-          export CHROME_VERSION="$("$CHROME" --version)"
-          plan=$(node -e "import('./e2e/shards.ts').then((m) => { const p = m.plan(${{ matrix.shard }}, 4); console.log(p.scenarios.join(' ') + '|' + p.projects.join(' ')); })")
-          scenarios=${plan%%|*}
-          projects=${plan#*|}
-          echo "shard ${{ matrix.shard }}/4: scenarios: ${scenarios:-none}; e2e projects: ${projects:-none}"
-          if [ -z "$scenarios$projects" ]; then exit 0; fi
+          CHROME_VERSION="$("$CHROME" --version)"
+          export CHROME_VERSION
+          plan=$(node -e "import('./e2e/shards.ts').then((m) => { const p = m.plan(Number(process.env.SHARD), 4); console.log(p.scenarios.join(' ') + '|' + p.projects.join(' ')); })")
+          read -ra scenarios <<< "${plan%%|*}"
+          read -ra projects <<< "${plan#*|}"
+          echo "shard $SHARD/4: scenarios: ${scenarios[*]:-none}; e2e projects: ${projects[*]:-none}"
+          if [ ${#scenarios[@]} -eq 0 ] && [ ${#projects[@]} -eq 0 ]; then exit 0; fi
           node tools/fdash/cli.ts run build --pkg server --pkg web
           status=0
           # no item would mean every scenario: run the e2e project only when the shard has some
-          if [ -n "$scenarios" ]; then node tools/fdash/cli.ts run test:e2e --pkg e2e -- $scenarios || status=1; fi
-          if [ -n "$projects" ]; then node tools/fdash/cli.ts run test:e2e $(printf -- '--pkg %s ' $projects) || status=1; fi
-          exit $status
+          if [ ${#scenarios[@]} -gt 0 ]; then node tools/fdash/cli.ts run test:e2e --pkg e2e -- "${scenarios[@]}" || status=1; fi
+          if [ ${#projects[@]} -gt 0 ]; then
+            pkgs=()
+            for p in "${projects[@]}"; do pkgs+=(--pkg "$p"); done
+            node tools/fdash/cli.ts run test:e2e "${pkgs[@]}" || status=1
+          fi
+          exit "$status"
       - name: Log of the suite
         if: always() && steps.suite.outcome != 'skipped'
         run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"
