@@ -15,10 +15,15 @@ next pull request.
 
 ## Decisions
 
-- **pnpm workspace** at the root: `pnpm-workspace.yaml`, one `pnpm-lock.yaml`, a root `package.json` with the
-  shared tooling (TypeScript, oxlint and oxlint-tsgolint, Vitest, `@types/node`). Members: `web`, `e2e`, `site`,
-  `desktop`, `plugins/sdk`, the bundled plugins and their e2e projects that have tests, `scripts`. The four
-  per-package lockfiles go. `pnpm install` at the root installs everything.
+- **pnpm workspace** at the root: `pnpm-workspace.yaml`, one `pnpm-lock.yaml`, a private root `package.json`
+  with `packageManager` and **no dependencies**. Members: `web`, `e2e`, `site`, `desktop`, `plugins/sdk`, the
+  bundled plugins and their e2e projects, `scripts`, `tools/fdash`. The four per-package lockfiles go.
+  `pnpm install` at the root installs everything.
+- **Each project declares its own dependencies** (the user's rule): a project that runs `tsc` declares
+  TypeScript, one that runs Vitest declares Vitest, `@types/node` where its tsconfig uses it, oxlint where its
+  lint runs it. No shared dependency at the root.
+- **Consistent versions through pnpm catalogs**: each shared version is written once, in the `catalog` of
+  `pnpm-workspace.yaml`, and packages reference it as `"catalog:"`; no version is repeated across packages.
 - **Vitest for every TypeScript test** (`*.test.ts`, `*.test.tsx`, `*.ispec.ts`): web, plugin unit tests,
   plugin views, the SDK's and plugins' integration tests, `scripts`, `e2e`'s unit tests. One root Vitest config
   declares one Vitest project per fdash project; each fdash task runs its own (`vitest run --project <name>`).
@@ -43,7 +48,9 @@ next pull request.
 3. A test that is made to fail turns its fdash task red (seen once per tier: unit, component, integration).
 4. One React Testing Library test of `Modal` (focus trap, Escape closes) and one jsdom test of a plugin view
    module prove the component tier works; each is seen red when the behaviour is broken.
-5. No fdash command or tsconfig reaches into another package's `node_modules`.
+5. No fdash command or tsconfig reaches into another package's `node_modules`; the root `package.json` has no
+   dependencies; every tool a project's tasks run is declared in that project's `package.json`, through
+   `catalog:` when another package uses it too.
 6. `node scripts/gauntlet.ts` reaches GATES GREEN; CI's unit, integration and e2e jobs pass; the desktop and
    pages workflows pass; the Docker image builds and is no bigger than before (sizes recorded).
 7. A decision record (0038) gives the choice, its install and time cost (test times before and after,
