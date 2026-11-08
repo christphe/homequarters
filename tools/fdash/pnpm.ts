@@ -243,8 +243,7 @@ export type PnpmPart = {
 
 const parsed = new Map<string, YMap | Error>();
 /** The parsed lockfile, once per content per process. */
-function parseOnce(text: string): YMap | Error {
-  const id = crypto.createHash("sha1").update(text).digest("hex");
+function parseOnce(id: string, text: string): YMap | Error {
   let v = parsed.get(id);
   if (v === undefined) {
     try {
@@ -257,6 +256,8 @@ function parseOnce(text: string): YMap | Error {
   }
   return v;
 }
+// a run asks for the same parts before and after each command: each is computed once per lockfile content
+const parts = new Map<string, PnpmPart>();
 
 /** The part of the lockfile the member in `dir` (relative to the root) installs. The lockfile is the nearest
  * pnpm-lock.yaml from `dir` up to the root. An importer the lockfile lacks throws; a lockfile fdash cannot
@@ -274,7 +275,18 @@ export function pnpmPart(root: string, dir: string): PnpmPart {
   const lockfile = lockDir === "." ? LOCKFILE : `${lockDir}/${LOCKFILE}`;
   const importer = lockDir === "." ? rel : path.posix.relative(lockDir, rel) || ".";
   const name = `pnpm:${importer}`;
-  const lock = parseOnce(fs.readFileSync(path.join(root, lockfile), "utf8"));
+  const text = fs.readFileSync(path.join(root, lockfile), "utf8");
+  const memo = crypto.createHash("sha1").update(text).digest("hex") + " " + importer;
+  const known = parts.get(memo);
+  if (known && known.lockfile === lockfile) return known;
+  const part = partOf(parseOnce(memo.slice(0, 40), text), { dir, lockDir, lockfile, importer, name });
+  if (parts.size > 256) parts.clear();
+  parts.set(memo, part);
+  return part;
+}
+
+function partOf(lock: YMap | Error, o: { dir: string; lockDir: string; lockfile: string; importer: string; name: string }): PnpmPart {
+  const { dir, lockDir, lockfile, importer, name } = o;
   if (lock instanceof Error) return { lockfile, name, patches: [], warning: `${lockfile} could not be read (${lock.message}): the whole lockfile is hashed` };
   const version = lock.lockfileVersion;
   if (typeof version !== "string" || !KNOWN_VERSIONS.includes(version)) {
