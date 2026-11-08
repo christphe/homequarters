@@ -27,6 +27,7 @@ test("a desk room is named after its owner; an owned office lists its owners aft
   assert.equal(areaTitle(area({ access: { mode: "office", users: [4, 7] } }), nameOf), "Office 2 · Ana, Bo");
   assert.equal(areaTitle(area({ access: { mode: "office", users: [4, 99] } }), nameOf), "Office 2 · Ana", "unknown names are left out");
   assert.equal(areaTitle(area({ access: { mode: "office", users: [99] } }), nameOf), "Office 2", "no name known: the area's own");
+  assert.equal(areaTitle(area({ access: { mode: "office", users: [] } }), nameOf), "Office 2", "a freed office shows no owner any more");
   assert.equal(areaTitle(area({ access: { mode: "members", users: [4] } }), nameOf), "Office 2", "a members list does not rename a room");
   assert.equal(areaTitle(area({}), nameOf), "Office 2");
 });

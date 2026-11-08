@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { session } from "../session";
-import { cloneMap, computeSolid, propSize, PROP_TYPES, toWire } from "../game/mapModel";
+import { assignPlace, cloneMap, computeSolid, propSize, PROP_TYPES, toWire } from "../game/mapModel";
 import { eraseAt, isPluginProp } from "../game/props";
 import type { MapData, PluginObjectSpec } from "../net/protocol";
 import { toast, useStore } from "../store";
@@ -107,28 +107,7 @@ export function MapEditor({ onClose }: { onClose: () => void }) {
       });
       if (index >= 0) pickContent(index);
     } else if (tool === "desk") {
-      const p = d.props.find((q) => {
-        if (q.t !== "desk") return false;
-        const [w, h] = propSize(q);
-        return x >= q.x && x < q.x + w && y >= q.y && y < q.y + h;
-      });
-      // elsewhere inside a private office: assign it (or free it with Nobody). Only the owner's id is
-      // stored; the office and the desk show their owner's current name (game/places.ts).
-      const office = p ? undefined : d.areas.find((a) => a.kind === "room" && a.access.mode === "office" && x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h);
-      if (office) {
-        if (assignTo) freePlaces(d, assignTo); // one desk or office per person: the previous one is freed
-        office.access = { mode: "office", users: assignTo ? [assignTo] : [] };
-        apply();
-        return;
-      }
-      if (p && assignTo) {
-        freePlaces(d, assignTo); // one desk or office per person: the previous one is freed
-        p.assign = assignTo;
-        apply();
-      } else if (p?.assign) { // Nobody frees the desk (and the server drops its room)
-        delete p.assign;
-        apply();
-      }
+      if (assignPlace(d, x, y, assignTo)) apply(); // a desk or a private office (game/mapModel.ts)
     }
   };
 
@@ -280,16 +259,4 @@ function ObjectIcon({ spec }: { spec: PluginObjectSpec }) {
   const [x, y, w, h] = spec.frame;
   const zoom = Math.max(1, Math.floor(48 / Math.max(w, h)));
   return <span className="editor-object-icon" aria-hidden="true" style={{ width: w, height: h, zoom, backgroundImage: `url("${url}")`, backgroundPosition: `${-x}px ${-y}px` }} />;
-}
-
-/** Frees whatever desk or private office a person had in the draft (the server allows one per person). */
-function freePlaces(d: MapData, uid: number) {
-  for (const p of d.props) {
-    if (p.t === "desk" && p.assign === uid) delete p.assign;
-  }
-  for (const a of d.areas) {
-    if (a.kind === "room" && a.access.mode === "office" && a.access.users?.includes(uid)) {
-      a.access = { mode: "office", users: a.access.users.filter((u) => u !== uid) };
-    }
-  }
 }

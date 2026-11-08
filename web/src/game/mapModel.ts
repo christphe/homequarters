@@ -51,3 +51,44 @@ export function cloneMap(m: MapData): MapData {
 export function toWire(m: MapData) {
   return { version: m.version, w: m.w, h: m.h, walls: m.walls, props: m.props, areas: m.areas, spawn: m.spawn };
 }
+
+/** The editor's "Assign desk or office" tool, clicked at tile (x, y) of the draft with a person picked
+ * (uid), or Nobody (0). A desk there gets uid, or is freed by Nobody; elsewhere inside a private office,
+ * the office gets uid, or nobody. One desk or office per person: whatever uid had before is freed.
+ * Only the owner's id is stored; the office and the desk show their owner's current name (places.ts).
+ * Returns whether the draft changed. */
+export function assignPlace(d: MapData, x: number, y: number, uid: number): boolean {
+  const p = d.props.find((q) => {
+    if (q.t !== "desk") return false;
+    const [w, h] = propSize(q);
+    return x >= q.x && x < q.x + w && y >= q.y && y < q.y + h;
+  });
+  const office = p ? undefined : d.areas.find((a) => a.kind === "room" && a.access.mode === "office" && x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h);
+  if (office) {
+    if (uid) freePlaces(d, uid);
+    office.access = { mode: "office", users: uid ? [uid] : [] };
+    return true;
+  }
+  if (p && uid) {
+    freePlaces(d, uid);
+    p.assign = uid;
+    return true;
+  }
+  if (p?.assign) { // Nobody frees the desk (and the server drops its room)
+    delete p.assign;
+    return true;
+  }
+  return false;
+}
+
+/** Frees whatever desk or private office a person had in the draft (the server allows one per person). */
+function freePlaces(d: MapData, uid: number) {
+  for (const p of d.props) {
+    if (p.t === "desk" && p.assign === uid) delete p.assign;
+  }
+  for (const a of d.areas) {
+    if (a.kind === "room" && a.access.mode === "office" && a.access.users?.includes(uid)) {
+      a.access = { mode: "office", users: a.access.users.filter((u) => u !== uid) };
+    }
+  }
+}
