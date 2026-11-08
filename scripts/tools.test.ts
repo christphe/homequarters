@@ -16,7 +16,7 @@ test("each tool pins one version, with a SHA-256 for each of the five platforms"
 });
 
 test("a tool unpacks into a folder named after its version and platform, with .exe on Windows", () => {
-  const t = TOOLS["hadolint"]!;
+  const t = TOOLS["hadolint"];
   assert.deepEqual(location("hadolint", t, "win32-x64", "/r/.tools"), {
     dir: path.join("/r/.tools", "hadolint-2.15.1-win32-x64"),
     exe: path.join("/r/.tools", "hadolint-2.15.1-win32-x64", "hadolint.exe"),

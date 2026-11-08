@@ -14,6 +14,10 @@ import { BROWSER, closing, header, plan, recordLines } from "./gauntlet.ts";
 import { ALL } from "../e2e/shards.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
+/** The fields of a package.json and an fdash.json these tests read. */
+type PackageJson = { packageManager?: string; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+type FdashJson = { dependsOn?: string[] };
+const readJson = <T>(file: string) => JSON.parse(fs.readFileSync(file, "utf8")) as T;
 /** The plugins' e2e projects (plugins/e2e/*), each run by e2e/plugin-run.ts against the testbed, in the workspace's order. */
 const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e2e", "hq-chess-e2e"];
 const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
@@ -64,7 +68,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     vitest("hq-cards", "unit"),
     vitest("hq-chess", "unit"),
     vitest("hq-pets", "unit"),
-    ...INTEGRATION.map((n) => vitest(n.split(":")[0]!, "integration")),
+    ...INTEGRATION.map((n) => vitest(n.split(":")[0], "integration")),
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
     ...[
       ["hq-card-lastcard-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-lastcard lastCard.ts"],
@@ -91,7 +95,7 @@ test("every plugin has its own tsconfig.json files checked by its lint, the e2e 
   // rules the test program, scripts/oxlint-tsconfigs.ts) adds no file of its own to check
   const shim = (t: string) => {
     const m = /^\{\s*"extends":\s*"([^"]+)"\s*\}\s*$/.exec(fs.readFileSync(path.join(root, t), "utf8"));
-    return !!m && checked.includes(path.posix.join(path.posix.dirname(t), m[1]!));
+    return !!m && checked.includes(path.posix.join(path.posix.dirname(t), m[1]));
   };
   assert.deepEqual(tracked.filter((t) => !checked.includes(t) && !shim(t)), []);
 });
@@ -121,11 +125,11 @@ test("build tasks declare what they produce; site checks its build after making 
 test("a plugin depends on the server and the SDK, never on the web client; the server on no plugin", () => {
   const bundled = path.join(root, "plugins/bundled");
   for (const p of fs.readdirSync(bundled)) {
-    const deps: string[] = JSON.parse(fs.readFileSync(path.join(bundled, p, "fdash.json"), "utf8")).dependsOn ?? [];
+    const deps: string[] = readJson<FdashJson>(path.join(bundled, p, "fdash.json")).dependsOn ?? [];
     assert.ok(deps.includes("server") && deps.includes("sdk"), `${p} depends on server and sdk`);
     assert.ok(!deps.includes("web"), `${p} does not depend on web`);
   }
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "server/fdash.json"), "utf8")).dependsOn, undefined);
+  assert.equal(readJson<FdashJson>(path.join(root, "server/fdash.json")).dependsOn, undefined);
 });
 
 test("every gate is cached, and every scenario of the suite is an item with its own file", () => {
@@ -156,7 +160,7 @@ test("each plugin's tests run in its project, and import nothing outside it and 
     // a plugin may have only integration tests (test/*.ispec.ts)
     const task = (config.get(`${p}:test:unit`) ?? config.get(`${p}:test:integration`)) as Command | undefined;
     assert.ok(task, `${p} has tests, so a project with a test task`);
-    const deps: string[] = JSON.parse(fs.readFileSync(path.join(bundled, p, "fdash.json"), "utf8")).dependsOn ?? [];
+    const deps: string[] = readJson<FdashJson>(path.join(bundled, p, "fdash.json")).dependsOn ?? [];
     const allowed = [path.join(bundled, p), ...deps.map((d) => (d === "sdk" ? path.join(root, "plugins/sdk") : path.join(bundled, d)))];
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
       const text = fs.readFileSync(path.join(dir, f), "utf8");
@@ -173,7 +177,7 @@ test("an e2e project's scenarios import only its folder, its dependsOn and the i
   const e2e = path.join(root, "plugins/e2e");
   const dirOf = (name: string) => (name === "web" ? path.join(root, "web") : path.join(root, "plugins/bundled", name));
   for (const p of fs.readdirSync(e2e).filter((x) => fs.existsSync(path.join(e2e, x, "fdash.json")))) {
-    const deps: string[] = JSON.parse(fs.readFileSync(path.join(e2e, p, "fdash.json"), "utf8")).dependsOn ?? [];
+    const deps: string[] = readJson<FdashJson>(path.join(e2e, p, "fdash.json")).dependsOn ?? [];
     const inputs = ((config.get(`${p}:test:e2e`) as Command).inputs ?? []).filter((i): i is string => typeof i === "string" && !i.startsWith("!"));
     const allowed = [path.join(e2e, p), ...deps.map(dirOf)];
     for (const f of fs.readdirSync(path.join(e2e, p)).filter((x) => x.endsWith(".ts"))) {
@@ -293,8 +297,8 @@ test("one install for the repository: no package reaches into another's node_mod
   }
   assert.deepEqual(reaching, []);
   assert.ok(!fs.existsSync(path.join(root, "web/pnpm-lock.yaml")), "one lockfile, at the root");
-  const rootPkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  assert.match(rootPkg.packageManager, /^pnpm@\d+\.\d+\.\d+$/, "the root pins pnpm");
+  const rootPkg = readJson<PackageJson>(path.join(root, "package.json"));
+  assert.match(rootPkg.packageManager ?? "", /^pnpm@\d+\.\d+\.\d+$/, "the root pins pnpm");
   assert.equal(rootPkg.dependencies ?? rootPkg.devDependencies, undefined, "the root declares no dependency: each project declares its own");
   // a project runs the tools its package.json declares (pnpm exec finds only those), and its commands follow the install
   const config = loadWorkspace(root);
@@ -304,7 +308,7 @@ test("one install for the repository: no package reaches into another's node_mod
     const needs = c.run.flatMap((s) => (s[0] === "pnpm" && s[1] === "exec" ? TOOL[s[2]] ?? [s[2]] : s.some((a) => a.endsWith("scripts/oxlint.ts")) ? ["oxlint", "oxlint-tsgolint"] : []));
     if (!needs.length) continue;
     const pkgFile = path.join(root, c.cwd, "package.json");
-    const pkg = fs.existsSync(pkgFile) ? JSON.parse(fs.readFileSync(pkgFile, "utf8")) : {};
+    const pkg: PackageJson = fs.existsSync(pkgFile) ? readJson<PackageJson>(pkgFile) : {};
     const declared = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const n of needs) if (!declared[n]) problems.push(`${c.name} runs ${n}, not declared in ${c.cwd}/package.json`);
     const inputs = (c.inputs ?? []).filter((i): i is string => typeof i === "string");
@@ -349,12 +353,12 @@ test("versions shared by several packages are written once, in the workspace's c
   const members = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "*package.json"], { cwd: root, encoding: "utf8" }).split("\n").filter((f) => f && f !== "package.json");
   const seen = new Map<string, string[]>();
   for (const f of members) {
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
-    for (const [n, v] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }) as [string, string][]) if (v !== "catalog:") seen.set(n, [...(seen.get(n) ?? []), f]);
+    const pkg = readJson<PackageJson>(path.join(root, f));
+    for (const [n, v] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) if (v !== "catalog:") seen.set(n, [...(seen.get(n) ?? []), f]);
   }
   const used = new Map<string, number>();
   for (const f of members) {
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
+    const pkg = readJson<PackageJson>(path.join(root, f));
     for (const n of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) used.set(n, (used.get(n) ?? 0) + 1);
   }
   const duplicated = [...seen].filter(([n]) => (used.get(n) ?? 0) > 1).map(([n, where]) => `${n} has a version of its own in ${where.join(", ")}: use "catalog:"`);
