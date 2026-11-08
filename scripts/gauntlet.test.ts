@@ -254,7 +254,8 @@ test("files a test reads outside its project are inputs of the task that runs it
   for (const f of files("server", /_test\.go$/)) {
     for (const m of fs.readFileSync(path.join(root, f), "utf8").matchAll(/filepath\.Join\((?:"\.\.", ){3}((?:"[^"]+"(?:, )?)+)/g)) {
       const rel = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).join("/");
-      if (!covered("server:test:unit", rel)) missing.push(`${f} reads ${rel}, not an input of server:test:unit`);
+      // .run/ is where a test writes (the cmd tests' binary), never what it reads
+      if (!rel.startsWith(".run/") && !covered("server:test:unit", rel)) missing.push(`${f} reads ${rel}, not an input of server:test:unit`);
     }
   }
   // tests reading files by URL or from their folder (`${import.meta.dirname}/../x`: under Vitest, Vite rewrites
