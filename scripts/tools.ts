@@ -86,7 +86,13 @@ export async function ensure(name: string): Promise<string> {
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   const tmp = fs.mkdtempSync(dir + ".tmp-");
   try {
-    const res = await fetch(asset.url, { redirect: "follow" });
+    let res: Response;
+    try {
+      res = await fetch(asset.url, { redirect: "follow" });
+    } catch (e) {
+      // offline, a proxy, DNS: say which tool and where, not only "fetch failed"
+      throw new Error(`tools: could not download ${name} from ${asset.url}: ${(e as Error).message}${(e as Error).cause ? ` (${String((e as Error).cause)})` : ""}`, { cause: e });
+    }
     if (!res.ok) throw new Error(`tools: ${asset.url}: HTTP ${res.status}`);
     const file = path.join(tmp, path.basename(new URL(asset.url).pathname));
     fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));

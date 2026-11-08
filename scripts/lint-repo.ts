@@ -29,6 +29,10 @@ export function gitFiles(specs: string[]): string[] {
 /** A Go tool pinned in tools/go/<name>/go.mod, built there (`go tool -n` prints the cached binary), run from the root. */
 function goTool(name: string, args: string[], extraPath: string[] = []): number {
   const built = spawnSync("go", ["tool", "-n", name], { cwd: path.join(root, "tools", "go", name), encoding: "utf8" });
+  if (built.error) {
+    console.log(`go tool ${name}: go did not start (${built.error.message}); is Go on PATH?`);
+    return 1;
+  }
   const exe = built.stdout.trim();
   if (built.status !== 0 || !exe) {
     console.log(`go tool ${name}: ${built.stderr || "no binary"}`);
