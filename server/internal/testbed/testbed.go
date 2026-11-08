@@ -120,6 +120,12 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 	if len(broken) > 0 {
 		return nil, fmt.Errorf("plugins that cannot run: %s", strings.Join(broken, "; "))
 	}
+	// a static folder without a client would give a ready server that answers 404 to every page
+	if o.Static != "" {
+		if _, err := os.Stat(filepath.Join(o.Static, "index.html")); err != nil {
+			return nil, fmt.Errorf("static folder %s has no index.html (build the client: node tools/fdash/cli.ts run build --pkg web)", o.Static)
+		}
+	}
 
 	b := &Bed{db: o.DB, names: names, errs: errs, live: map[int64]int{}, left: map[int64]time.Time{}, served: make(chan struct{})}
 	if b.db == "" {

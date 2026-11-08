@@ -77,6 +77,8 @@ async function main(): Promise<number> {
   if (missing.length) { console.log(`# not found: ${missing.join(", ")}`); return 2; }
 
   const WIN = process.platform === "win32";
+  // under fdash (HQ_BIN_REPO_ONLY, set by the tasks) only the repository's binary, the one the cache keys
+  if (process.env.HQ_BIN && process.env.HQ_BIN_REPO_ONLY === "1") { console.log('# HQ_BIN is not taken by this fdash task: its cache keys bin/homequarters, built by "node tools/fdash/cli.ts run build --pkg server"; unset HQ_BIN'); return 2; }
   const bin = process.env.HQ_BIN ? path.resolve(process.env.HQ_BIN) : path.join(root, "bin", WIN ? "homequarters.exe" : "homequarters");
   const absent = [bin, path.join(root, "web", "dist", "index.html")].filter((f) => !fs.existsSync(f));
   if (absent.length) { console.log(`# ${absent.join(", ")} missing: run "node tools/fdash/cli.ts run build --pkg server --pkg web" first`); return 1; }

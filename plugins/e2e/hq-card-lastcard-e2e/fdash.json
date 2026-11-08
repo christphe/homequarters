@@ -45,7 +45,8 @@
         ]
       ],
       "env": {
-        "E2E_VIEWPORT": "small"
+        "E2E_VIEWPORT": "small",
+        "HQ_BIN_REPO_ONLY": "1"
       },
       "inputs": [
         "/e2e/lib.ts",
@@ -68,7 +69,6 @@
         "E2E_VIEWPORT",
         "CHROME_VERSION",
         "CI",
-        "HQ_BIN",
         "GOFLAGS",
         "CGO_ENABLED"
       ],

@@ -94,7 +94,11 @@ func testbedMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	bed, err := testbed.Start(ctx, testbed.Options{Plugins: plugins, Addr: *addr, Static: *static, DB: *db, Log: log})
 	if err != nil {
-		log.Error("testbed", "err", err)
+		if ctx.Err() != nil { // stdin closed (or a signal) before the server was ready: say so, not "context canceled"
+			log.Error("testbed: stopped before it was ready: stdin closed or a signal came (it stops when stdin ends; keep it open)", "err", err)
+		} else {
+			log.Error("testbed", "err", err)
+		}
 		return 1
 	}
 	line, _ := json.Marshal(map[string]string{"url": bed.URL})

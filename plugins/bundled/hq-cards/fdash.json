@@ -62,9 +62,9 @@
           "disk": "/bin/homequarters*"
         }
       ],
-      "envKeys": [
-        "HQ_BIN"
-      ]
+      "env": {
+        "HQ_BIN_REPO_ONLY": "1"
+      }
     }
   }
 }

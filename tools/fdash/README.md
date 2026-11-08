@@ -173,7 +173,7 @@ whose key is recorded is reported `CACHED` and not run, and its record is touche
 records older than a run's start were not used by it, so a CI job can delete them before saving its cache.
 Failures are never recorded, nor a pass whose inputs changed while it ran (their content or their time; on a file system whose times
 are coarse, FAT or some network shares, a change undone within the same tick at the same size goes unseen),
-nor anything after Ctrl+C. The cache only grows: deleting `.fdash/cache` (or its old files) is always safe,
+nor anything after Ctrl+C. The cache only grows (each stored build adds its outputs: a server binary is about 32 MB): deleting `.fdash/cache` (or its old files) is always safe,
 it only makes the next run longer. Add `.fdash/` to
 `.gitignore`.
 

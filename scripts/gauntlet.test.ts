@@ -57,14 +57,14 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     unit("hq-card-pouilleux:test:unit", "plugins/bundled/hq-card-pouilleux"),
     unit("hq-cards:test:unit", "plugins/bundled/hq-cards"),
     unit("hq-chess:test:unit", "plugins/bundled/hq-chess"),
-    ...INTEGRATION.map((n) => [n, n.startsWith("sdk:") ? "plugins/sdk" : `plugins/bundled/${n.split(":")[0]}`, "node --test **/*.ispec.ts", false, false, "{}"]),
+    ...INTEGRATION.map((n) => [n, n.startsWith("sdk:") ? "plugins/sdk" : `plugins/bundled/${n.split(":")[0]}`, "node --test **/*.ispec.ts", false, false, '{"HQ_BIN_REPO_ONLY":"1"}']),
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
     ...[
       ["hq-card-lastcard-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-lastcard lastCard.ts"],
       ["hq-card-pouilleux-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-pouilleux oldMaid.ts"],
       ["hq-cards-e2e", "--plugin ../../bundled/hq-cards cards.ts"],
       ["hq-chess-e2e", "--plugin ../../bundled/hq-chess chess.ts"],
-    ].map(([p, args]) => [`${p}:test:e2e`, `plugins/e2e/${p}`, `node ../../../e2e/plugin-run.ts ${args}`, false, false, '{"E2E_VIEWPORT":"small"}']),
+    ].map(([p, args]) => [`${p}:test:e2e`, `plugins/e2e/${p}`, `node ../../../e2e/plugin-run.ts ${args}`, false, false, '{"E2E_VIEWPORT":"small","HQ_BIN_REPO_ONLY":"1"}']),
   ]);
   // the integration and browser suites start once the build is done: default runs its tiers one after the
   // other; the integration suites run at once (each testbed has its own port and database), the browser suites

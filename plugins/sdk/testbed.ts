@@ -95,6 +95,10 @@ const isFile = (p: string): boolean => {
 function findBinary(): string {
   const exe = process.platform === "win32" ? "homequarters.exe" : "homequarters";
   const env = process.env.HQ_BIN;
+  // under fdash (HQ_BIN_REPO_ONLY, set by the tasks): the cache keys the repository's bin/homequarters, read from
+  // the disk; another binary would let a pass be recorded for a server it never ran
+  const repoOnly = process.env.HQ_BIN_REPO_ONLY === "1";
+  if (env && repoOnly) throw new Error(`HQ_BIN is not taken by this fdash task: its cache keys bin/${exe}, built by "node tools/fdash/cli.ts run build --pkg server"; unset HQ_BIN`);
   if (env) {
     if (isFile(env)) return path.resolve(env);
     throw new Error(`${NO_BINARY}; HQ_BIN=${env} is not a file`);
@@ -106,6 +110,7 @@ function findBinary(): string {
     if (up === dir) break;
     dir = up;
   }
+  if (repoOnly) throw new Error(NO_BINARY.replace(" (or set HQ_BIN)", ""));
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
     if (dir && isFile(path.join(dir, exe))) return path.join(dir, exe);
   }

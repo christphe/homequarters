@@ -90,8 +90,10 @@ export function resolveNames(config: Config, names: string[], pkgs: string[]): s
     } catch (e) {
       const at = n.lastIndexOf(":");
       const owner = n.slice(0, at), item = n.slice(at + 1);
-      if (at > 0 && [...config.values()].some((t) => t.kind === "command" && localName(t) === owner && t.items?.has(item))) {
-        throw new Error(`${n} is an item: run ${owner} -- ${item}`, { cause: e });
+      const holder = at > 0 ? [...config.values()].find((t) => t.kind === "command" && localName(t) === owner && t.items?.has(item)) : undefined;
+      if (holder) {
+        // --pkg: without it the other projects' tasks of that name would run too
+        throw new Error(`${n} is an item: run ${owner}${holder.project ? ` --pkg ${holder.project}` : ""} -- ${item}`, { cause: e });
       }
       const msg = (e as Error).message;
       throw new Error(msg === `no task named ${n}` ? `${msg} (fdash list shows them)` : msg, { cause: e });

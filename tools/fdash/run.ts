@@ -167,14 +167,17 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       if (!o.force && passed(cacheDir, c.name, key)) {
         // a hit puts the outputs of that pass on disk, over what is there; without them it is a miss
         let restored: string;
+        let failure = "";
         try {
           restored = c.outputs.length ? restoreOutputs(cacheDir, c.name, key, o.root, c.outputs) : "restored";
         } catch (e) {
-          fs.appendFileSync(log, `fdash: the outputs could not be restored: ${(e as Error).message}\n`);
+          // in the cache, but not put back: a file in use (a running binary on Windows), a permission
+          failure = (e as Error).message;
+          fs.appendFileSync(log, `fdash: the outputs could not be restored: ${failure}\n`);
           restored = "missing";
         }
         if (restored === "restored") return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
-        warn = "outputs not in the cache";
+        warn = failure ? `the outputs could not be restored (${failure})` : "outputs not in the cache";
       } else if (!o.force && c.outputs.length && passed(cacheDir, c.name, cacheKey(o.root, { ...c, outputs: [] }, extra, common, process.env))) {
         // the outputs are part of the key: a pass recorded before they were declared (or cached) has the key
         // the command would have without them, and does not count, since nothing of it can be restored

@@ -292,6 +292,17 @@ func TestTestbedRefusesProduction(t *testing.T) {
 	}
 }
 
+func TestTestbedRefusesStaticWithoutClient(t *testing.T) {
+	bed, err := Start(context.Background(), Options{Plugins: []string{echoDir}, Static: t.TempDir()})
+	if err == nil {
+		bed.Close()
+		t.Fatal("started serving a folder with no index.html")
+	}
+	if !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("the error does not say what is missing: %v", err)
+	}
+}
+
 func TestTestbedRefusesBrokenPlugin(t *testing.T) {
 	bed, err := Start(context.Background(), Options{Plugins: []string{filepath.Join("..", "httpapi", "testdata", "plugins", "installed", "broken")}})
 	if err == nil {

@@ -154,18 +154,34 @@ test("join at a tile, and reconnect at another once the reconnect grace is over"
   await ann.waitFor("echo", (m) => m.echo === "back");
 });
 
+/** Runs `fn` with HQ_BIN and HQ_BIN_REPO_ONLY set as given (undefined: unset), then puts them back. */
+async function withBinEnv(env: { HQ_BIN?: string; HQ_BIN_REPO_ONLY?: string }, fn: () => Promise<void>): Promise<void> {
+  const keys = ["HQ_BIN", "HQ_BIN_REPO_ONLY"] as const;
+  const saved = keys.map((k) => process.env[k]);
+  for (const k of keys) {
+    if (env[k] === undefined) delete process.env[k];
+    else process.env[k] = env[k];
+  }
+  try {
+    await fn();
+  } finally {
+    keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+  }
+}
+
 test("no binary: the documented error", async () => {
-  const saved = process.env.HQ_BIN;
   const missing = path.join(import.meta.dirname, "no-such-homequarters");
   assert.ok(!existsSync(missing));
-  process.env.HQ_BIN = missing;
-  try {
-    await assert.rejects(testbed({ plugins: [echo] }), (e: Error) => {
+  await withBinEnv({ HQ_BIN: missing }, () =>
+    assert.rejects(testbed({ plugins: [echo] }), (e: Error) => {
       assert.match(e.message, /^no homequarters binary: run "node tools\/fdash\/cli\.ts run build --pkg server" first \(or set HQ_BIN\)/);
       return true;
-    });
-  } finally {
-    if (saved === undefined) delete process.env.HQ_BIN;
-    else process.env.HQ_BIN = saved;
-  }
+    }));
+});
+
+// fdash keys the repository's binary, not HQ_BIN: under its tasks another binary is refused, or a pass would be
+// recorded for a server the cache never saw
+test("under fdash (HQ_BIN_REPO_ONLY) HQ_BIN is refused", async () => {
+  await withBinEnv({ HQ_BIN: process.execPath, HQ_BIN_REPO_ONLY: "1" }, () =>
+    assert.rejects(testbed({ plugins: [echo] }), /HQ_BIN is not taken by this fdash task/));
 });
