@@ -25,9 +25,10 @@ next pull request.
 - **Consistent versions through pnpm catalogs**: each shared version is written once, in the `catalog` of
   `pnpm-workspace.yaml`, and packages reference it as `"catalog:"`; no version is repeated across packages.
 - **Vitest for every TypeScript test** (`*.test.ts`, `*.test.tsx`, `*.ispec.ts`): web, plugin unit tests,
-  plugin views, the SDK's and plugins' integration tests, `scripts`, `e2e`'s unit tests. One root Vitest config
-  declares one Vitest project per fdash project; each fdash task runs its own (`vitest run --project <name>`).
-  Web and plugin views run on jsdom, the rest on Node. React Testing Library and user-event are dev
+  plugin views, the SDK's and plugins' integration tests, `scripts`, `e2e`'s unit tests. Each fdash project has
+  its own `vitest.config.ts` (builder's call: with no dependency at the root, a root config could not import
+  Vitest), named like the fdash project; each fdash task runs its own. Tests run on Node; component and view
+  tests ask for jsdom per file. React Testing Library and user-event are dev
   dependencies of the packages that test components.
 - **fdash keeps `node --test`**: it is the runner that starts everything, installation included, and stays a
   tool without dependencies (decision 0035).

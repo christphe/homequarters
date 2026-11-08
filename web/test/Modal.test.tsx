@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Component test of Modal (web/src/ui/Modal.tsx) through Testing Library: what a person using a keyboard gets.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

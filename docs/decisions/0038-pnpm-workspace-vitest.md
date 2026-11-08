@@ -45,7 +45,7 @@ plugins, the SDK, `scripts/` and `e2e/`'s own unit tests run under Vitest. Each 
 `hq-chess:integration`, ...); each fdash task runs its own (`pnpm exec vitest run`, or `--project <name>` where a
 config holds a unit and an integration project). There is no root Vitest config: with no dependency at the root,
 nothing there could import `vitest/config` (the design note proposed one; the builder chose per-project configs).
-The client and the plugin views run on jsdom, everything else on Node. Integration projects get generous
+Tests run on Node; a component or view test asks for jsdom with its first line (`// @vitest-environment jsdom`). Integration projects get generous
 timeouts, since each file starts a server.
 
 **fdash keeps `node --test`.** It is the runner that starts everything else, installs included, and stays a tool
@@ -81,11 +81,12 @@ the foundation of this change). Measured on the Windows 11 desktop (12 logical C
 | Runner | Command | Runs |
 | --- | --- | --- |
 | `node --test`, at `c085b86` (the commit before the switch) | `node --test 'web/test/*.test.ts'` | 1.25 s, 1.18 s, 1.27 s |
-| Vitest on jsdom | `cd web && pnpm exec vitest run` | 5.65 s, 5.91 s, 5.91 s (Vitest's own duration 4.67 s, 4.91 s, 4.79 s) |
+| Vitest, every file on jsdom | `cd web && pnpm exec vitest run` | 5.65 s, 5.91 s, 5.91 s (Vitest's own duration 4.67 s, 4.91 s, 4.79 s) |
+| Vitest on Node, jsdom only for component tests (as shipped) | `cd web && pnpm exec vitest run` | 2.82 s, 2.82 s (a first, cold run 5.8 s; Vitest's own duration 1.94 s, 1.96 s; 216 tests, the 7 of `Modal` included) |
 
-Vitest reports 92 % of its duration as environment setup: jsdom is created once per test file. Its `vmThreads`
-pool or `isolate: false` would share it, but several tests replace globals (`localStorage`, `fetch`), so they
-were not tried. The foundation's single run (1.5 s against 4.3 s) agrees.
+With every file on jsdom, Vitest reported 92 % of its duration as environment setup: jsdom is created once per
+test file. The unit tests never needed a DOM (they ran under `node --test`), so the client's project runs on Node
+and a component test asks for jsdom with its first line, `// @vitest-environment jsdom`.
 
 Docker image (`docker image inspect`, Docker Desktop 4.84.0, built locally by the foundation): 27,590,278 bytes
 before, 27,589,909 bytes after (the test tools stay in the build stage).
@@ -95,8 +96,8 @@ times with the new installs, and any of it on Linux or macOS.
 
 ## Consequences
 
-- **Performance:** the client's unit tests take about 4.5 s more per run (above), in a static stage that runs its
-  tasks at once and caches them; the time is jsdom's, paid per file. Component tests are possible now; each moves
+- **Performance:** the client's tests take about 1.6 s more per run than under `node --test` (above), in a static
+  stage that runs its tasks at once and caches them; jsdom is paid only by the files that ask for it. Component tests are possible now; each moves
   a check out of a browser scenario that costs seconds in every run. The root lockfile is an input of every
   TypeScript task, so any dependency change reruns them all (splitting it per project is left for when the cost
   shows).

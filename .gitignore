@@ -16,3 +16,6 @@ plugins/installed/
 desktop/src-tauri/target
 desktop/src-tauri/gen
 .fdash/
+
+# Vitest reports
+.vitest/
