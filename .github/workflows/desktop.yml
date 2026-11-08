@@ -10,7 +10,7 @@ name: Desktop
 #   gh workflow run desktop.yml -f tag=desktop-v0.3.2 [-f macos=macos-15]
 on:
   pull_request:
-    paths: ["desktop/**", "e2e/desktop/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "e2e/desktop/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/desktop.yml"]
   push:
     tags: ["desktop-v*"]
   workflow_dispatch:
@@ -70,20 +70,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+      # the version comes from packageManager in the root package.json
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Linux libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb imagemagick \
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
-      - run: pnpm install --frozen-lockfile
-        working-directory: desktop
+      # at the root (one lockfile for the repository), only what the desktop app needs
+      - run: pnpm install --frozen-lockfile --filter homequarters-desktop
       - name: Build
         shell: bash
         working-directory: desktop

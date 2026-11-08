@@ -102,8 +102,11 @@ before a lone `fdash.json`):
 { "tasks": { "build": { "run": [["go", "build", "-o", "../bin/", "./cmd/app"]], "outputs": ["/bin/app*"] },
              "test:unit": { "run": [["go", "test", "./..."]] } } }
 // addons/maps/fdash.json
-{ "dependsOn": ["core"], "tasks": { "test:unit": { "run": [["node", "--test", "test/*.test.ts"]] },
-                                    "test:integration": { "run": [["node", "--test", "**/*.ispec.ts"]] } } }
+{ "dependsOn": ["core"],
+  "tasks": { "test:unit": { "run": [["pnpm", "exec", "vitest", "run", "--project", "maps"]],
+                            "tools": [["pnpm", "--version"]] },
+             "test:integration": { "run": [["pnpm", "exec", "vitest", "run", "--project", "maps:integration"]],
+                                   "tools": [["pnpm", "--version"]] } } }
 ```
 
 | Workspace key | Meaning |
@@ -191,6 +194,22 @@ Inputs:
   not give, and the test runs again once it is rebuilt. A pattern that matches nothing (not built yet) adds
   nothing; the command then runs and fails for lack of the artefact, and nothing is recorded. Only the
   content counts, not the file's mode or time.
+- a **pnpm provider**, `{ "pnpm": "<member folder>" }` (in a project, relative to it, like the Go
+  provider's `cwd`; `"."` for the project itself): the part of the pnpm lockfile that workspace member
+  installs, instead of the whole `pnpm-lock.yaml`. The lockfile is the nearest one from the folder up to the
+  root, the member its importer there. The key holds `pnpm:<importer>` and a digest of: the importer's entry
+  (its `dependencies`, `devDependencies`, `optionalDependencies` with their specifiers and resolved versions),
+  every snapshot reached from them (peer-suffixed keys included) and its package (version, integrity,
+  platform fields), the importers it links to (`link:`, followed), and the sections that change every install
+  (`settings`, `overrides`, `patchedDependencies` with the content of the patch files they name,
+  `pnpmfileChecksum`, any other top-level section but the catalogs, which show up as resolved versions).
+  Bumping a package only another member installs keeps the key; reordering the file keeps it too. The
+  lockfile itself stays among the files whose time and size are checked after a run, so a `pnpm install`
+  during the run still records nothing. `node_modules` is not read: the lockfile pins each package's version
+  and integrity. A member the lockfile does not have makes the inputs fail to resolve (the command runs
+  without the cache, with the reason in its log). A lockfile fdash does not read (a `lockfileVersion` other
+  than `9.0`, YAML it does not parse) is hashed whole, with a line saying so in the command's log.
+  A command that reads another member's files (a type-check that follows its imports) declares that member too.
 
 When in doubt, declare an input wider: a missing input is a check skipped while what it tests changed.
 
@@ -241,4 +260,6 @@ reach them, with `warn` set when a command that had passed ran again and `failed
 
 ## Tests
 
-`node --test 'tools/fdash/test/*.test.ts'`
+`node --test 'tools/fdash/test/*.test.ts'`: fdash tests itself with Node's own runner, since it is what starts
+everything else (installs included) and has no dependency. In this repository, the other TypeScript projects run
+their tests with Vitest.

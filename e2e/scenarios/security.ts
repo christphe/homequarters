@@ -78,7 +78,9 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("the replayed connection shows up in the SFU room", seen);
     const t0 = Date.now();
     const evicted = seen && await waitFor(async () => (await lkParticipants(room)).length === 0, { timeout: 15000, every: 250, what: "attacker evicted" }).then(() => true).catch(() => false);
-    const rm = await metrics();
+    // the participant leaves the SFU's list before the server hears back from its removal call and counts it
+    let rm = await metrics();
+    if (evicted) await waitFor(async () => (rm = await metrics()).hq_media_reconcile_removals_total > (before.hq_media_reconcile_removals_total ?? 0), { timeout: 5000, every: 200 }).catch(() => {});
     check("the reconciler evicts the replayed connection within seconds", evicted, ((Date.now() - t0) / 1000).toFixed(1) + " s");
     const removals = [before.hq_media_reconcile_removals_total ?? 0, rm.hq_media_reconcile_removals_total];
     check("the eviction is counted (hq_media_reconcile_removals_total)", removals[1] > removals[0], removals.join(" -> "));

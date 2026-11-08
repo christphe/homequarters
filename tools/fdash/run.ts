@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expand, type Command, type Config } from "./config.ts";
-import { cacheKey, passed, recordPass, resolveInputs, resolveOutputs, restoreOutputs, signature, storeOutputs } from "./cache.ts";
+import { cacheKey, mergeResolved, passed, recordPass, resolveInputs, resolveOutputs, restoreOutputs, signature, storeOutputs, type Resolved } from "./cache.ts";
 import { launch, spawnSpec } from "./spawn.ts";
 
 export { spawnSpec };
@@ -152,13 +152,14 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       return [{ name: c.name, ok, cached: false, log, ms: Date.now() - t0 }];
     };
     if (c.inputs === undefined || !c.cache) return plain();
-    let common: string[];
+    let common: Resolved;
     try {
       common = resolveInputs(o.root, c.inputs);
     } catch (e) {
       fs.appendFileSync(log, `fdash: inputs could not be resolved, running without the cache: ${(e as Error).message}\n`);
       return plain();
     }
+    for (const w of common.warnings) fs.appendFileSync(log, `fdash: ${w}\n`);
     if (!c.items || (extra.length > 0 && !extra.every((a) => c.items!.has(a)))) {
       if (c.items) fs.appendFileSync(log, `fdash: arguments that are not items, running without the cache: ${extra.join(" ")}\n`);
       if (c.items) return plain();
@@ -199,8 +200,8 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
     }
     // items: each keyed on its own, the command run once with the items that have not passed
     const items = [...c.items.keys()].filter((i) => extra.length === 0 || extra.includes(i));
-    const itemFiles = (item: string, shared: string[]) => [...new Set([...shared, ...resolveInputs(o.root, c.items!.get(item)!.inputs)])].sort();
-    const itemKey = (item: string, files: string[]) => cacheKey(o.root, c, [item], files, process.env);
+    const itemFiles = (item: string, shared: Resolved) => mergeResolved(shared, resolveInputs(o.root, c.items!.get(item)!.inputs));
+    const itemKey = (item: string, files: Resolved) => cacheKey(o.root, c, [item], files, process.env);
     const keys = new Map<string, string>(), befores = new Map<string, string>();
     for (const item of items) {
       const files = itemFiles(item, common);
@@ -217,7 +218,7 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       const { said, nocache } = readReport(reportFile);
       if (nocache) fs.appendFileSync(log, "fdash: the command asked that nothing be recorded (nocache)\n");
       // inputs that no longer resolve once it ran (a go.mod broken meanwhile): report, record nothing
-      let after: string[] | undefined;
+      let after: Resolved | undefined;
       try {
         after = stop() || nocache ? undefined : resolveInputs(o.root, c.inputs);
       } catch (e) {

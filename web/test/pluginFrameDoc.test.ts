@@ -1,6 +1,6 @@
 // The documents of a plugin's iframes (its hidden frame and the view of its modal): a language and a title.
-// Run: node --test web/test
-import { test } from "node:test";
+// Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { frameHead, framePolicy } from "../src/plugins/frameDoc.ts";
 

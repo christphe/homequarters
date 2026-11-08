@@ -39,10 +39,16 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/plugins/sdk/client.d.ts",
-        "/plugins/sdk/view.d.ts"
+        "/plugins/sdk/view.d.ts",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../plugins/sdk"
+        }
       ],
       "tools": [
         [
@@ -68,19 +74,40 @@
           "pnpm",
           "--version"
         ]
+      ],
+      "inputs": [
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        }
       ]
     },
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "test/*.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run"
         ]
       ],
       "inputs": [
         "/server/internal/gamemap/map.go",
-        "/server/internal/httpapi/avatar.go"
+        "/server/internal/httpapi/avatar.go",
+        "/server/internal/world/types.go",
+        "/server/internal/httpapi/ws.go",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     }
   }

@@ -1,6 +1,6 @@
 // Path finding for plugin sprites (a seedling called back to its owner): a breadth-first search over
 // the map's 16 px tiles, then string pulling so the sprite walks straight wherever it can. Pure, so it
-// runs under node --test. The server has its own search for walk-to; this one is cosmetic and local.
+// runs in web's unit tests, on Node. The server has its own search for walk-to; this one is cosmetic and local.
 
 const T = 16;
 

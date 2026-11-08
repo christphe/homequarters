@@ -2,6 +2,7 @@ import { PluginSlots } from "./PluginUI";
 import { session } from "../session";
 import { activeMedia, canShareScreen } from "../media/MediaManager";
 import { autoOff } from "../media/autoOffState";
+import { shareRefusal } from "../media/shareErrors";
 import { savePrefs, setState, toast, useStore } from "../store";
 import { t } from "../i18n";
 import { CamIcon, CamOffIcon, GearIcon, LeaveIcon, MicIcon, MicOffIcon, ScreenIcon } from "./Icons";
@@ -57,12 +58,12 @@ export function MediaBar({ onEnable, onSettings }: { onEnable: () => void; onSet
             {/* aria-disabled keeps the button focusable and tappable, so it can say why sharing is not possible */}
             <button className={"round" + (sharing ? " on" : "")} aria-disabled={!live || !canShareScreen()}
               onClick={() => {
-                if (!canShareScreen()) setState({ deviceError: t("share.unsupported") });
-                else if (!live) setState({ deviceError: t("share.needCall") });
+                const refusal = shareRefusal({ canShare: canShareScreen(), live });
+                if (refusal) setState({ deviceError: t(refusal) });
                 else void activeMedia().setShare(!sharing);
               }}
               aria-label={t("media.share")} aria-pressed={sharing}
-              title={!canShareScreen() ? t("share.unsupported") : !live ? t("share.needCall") : sharing ? t("media.stopShare") : t("media.share")}><ScreenIcon /></button>
+              title={t(shareRefusal({ canShare: canShareScreen(), live }) ?? (sharing ? "media.stopShare" : "media.share"))}><ScreenIcon /></button>
             <button className="round danger" onClick={() => { session.setConsent(false); toast(t("media.disabledHint")); }} title={t("media.leave")}><LeaveIcon /></button>
           </>
         )}

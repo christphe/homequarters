@@ -3,15 +3,27 @@
 // generator and the desktop app's two plain JavaScript files).
 // Run: node scripts/oxlint.ts [folder ...] [oxlint option ...]  Folders are relative to the current folder:
 // each project's `lint` task runs it on its own folder (`node ../scripts/oxlint.ts src test` from web/).
-// Needs `pnpm install` in web/. It runs from the repository root so one config covers every tree; the
-// binaries live in web/node_modules/.bin, which goes on PATH so oxlint finds oxlint-tsgolint there.
+// Needs `pnpm install` at the root. It runs from the repository root so one config covers every tree, with the
+// oxlint of the project it is called from (each project declares oxlint and oxlint-tsgolint in its package.json;
+// from the root, the scripts project's): that project's node_modules/.bin goes on PATH so oxlint finds
+// oxlint-tsgolint there.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const bin = path.join(root, "web", "node_modules", ".bin");
 export const ALL_TREES = ["web/src", "web/test", "plugins", "e2e", "scripts", "tools/fdash", "site", "desktop/ui", "desktop/src-tauri/src"];
+
+/** The project whose oxlint runs: the nearest folder from cwd up to the root with oxlint installed, else scripts/. */
+export function projectOf(cwd: string, rootDir: string, has: (dir: string) => boolean): string {
+  for (let dir = cwd; ; dir = path.dirname(dir)) {
+    const rel = path.relative(rootDir, dir);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) break;
+    if (dir !== rootDir && has(dir)) return dir;
+    if (dir === rootDir) break;
+  }
+  return path.join(rootDir, "scripts");
+}
 
 /** The trees to lint (relative to the root, "/" separated) and the options passed on to oxlint. */
 export function plan(argv: string[], cwd: string, rootDir: string): { trees: string[]; options: string[] } {
@@ -39,7 +51,14 @@ function main(): number {
   }
   // the default format always ends with the file count (left alone, oxlint may pick a silent one)
   const args = ["--type-aware", "--deny-warnings", "--format=default", ...p.trees, ...p.options];
-  const r = spawnSync(process.execPath, [path.join(root, "web", "node_modules", "oxlint", "bin", "oxlint"), ...args], {
+  const project = projectOf(process.cwd(), root, (d) => fs.existsSync(path.join(d, "node_modules", "oxlint", "bin", "oxlint")));
+  const oxlint = path.join(project, "node_modules", "oxlint", "bin", "oxlint");
+  if (!fs.existsSync(oxlint)) {
+    console.log(`oxlint: not installed in ${path.relative(root, project) || "."} (run pnpm install at the root; the project declares oxlint and oxlint-tsgolint)`);
+    return 1;
+  }
+  const bin = path.join(project, "node_modules", ".bin");
+  const r = spawnSync(process.execPath, [oxlint, ...args], {
     cwd: root,
     stdio: "inherit",
     env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH },

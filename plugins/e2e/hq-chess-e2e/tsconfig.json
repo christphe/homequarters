@@ -1,6 +1,6 @@
 {
   // The chess browser scenario, run by Node as it is (type stripping) through e2e/plugin-run.ts: the same
-  // options as e2e/tsconfig.json. Its types (Node, puppeteer-core through e2e/lib.ts) come from e2e/node_modules.
+  // options as e2e/tsconfig.json. Its types come from its package.json (Node) and e2e's (puppeteer-core, through e2e/lib.ts).
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
@@ -17,7 +17,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "jsx": "react-jsx",
-    "typeRoots": ["../../../e2e/node_modules/@types"],
     "types": ["node"]
   },
   "include": ["*.ts", "../../../e2e/globals.d.ts"]

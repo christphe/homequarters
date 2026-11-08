@@ -1,5 +1,5 @@
-// The gauntlet on fdash: its gates in the workspace, the tree fingerprint, the record. Run: node --test scripts/gauntlet.test.ts  (scripts' test:unit)
-import { test } from "node:test";
+// The gauntlet on fdash: its gates in the workspace, the tree fingerprint, the record. Run: pnpm exec vitest run gauntlet.test.ts  (scripts' test:unit)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { expand, type Command } from "../tools/fdash/config.ts";
 import { loadWorkspace } from "../tools/fdash/workspace.ts";
+import { parseYaml, pnpmPart } from "../tools/fdash/pnpm.ts";
 import { fingerprint } from "./gauntlet-fingerprint.ts";
 import { BROWSER, closing, header, plan, recordLines } from "./gauntlet.ts";
 import { ALL } from "../e2e/shards.ts";
@@ -24,40 +25,44 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
   const gates = expand(config, ["default"], []);
   const row = (c: Command) => [c.name, c.cwd, c.run.map((s) => s.join(" ")).join(" && "), c.failOnOutput, c.args, JSON.stringify(c.env)];
   const ox = (up: string, folders = ".") => `node ${up}scripts/oxlint.ts ${folders}`;
-  const tsc = (up: string, p: string) => `node ${up}web/node_modules/typescript/bin/tsc -p ${p}`;
-  const plugin = (p: string, configs: string[]) => [`${p}:lint`, `plugins/bundled/${p}`, [...configs.map((c) => tsc("../../../", c)), ox("../../../")].join(" && "), false, false, "{}"];
+  const tsc = (p: string) => `pnpm exec tsc -p ${p}`;
+  const plugin = (p: string, configs: string[]) => [`${p}:lint`, `plugins/bundled/${p}`, [...configs.map((c) => tsc(c)), ox("../../../")].join(" && "), false, false, "{}"];
   const unit = (name: string, cwd: string) => [name, cwd, "node --test test/*.test.ts", false, false, "{}"];
+  // a plugin's tests run its own Vitest projects (its vitest.config.ts): <name> for test:unit, <name>:integration
+  const vitest = (p: string, tier: "unit" | "integration") =>
+    [`${p}:test:${tier}`, p === "sdk" ? "plugins/sdk" : `plugins/bundled/${p}`, `pnpm exec vitest run --project ${tier === "unit" ? p : `${p}:integration`}`, false, false, tier === "unit" ? "{}" : '{"HQ_BIN_REPO_ONLY":"1"}'];
   const fixtures = ["critters/tsconfig.json", "drawn-pet/tsconfig.json", "drawn-pet/public/tsconfig.json", "drawn-sheet/public/tsconfig.json", "ui-demo/tsconfig.json", "ui-demo/public/tsconfig.json", "ui-demo/public/views/tsconfig.json"];
   assert.deepEqual(gates.map(row), [
     ["server:lint", "server", "gofmt -l . && go vet ./... && go tool staticcheck ./...", true, false, "{}"],
     ["web:lint", "web", ["pnpm exec tsc --noEmit", "pnpm exec tsc -p tsconfig.test.json --noEmit", "pnpm exec tsc -p tsconfig.sdk.json", ox("../", "src test")].join(" && "), false, false, "{}"],
     ["site:lint", "site", `pnpm exec tsc --noEmit && ${ox("../")}`, false, false, "{}"],
-    ["e2e:lint", "e2e", ["pnpm exec tsc --noEmit", ...fixtures.map((f) => tsc("../", "fixtures/plugins/installed/" + f)), ox("../")].join(" && "), false, false, "{}"],
+    ["e2e:lint", "e2e", ["pnpm exec tsc --noEmit", ...fixtures.map((f) => tsc("fixtures/plugins/installed/" + f)), ox("../")].join(" && "), false, false, "{}"],
     ["docs:lint", "docs", "node ../scripts/check-protocol-docs.ts", false, false, "{}"],
-    ["desktop:lint", "desktop", `${tsc("../", ".")} && ${ox("../", "ui src-tauri/src")}`, false, false, "{}"],
-    ["scripts:lint", "scripts", `${tsc("../", "tsconfig.test.json")} && ${ox("../")}`, false, false, "{}"],
-    ["fdash:lint", "tools/fdash", `${tsc("../../", "tsconfig.test.json")} && ${ox("../../")}`, false, false, "{}"],
-    ["sdk:lint", "plugins/sdk", `${tsc("../../", "tsconfig.test.json")} && ${ox("../../")}`, false, false, "{}"],
+    ["desktop:lint", "desktop", `${tsc(".")} && ${ox("../", "ui src-tauri/src")}`, false, false, "{}"],
+    ["scripts:lint", "scripts", `${tsc("tsconfig.test.json")} && ${ox("../")}`, false, false, "{}"],
+    ["fdash:lint", "tools/fdash", `${tsc("tsconfig.test.json")} && ${ox("../../")}`, false, false, "{}"],
+    ["sdk:lint", "plugins/sdk", `${tsc("tsconfig.test.json")} && ${ox("../../")}`, false, false, "{}"],
     plugin("hq-card-lastcard", ["tsconfig.json", "tsconfig.test.json"]),
     plugin("hq-card-pouilleux", ["tsconfig.json", "tsconfig.test.json"]),
     plugin("hq-cards", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
     plugin("hq-chess", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
     plugin("hq-pets", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
-    ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `node ../../../e2e/node_modules/typescript/bin/tsc -p tsconfig.json && ${ox("../../../")}`, false, false, "{}"]),
+    ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `${tsc("tsconfig.json")} && ${ox("../../../")}`, false, false, "{}"]),
     ["server:build", "server", "go build -o ../bin/ ./cmd/homequarters", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
     ["server:test:unit", "server", "go test -race -count=1 ./...", false, false, "{}"],
-    unit("web:test:unit", "web"),
+    ["web:test:unit", "web", "pnpm exec vitest run", false, false, "{}"],
     ["site:test:unit", "site", "node check.ts", false, false, "{}"],
-    ["e2e:test:unit", "e2e", "node --test shards.test.ts slots.test.ts", false, false, "{}"],
-    ["scripts:test:unit", "scripts", "node --test oxlint-hq.test.ts oxlint.test.ts check-protocol-docs.test.ts gauntlet.test.ts ci-fdash-records.test.ts", false, false, "{}"],
+    ["e2e:test:unit", "e2e", "pnpm exec vitest run", false, false, "{}"],
+    ["scripts:test:unit", "scripts", "pnpm exec vitest run", false, false, "{}"],
     unit("fdash:test:unit", "tools/fdash"),
-    unit("hq-card-lastcard:test:unit", "plugins/bundled/hq-card-lastcard"),
-    unit("hq-card-pouilleux:test:unit", "plugins/bundled/hq-card-pouilleux"),
-    unit("hq-cards:test:unit", "plugins/bundled/hq-cards"),
-    unit("hq-chess:test:unit", "plugins/bundled/hq-chess"),
-    ...INTEGRATION.map((n) => [n, n.startsWith("sdk:") ? "plugins/sdk" : `plugins/bundled/${n.split(":")[0]}`, "node --test **/*.ispec.ts", false, false, '{"HQ_BIN_REPO_ONLY":"1"}']),
+    vitest("hq-card-lastcard", "unit"),
+    vitest("hq-card-pouilleux", "unit"),
+    vitest("hq-cards", "unit"),
+    vitest("hq-chess", "unit"),
+    vitest("hq-pets", "unit"),
+    ...INTEGRATION.map((n) => vitest(n.split(":")[0]!, "integration")),
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
     ...[
       ["hq-card-lastcard-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-lastcard lastCard.ts"],
@@ -140,7 +145,7 @@ test("each plugin's tests run in its project, and import nothing outside it and 
   for (const p of fs.readdirSync(bundled)) {
     const dir = path.join(bundled, p, "test");
     if (!fs.existsSync(dir)) continue;
-    // a plugin may have only integration tests (hq-pets: test/*.ispec.ts)
+    // a plugin may have only integration tests (test/*.ispec.ts)
     const task = (config.get(`${p}:test:unit`) ?? config.get(`${p}:test:integration`)) as Command | undefined;
     assert.ok(task, `${p} has tests, so a project with a test task`);
     const deps: string[] = JSON.parse(fs.readFileSync(path.join(bundled, p, "fdash.json"), "utf8")).dependsOn ?? [];
@@ -224,7 +229,7 @@ test("closing: green, red, skipped, tree changed, interrupted", () => {
 
 test("no file names a test of web/test, a plugin's test/ or tools/fdash/test that does not exist", () => {
   // docs/status.md and the design notes keep their history; everything else follows the files
-  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\\.test\\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
+  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\\.test\\.tsx?", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
   const missing: string[] = [];
   for (const line of out.split("\n").filter(Boolean)) {
     const [file, , ref] = line.split(":");
@@ -249,26 +254,103 @@ test("files a test reads outside its project are inputs of the task that runs it
   for (const f of files("server", /_test\.go$/)) {
     for (const m of fs.readFileSync(path.join(root, f), "utf8").matchAll(/filepath\.Join\((?:"\.\.", ){3}((?:"[^"]+"(?:, )?)+)/g)) {
       const rel = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).join("/");
-      if (!covered("server:test:unit", rel)) missing.push(`${f} reads ${rel}, not an input of server:test:unit`);
+      // .run/ is where a test writes (the cmd tests' binary), never what it reads
+      if (!rel.startsWith(".run/") && !covered("server:test:unit", rel)) missing.push(`${f} reads ${rel}, not an input of server:test:unit`);
     }
   }
-  // tests reading files by URL, and tests importing another project's node_modules (its lockfile pins them)
+  // tests reading files by URL or from their folder (`${import.meta.dirname}/../x`: under Vitest, Vite rewrites
+  // new URL("..", import.meta.url) into a served address)
   const owners: [string, string, string][] = [["web/test", "web:test:unit", "web"], ["scripts", "scripts:test:unit", "scripts"],
     ...fs.readdirSync(path.join(root, "plugins/bundled")).filter((p) => fs.existsSync(path.join(root, "plugins/bundled", p, "test"))).map((p): [string, string, string] => [`plugins/bundled/${p}/test`, `${p}:test:unit`, `plugins/bundled/${p}`])];
   for (const [dir, task, project] of owners) {
-    for (const f of files(dir, /\.test\.ts$/)) {
+    for (const f of files(dir, /\.test\.tsx?$/)) {
       const text = fs.readFileSync(path.join(root, f), "utf8");
-      for (const m of text.matchAll(/new URL\("(\.\.?\/[^"]+)", import\.meta\.url\)/g)) {
-        const rel = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
+      for (const m of text.matchAll(/new URL\("(\.\.?\/[^"]+)", import\.meta\.url\)|`\$\{import\.meta\.dirname\}\/([^`$]+)`/g)) {
+        const rel = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1] ?? m[2]));
         if (!rel.startsWith(project + "/") && !covered(task, rel)) missing.push(`${f} reads ${rel}, not an input of ${task}`);
-      }
-      for (const m of text.matchAll(/["'](\.\.\/[^"']*?)\/node_modules\//g)) {
-        const other = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
-        if (!covered(task, `${other}/pnpm-lock.yaml`)) missing.push(`${f} imports ${other}/node_modules: ${other}/pnpm-lock.yaml is not an input of ${task}`);
       }
     }
   }
   assert.deepEqual(missing, []);
+});
+
+test("one install for the repository: no package reaches into another's node_modules, each declares the tools it runs", () => {
+  // a relative path into another package's node_modules borrows that package's install: its
+  // dependencies change under it without its own package.json saying so
+  const tracked = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "*.ts", "*.tsx", "*.js", "*.json", "*.yml", "*.yaml", "*.sh", "deploy/Dockerfile"], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);
+  const reaching: string[] = [];
+  for (const f of tracked) {
+    if (f.startsWith("docs/superpowers/") || !fs.existsSync(path.join(root, f))) continue;
+    for (const m of fs.readFileSync(path.join(root, f), "utf8").matchAll(/\.\.\/[\w./-]*node_modules\//g)) reaching.push(`${f}: ${m[0]}`);
+  }
+  assert.deepEqual(reaching, []);
+  assert.ok(!fs.existsSync(path.join(root, "web/pnpm-lock.yaml")), "one lockfile, at the root");
+  const rootPkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  assert.match(rootPkg.packageManager, /^pnpm@\d+\.\d+\.\d+$/, "the root pins pnpm");
+  assert.equal(rootPkg.dependencies ?? rootPkg.devDependencies, undefined, "the root declares no dependency: each project declares its own");
+  // a project runs the tools its package.json declares (pnpm exec finds only those), and its commands follow the install
+  const config = loadWorkspace(root);
+  const TOOL: Record<string, string[]> = { tsc: ["typescript"], vitest: ["vitest"], vite: ["vite"] };
+  const problems: string[] = [];
+  for (const c of [...config.values()].filter((t): t is Command => t.kind === "command")) {
+    const needs = c.run.flatMap((s) => (s[0] === "pnpm" && s[1] === "exec" ? TOOL[s[2]] ?? [s[2]] : s.some((a) => a.endsWith("scripts/oxlint.ts")) ? ["oxlint", "oxlint-tsgolint"] : []));
+    if (!needs.length) continue;
+    const pkgFile = path.join(root, c.cwd, "package.json");
+    const pkg = fs.existsSync(pkgFile) ? JSON.parse(fs.readFileSync(pkgFile, "utf8")) : {};
+    const declared = { ...pkg.dependencies, ...pkg.devDependencies };
+    for (const n of needs) if (!declared[n]) problems.push(`${c.name} runs ${n}, not declared in ${c.cwd}/package.json`);
+    const inputs = (c.inputs ?? []).filter((i): i is string => typeof i === "string");
+    if (!inputs.some((i) => i === "**" || i === "pnpm-workspace.yaml")) problems.push(`${c.name} runs installed tools: /pnpm-workspace.yaml is not an input`);
+    // what its own member installs, its part of the lockfile (fdash's pnpm input), not the whole lockfile
+    if (!inputs.includes("**") && !(c.inputs ?? []).some((i) => typeof i === "object" && "pnpm" in i && i.pnpm === c.cwd)) problems.push(`${c.name} runs installed tools: { "pnpm": "." } is not an input`);
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("cache keys hold a member's part of the pnpm lockfile, not the whole file: no fdash.json lists it, each pnpm input names a member, and a task reading another member's code declares that member", () => {
+  // a bump of a package only one member installs reruns only the tasks of the members that install it
+  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "fdash.json", "*/fdash.json", "fdash-workspace.json"], { cwd: root, encoding: "utf8" }).split("\n").filter((f) => f && !f.includes("/fixtures/") && fs.existsSync(path.join(root, f)));
+  assert.deepEqual(files.filter((f) => fs.readFileSync(path.join(root, f), "utf8").includes("pnpm-lock.yaml")), [], "fdash.json files listing the raw lockfile");
+  const members = Object.keys(parseYaml(fs.readFileSync(path.join(root, "pnpm-lock.yaml"), "utf8")).importers as object).filter((m) => m !== ".");
+  // the members whose code a pattern reaches: not the oxlint wrapper and its rules (they import nothing
+  // installed: the project's own oxlint loads them), not data files (fdash.json, package.json)
+  const reached = (pattern: string) => {
+    const segs = pattern.split("/");
+    const last = segs[segs.length - 1];
+    if (pattern.startsWith("!") || /^scripts\/oxlint(-hq)?\.ts$/.test(pattern) || (!/[*?[{]/.test(last) && !/\.(ts|tsx|js|mjs)$/.test(last))) return [];
+    return members.filter((m) => segs.length > m.split("/").length && path.posix.matchesGlob(m, segs.slice(0, m.split("/").length).join("/")));
+  };
+  const problems: string[] = [];
+  for (const c of [...loadWorkspace(root).values()].filter((t): t is Command => t.kind === "command")) {
+    const declared = (c.inputs ?? []).flatMap((i) => (typeof i === "object" && "pnpm" in i ? [i.pnpm] : []));
+    if (declared.length === 0) continue;
+    for (const d of declared) {
+      try {
+        pnpmPart(root, d);
+      } catch (e) {
+        problems.push(`${c.name}: ${(e as Error).message}`);
+      }
+    }
+    const strings = (c.inputs ?? []).filter((i): i is string => typeof i === "string");
+    for (const m of new Set(strings.flatMap(reached))) if (!declared.includes(m)) problems.push(`${c.name} reads code of ${m} without { "pnpm": ${JSON.stringify(m)} }`);
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("versions shared by several packages are written once, in the workspace's catalog", () => {
+  const members = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "*package.json"], { cwd: root, encoding: "utf8" }).split("\n").filter((f) => f && f !== "package.json");
+  const seen = new Map<string, string[]>();
+  for (const f of members) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
+    for (const [n, v] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }) as [string, string][]) if (v !== "catalog:") seen.set(n, [...(seen.get(n) ?? []), f]);
+  }
+  const used = new Map<string, number>();
+  for (const f of members) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
+    for (const n of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) used.set(n, (used.get(n) ?? 0) + 1);
+  }
+  const duplicated = [...seen].filter(([n]) => (used.get(n) ?? 0) > 1).map(([n, where]) => `${n} has a version of its own in ${where.join(", ")}: use "catalog:"`);
+  assert.deepEqual(duplicated, []);
 });
 
 test("no scenario of the suite imports another (each is cached on its own file)", () => {

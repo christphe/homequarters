@@ -1,12 +1,12 @@
 // The bundled Old Maid game (hq-card-pouilleux) on the card table (hq-cards) through the real server (testbed).
-// Run: node --test "plugins/bundled/hq-card-pouilleux/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg hq-card-pouilleux (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { CARDS, NAMES, act, cardBed, cardsDir, closeBeds, count, handSizes, lastOf, logVerbs, noErrors, seatAll, stateAfter, tableOf, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
 import type { Frame } from "../../hq-cards/test/harness.ts";
 
-after(closeBeds);
+afterAll(closeBeds);
 
 const OLD_MAID = "hq-card-pouilleux";
 const dirs = [cardsDir, path.resolve(import.meta.dirname, "..")];
@@ -92,5 +92,18 @@ test("Old Maid: the page is told the game, unlisted actions change nothing, a de
   const counted = await waitTable(carol!, "the count", (t) => t.count !== "");
   assert.equal(counted.count, "49 cards left: Alice 16, Bob 17, Carol 16", "the count comes from Old Maid's hook");
   await until("the count logged", () => logVerbs(carol!).includes("counted"));
+  await noErrors(bed);
+});
+
+test("a window showing the choice of a game: Old Maid turned off leaves its list, turned on comes back", async () => {
+  const { bed, members: [alice] } = await cardBed(dirs, NAMES);
+  openDeck(alice!);
+  await until("Old Maid listed", () => listsOldMaid(alice!));
+  let from = count(alice!);
+  await bed.setPlugin(OLD_MAID, false);
+  await until("Old Maid taken out of the open window's list", () => !!lastOf(alice!, "games", from) && !listsOldMaid(alice!, from));
+  from = count(alice!);
+  await bed.setPlugin(OLD_MAID, true);
+  await until("Old Maid back in the open window's list", () => listsOldMaid(alice!, from));
   await noErrors(bed);
 });

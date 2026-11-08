@@ -71,7 +71,7 @@ export function useKeyLayout() {
 /** "W A S D" as printed on this keyboard, e.g. "Z Q S D" on AZERTY. */
 export const moveLabels = () => ["KeyW", "KeyA", "KeyS", "KeyD"].map(keyLabel);
 
-// same test as isMac in game/home.ts: neither module may import the other's values (node --test loads them as is)
+// same test as isMac in game/home.ts: neither module may import the other's values (the unit tests load them on Node)
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MAC_SYMBOL = { ctrl: "⌃", alt: "⌥", shift: "⇧", mod: "⌘" } as const;
 const PC_NAME = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", mod: "Ctrl" } as const;

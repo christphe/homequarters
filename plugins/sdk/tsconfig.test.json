@@ -1,5 +1,5 @@
 {
-  // The testbed client and its tests, run by Node as they are (type stripping); Node's types come from web/node_modules.
+  // The testbed client (run by Node as it is, type stripping) and its tests (run by Vitest); Node's types come from its own package.json.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
@@ -16,8 +16,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "typeRoots": ["../../web/node_modules/@types"],
     "types": ["node"]
   },
-  "include": ["testbed.ts", "test"]
+  "include": ["testbed.ts", "test", "vitest.config.ts"]
 }

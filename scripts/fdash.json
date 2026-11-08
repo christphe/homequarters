@@ -6,8 +6,9 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.test.json"
         ],
@@ -21,26 +22,44 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/tools/fdash/**",
-        "/e2e/shards.ts"
+        "/e2e/shards.ts",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../tools/fdash"
+        },
+        {
+          "pnpm": "../e2e"
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "oxlint-hq.test.ts",
-          "oxlint.test.ts",
-          "check-protocol-docs.test.ts",
-          "gauntlet.test.ts",
-          "ci-fdash-records.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run"
         ]
       ],
       "inputs": [
         "/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     }
   }

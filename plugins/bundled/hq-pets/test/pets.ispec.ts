@@ -1,9 +1,9 @@
 // Integration tests of hq-pets, the sample plugin authors copy: members must not be able to stop it.
 // They run the real server through the testbed (plugins/sdk/testbed.ts) and drive members over its API.
-// Run: node --test "plugins/bundled/hq-pets/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg hq-pets (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { testbed } from "../../../sdk/testbed.ts";
 import type { Member, Testbed } from "../../../sdk/testbed.ts";
 
@@ -18,7 +18,7 @@ type Entry = { id: number; pets: Pet[]; guests: Guest[]; mode: string };
 type Frame = { t?: string; set?: Entry[]; del?: number[]; go?: { id: number; g: unknown[] }[]; limit?: number };
 
 const beds: Testbed[] = [];
-after(async () => {
+afterAll(async () => {
   await Promise.all(beds.map((b) => b.close()));
 });
 const open = async (plugins = [pluginDir]): Promise<Testbed> => {

@@ -9,7 +9,7 @@ This guide runs the full development stack on one machine: LiveKit, the Go serve
 | Tool | Notes |
 | --- | --- |
 | Go | 1.27 or newer |
-| Node.js and pnpm | developed with Node 26.4 and pnpm 11.9; other recent versions are untested |
+| Node.js and pnpm | developed with Node 26.4; pnpm 10 or newer, which switches to the version the root `package.json` pins (`packageManager`); other recent versions are untested |
 | LiveKit server | `brew install livekit` on macOS, or the official release binary; or in Docker: `docker compose -f deploy/docker-compose.local.yml up -d livekit` (the script reuses a LiveKit already listening on 7880) |
 | A Chromium-based browser | for the end-to-end tests: Google Chrome |
 
@@ -40,20 +40,26 @@ Open the app in **two different browsers or profiles** (a session is stored in a
 # Go: world simulation, collisions, access rules, proximity groups, backpressure
 cd server && go test -race ./...
 
-# Web: type-check and production build
-cd web && pnpm install && pnpm exec tsc --noEmit && pnpm exec vite build
+# Every TypeScript project at once: one install at the root (one pnpm workspace, one lockfile)
+pnpm install
+
+# Web: type-check, production build, unit and component tests (Vitest on jsdom)
+cd web && pnpm exec tsc --noEmit && pnpm exec vite build && pnpm exec vitest run
+
+# Every project's unit tests through fdash (Go, web, plugins, scripts, the suite's own), skipping what already passed
+node tools/fdash/cli.ts run test:unit
 ~~~
 
 The browser suite drives real Chrome instances (fake camera and microphone) against a **real LiveKit server**. It builds the app, starts its own server with a fresh database and its own LiveKit (the `livekit-server` binary if it is on PATH, else Docker), and needs neither the dev stack nor any cleanup. At most `E2E_MAX_PARALLEL` runs (default 2) go at once on a machine; a run waits for a free slot. Copy `.env.example` to `.env` and fill it in first: `CHROME` (the path to Chrome; the file lists the usual ones) is required, nothing is guessed, and the suite stops without it.
 
 ~~~bash
-cd e2e && pnpm install
+cd e2e                          # after `pnpm install` at the root
 node run.ts                     # all scenarios
 node run.ts proximity rooms     # some of them
 HQ_EXTERNAL_URL=http://127.0.0.1:8080 node run.ts   # against a running stack, e.g. Docker Compose
 ~~~
 
-Scenarios: proximity, consent, rooms, access, editor, social, security, resilience (see [Status](status.md) for what each proves).
+Scenarios: proximity, consent, rooms, editor, social, security, resilience (see [Status](status.md) for what each proves).
 
 ## Run it with Docker
 
@@ -70,7 +76,7 @@ Everything is configured through environment variables.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HQ_ENV` | `dev` | `dev` or `production` |
-| `HQ_ADDR` | `:8080` | HTTP listen address |
+| `HQ_ADDR` | `127.0.0.1:8080` in dev, `:8080` in production | HTTP listen address (dev listens on loopback only unless set, e.g. `:8080` for every address) |
 | `HQ_DB` | `data/homequarters.db` | SQLite file (WAL mode) |
 | `HQ_STATIC_DIR` | empty | Directory with the built web app to serve |
 | `HQ_PLUGINS_DIR` | empty (plugins off) | Folder holding `bundled/` (shipped, `hq-*`) and `installed/` (yours), both optional; administrators turn each plugin on in the admin dialog ([Plugins](plugins.md)). The image sets `/app/plugins`; `scripts/dev.sh` uses the repository's `plugins/` |

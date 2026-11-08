@@ -1,5 +1,5 @@
-// Deploy versions: a page from one deploy talking to a server from another must reload. Run: node --test web/test
-import { test } from "node:test";
+// Deploy versions: a page from one deploy talking to a server from another must reload. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { isOutdated } from "../src/version.ts";
 

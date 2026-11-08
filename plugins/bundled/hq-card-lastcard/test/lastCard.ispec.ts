@@ -1,13 +1,13 @@
 // The bundled Last Card game (hq-card-lastcard) on the card table (hq-cards) through the real server (testbed).
 // It registers its 108 cards in two parts (64, then 44) and counts the points left in each hand.
-// Run: node --test "plugins/bundled/hq-card-lastcard/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg hq-card-lastcard (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { NAMES, act, cardBed, cardsDir, closeBeds, handSizes, lastOf, noErrors, seatedCount, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
 import type { Frame } from "../../hq-cards/test/harness.ts";
 
-after(closeBeds);
+afterAll(closeBeds);
 
 const LAST_CARD = "hq-card-lastcard";
 

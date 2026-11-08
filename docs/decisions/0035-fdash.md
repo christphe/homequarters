@@ -1,6 +1,7 @@
 # 0035: fdash, a task runner with a cache, under the gauntlet
 
-Date: 2026-11-07. Status: accepted; amended by [decision 0037](0037-test-pyramid.md).
+Date: 2026-11-07. Status: accepted; amended by [decision 0037](0037-test-pyramid.md) and
+[decision 0039](0039-fdash-pnpm-input.md) (a `pnpm` input: a member's part of the lockfile in the key).
 
 **Changed since (decision 0037):** tasks have conventional names (`build`, `lint`, `test:unit`,
 `test:integration`, `test:e2e`) and the command line names them without their project (`fdash run test:unit`,

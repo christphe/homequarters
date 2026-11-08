@@ -1,6 +1,6 @@
 // hq.attach: the command that pins a plugin sprite above a member's head.
-// Run: node --test web/test
-import { test } from "node:test";
+// Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { parseBatch } from "../src/plugins/commands.ts";
 

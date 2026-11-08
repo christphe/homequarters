@@ -1,7 +1,6 @@
 // The page's store (store.ts): what it reads back from browser storage at start, and how a change is saved
-// and announced. Run: node --test web/test
-import "./tsResolve.ts";
-import { test } from "node:test";
+// and announced. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 /** Browser storage as the page sees it, in memory. */

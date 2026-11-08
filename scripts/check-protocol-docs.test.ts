@@ -1,5 +1,5 @@
-// Tests of scripts/check-protocol-docs.ts on small fixtures. Run: node --test scripts/check-protocol-docs.test.ts  (part of the web-unit gate)
-import { test } from "node:test";
+// Tests of scripts/check-protocol-docs.ts on small fixtures. Run: pnpm exec vitest run check-protocol-docs.test.ts  (part of the web-unit gate)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

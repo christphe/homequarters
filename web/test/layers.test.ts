@@ -1,8 +1,7 @@
 // The world view's layer loop and render-on-demand decision (layer.ts), the signboard's slide (labelLayer.ts)
-// and LocalPlayer (localPlayer.ts). Run: node --test web/test
-import { test } from "node:test";
+// and LocalPlayer (localPlayer.ts). Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import "./tsResolve.ts";
 import { IDLE_RENDER_MS, shouldRender, updateLayers, type Layer } from "../src/game/layer.ts";
 
 /** A layer that records its updates in `log` and reports `changed`. */

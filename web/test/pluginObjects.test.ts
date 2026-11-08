@@ -1,5 +1,5 @@
-// Plugin objects on the map: which ones the page draws and which one X uses. Run: node --test web/test
-import { test } from "node:test";
+// Plugin objects on the map: which ones the page draws and which one X uses. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { MAX_DYNAMIC, dynamicObjects, nearestUsable, objectChanges, objectsFor, placedObjects, type PlacedObject, type PluginObjectSpec } from "../src/game/pluginObjects.ts";
 import { propSize } from "../src/game/props.ts";

@@ -1,7 +1,6 @@
 // Real UI and authoritative world: reactions, interactive notes, guided walking, portals, doors and boards.
-import { API, check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User, type RunContext } from "../lib.ts";
+import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User, type RunContext } from "../lib.ts";
 import type { EvaluateFunc } from "puppeteer-core";
-import type { MapData } from "../../web/src/net/protocol.ts";
 
 const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
@@ -17,15 +16,14 @@ export async function run(ctx: RunContext): Promise<boolean> {
   try {
     const a = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
     const b = await joinAs(browser, "Explorer" + Date.now() % 10000);
-    await walkTo(a, 4 * 16 + 8, 6 * 16 + 8);
-    await walkTo(b, 6 * 16 + 8, 6 * 16 + 8);
+    await Promise.all([walkTo(a, 4 * 16 + 8, 6 * 16 + 8), walkTo(b, 6 * 16 + 8, 6 * 16 + 8)]); // each page walks its own avatar
     await waitFor(() => read(a, () => window.__hq.state.nearby?.t === "note"), { what: "nearby note hint" });
     await a.page.keyboard.press("1");
     await waitFor(() => read(b, (id) => window.__hq.view.emotes.has(id), a.id), { what: "remote wave bubble" });
     check("number key sends an emote that the other avatar renders", true);
     await waitFor(async () => { await a.page.keyboard.press("x"); return a.page.$(".object-note"); }, { timeout: 20000, every: 700, what: "welcome note opens" });
     check("X opens the nearby note in a dialog", await read(a, () => document.querySelector(".object-note")!.textContent.includes("Welcome to Home Quarters!")));
-    check("the public map omits object content", await read(b, () => !JSON.stringify(window.__hq.view.map).includes("Welcome to Home Quarters!")));
+    // the public map omits object content: world TestObjectContentIsHiddenFromTheMapAndServedOnlyNextToTheObject
     await close(a);
 
     // a person's row shows Walk to, Wave and Message; the rest is behind "More actions"
@@ -81,8 +79,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(async () => near(await pos(b), 36 * 16 + 8, 32 * 16 + 8), { what: "portal arrival" });
     check("walking onto the portal teleports once and stops movement", await read(b, () => window.__hq.view.dx === 0 && window.__hq.view.dy === 0));
 
-    await walkTo(a, 46 * 16 + 8, 5 * 16 + 8);
-    await walkTo(b, 42 * 16 + 8, 4 * 16 + 8);
+    await Promise.all([walkTo(a, 46 * 16 + 8, 5 * 16 + 8), walkTo(b, 42 * 16 + 8, 4 * 16 + 8)]);
     await waitFor(() => click(a, "Lock room"), { what: "lock control" });
     await waitFor(() => read(b, () => window.__hq.state.locked.includes(3)), { what: "room lock reaches other player" });
     await read(b, () => window.__hq.view.setDirection(1, 0));
@@ -126,8 +123,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("saved note edits are delivered through the real interaction", true);
     await close(a);
 
-    await walkTo(a, 49 * 16 + 8, 16 * 16 + 8);
-    await walkTo(b, 50 * 16 + 8, 16 * 16 + 8);
+    await Promise.all([walkTo(a, 49 * 16 + 8, 16 * 16 + 8), walkTo(b, 50 * 16 + 8, 16 * 16 + 8)]);
     for (const u of [a, b]) {
       await waitFor(() => read(u, () => window.__hq.state.nearby?.t === "whiteboard"), { what: "nearby whiteboard" });
       await u.page.keyboard.press("x");
@@ -150,27 +146,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => read(b, () => !document.querySelector<HTMLCanvasElement>("canvas.whiteboard")!.getContext("2d")!.getImageData(0, 0, 1000, 600).data.some((v) => v < 200)), { what: "cleared on collaborator" });
     check("admin clear reaches both collaborators", true);
     check("members do not get a Clear board button", !(await click(b, "Clear board")));
-    await click(a, "Text", ".board-tools button");
-    await a.page.$eval('.modal input[maxlength="80"]', (el) => { el.value = ""; });
-    await a.page.type('.modal input[maxlength="80"]', "Saved across restart");
-    await click(a, "Place text in centre");
-    await waitFor(() => read(b, () => window.__hq.boardModel.strokes.some((s) => s.tx === "Saved across restart")), { what: "accepted stroke before restart" });
-    const cookie = (await a.ctx.cookies()).find((c) => c.name === "hq_session")!.value;
     await close(a); await close(b);
     check("Escape closes both boards", !(await a.page.$("canvas.whiteboard")) && !(await b.page.$("canvas.whiteboard")));
-    // while the server is down on purpose, Chrome logs each refused reconnection of the open pages
-    const before = [a.logs.length, b.logs.length];
-    await ctx.stopServer(); await ctx.startServer();
-    await a.page.reload();
-    await waitFor(() => read(a, () => window.__hq?.state?.conn === "open"), { what: "reconnected after restart" });
-    await walkTo(a, 49 * 16 + 8, 16 * 16 + 8);
-    await a.page.keyboard.press("x");
-    await waitFor(() => read(a, () => window.__hq.boardModel.strokes.some((s) => s.tx === "Saved across restart")), { what: "whiteboard restores after restart" });
-    check("whiteboard survives graceful restart without waiting for debounce", true);
-    const fullMap: MapData = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json();
-    check("interactive note edits persist across restart", fullMap.props.find((p) => p.t === "note" && p.x === 4 && p.y === 5)!.data === "A saved team note");
-    const refused = /^WebSocket connection to '\S+\/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED$/;
-    const errors = [a, b].flatMap((p, i) => p.logs.filter((l, j) => !(j >= before[i] && refused.test(l))));
+    // a stroke drawn just before a graceful restart and the note's edit survive it:
+    // httpapi TestBoardStrokesAndNoteEditsSurviveAGracefulRestart
+    const errors = [...a.logs, ...b.logs];
     check("new flows have no browser runtime errors", errors.length === 0, errors.join(" | "));
     return summary();
   } finally { await browser.close(); }

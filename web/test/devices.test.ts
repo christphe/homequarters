@@ -1,5 +1,5 @@
-// A saved microphone, camera or speaker that is not there now gives way to the default. Run: node --test web/test
-import { test } from "node:test";
+// A saved microphone, camera or speaker that is not there now gives way to the default. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { isListed, isMissingDevice } from "../src/media/devices.ts";
 

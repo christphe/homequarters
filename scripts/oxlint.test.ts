@@ -1,9 +1,9 @@
 // Which trees scripts/oxlint.ts lints: the folders given (from the current folder), else all of them.
-// Run: node --test scripts/oxlint.test.ts  (scripts' test:unit)
-import { test } from "node:test";
+// Run: pnpm exec vitest run oxlint.test.ts  (scripts' test:unit)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { ALL_TREES, plan } from "./oxlint.ts";
+import { ALL_TREES, plan, projectOf } from "./oxlint.ts";
 
 const root = path.resolve("/repo");
 
@@ -20,4 +20,14 @@ test("folders are read from the current folder and given from the root", () => {
 
 test("a folder outside the repository is refused", () => {
   assert.throws(() => plan([".."], root, root), /outside the repository/);
+});
+
+test("the oxlint that runs is the calling project's: the nearest folder with it installed, else scripts'", () => {
+  const installed = new Set([path.join(root, "web"), path.join(root, "plugins", "bundled", "hq-chess")]);
+  const has = (d: string) => installed.has(d);
+  assert.equal(projectOf(path.join(root, "web"), root, has), path.join(root, "web"));
+  assert.equal(projectOf(path.join(root, "plugins", "bundled", "hq-chess", "public"), root, has), path.join(root, "plugins", "bundled", "hq-chess"));
+  assert.equal(projectOf(root, root, has), path.join(root, "scripts"));
+  assert.equal(projectOf(path.join(root, "docs"), root, has), path.join(root, "scripts"));
+  assert.equal(projectOf(path.resolve("/elsewhere"), root, has), path.join(root, "scripts"));
 });

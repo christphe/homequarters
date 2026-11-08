@@ -1,7 +1,7 @@
 // hq-chess's board view and window without the browser: what the view lets a member pick up and send, what it
 // says, how it confirms or undoes an action of mine (public/sync.ts), and the window's buttons (public/window.ts).
-// The browser scenario plugins/e2e/hq-chess-e2e/chess.ts keeps the wiring: real drags, keys and buttons. Run: node --test plugins/bundled/hq-chess/test
-import { test } from "node:test";
+// The browser scenario plugins/e2e/hq-chess-e2e/chess.ts keeps the wiring: real drags, keys and buttons. Run: node tools/fdash/cli.ts run test:unit --pkg hq-chess
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { START } from "../public/game.ts";
 import type { BoardState, ViewIn } from "../public/messages.ts";

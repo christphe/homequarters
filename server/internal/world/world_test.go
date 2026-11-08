@@ -227,6 +227,71 @@ func TestBusyAndNoConsentNeverJoin(t *testing.T) {
 	}
 }
 
+// Two people standing together form no conversation while neither has consented, nor while only one has.
+func TestConsentIsNeededFromBothSides(t *testing.T) {
+	h := newHarness(t)
+	a := h.add(1, "member", sx, sy)
+	b := h.add(2, "member", sx+32, sy)
+	joined := func() bool {
+		for _, p := range []*Player{a, b} {
+			for _, f := range drain(p) {
+				if strings.Contains(f, `"t":"conv"`) {
+					return true
+				}
+			}
+		}
+		return a.group != nil || b.group != nil
+	}
+	h.run(3 * time.Second)
+	if joined() {
+		t.Fatal("without consent nobody is put in a conversation")
+	}
+	h.consent(a, true)
+	h.run(3 * time.Second)
+	if joined() {
+		t.Fatal("consent from only one side does not create a conversation")
+	}
+}
+
+// The same account opened somewhere else takes over the connection. The server keeps the player (and its
+// consent) across the takeover, so the new client says whether it consented on every hello (see
+// helloReplies in web/src/session.ts): a client that never opted in leaves the call, and the other
+// person, now alone, leaves it too.
+func TestASecondClientThatHasNotConsentedLeavesTheCall(t *testing.T) {
+	h := newHarness(t)
+	a := h.add(1, "member", sx, sy)
+	b := h.add(2, "member", sx+32, sy)
+	h.consent(a, true)
+	h.consent(b, true)
+	h.run(2 * time.Second)
+	if a.group == nil || a.group != b.group {
+		t.Fatal("setup: a and b converse")
+	}
+	room := a.group.room
+	reply := make(chan joinResult, 1)
+	h.w.handle(ev{kind: evJoin, info: UserInfo{ID: 2, Name: "u", Role: "member", Avatar: json.RawMessage("{}")}, reply: reply}, h.now)
+	r := <-reply
+	if r.err != nil || r.p != b {
+		t.Fatal("setup: the second client takes over b")
+	}
+	drain(a)
+	h.w.handle(ev{kind: evConsent, p: b, gen: r.gen, b: false}, h.now) // what the new client says first
+	h.run(time.Second)
+	if b.consent || b.group != nil || a.group != nil {
+		t.Fatalf("a second client that has not consented is not in the call, and nor is the person left alone: b=%v a=%v", b.group != nil, a.group != nil)
+	}
+	left := false
+	for _, f := range drain(a) {
+		left = left || strings.Contains(f, `"op":"leave"`)
+	}
+	h.fm.mu.Lock()
+	revoked := strings.Join(h.fm.revoked, " ")
+	h.fm.mu.Unlock()
+	if !left || !strings.Contains(revoked, room+"/1") || !strings.Contains(revoked, room+"/2") {
+		t.Fatalf("both are told the call is over and lose the SFU room: left=%v revoked=%s", left, revoked)
+	}
+}
+
 func TestChainOfAvatarsDoesNotMergeOffice(t *testing.T) {
 	h := newHarness(t)
 	var ps []*Player

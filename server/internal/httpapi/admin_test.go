@@ -26,6 +26,8 @@ type rig struct {
 	st  *store.Store
 	cfg *config.Config
 	srv *Server
+	// stop ends the server as a process stop does: worlds stop and save, then the writers finish
+	stop func()
 }
 
 func newRig(t *testing.T, mutate func(*config.Config)) *rig {
@@ -50,7 +52,7 @@ func newRig(t *testing.T, mutate func(*config.Config)) *rig {
 	srv := New(ctx, cfg, log, st, media.New(media.Config{}, log))
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return &rig{t: t, ts: ts, st: st, cfg: cfg, srv: srv}
+	return &rig{t: t, ts: ts, st: st, cfg: cfg, srv: srv, stop: stopper(t, cancel, srv)}
 }
 
 type user struct {

@@ -1,5 +1,5 @@
 // The plugin layer's path searches (walkTo) run a few per frame, whatever a plugin sends.
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { SearchQueue } from "../src/game/searchQueue.ts";
 

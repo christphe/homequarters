@@ -1,7 +1,7 @@
 // The bundled chess plugin through the real server: `homequarters testbed` runs the plugin's server code
 // (main.ts, compiled and run by QuickJS as in production) and these tests drive it as members do, over
 // HTTP and WebSocket, with X next to a board (`use`) and the page's messages (`send`).
-// Run: node --test "plugins/bundled/hq-chess/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg hq-chess (needs bin/homequarters[.exe] or HQ_BIN).
 //
 // Waiting: a state predicate is polled on everything a member received (`waitBoard`), not matched with
 // `waitFor`, which consumes frames and would make a later wait depend on an earlier one. Where an action must
@@ -9,7 +9,7 @@
 // always answers (`probe`) proves the earlier message was handled, and nothing changed.
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { testbed } from "../../../sdk/testbed.ts";
 import type { Member, Testbed, Tile } from "../../../sdk/testbed.ts";
 
@@ -25,7 +25,7 @@ type State = { p: string; w: Seat; b: Seat; r: string; u: boolean; m: { from?: n
 type Frame = { t: string; x?: number; y?: number; s?: State; list?: { id: number; side: string }[] };
 
 const beds: Testbed[] = [];
-after(async () => {
+afterAll(async () => {
   await Promise.all(beds.map((b) => b.close()));
 });
 
@@ -507,9 +507,12 @@ test("undo takes back the last action only, by either seated player who has the 
   move(alice, A, 52, 36);
   s = await waitBoard(carol, A, "e4", (s) => s.p[36] === "P");
   assert.deepEqual(last(s), ["52-36", true], "the state names the last move and an undo");
+  // only the states sent after the undo: a member whose e4 has not come yet still holds the START of before the
+  // move (undone null), which an unbounded wait for START would take
+  const sent = new Map([alice, bob, carol].map((m) => [m, frames(m).length]));
   alice.send(PLUGIN, { t: "undo", ...A });
   for (const m of [alice, bob, carol]) {
-    s = await waitBoard(m, A, "undone for everybody", (s) => s.p === START);
+    s = await waitBoard(m, A, "undone for everybody", (s) => s.p === START, sent.get(m));
     assert.deepEqual(last(s), ["", false], "after an undo: no highlight, no second undo");
     assert.equal(seat(s, "w"), "Alice");
     assert.equal(seat(s, "b"), "Bob");
@@ -523,8 +526,9 @@ test("undo takes back the last action only, by either seated player who has the 
   carol.send(PLUGIN, { t: "undo", ...A }); // a watcher: refused, the state resent to him only
   await until("the watcher gets the state again", () => count(carol, A) > carolN);
   assert.equal(lastBoard(carol, A).r, "p", "a watcher cannot undo");
+  const aliceN = frames(alice).length; // Alice may not have the capture yet: her last state is then the START undone by White
   bob.send(PLUGIN, { t: "undo", ...A });
-  s = await waitBoard(alice, A, "Bob undoes White's capture", (s) => s.p === START);
+  s = await waitBoard(alice, A, "Bob undoes White's capture", (s) => s.p === START, aliceN);
   assert.equal(s.r, "", "the reserve is restored");
   assert.equal(s.undone, "b", "Black is named as the side that undid");
   const bobN = count(bob, A);

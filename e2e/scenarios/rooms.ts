@@ -30,25 +30,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("first member of the office is admin, the next is member", admin.id === ctx.adminId && (await admin.page.evaluate(() => window.__hq.state.role)) === "admin" && (await mem.page.evaluate(() => window.__hq.state.role)) === "member");
     await Promise.all([admin, mem].map((u) => u.page.evaluate(() => { (window.__hq.media as unknown as JoinTap).join0 = window.__hq.media.join.bind(window.__hq.media); window.__hq.media.join = (i) => { (window as unknown as Recorded).__lastJoin = i; return (window.__hq.media as unknown as JoinTap).join0(i); }; })));
 
-    // --- member is stopped at the door of the admins-only room by the SERVER (bypassing client-side prediction)
-    await walkTo(mem, 43 * 16 + 8, 10 * 16 + 8);
+    // (A member stopped at the admins-only room's door by the server, with no call and no token for it, and
+    // nobody alone in a room in a call: server/internal/world rooms_test.go, world_test.go.)
     await mem.page.evaluate(() => window.__hq.session.setConsent(true));
-    await mem.page.evaluate(() => { const s = window.__hq.session.socket; for (let i = 0; i < 40; i++) setTimeout(() => s!.send({ t: "in", s: 1000 + i, x: 1, y: 0 }), i * 60); });
-    await sleep(2800);
-    await mem.page.evaluate((id) => window.__hq.session.locate(id), mem.id);
-    const loc = (await waitFor(() => mem.page.evaluate(() => window.__hq.view.locate), { what: "server location" }))!;
-    check("server refuses to move a member into the admins-only room (authoritative collision)", loc.x < 45 * 16, "server x=" + loc.x.toFixed(1) + " (room starts at 720)");
-    await mem.page.evaluate(() => window.__hq.session.socket!.send({ t: "in", s: 2000, x: 0, y: 0 }));
-    check("member has no conversation for the room and cannot request a token", (await st(mem)).conv === null);
-    await mem.page.evaluate(() => window.__hq.session.socket!.send({ t: "tok" }));
-    await sleep(700);
-    check("requesting a media token outside any group yields nothing", (await st(mem)).conv === null && (await mem.page.evaluate(() => (window as unknown as Recorded).__lastJoin ?? null)) === null);
 
-    // --- admin enters alone: no call (nothing captured, nobody in the SFU room) until a second admin comes in
+    // --- the admin enters first; the call starts when a second admin comes in
     await admin.page.evaluate(() => window.__hq.session.setConsent(true));
     await walkTo(admin, 47 * 16 + 8, 12 * 16 + 8);
-    await sleep(1500);
-    check("alone in a room with audio allowed there is no call", (await st(admin)).conv === null);
     const setRole = (id: number, role: string) => fetch(API + "/api/admin/members/" + id, { method: "PATCH", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ role }) });
     const boss = await joinAs(browser, "Boss" + t);
     check("a second member is made administrator", (await setRole(boss.id, "admin")).ok);
@@ -213,21 +201,18 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // the page's getDisplayMedia fails the way a real browser does (puppeteer serialises the function)
     // oxlint-disable-next-line no-new-func, typescript/no-implied-eval -- page code built with its arguments in it, for page.evaluate
     const reject = (name: string, message: string) => new Function(`window.__gdm = 0; navigator.mediaDevices.getDisplayMedia = () => { window.__gdm++; return Promise.reject(new DOMException(${JSON.stringify(message)}, ${JSON.stringify(name)})); };`) as () => void;
+    // (Which text each refusal gets, cancelling the picker included: web/test/shareErrors.test.ts.)
     const sys = await shareAlerts(mem, reject("NotAllowedError", "Permission denied by system"));
-    check("the system blocking screen capture is explained, with no other message flashing first", sys.length === 1 && /blocked screen sharing/.test(sys[0]), JSON.stringify(sys));
-    const cancel = await shareAlerts(mem, reject("NotAllowedError", "Permission denied"));
     const asked = await mem.page.evaluate(() => ({ calls: (window as unknown as Recorded).__gdm, sharing: window.__hq.state.sharing }));
-    check("cancelling the picker shows nothing at all", cancel.length === 0 && asked.calls === 1 && !asked.sharing, JSON.stringify({ cancel, asked }));
-    const busy = await shareAlerts(mem, reject("NotReadableError", "Could not start video source"));
-    check("a capture that cannot start gets a screen-specific message", busy.length === 1 && /screen/i.test(busy[0]) && !/camera/i.test(busy[0]), JSON.stringify(busy));
+    check("the system blocking screen capture is explained, with no other message flashing first, after one capture request and no share",
+      sys.length === 1 && /blocked screen sharing/.test(sys[0]) && asked.calls === 1 && !asked.sharing, JSON.stringify({ sys, asked }));
     await mem.page.evaluate(() => { delete (navigator.mediaDevices as Partial<MediaDevices>).getDisplayMedia; }); // back to the real browser function
 
     // --- the reason is visible on a touch phone, where screen capture does not exist
     const phone = await joinAs(browser, "Phone" + t, { viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
     await phone.page.evaluate(() => window.__hq.session.setConsent(true));
     await waitFor(() => phone.page.$('.bar button[aria-label="Share screen"]'), { what: "share button on the phone" });
-    const outside = await shareAlerts(phone, () => {}, "tap");
-    check("outside a call, tapping Share screen says to walk up to someone", outside.length === 1 && /Walk up to someone/.test(outside[0]), JSON.stringify(outside));
+    // (Outside a call it says to walk up to someone: shareRefusal in web/test/shareErrors.test.ts.)
     const noCapture = await shareAlerts(phone, () => { Object.defineProperty(MediaDevices.prototype, "getDisplayMedia", { value: undefined, configurable: true }); }, "tap");
     check("a browser without screen capture says so when tapped", noCapture.length === 1 && /cannot share a screen/.test(noCapture[0]), JSON.stringify(noCapture));
     await phone.ctx.close();

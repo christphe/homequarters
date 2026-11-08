@@ -5,8 +5,9 @@ import { getState, setState, useStore } from "../store";
 import { t, type Key } from "../i18n";
 import { EMOTES } from "../game/emotes";
 import { Modal } from "./Modal";
-import { isOwnedOffice, type Prop } from "../net/protocol";
+import type { Prop } from "../net/protocol";
 import { claimableDesk } from "../game/home";
+import { doorAt, roomActions } from "../game/doors";
 import { areaTitle, deskTitle, type NameOf } from "../game/places";
 import { combo } from "../keys";
 
@@ -54,25 +55,21 @@ export function SocialControls() {
     const timer = window.setTimeout(() => setState({ wave: null }), 20000);
     return () => clearTimeout(timer);
   }, [wave]);
-  const [knockArea, setKnockArea] = useState<{ index: number; name: string } | null>(null);
+  const [knockArea, setKnockArea] = useState<{ index: number; name: string; force: boolean } | null>(null);
   const meId = useStore((s) => s.meId);
   const role = useStore((s) => s.role);
   useEffect(() => {
     const update = () => {
       const map = session.view?.currentMap(), p = session.view?.position();
       if (!map || !p) return;
-      const target = map.areas.map((a, index) => ({ ...a, index })).find((a) => {
-        // only a door the server keeps me out of: not one I locked myself, was let in, or own
-        if (!denied.includes(a.index) || a.index === here) return false;
-        return Math.hypot(Math.max(a.x * 16 - p.x, 0, p.x - (a.x + a.w) * 16), Math.max(a.y * 16 - p.y, 0, p.y - (a.y + a.h) * 16)) <= 40;
-      });
-      const name = target ? areaTitle(target, nameOf) : "";
-      setKnockArea((old) => old?.index === target?.index && old?.name === name ? old : target ? { index: target.index, name } : null);
+      const target = doorAt(map, denied, here, role, p.x, p.y);
+      const name = target ? areaTitle(target.area, nameOf) : "";
+      setKnockArea((old) => old?.index === target?.index && old?.name === name && old?.force === target?.force ? old : target ? { index: target.index, name, force: target.force } : null);
     };
     update();
     const timer = window.setInterval(update, 300);
     return () => clearInterval(timer);
-  }, [denied, here]);
+  }, [denied, here, role]);
   // a free desk I stand next to, while I have no place of my own
   const [desk, setDesk] = useState<Prop | null>(null);
   const [confirmDesk, setConfirmDesk] = useState<Prop | null>(null);
@@ -93,14 +90,8 @@ export function SocialControls() {
     setClaiming(false);
     setConfirmDesk(null);
   };
-  const map = session.view?.currentMap();
-  const room = map && here >= 0 && map.areas[here]?.kind === "room" ? map.areas[here] : null;
+  const { room, lockable, myDesk } = roomActions(session.view?.currentMap(), here, meId, role);
   const roomIndex = room ? here : -1;
-  // an assigned office is always closed to strangers: there is nothing to lock or unlock; a desk is
-  // locked by its owner (or an admin)
-  const lockable = !!room && !isOwnedOffice(room) && (!room.auto || role === "admin" || !!room.access.users?.includes(meId));
-  // my own desk: its room is the desk and the rows in front of it, starting at the desk's tile
-  const myDesk = room?.auto && room.access.users?.includes(meId) ? map?.props.find((p) => p.t === "desk" && p.x === room.x && p.y === room.y) ?? null : null;
   const [confirmRelease, setConfirmRelease] = useState<Prop | null>(null);
   const release = async (d: Prop) => {
     setClaiming(true);
@@ -141,7 +132,7 @@ export function SocialControls() {
         </div>}
         {desk && <button className="btn" onClick={() => setConfirmDesk(desk)}>{t("desk.claim")}</button>}
         {knockArea && <button className="btn" onClick={() => session.knock(knockArea.index)}>{t("door.knock", { area: knockArea.name })}</button>}
-        {knockArea && role === "admin" && <button className="btn" onClick={() => session.force(knockArea.index)}>{t("door.force")}</button>}
+        {knockArea?.force && <button className="btn" onClick={() => session.force(knockArea.index)}>{t("door.force")}</button>}
       </div>
       {request && <Modal title={t("follow.lead")} onClose={() => setState({ leadRequest: null })}>
         <p>{t("follow.request", { name: request.name })}</p>

@@ -7,8 +7,9 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../../../e2e/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.json"
         ],
@@ -23,12 +24,32 @@
         "/e2e/env.ts",
         "/e2e/globals.d.ts",
         "/e2e/package.json",
-        "/e2e/pnpm-lock.yaml",
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-chess"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:e2e": {
@@ -52,13 +73,29 @@
         "/e2e/slots.ts",
         "/e2e/globals.d.ts",
         "/e2e/package.json",
-        "/e2e/pnpm-lock.yaml",
         "!capture-*.ts",
         {
           "disk": "/bin/homequarters*"
         },
         {
           "disk": "/web/dist/**"
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-chess"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
         }
       ],
       "envKeys": [

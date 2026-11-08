@@ -1,5 +1,5 @@
-// hq-card-pouilleux (Old Maid) rules: its deck, its definition as hq-cards validates it, its count. Run: node --test plugins/bundled/hq-card-pouilleux/test
-import { test } from "node:test";
+// hq-card-pouilleux (Old Maid) rules: its deck, its definition as hq-cards validates it, its count. Run: node tools/fdash/cli.ts run test:unit --pkg hq-card-pouilleux
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { CODES, DEFINITION, count } from "../rules.ts";
 import { STANDARD, validateDefinition } from "../../hq-cards/public/games.ts";

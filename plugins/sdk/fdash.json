@@ -7,8 +7,9 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.test.json"
         ],
@@ -22,22 +23,45 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:integration": {
       "run": [
         [
-          "node",
-          "--test",
-          "**/*.ispec.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--project",
+          "sdk:integration"
         ]
       ],
       "inputs": [
         {
           "disk": "/bin/homequarters*"
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
         }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ],
       "env": {
         "HQ_BIN_REPO_ONLY": "1"

@@ -7,10 +7,9 @@
 // the page: a cue's element plays only once it has been played while a key or pointer press is handled.
 // This checks our side against that model; it is not WebKit itself. (navigator.userActivation cannot
 // tell: Puppeteer evaluates as a user gesture, so every read of the page's state would count as one.)
+// The rules behind it (a gone speaker, sounds off, an engine that cannot play, presses after the unlock) are
+// in web/test/audioOut.test.ts, against the same model.
 import { APP, check, launch, joinAs, waitFor, sleep, resetChecks, summary, type User } from "../lib.ts";
-
-/** What webkitRule keeps on the page's window. */
-type SoundWindow = { __cuePlays: number; __unplayable?: boolean };
 
 function webkitRule() {
   if (window !== window.top) return;
@@ -21,20 +20,14 @@ function webkitRule() {
   // oxlint-disable-next-line typescript/unbound-method -- called with the element as this (play.call(this))
   const play = HTMLMediaElement.prototype.play;
   const allowed = new WeakSet<HTMLMediaElement>();
-  (window as unknown as SoundWindow).__cuePlays = 0; // play() calls on the cues' players
   HTMLMediaElement.prototype.play = function () {
     if (!this.src.startsWith("blob:")) return play.call(this); // the call's own players: not under test
-    (window as unknown as SoundWindow).__cuePlays++;
-    if ((window as unknown as SoundWindow).__unplayable) return Promise.reject(new DOMException("no decoder (stub)", "NotSupportedError"));
     if (pressing) allowed.add(this);
     if (!allowed.has(this)) return Promise.reject(new DOMException("refused before a gesture (stub of WebKit's rule)", "NotAllowedError"));
     return play.call(this);
   };
 }
 
-const cuePlays = (u: User) => u.page.evaluate(() => (window as unknown as SoundWindow).__cuePlays);
-/** Real key presses, a little apart (a person walking). */
-async function presses(u: User, n: number) { for (let i = 0; i < n; i++) { await u.page.keyboard.press("ArrowDown"); await sleep(100); } }
 const sounds = (u: User) => u.page.evaluate(() => [...(window.__hq.sounds ?? [])]);
 const last = async (u: User) => (await sounds(u)).at(-1) ?? null;
 
@@ -84,35 +77,6 @@ export async function run(): Promise<boolean> {
     const inPage = await ana.page.evaluate(() => [...document.querySelectorAll("audio")].filter((a) => a.src.startsWith("blob:")).length);
     check("the cue's player is not put in the page", inPage === 0, String(inPage));
     check("no audio file is downloaded: the cue is made in the page", media.length === 0, media.slice(0, 2).join(" "));
-    const before = await cuePlays(ana);
-    await presses(ana, 3);
-    check("once every cue can play, key presses play nothing more", (await cuePlays(ana)) === before, `${before} -> ${await cuePlays(ana)}`);
-
-    // 2. A chosen speaker that is not there: the cue plays on the default output
-    await reloadWith(ana, { "hq.prefs": { micOn: false, camOn: false, micId: "", camId: "", spkId: "gone-spk" } });
-    const map = await ana.page.$eval("canvas", (c) => { const r = c.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-    await ana.page.mouse.click(map.x, map.y); // a pointer press on the map counts as much as a key
-    await wave(bob, ana);
-    await waitFor(() => last(ana), { timeout: 5000, what: "cue" }).catch(() => {});
-    const fallback = await last(ana);
-    check("with a speaker that is gone, after a click, the wave is heard on the default output", fallback?.result === "played" && fallback.sink === "", JSON.stringify(fallback));
-
-    // 3. Sounds turned off in the settings: nothing is played
-    const settings = await ana.page.evaluate(() => JSON.parse(localStorage.getItem("hq.settings") ?? "{}"));
-    await reloadWith(ana, { "hq.settings": { ...settings, sounds: false } });
-    await ana.page.keyboard.press("ArrowDown");
-    await wave(bob, ana);
-    await sleep(500);
-    check("with sounds off, a wave plays nothing, and a key press prepares nothing either", (await sounds(ana)).length === 0 && (await cuePlays(ana)) === 0, JSON.stringify({ sounds: await sounds(ana), plays: await cuePlays(ana) }));
-
-    // 4. An engine that cannot play the cues at all: one press tries each once, the next ones nothing
-    await reloadWith(ana, { "hq.settings": { ...settings, sounds: true } });
-    await ana.page.evaluate(() => { (window as unknown as SoundWindow).__unplayable = true; });
-    await presses(ana, 1);
-    await sleep(300);
-    const tried = await cuePlays(ana);
-    await presses(ana, 5);
-    check("cues the engine cannot play are tried once (5 players), not at every press", tried === 5 && (await cuePlays(ana)) === 5, `${tried} then ${await cuePlays(ana)}`);
 
     const errs = [ana, bob].flatMap((u) => u.logs);
     check("no console errors", errs.length === 0, errs.slice(0, 2).join(" | "));

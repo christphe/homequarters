@@ -1,5 +1,5 @@
-// Conversation cues: a chime in, a chime out. Run: node --test web/test
-import { test } from "node:test";
+// Conversation cues: a chime in, a chime out. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { convChange } from "../src/convChime.ts";
 

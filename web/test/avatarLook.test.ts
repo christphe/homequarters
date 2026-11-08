@@ -1,5 +1,5 @@
-// Avatar looks: the retired "cap" hairstyle and the editor's labels. Run: node --test web/test
-import { test } from "node:test";
+// Avatar looks: the retired "cap" hairstyle and the editor's labels. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { BEARD_IDS, HAIR_STYLE_IDS, HAT_IDS, LEGACY_CAP_STYLE, normaliseLook, type Look } from "../src/game/art/look.ts";
 import { hasKey } from "../src/i18n.ts";
@@ -28,7 +28,7 @@ test("every hair style, beard and hat the editor lists has an English label", ()
 
 test("the server's ranges match the client's lists", async () => {
   const fs = await import("node:fs");
-  const go = fs.readFileSync(new URL("../../server/internal/httpapi/avatar.go", import.meta.url), "utf8");
+  const go = fs.readFileSync(`${import.meta.dirname}/../../server/internal/httpapi/avatar.go`, "utf8");
   // a server range left behind turns new choices back into 0 on save
   const n = (name: string) => Number(go.match(new RegExp(String.raw`\b${name}\s*=\s*(\d+)`))?.[1]);
   assert.equal(n("nHair"), HAIR_STYLE_IDS.length);

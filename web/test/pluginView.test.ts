@@ -1,6 +1,6 @@
 // Plugin views: the view element of a modal and the messages between a view and its plugin's client code.
-// Run: node --test web/test
-import { test } from "node:test";
+// Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { parseBatch, checkViewMessage, viewMessage, ViewRate, LIMITS, type Cmd } from "../src/plugins/commands.ts";
 

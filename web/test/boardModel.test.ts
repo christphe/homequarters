@@ -1,6 +1,6 @@
 // The whiteboard's model (game/boardModel.ts): the server's events applied to the strokes the board draws.
-// Run: node --test web/test
-import { test } from "node:test";
+// Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { BoardModel } from "../src/game/boardModel.ts";
 import type { BoardStroke } from "../src/net/protocol.ts";

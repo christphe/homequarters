@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,25 +23,52 @@ import (
 var binPath string
 
 // TestMain builds the binary once: the testbed subcommand is tested as a process, as the plugin test
-// client runs it.
+// client runs it. The binary sits at a fixed, git-ignored path of the checkout (.run/go-test): Windows'
+// firewall keys its rules on an executable's path, so a new temporary folder on each run would ask again.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "hq-testbed-bin-*")
+	dir, err := filepath.Abs(filepath.Join("..", "..", "..", ".run", "go-test"))
+	if err == nil {
+		err = os.MkdirAll(dir, 0o755)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	binPath = filepath.Join(dir, "homequarters")
+	exe := ""
 	if runtime.GOOS == "windows" {
-		binPath += ".exe"
+		exe = ".exe"
 	}
-	if out, err := exec.Command("go", "build", "-o", binPath, ".").CombinedOutput(); err != nil {
+	// Built under a name of its own, then put in place: another run of this package may be executing the fixed
+	// binary (Windows refuses to overwrite it). The same sources build the same bytes, so that run's binary is
+	// reused; when it differs and is busy, this run keeps its own copy.
+	binPath = filepath.Join(dir, "homequarters"+exe)
+	own := filepath.Join(dir, fmt.Sprintf("homequarters-%d%s", os.Getpid(), exe))
+	if out, err := exec.Command("go", "build", "-o", own, ".").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build: %v\n%s", err, out)
-		os.RemoveAll(dir)
 		os.Exit(1)
 	}
+	switch {
+	case sameFile(own, binPath):
+		os.Remove(own)
+	case os.Rename(own, binPath) == nil:
+	default:
+		binPath = own
+	}
 	code := m.Run()
-	os.RemoveAll(dir)
+	if binPath == own {
+		os.Remove(own)
+	}
 	os.Exit(code)
+}
+
+// sameFile says whether a and b hold the same bytes.
+func sameFile(a, b string) bool {
+	x, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	y, err := os.ReadFile(b)
+	return err == nil && bytes.Equal(x, y)
 }
 
 var echoPlugin = filepath.Join("..", "..", "internal", "httpapi", "testdata", "plugins", "installed", "echo")

@@ -1,6 +1,6 @@
 // Client movement: collisions shared with the server, my predicted position and its reconciliation,
-// remote dead reckoning. Run: node --test web/test
-import { test } from "node:test";
+// remote dead reckoning. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   BOX_HH, BOX_HW, LocalMotion, MAX_ADVANCE, OFFSET_TAU, REMOTE_SNAP_PX, SNAP_PX,
@@ -259,4 +259,56 @@ test("stepRemote walks a remote person on (walls stop them, rooms do not) and fa
   stepRemote(still, g, dt, 72);
   assert.equal(still.tx, 10, "standing still: no walk");
   assert.ok(still.ox < 4);
+});
+
+/** A small deterministic random (the same run every time). */
+function rng(seed: number) {
+  return () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+}
+
+test("walking diagonally with corrections arriving 0-120 ms late, neither axis is ever drawn stepping back", () => {
+  // what the browser does each frame: integrate, then fade the offset; an input every 100 ms whose
+  // acknowledgement comes back late and off on each axis, mostly behind (an input that left late: up to
+  // 120 ms at 51 px/s per axis is 6 px), up to 8 px
+  const g = grid(Array.from({ length: 30 }, () => ".".repeat(40)));
+  const m = new LocalMotion(), rand = rng(7), speed = 72, dt = 1000 / 60;
+  m.reset(mid(4), mid(25));
+  m.restart(0);
+  const pending: { at: number; s: number; x: number; y: number }[] = [];
+  const drawn: [number, number][] = [];
+  for (let now = dt; now < 1300; now += dt) {
+    m.advance(now, g, 1, -1, speed, -1);
+    if (Math.floor(now / 100) !== Math.floor((now - dt) / 100)) {
+      const s = m.record();
+      pending.push({ at: now + 30 + rand() * 120, s, x: m.x - (rand() - 0.2) * 10, y: m.y + (rand() - 0.2) * 10 });
+    }
+    while (pending.length && pending[0].at <= now) { const k = pending.shift()!; m.ack(k.s, k.x, k.y); }
+    m.blend(dt / 1000, 1, -1, speed);
+    drawn.push([m.x + m.ox, m.y + m.oy]);
+  }
+  let backX = 0, backY = 0;
+  for (let i = 1; i < drawn.length; i++) {
+    backX = Math.max(backX, drawn[i - 1][0] - drawn[i][0]);
+    backY = Math.max(backY, drawn[i][1] - drawn[i - 1][1]);
+  }
+  assert.ok(backX <= 0.1 && backY <= 0.1, `max back x ${backX.toFixed(2)} y ${backY.toFixed(2)} px`);
+  assert.ok(drawn.at(-1)![0] - drawn[0][0] > 40, "and it walked on");
+});
+
+test("running into a wall stops touching it where the server stops (the same box), with no pull-back afterwards", async () => {
+  const { readFileSync } = await import("node:fs");
+  const go = readFileSync(`${import.meta.dirname}/../../server/internal/world/types.go`, "utf8");
+  const n = (name: string) => Number(go.match(new RegExp(String.raw`\b${name}\s*=\s*([\d.]+)`))?.[1]);
+  assert.deepEqual([BOX_HW, BOX_HH], [n("boxHalfW"), n("boxHalfH")], "the client's collision box is the server's (world/types.go)");
+  // the office's 1-tile wall above (5, 15): run up into it for 700 ms (world: TestRunningIntoAWallStopsTouchingIt)
+  const g = grid([...Array.from({ length: 14 }, () => ".".repeat(10)), "#".repeat(10), ...Array.from({ length: 4 }, () => ".".repeat(10))]);
+  const m = new LocalMotion();
+  m.reset(mid(5), mid(16));
+  m.restart(0);
+  for (let now = 16; now <= 700; now += 16) m.advance(now, g, 0, -1, 144, -1);
+  assert.equal(m.y, 15 * T + 3, "touching the wall");
+  const s = m.record();
+  assert.equal(m.ack(s, m.x, 15 * T + 3), false, "the server agrees: nothing to correct");
+  for (let i = 0; i < 60; i++) m.blend(1 / 60, 0, 0, 144);
+  assert.equal(m.y + m.oy, 15 * T + 3, "and it stays drawn there");
 });

@@ -1,5 +1,5 @@
-// Path finding for plugin sprites over the map's tiles. Run: node --test web/test
-import { test } from "node:test";
+// Path finding for plugin sprites over the map's tiles. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { clearLine, findPath } from "../src/game/tilePath.ts";
 

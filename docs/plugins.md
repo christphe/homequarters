@@ -325,20 +325,36 @@ Labels and texts come from your plugin and are shown as they are (plain text): t
 
 A plugin's tests come in three tiers ([decision 0037](decisions/0037-test-pyramid.md)). The bundled plugins use all three; copy the one you need.
 
-- **Unit tests** (`test/*.test.ts`, run with `node --test`): the rules and the logic, on pure modules of your plugin (a game's moves, what a view sends or announces). Fast, no server.
-- **Integration tests** (`*.ispec.ts`, anywhere in the plugin folder, run with `node --test "**/*.ispec.ts"`): your plugin's server code running in the real server, driven by members over the real HTTP and WebSocket API. No browser, no LiveKit.
+- **Unit tests** (`test/*.test.ts`, run with [Vitest](https://vitest.dev) on Node): the rules and the logic, on pure modules of your plugin (a game's moves, what a view sends or announces). Fast, no server. A view module that needs a `document` runs on jsdom: a Vitest project of its own with `environment: "jsdom"`, or a `// @vitest-environment jsdom` line at the top of that file.
+- **Integration tests** (`*.ispec.ts`, anywhere in the plugin folder, also run with Vitest on Node, with generous timeouts since each file starts a server): your plugin's server code running in the real server, driven by members over the real HTTP and WebSocket API. No browser, no LiveKit.
 - **Browser tests** (an e2e project of their own): what only a browser shows, such as your views, buttons and pixels, against the real server and the built client.
 
-**Integration tests.** [`plugins/sdk/testbed.ts`](../plugins/sdk/testbed.ts) starts `homequarters testbed` (the real server in dev mode, without LiveKit, with a throwaway database and only the plugin folders you give, already turned on) and drives it. It needs Node 24 and nothing else.
+A plugin declares Vitest (and jsdom, if a view test needs it) in its own `package.json` and keeps its Vitest config in `vitest.config.ts`, one Vitest project per tier, named like its fdash project (the bundled plugins' configs are the ones to copy):
+
+~~~ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    projects: [
+      { test: { name: "my-plugin", environment: "node", include: ["test/**/*.test.{ts,tsx}"] } },
+      { test: { name: "my-plugin:integration", environment: "node", include: ["**/*.ispec.ts"], testTimeout: 60_000, hookTimeout: 60_000 } },
+    ],
+  },
+});
+~~~
+
+`pnpm exec vitest run --project my-plugin` runs the unit tests, `--project my-plugin:integration` the integration tests. A test that reads a file next to it builds the path from `import.meta.dirname`, not with `new URL("…", import.meta.url)`: Vite, under Vitest, rewrites the latter into an http address.
+**Integration tests.** [`plugins/sdk/testbed.ts`](../plugins/sdk/testbed.ts) starts `homequarters testbed` (the real server in dev mode, without LiveKit, with a throwaway database and only the plugin folders you give, already turned on) and drives it. It needs Node 24 and nothing else (the client has no dependency; Vitest is only the runner).
 
 ~~~ts
 import path from "node:path";
-import { after, test } from "node:test";
+import { onTestFinished, test } from "vitest";
 import { testbed } from "../../../sdk/testbed.ts";
 
 test("a member who opens the board gets its state", async () => {
   const bed = await testbed({ plugins: [path.resolve(import.meta.dirname, "..")] });
-  after(() => bed.close());
+  onTestFinished(() => bed.close());
   await bed.join("Ann");                                  // the first member is the administrator
   await bed.placeObject("board", { x: 13, y: 22 });       // through the admin map API
   const bob = await bed.join("Bob", { at: { x: 13, y: 23 } });
@@ -353,9 +369,10 @@ The bed also turns plugins on and off (`setPlugin`), changes a setting (`setSett
 
 **Browser tests.** In this repository, a plugin's browser scenarios live in a project of their own, `plugins/e2e/<plugin>-e2e/` (outside the plugin folder, so the plugin's tests do not rerun when the web client changes and the image does not ship them). `e2e/plugin-run.ts` runs them: real Chrome against the testbed serving `web/dist`, no LiveKit. Each scenario file exports `run(ctx)` like those of `e2e/scenarios/` and uses `e2e/lib.ts`; `hq-chess-e2e` is the one to copy.
 
-**In this repository.** Each bundled plugin is an fdash project with `lint`, `test:unit` and `test:integration`; each e2e project has `lint` and `test:e2e`:
+**In this repository.** Each bundled plugin is an fdash project with `lint`, `test:unit` and `test:integration`; each e2e project has `lint` and `test:e2e`. Install once with `pnpm install` at the root (one pnpm workspace):
 
 ~~~bash
+node tools/fdash/cli.ts run test:unit --pkg hq-chess            # or, in the plugin's folder: pnpm exec vitest run --project hq-chess
 node tools/fdash/cli.ts run build --pkg server                  # bin/homequarters, needed by the next two
 node tools/fdash/cli.ts run test:integration --pkg hq-chess
 node tools/fdash/cli.ts run build --pkg web                     # web/dist, for the browser tests

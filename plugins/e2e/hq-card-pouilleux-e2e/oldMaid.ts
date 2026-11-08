@@ -1,5 +1,5 @@
 // Cards, Old Maid: the bundled game hq-card-pouilleux (plugins/bundled/hq-card-pouilleux) on the hq-cards table.
-// A deck on a table of the map, Ann and Bo at it with the Cards window open; Old Maid turned on and off by an
+// A deck on a table of the map, Ann and Bo at it with the Cards window open; Old Maid turned on by an
 // administrator while the choice of a game is open, then an Old Maid table seated and dealt through its buttons.
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves; the
 // table itself is plugins/e2e/hq-cards-e2e/cards.ts, whose helpers (lib.ts) this scenario uses.
@@ -29,13 +29,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await setPlugin(ctx, GAME, true);
     const listed = await within(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), 5000);
     check("2: turning Old Maid on adds it to the open window's choice", listed >= 0, `${listed} ms`);
-    await setPlugin(ctx, GAME, false);
-    const unlisted = await within(async () => !(await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), 5000);
-    check("2: turning it off takes it away", unlisted >= 0, `${unlisted} ms`);
+    // (turning it off takes it away: the server's list in oldMaid.ispec.ts "a window showing the choice of a game", the
+    // window drawing it in hq-cards/test/client.test.ts)
 
     // ---- criteria 8 and 9: Old Maid, with its narrowed actions and its count
-    await setPlugin(ctx, GAME, true);
-    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), { timeout: 5000, what: "Old Maid offered" });
     await press(ann, "Old Maid");
     await waitFor(() => hasButton(ann, "Seat 1"), { what: "Old Maid's seats" });
     await press(ann, "Seat 1");

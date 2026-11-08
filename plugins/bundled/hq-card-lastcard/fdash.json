@@ -8,14 +8,16 @@
     "lint": {
       "run": [
         [
-          "node",
-          "../../../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.json"
         ],
         [
-          "node",
-          "../../../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "tsconfig.test.json"
         ],
@@ -29,35 +31,92 @@
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/plugins/sdk/testbed.ts",
         "/plugins/sdk/server.d.ts",
         "/plugins/bundled/hq-cards/test/**",
-        "/plugins/bundled/hq-cards/public/**"
+        "/plugins/bundled/hq-cards/public/**",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "test/*.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--project",
+          "hq-card-lastcard"
+        ]
+      ],
+      "inputs": [
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
         ]
       ]
     },
     "test:integration": {
       "run": [
         [
-          "node",
-          "--test",
-          "**/*.ispec.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--project",
+          "hq-card-lastcard:integration"
         ]
       ],
       "inputs": [
         {
           "disk": "/bin/homequarters*"
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
         }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ],
       "env": {
         "HQ_BIN_REPO_ONLY": "1"

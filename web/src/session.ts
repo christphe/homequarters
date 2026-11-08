@@ -3,6 +3,8 @@ import { cachedLooks } from "./game/avatars";
 import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
+import { nextHand } from "./hand";
+import { goToast, waveToast } from "./replies";
 import { ownerMap } from "./game/places";
 import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, MuteKind, Person, Prop, ServerMsg, Status } from "./net/protocol";
@@ -14,6 +16,7 @@ import { t } from "./i18n";
 import { soundLog } from "./audioOut";
 import { chime, chimeLog, desktopNotify } from "./notify";
 import { convChange } from "./convChime";
+import { helloReplies } from "./helloReplies";
 import { isOutdated, pageVersion } from "./version";
 import { PluginManager } from "./plugins/manager";
 import { DESKTOP_EVENT, onWindowHidden, onWindowShown } from "./desktopWindow";
@@ -180,13 +183,7 @@ class Session {
         view.setPeople(roster);
         // a new connection: start every plugin afresh, so its browser code resynchronises with its server code
         void this.plugins?.refresh(true);
-        const s = getState();
-        // Always say it, false too: the server keeps a player's consent when another client of the same
-        // account takes over (a second browser, the desktop app), and this one may never have opted in.
-        this.socket?.send({ t: "consent", b: s.consent });
-        if (s.status !== "available") this.socket?.send({ t: "st", v: s.status });
-        const note = localStorage.getItem("hq.note");
-        if (note) this.socket?.send({ t: "note", text: note }); // the note lives in memory on the server
+        for (const r of helloReplies(getState(), localStorage.getItem("hq.note"))) this.socket?.send(r);
         break;
       }
       case "w":
@@ -247,13 +244,13 @@ class Session {
         setState({ following: m.id ? { id: m.id, name: m.n } : null });
         break;
       case "self": view.applySelf(m); break;
-      case "go":
-        if (m.ok) {
-          view.setGuided(true);
-          if (m.near) toast(t("go.door"));
-        }
-        else { view.clearDest(); toast(t("go.unreachable")); }
+      case "go": {
+        if (m.ok) view.setGuided(true);
+        else view.clearDest();
+        const msg = goToast(m);
+        if (msg) toast(msg);
         break;
+      }
       case "wv":
         setState({ wave: { id: m.from, name: m.n } });
         chime("wave");
@@ -272,7 +269,7 @@ class Session {
       }
       case "wvr": {
         const name = getState().roster.get(m.id)?.n ?? "?";
-        toast(t(`wave.${m.st}`, { name }));
+        toast(waveToast(m.st, name));
         break;
       }
       case "ac": setState({ areaCounts: m.c }); break;
@@ -425,9 +422,7 @@ class Session {
   /** H key and the hand button: invert what was last asked for, so quick presses do not repeat a raise. */
   toggleHand() {
     const s = getState();
-    // a request the server never confirmed (dropped by the rate limit) stops counting after a second
-    const pending = Date.now() - this.handAskedAt < 1000 ? this.handWanted : null;
-    this.hand(!(pending ?? !!s.roster.get(s.meId)?.h));
+    this.hand(nextHand(!!s.roster.get(s.meId)?.h, this.handWanted, this.handAskedAt, Date.now()));
   }
   note(text: string) {
     if (text) localStorage.setItem("hq.note", text);

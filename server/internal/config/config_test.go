@@ -22,6 +22,22 @@ func TestHomeQuartersConfiguration(t *testing.T) {
 	}
 }
 
+// Without HQ_ADDR, a dev server listens on loopback only (no firewall prompt, nothing exposed on the
+// network); production keeps every address, where a proxy or a container's port mapping reaches it.
+func TestDefaultAddressIsLoopbackInDevOnly(t *testing.T) {
+	t.Setenv("HQ_ADDR", "")
+	c, err := Load()
+	if err != nil || c.Addr != "127.0.0.1:8080" {
+		t.Fatalf("dev default: %v %q", err, c.Addr)
+	}
+	setProd(t)
+	t.Setenv("HQ_ADDR", "")
+	c, err = Load()
+	if err != nil || c.Addr != ":8080" {
+		t.Fatalf("production default: %v %q", err, c.Addr)
+	}
+}
+
 func setProd(t *testing.T) {
 	t.Helper()
 	t.Setenv("HQ_ENV", "production")

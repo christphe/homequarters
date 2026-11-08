@@ -1,5 +1,5 @@
-// request(): the UI's only way to the API, which never throws. Run: node --test web/test
-import { test } from "node:test";
+// request(): the UI's only way to the API, which never throws. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { request } from "../src/net/http.ts";
 

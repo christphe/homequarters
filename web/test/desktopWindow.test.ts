@@ -1,6 +1,6 @@
 // The desktop app's window hidden to the tray: busy while hidden, back to available when shown if the
-// tray put you busy. Run: node --test web/test
-import { test } from "node:test";
+// tray put you busy. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { onWindowHidden, onWindowShown } from "../src/desktopWindow.ts";
 

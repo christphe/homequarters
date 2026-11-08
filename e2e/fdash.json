@@ -9,44 +9,51 @@
           "--noEmit"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/critters/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/drawn-pet/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/drawn-pet/public/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/drawn-sheet/public/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/ui-demo/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/ui-demo/public/tsconfig.json"
         ],
         [
-          "node",
-          "../web/node_modules/typescript/bin/tsc",
+          "pnpm",
+          "exec",
+          "tsc",
           "-p",
           "fixtures/plugins/installed/ui-demo/public/views/tsconfig.json"
         ],
@@ -59,14 +66,37 @@
       "inputs": [
         "/web/src/**",
         "/web/package.json",
-        "/web/pnpm-lock.yaml",
         "/plugins/bundled/*/public/**",
         "/plugins/sdk/**",
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
-        "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../web"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-card-lastcard"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-card-pouilleux"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-cards"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-chess"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-pets"
+        },
+        {
+          "pnpm": "../plugins/sdk"
+        }
       ],
       "tools": [
         [
@@ -78,14 +108,25 @@
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "shards.test.ts",
-          "slots.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run"
         ]
       ],
       "inputs": [
-        "/plugins/e2e/*/fdash.json"
+        "/plugins/e2e/*/fdash.json",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:e2e": {
@@ -118,6 +159,17 @@
         },
         {
           "disk": "/web/dist/**"
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../web"
+        },
+        {
+          "pnpm": "../plugins/sdk"
         }
       ],
       "envKeys": [
@@ -160,11 +212,6 @@
         "rooms": {
           "inputs": [
             "scenarios/rooms.ts"
-          ]
-        },
-        "access": {
-          "inputs": [
-            "scenarios/access.ts"
           ]
         },
         "editor": {

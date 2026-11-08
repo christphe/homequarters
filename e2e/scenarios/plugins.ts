@@ -101,18 +101,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
     await waitFor(() => admin.page.$('.modal tr[data-plugin="hq-pets"]'), { what: "hq-pets row" });
     check("the admin dialog lists the bundled pets plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')!.textContent!.includes("Off")));
-    const rows = await admin.page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".modal .plugins-table tbody tr")].map((r) => ({
-      name: r.dataset.plugin, source: r.querySelector(".plugin-source")?.textContent, text: r.textContent!, button: !!r.querySelector("button"),
-    })));
-    const row = (n: string) => rows.find((r) => r.name === n) ?? ({} as (typeof rows)[number]);
-    check("every plugin row says where it comes from", rows.length >= 3 && row("hq-pets").source === "Bundled" && row("ui-demo").source === "Installed" && rows.every((r) => r.source), JSON.stringify(rows.map((r) => [r.name, r.source])));
-    check("an installed plugin using hq- is listed as refused, with the rule, and has no switch",
-      row("hq-impostor").source === "Installed" && row("hq-impostor").text.includes("Cannot run") && row("hq-impostor").text.includes("reserved for plugins bundled") && !row("hq-impostor").button,
-      row("hq-impostor").text);
+    // (where each row says it comes from, and an installed hq- plugin refused without a switch: web/test/AdminPlugins.test.tsx
+    // and TestPluginNameRefusalNoRoutes; enabling in the activity log: TestEnablePluginEndToEnd)
     await admin.page.keyboard.press("Escape");
     await setEnabled(admin, true);
-    const audit = await (await fetch(API + "/api/admin/audit", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).text();
-    check("enabling is in the activity log", audit.includes("plugin.enable") && audit.includes(PLUGIN));
     await waitFor(async () => (await frames(mia)) === 1 && (await frames(rem)) === 1, { what: "plugin iframes" });
     check("exactly one plugin iframe per page", true);
     check("nobody has a pet until they add one", ((await creatures(mia)) ?? []).length === 0);
@@ -136,10 +128,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Dog"), { what: "Mia's Dog button" });
     await waitFor(async () => (await petsOf(rem, mia.id)).length === 1 && (await petsOf(rem, rem.id)).length === 2, { what: "pets on Rem's page" });
     check("each page shows every member's pets, mine included", true);
-    check("the pets modal has no office setting (it is in the admin dialog)", await read(mia, () => !document.querySelector('.modal.plugin-modal input[type="number"]')));
+    // (the modal has no office setting: hq-pets/test/client.test.ts)
     await mia.page.keyboard.press("Escape");
 
-    // ---- the pets walk behind their owner in a line, recorded on the observer's page
+    // ---- the pets walk behind their owner in a line, recorded on the observer's page: the gaps the plugin asks for
+    // (hq-pets/test/client.test.ts) and how the page keeps one (web/test/petFollow.test.ts) are unit-tested, but
+    // only here does the gap travel from the plugin through pluginLayer to what is drawn (a pet once shipped glued
+    // to its owner). Rem walks east, which also lets the walk-to below run far enough to judge it
     const rec = read(mia, ({ id, plugin, a, b }: { id: number; plugin: string; a: string; b: string }) => new Promise<number[][]>((resolve) => {
       const out: number[][] = [];
       const t0 = performance.now();
@@ -239,14 +234,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     }));
     // resting pets potter about (a short stroll every 5-10 s each): the page redraws while one walks, not all the time
     check("an idle page with pottering pets does not redraw continuously", draws <= 120, `${draws} draws in 3 s`);
-    const restAt = await read(mia, ({ id, plugin, a, b }: { id: number; plugin: string; a: string; b: string }) => {
-      const e = window.__hq.view.ents.get(id)!, list = window.__hq.session.plugins!.debug(plugin)!;
-      const ca = list.find((x) => x.id === a)!, cb = list.find((x) => x.id === b)!;
-      return { a: [ca.x - e.x, ca.y - e.y], b: [cb.x - e.x, cb.y - e.y] };
-    }, { id: rem.id, plugin: PLUGIN, a: cat.id, b: seedling.id });
-    check("at rest the pets potter about their owner's feet, close enough to fit at a desk",
-      [restAt.a, restAt.b].every(([dx, dy]) => Math.hypot(dx, dy) <= 28 && Math.abs(dy) <= 12),
-      JSON.stringify(restAt));
+    // (at rest the pets potter within 28 px of their owner's feet, 12 px above or below: hq-pets/test/client.test.ts
+    // for what the plugin asks, web/test/petFollow.test.ts for where the page puts them)
 
     // ---- a name and a colour per pet, through the modal's fields
     await openPets(rem);
@@ -297,8 +286,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("a lower limit reaches members at once: no more Add buttons", !(await modalHas(rem, "Seedling")));
     await rem.page.keyboard.press("Escape");
     await setLimit(3);
-    const audit2 = await (await fetch(API + "/api/admin/audit", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).text();
-    check("changing it is in the activity log", audit2.includes("plugin.settings") && audit2.includes("limit=1"));
+    // (changing it is in the activity log: TestPluginSettingsFromTheAdminDialog)
 
     // ---- another plugin's pet through the pets plugin's hooks: critters (e2e/fixtures), called by an app
     // outside the browser with Rem's app token, draws a critter that the pets plugin walks for Rem
@@ -308,9 +296,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const put = await (await petCall("pet", "Bramble")).json();
     await waitFor(async () => (await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g") && c.visible), { what: "the critter on Mia's page" });
     check("another plugin puts a pet of its own drawing with the member whose token it served, and it follows them", put.ok === true, JSON.stringify(put));
-    await openPets(rem);
-    check("that pet is not in the Pets modal, and does not count in the limit", !(await modalHas(rem, "Bramble")) && (await modalHas(rem, "Add a pet (1 of 3)")));
-    await rem.page.keyboard.press("Escape");
+    // (that pet is not in the Pets modal and does not count in the limit: hq-pets/test/client.test.ts, pets.ispec.ts)
     const gone = await (await petCall("unpet", "")).json();
     await waitFor(async () => !(await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g")), { what: "the critter gone" });
     check("the plugin that put it takes it away", gone.removed === true);
@@ -359,17 +345,16 @@ export async function run(ctx: RunContext): Promise<boolean> {
       await sleep(600); // the pets settle behind Rem
     }
     // the cat's walks are recorded on Mia's page from the moment it is let go: its first one starts within
-    // 2 s; the recording goes on until it walked (9 to 25 s: a spot it cannot reach costs it one pause)
-    const remAt = await read(mia, (id: number) => { const e = window.__hq.view.ents.get(id)!; return { x: e.x, y: e.y }; }, rem.id);
+    // 2 s; the recording goes on until it walked (up to 25 s: a spot it cannot reach costs it one pause). How far
+    // its moods take it, and that it never goes back behind its owner: hq-pets/test/client.test.ts
     const strolling = read(mia, ({ id, plugin }: { id: string; plugin: string }) => new Promise<[number, number, string][]>((resolve) => {
       const seen: [number, number, string][] = [];
       const t0 = performance.now();
       const tick = () => {
         const c = window.__hq.session.plugins!.debug(plugin)!.find((x) => x.id === id);
-        if (c) seen.push([c.x, c.y, c.mode]);
+        if (c && (seen.length || c.mode !== "follow")) seen.push([c.x, c.y, c.mode]); // from the moment it wanders
         const moved = seen.some(([x, y], i) => i > 0 && Math.hypot(x - seen[i - 1][0], y - seen[i - 1][1]) > 0.5);
-        const t = performance.now() - t0;
-        if (t < 9000 || (!moved && t < 25000)) setTimeout(tick, 100); else resolve(seen);
+        if (!moved && performance.now() - t0 < 25000) setTimeout(tick, 100); else resolve(seen);
       };
       tick();
     }), { id: cat.id, plugin: PLUGIN });
@@ -394,12 +379,9 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await rem.page.mouse.move(5, 5);
     await waitFor(() => rem.page.evaluate(() => document.querySelector(".topbar .plugin-slot")?.textContent === "Call pets"), { what: "the button now says Call" });
     // from the moment Mia's page knows it wanders
-    const all = await strolling;
-    const strolls = all.slice(Math.max(0, all.findIndex((x) => x[2] !== "follow")));
+    const strolls = await strolling;
     const moved = strolls.some(([x, y], i) => i > 0 && Math.hypot(x - strolls[i - 1][0], y - strolls[i - 1][1]) > 0.5);
-    const far = Math.max(...strolls.map(([x, y]) => Math.hypot(x - remAt.x, y - remAt.y)));
-    // its mood decides how far: near home or its owner, or exploring up to 240 px from home
-    check("a wandering pet walks on its own while its owner stands still, within its moods' reach", moved && far < 300 && strolls.every((x) => x[2] !== "follow"), `moved ${moved}, farthest ${far.toFixed(1)} px`);
+    check("a wandering pet walks on its own while its owner stands still, on another member's page", moved && strolls.every((x) => x[2] !== "follow"), `moved ${moved} over ${strolls.length} samples`);
     // Call: the pet walks back (around walls), it never jumps; recorded frame by frame on Mia's page
     const back = read(mia, ({ id, plugin }: { id: number; plugin: string }) => new Promise<{ maxJump: number; frames: number; mode: string | undefined }>((resolve) => {
       let prev: Tile | null = null, maxJump = 0, frames = 0;
@@ -452,15 +434,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // ---- a plugin breaking a limit is stopped on that page only
     await setEnabled(admin, true);
     await waitFor(async () => (await frames(mia)) === 1 && (await creatureOf(mia, rem.id))?.visible, { what: "plugin back on Mia's page" });
-    // a plugin sending far more than the server accepts never gets its member disconnected
-    await pluginFrame(mia)!.evaluate(() => { for (let i = 0; i < 300; i++) (window as unknown as PluginWindow).hq.send({ t: "flood", i }); });
-    const conns = await read(mia, () => new Promise<string[]>((resolve) => {
-      const seen = new Set<string>();
-      const t0 = performance.now();
-      const tick = () => { seen.add(window.__hq.state.conn); if (performance.now() - t0 < 3000) setTimeout(tick, 50); else resolve([...seen]); };
-      tick();
-    }));
-    check("a flood of plugin messages does not disconnect the member", conns.length === 1 && conns[0] === "open" && (await frames(mia)) === 1, conns.join());
+    // (a plugin sending far more than the server accepts never gets its member disconnected: the page holds its
+    // messages under the socket's rate, web/test/pluginHost.test.ts and pluginCommands.test.ts)
     await pluginFrame(mia)!.evaluate(() => { for (let i = 0; i < 600; i++) (window as unknown as PluginWindow).hq.remove("x" + i); });
     await waitFor(() => read(mia, (p) => window.__hq.session.plugins!.stopReasons.get(p) ?? "", PLUGIN), { what: "flooding plugin stopped" });
     const reason = await read(mia, (p) => window.__hq.session.plugins!.stopReasons.get(p), PLUGIN);
@@ -528,10 +503,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await sleep(500);
     const o1 = (await objs(mia))!;
     check("on start the plugin gets one onObjectInit for the orb already placed, with tiles and world pixels", same(o1.init, [placed(ORB)]) && o1.destroy.length === 0, JSON.stringify(o1));
-    const u0 = (await objs(mia))!.updates[orbKey(ORB)] ?? 0;
-    await sleep(2000);
-    const u1 = (await objs(mia))!.updates[orbKey(ORB)] ?? 0;
-    check("a dynamic object gets onObjectUpdate about 10 times a second", u1 - u0 >= 12 && u1 - u0 <= 24, `${u1 - u0} in 2 s`);
+    // (a dynamic object gets onObjectUpdate 10 times a second, and its updates stop once it is removed:
+    // web/test/pluginHost.test.ts; that updates reach the plugin, the pulse below)
     const spr = await waitFor(() => orbSprite(mia, ORB), { what: "the orb's sprite" });
     check("the sprite the plugin spawned for it stands on the object (bottom centre of its tile)", spr!.visible && spr!.x === ORB.x * 16 + 8 && spr!.y === ORB.y * 16 + 16, JSON.stringify(spr));
     const anims = await read(mia, (id: string) => new Promise<(string | null)[]>((resolve) => {
@@ -555,30 +528,20 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("in the editor an object the plugin draws shows as a box with its label", boxes.includes("Orb\n(drawn by its plugin)"), JSON.stringify(boxes));
     await waitFor(() => click(admin, ".editor button", "Close"), { what: "editor Close" });
     await waitFor(async () => !(await admin.page.$(".editor")), { what: "editor closed" });
-    // removed from the map, put back, moved
-    await setOrb(null);
-    await waitFor(async () => (await objs(mia))?.destroy.length as number > 0, { what: "the orb's destroy" });
-    await waitFor(async () => !(await orbSprite(mia, ORB)), { what: "orb sprite removed" });
-    const o2 = (await objs(mia))!;
-    await sleep(500);
-    check("removed from the map: one onObjectDestroy, its sprite goes and its updates stop", same(o2.destroy, [placed(ORB)]) && (await objs(mia))!.updates[orbKey(ORB)] === o2.updates[orbKey(ORB)], JSON.stringify(o2.destroy));
-    await setOrb(ORB);
-    await waitFor(async () => (await objs(mia))?.init.length === 2 && (await orbSprite(mia, ORB))?.visible, { what: "the orb back" });
-    check("put back: onObjectInit again, and the plugin draws it again", true);
+    // moved on the map (a map change reaching the plugin: one destroy and one init); removed, and put back, are the
+    // same changes (objectChanges in web/test/pluginObjects.test.ts, the host telling them in pluginHost.test.ts)
     const MOVED = { x: ORB.x + 1, y: ORB.y };
     await setOrb(MOVED);
-    await waitFor(async () => (await objs(mia))?.init.length === 3, { what: "the moved orb's init" });
+    await waitFor(async () => (await objs(mia))?.init.length === 2, { what: "the moved orb's init" });
     const o3 = (await objs(mia))!;
     const movedSprite = await waitFor(() => orbSprite(mia, MOVED), { what: "moved orb sprite" }).catch(() => null);
-    check("moved: a destroy at the old place, then an init at the new one", same(o3.destroy, [placed(ORB), placed(ORB)]) && same(o3.init[2], placed(MOVED)) && !!movedSprite && !(await orbSprite(mia, ORB)), JSON.stringify(o3));
+    check("moved: a destroy at the old place, then an init at the new one; the plugin draws it there and its old sprite goes", same(o3.destroy, [placed(ORB)]) && same(o3.init[1], placed(MOVED)) && !!movedSprite && !(await orbSprite(mia, ORB)), JSON.stringify(o3));
     const boxText = () => read(mia, () => document.querySelector('.plugin-screen[data-plugin="ui-demo"]')?.textContent ?? "");
     await waitFor(async () => (await boxText()).includes("Last click: nothing yet"), { what: "the plugin's box on the map" });
     check("a plugin can put a box on the map (screen anchor)", true);
-    // a member arriving now gets the onJoin message even though their page starts the plugin after it was sent
-    const late = await joinAs(browser, "Late" + t);
-    await waitFor(() => late.page.evaluate(() => document.querySelector('.plugin-screen[data-plugin="ui-demo"]')?.textContent.includes("State: welcome") ?? false), { what: "onJoin message on a new page" });
-    check("a message sent by onJoin reaches a page that starts the plugin afterwards", true);
-    await late.ctx.close();
+    // (a member arriving gets the onJoin message even though their page starts the plugin after it was sent: the page
+    // holds it, web/test/pluginHost.test.ts; the server sends it to the member joining, hq-chess's chess.ispec.ts "a joining
+    // member gets it")
     const anchors = [["topbar", '.topbar [data-anchor="topbar"] .plugin-slot'], ["topright", '.topbar [data-anchor="topright"] .plugin-slot'], ["bottombar", ".bar .plugin-slot"], ["minimap", '.minimap [data-anchor="minimap"] .plugin-slot']];
     for (const [anchor, sel] of anchors) {
       await waitFor(() => mia.page.evaluate((sel) => { const b = document.querySelector<HTMLElement>(sel + '[data-plugin="ui-demo"]'); b?.click(); return !!b; }, sel), { what: anchor + " button" });
@@ -598,7 +561,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("an app outside the browser calls the plugin's route with the token", (await post(token)).status === 200);
     await waitFor(async () => (await boxText()).includes("State: hp=42"), { what: "the state on Mia's page" });
     check("what the app sent reaches the member's page", true);
-    check("without the token the route answers 401", (await post("")).status === 401);
+    // (without a token the route answers 401: TestAppTokens)
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Revoke"), { what: "Revoke" });
     await waitFor(async () => (await post(token)).status === 401, { what: "revoked token refused" });
     check("a revoked token is refused", true);
@@ -614,8 +577,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
       await waitFor(() => mia.page.$('.modal.plugin-modal[aria-label="UI demo"]'), { what: "UI demo modal" });
     };
     const modalText = () => read(mia, () => document.querySelector(".modal.plugin-modal .plugin-body")?.textContent ?? "");
-    const warnings: string[] = [];
-    mia.page.on("console", (m) => { if (m.type() === "warn") warnings.push(m.text()); });
     await openDemo();
     await waitFor(() => click(mia, ".modal.plugin-modal button", "Echo view"), { what: "Echo view button" });
     await waitFor(async () => (await modalText()).includes("View: hello"), { timeout: 15000, what: "the view's hello" });
@@ -630,51 +591,20 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("a message goes view -> client code -> view", true);
     await waitFor(async () => (await modalText()).includes("View: ping 7"), { what: "the modal redrawn after the ping" });
     check("redrawing the modal keeps the view's iframe and its state", (await viewEl.evaluate((f) => f.isConnected)) && (await view.evaluate(() => (window as unknown as { __mark: number }).__mark)) === 42);
-    // plugin code posting on its raw port, past the SDK's check: the view gets the page's JSON copy, not the clone
-    await waitFor(() => click(mia, ".modal.plugin-modal button", "Raw post"), { what: "Raw post" });
-    const rawOut = await waitFor(async () => { const t = await view.evaluate(() => document.getElementById("out")?.textContent ?? ""); return t.startsWith("raw") ? t : null; }, { what: "the raw post in the view" });
-    check("a Map or an ArrayBuffer posted past the SDK reaches the view as {} (the page relays its JSON copy)", rawOut === "raw big={} buf={}", rawOut!);
-    // 100 messages in one second each way: at most 30 go through, and nothing stops
-    await view.evaluate(() => { for (let i = 0; i < 100; i++) hqView.send({ t: "flood" }); });
-    // each message from the view redraws the modal, and a redraw frees the old buttons' callbacks: a click
-    // on a button being replaced is lost, so click once the count has settled (it shows 0 until the flood arrives)
-    let lastFrom = "";
-    await waitFor(async () => { const now = /From the view: (\d+)/.exec(await modalText())?.[1] ?? ""; const settled = Number(now) >= 1 && now === lastFrom; lastFrom = now; return settled; }, { every: 400, what: "the view's flood counted" });
-    await waitFor(() => click(mia, ".modal.plugin-modal button", "Flood the view"), { what: "Flood the view" });
-    await sleep(1500);
-    // under load the view may print its count after the second is over: wait for it rather than read once
-    const counts = async () => [Number(/From the view: (\d+)/.exec(await modalText())?.[1] ?? -1), Number(/flood (\d+)/.exec(await view.evaluate(() => document.getElementById("out")?.textContent ?? ""))?.[1] ?? -1)];
-    const [fromView, toView] = (await waitFor(async () => { const c = await counts(); return c.every((n) => n >= 1) ? c : null; }, { timeout: 10000, what: "both flood counts" }).catch(() => null)) ?? (await counts());
-    check("100 view messages in a second: at most 30 reach the client code", fromView >= 1 && fromView <= 30, "got " + fromView);
-    check("100 hq.ui.post in a second: at most 30 reach the view", toView >= 1 && toView <= 30, "got " + toView);
-    const dropped = ["from the view", "to the view"].map((dir) => warnings.some((w) => w.includes("view message dropped: more than 30 a second " + dir)));
-    check("the dropped messages are reported with a console warning, each way", dropped.every(Boolean), JSON.stringify(warnings.slice(0, 4)));
-    const stillRuns = await read(mia, () => !window.__hq.session.plugins!.stopReasons.has("ui-demo") && !!document.querySelector('iframe.plugin-frame[data-plugin="ui-demo"]') && !!document.querySelector("iframe.plugin-view"));
-    check("a flooding view or client code is throttled, not stopped: the plugin and its view still run", stillRuns);
+    // (plugin code posting a Map or an ArrayBuffer past the SDK: the view gets the page's JSON copy; 100 messages a second
+    // each way: 30 go through, the rest dropped with a warning, nothing stops: web/test/pluginHost.test.ts)
     await waitFor(() => click(mia, ".modal.plugin-modal .modal-actions button", "Close"), { what: "Close" });
     await waitFor(async () => (await boxText()).includes("echo closed"), { what: "the echo modal's onClose" });
     check("closing the modal removes the view's iframe", !(await read(mia, () => !!document.querySelector("iframe.plugin-view"))));
-    // a view the manifest does not declare: the view goes, the modal stays, the plugin runs
-    await openDemo();
-    await waitFor(() => click(mia, ".modal.plugin-modal button", "Missing view"), { what: "Missing view button" });
-    await waitFor(async () => (await modalText()).includes("No view here"), { what: "the Missing modal" });
-    await sleep(300);
-    const missing = await read(mia, () => ({ frame: !!document.querySelector("iframe.plugin-view"), modal: !!document.querySelector('.modal.plugin-modal[aria-label="Missing"]'), runs: !window.__hq.session.plugins!.stopReasons.has("ui-demo") }));
-    check("a view the manifest does not declare is left out; the modal stays and the plugin runs", !missing.frame && missing.modal && missing.runs, JSON.stringify(missing));
-    await waitFor(() => click(mia, ".modal.plugin-modal .modal-actions button", "Close"), { what: "Close" });
+    // (a view the manifest does not declare is left out, the modal stays and the plugin runs: web/test/pluginHost.test.ts
+    // and PluginViewFrame.test.tsx)
 
     await setEnabled(admin, false, "UI demo", "ui-demo");
     await waitFor(() => read(mia, () => !document.querySelector(".plugin-screen, .plugin-slot")), { what: "plugin UI removed" });
     check("disabling a plugin removes its buttons and boxes everywhere", true);
     check("and the sprites it drew for its objects", (await read(mia, () => window.__hq.session.plugins?.debug("ui-demo") ?? null)) === null);
-    // on again: a fresh start gets one init per object still on the map, and no destroy
-    await setEnabled(admin, true, "UI demo", "ui-demo");
-    await waitFor(async () => (await objs(mia))?.init.length as number > 0, { timeout: 15000, what: "init after a restart" });
-    await waitFor(() => orbSprite(mia, MOVED), { what: "the orb drawn again" });
-    await sleep(300);
-    const o4 = (await objs(mia))!;
-    check("turned on again, the plugin gets an onObjectInit for the object placed, no destroy, and draws it", same(o4.init, [placed(MOVED)]) && o4.destroy.length === 0, JSON.stringify(o4));
-    await setEnabled(admin, false, "UI demo", "ui-demo");
+    // (turned on again, a fresh start gets one init per object on the map and no destroy: a page starts a new host,
+    // web/test/pluginHost.test.ts "on start"; the start through the admin dialog is checked above)
     await setOrb(null); // leave the shared office's map as it was
     // the forged PUT above is refused (401) on purpose; Chrome logs that response as a console error
     // expected on Mia's page: a 401 the test provokes, the fetch blocked by the CSP, and the declared .invalid host not resolving

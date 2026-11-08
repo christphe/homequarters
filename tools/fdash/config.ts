@@ -3,9 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** A path pattern relative to the root (a leading "!" excludes), the files of Go packages, or a path pattern
- * of files read from the disk, git-ignored ones included (build artefacts a command runs or serves). */
-export type Input = string | { go: string; cwd: string; tests: boolean } | { disk: string };
+/** A path pattern relative to the root (a leading "!" excludes), the files of Go packages, a path pattern of
+ * files read from the disk, git-ignored ones included (build artefacts a command runs or serves), or the part
+ * of the pnpm lockfile a workspace member (its folder) installs. */
+export type Input = string | { go: string; cwd: string; tests: boolean } | { disk: string } | { pnpm: string };
 
 export type Command = {
   kind: "command";
@@ -61,7 +62,8 @@ function parseInputs(name: string, key: string, v: unknown): Input[] {
       return { go: x.go, cwd: x.cwd, tests: x.tests === true };
     }
     if (isObject(x) && typeof x.disk === "string" && x.disk !== "" && !x.disk.startsWith("!") && Object.keys(x).length === 1) return { disk: x.disk };
-    throw new Error(`${name}: ${key} holds ${JSON.stringify(x)}: a path pattern, { "go": <packages>, "cwd": <module dir>, "tests"?: <bool> } or { "disk": <path pattern> }`);
+    if (isObject(x) && typeof x.pnpm === "string" && x.pnpm !== "" && Object.keys(x).length === 1) return { pnpm: x.pnpm };
+    throw new Error(`${name}: ${key} holds ${JSON.stringify(x)}: a path pattern, { "go": <packages>, "cwd": <module dir>, "tests"?: <bool> }, { "disk": <path pattern> } or { "pnpm": <member dir> }`);
   });
 }
 

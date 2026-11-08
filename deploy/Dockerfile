@@ -4,10 +4,13 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine AS web
 WORKDIR /w
 RUN corepack enable
-COPY web/package.json web/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-COPY web/ ./
-RUN pnpm build
+# the repository is one pnpm workspace with one lockfile: install only what the web client needs
+# (corepack runs the pnpm that packageManager in the root package.json pins)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY web/package.json web/
+RUN pnpm install --frozen-lockfile --filter homequarters-web
+COPY web/ web/
+RUN cd web && pnpm build
 
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
 ARG TARGETOS=linux
@@ -24,7 +27,7 @@ FROM gcr.io/distroless/static-debian13:nonroot
 # uses a hash of the built page, which also changes with every client build.
 ARG HQ_VERSION=
 COPY --from=server /out/homequarters /app/homequarters
-COPY --from=web /w/dist /app/web
+COPY --from=web /w/web/dist /app/web
 # the bundled plugins (hq-*), off until an administrator enables them; an operator's own plugins go in
 # /app/plugins/installed, usually a volume mounted there (docs/plugins.md)
 COPY plugins/bundled/ /app/plugins/bundled/
