@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - minor
+
+### Added
+- homequarters testbed: the server without LiveKit, with the given plugins enabled, for plugin integration tests (#54)
+
 ## [0.6.0] - 2026-11-07
 
 ### Changed
