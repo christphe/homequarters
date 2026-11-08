@@ -104,7 +104,7 @@ func testbedMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	line, _ := json.Marshal(map[string]string{"url": bed.URL})
 	if _, err := fmt.Fprintf(stdout, "%s\n", line); err != nil {
 		log.Error("write the url", "err", err)
-		bed.Close()
+		_ = bed.Close() // already failing: the write error is the one reported
 		return 1
 	}
 	<-ctx.Done()
@@ -118,7 +118,7 @@ func testbedMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // removeDB removes a SQLite database with its side files, then its folder if nothing else is left in it.
 func removeDB(db string) {
 	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		os.Remove(db + suffix)
+		_ = os.Remove(db + suffix) // the side files are often absent
 	}
-	os.Remove(filepath.Dir(db)) // fails, harmlessly, while the folder holds anything else
+	_ = os.Remove(filepath.Dir(db)) // fails, harmlessly, while the folder holds anything else
 }

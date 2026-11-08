@@ -75,7 +75,11 @@ func run(log *slog.Logger, cfg *config.Config, f cliFlags) int {
 		log.Error("open store", "err", err)
 		return 1
 	}
-	defer st.Close()
+	defer func() {
+		if err := st.Close(); err != nil {
+			log.Error("close store", "err", err)
+		}
+	}()
 
 	def, _ := json.Marshal(gamemap.Default())
 	office, err := st.EnsureOffice(context.Background(), cfg.OfficeSlug, cfg.OfficeName, string(def))
@@ -122,7 +126,7 @@ func run(log *slog.Logger, cfg *config.Config, f cliFlags) int {
 	defer stop()
 	if cfg.StopOnStdinClose { // dev only: the test runner's graceful stop on Windows
 		go func() {
-			io.Copy(io.Discard, os.Stdin)
+			_, _ = io.Copy(io.Discard, os.Stdin) // a read error ends stdin as well as its end does
 			log.Info("stdin closed: shutting down")
 			stop()
 		}()
@@ -140,7 +144,9 @@ func run(log *slog.Logger, cfg *config.Config, f cliFlags) int {
 		<-ctx.Done()
 		sctx, c := context.WithTimeout(context.Background(), 5*time.Second)
 		defer c()
-		hs.Shutdown(sctx)
+		if err := hs.Shutdown(sctx); err != nil {
+			log.Warn("http shutdown", "err", err)
+		}
 	}()
 	log.Info("listening", "addr", cfg.Addr, "env", cfg.Env, "office", office.Slug, "media", md.Enabled())
 	code := 0
@@ -162,9 +168,18 @@ func probe(addr string) int {
 	if err != nil {
 		return 2
 	}
-	c := http.Client{Timeout: 3 * time.Second}
-	resp, err := c.Get("http://127.0.0.1:" + port + "/readyz")
-	if err != nil || resp.StatusCode != http.StatusOK {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+port+"/readyz", nil)
+	if err != nil {
+		return 2
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 1
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
 		return 1
 	}
 	return 0
@@ -181,7 +196,7 @@ func runBackup(dbPath, dest string) int {
 		fmt.Fprintln(os.Stderr, "open:", err)
 		return 1
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }() // the backup is a separate file, written and closed by VACUUM INTO
 	if err := st.BackupTo(context.Background(), dest); err != nil {
 		fmt.Fprintln(os.Stderr, "backup:", err)
 		return 1

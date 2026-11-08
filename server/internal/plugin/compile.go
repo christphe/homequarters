@@ -93,7 +93,7 @@ func fingerprint(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }() // read only
 	h := sha256.New()
 	n := 0
 	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -120,7 +120,7 @@ func fingerprint(dir string) (string, error) {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }() // read only
 		fmt.Fprintf(h, "%s\x00", p)
 		_, err = io.Copy(h, f)
 		return err

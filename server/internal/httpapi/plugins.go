@@ -214,7 +214,7 @@ func (s *Server) startPlugins(office int64, h *plugin.Host) {
 	}
 	for _, st := range h.Status() {
 		if flags[st.Name] && st.State == "disabled" {
-			h.Start(st.Name) // a failure is kept as the plugin's state and logged by the host
+			_ = h.Start(st.Name) // a failure is kept as the plugin's state and logged by the host
 		}
 	}
 }
@@ -650,7 +650,7 @@ func (s *Server) pluginAsset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read only: closing it cannot lose data
 	st, err := f.Stat()
 	if err != nil || st.Size() > plugin.MaxAssetBytes {
 		http.NotFound(w, r)

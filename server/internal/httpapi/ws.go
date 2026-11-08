@@ -270,7 +270,8 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 			conn.RequestToken(ctx)
 		case "ping":
 			wctx, wc := context.WithTimeout(ctx, 2*time.Second)
-			c.Write(wctx, websocket.MessageText, []byte(`{"t":"pong","c":`+strconv.FormatInt(m.C, 10)+`}`))
+			// a pong lost to a slow or closing connection: the client's next ping, or the read loop, tells
+			_ = c.Write(wctx, websocket.MessageText, []byte(`{"t":"pong","c":`+strconv.FormatInt(m.C, 10)+`}`))
 			wc()
 		}
 	}

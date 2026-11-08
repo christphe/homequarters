@@ -101,12 +101,17 @@ func httpJoin(name string) (string, error) {
 	}
 	body, _ := json.Marshal(req)
 	for range 8 {
-		resp, err := http.Post(*base+"/api/join", "application/json", bytes.NewReader(body))
+		rq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, *base+"/api/join", bytes.NewReader(body))
+		if err != nil {
+			return "", err
+		}
+		rq.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(rq)
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body) // drained so the connection is reused; the status is what counts
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusTooManyRequests {
 			time.Sleep(300 * time.Millisecond)
@@ -388,7 +393,7 @@ func scrape() map[string]float64 {
 	if mu == "" {
 		mu = *base
 	}
-	rq, _ := http.NewRequest(http.MethodGet, mu+"/metrics", nil)
+	rq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, mu+"/metrics", nil)
 	tok := *metricsTok
 	if tok == "" {
 		tok = os.Getenv("HQ_METRICS_TOKEN")
@@ -423,7 +428,7 @@ func scrape() map[string]float64 {
 }
 
 func psSample(pid int) (cpu, rssMB float64) {
-	o, err := exec.Command("ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
+	o, err := exec.CommandContext(context.Background(), "ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return
 	}

@@ -135,12 +135,15 @@ func newInstance(h *Host, info Info) (*instance, error) {
 	vm.SetMaxStackSize(stackCap)
 	in.vm = vm
 	if err := in.install(); err != nil {
-		vm.Close()
+		_ = vm.Close() // the install error is the one reported
 		return nil, err
 	}
 	// parsing and the module's top level get a longer budget than a call: a large plugin takes tens of
-	// milliseconds to parse (bench/plugin-runtime)
-	vm.SetEvalTimeout(startBudget)
+	// milliseconds to parse (bench/plugin-runtime); a VM whose budget cannot be set does not run
+	if err := vm.SetEvalTimeout(startBudget); err != nil {
+		_ = vm.Close()
+		return nil, err
+	}
 	in.loading = true
 	err = in.eval(code.server)
 	if err == nil {
@@ -150,9 +153,11 @@ func newInstance(h *Host, info Info) (*instance, error) {
 		err = in.callExport("load")
 	}
 	in.loading = false
-	vm.SetEvalTimeout(callBudget)
+	if err == nil {
+		err = vm.SetEvalTimeout(callBudget)
+	}
 	if err != nil {
-		vm.Close()
+		_ = vm.Close() // the load error is the one reported
 		return nil, err
 	}
 	return in, nil
@@ -299,7 +304,7 @@ func (in *instance) run() {
 	defer close(in.done)
 	defer func() {
 		if in.vm != nil {
-			in.vm.Close()
+			_ = in.vm.Close() // the plugin is stopping: nothing is left to tell
 		}
 	}()
 	tick := time.NewTicker(updateEvery)

@@ -138,10 +138,10 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 	defer func() {
 		if err != nil { // undo what was opened
 			if b.st != nil {
-				b.st.Close()
+				_ = b.st.Close() // undoing a failed start: its error is the one reported
 			}
 			if b.tmp != "" {
-				os.RemoveAll(b.tmp)
+				_ = os.RemoveAll(b.tmp)
 			}
 		}
 	}()
@@ -186,7 +186,7 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 	go func() {
 		select {
 		case <-ctx.Done():
-			b.Close()
+			_ = b.Close() // stopped by its context: whoever wants the error calls Close
 		case <-sctx.Done():
 		}
 	}()
@@ -492,7 +492,7 @@ func listenWith(netListen func(network, addr string) (net.Listener, error), addr
 		if port != "0" || !blockedPorts[ln.Addr().(*net.TCPAddr).Port] {
 			return ln, nil
 		}
-		defer ln.Close() // held until a good one is found, so the OS does not hand the same one back
+		defer func() { _ = ln.Close() }() // held until a good one is found, so the OS does not hand the same one back
 	}
 	return nil, fmt.Errorf("no free port outside the ports browsers refuse after 20 tries")
 }

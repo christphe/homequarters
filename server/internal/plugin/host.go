@@ -250,7 +250,7 @@ func (h *Host) Start(name string) error {
 	defer h.mu.Unlock()
 	if err == nil && h.closed {
 		if in.vm != nil {
-			in.vm.Close()
+			_ = in.vm.Close() // freeing the VM of a host that is closing: nothing is left to tell
 		}
 		return ErrNotRunning
 	}
