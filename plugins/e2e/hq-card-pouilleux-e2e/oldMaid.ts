@@ -41,19 +41,19 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // Bo's click straddles a rebuild of his controls (Ann counts between his press and his release): it still lands
     {
       const f = (await viewFrame(bo))!;
-      const seat2 = await f.evaluateHandle(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].find((b) => b.textContent!.trim() === "Seat 2")) as ElementHandle<HTMLButtonElement>;
+      const seat2 = await f.evaluateHandle(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].find((b) => b.textContent.trim() === "Seat 2")) as ElementHandle<HTMLButtonElement>;
       await seat2.evaluate((b) => b.scrollIntoView({ block: "center" }));
       const box = (await seat2.boundingBox())!;
       await bo.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await bo.page.mouse.down();
       await press(ann, "Count");
-      await waitFor(async () => (await (await viewFrame(bo))!.evaluate(() => [...document.querySelectorAll(".controls p")].some((p) => p.textContent!.startsWith("Count: ")))), { timeout: 3000, what: "Bo's controls rebuilt by the count" });
+      await waitFor(async () => (await (await viewFrame(bo))!.evaluate(() => [...document.querySelectorAll(".controls p")].some((p) => p.textContent.startsWith("Count: ")))), { timeout: 3000, what: "Bo's controls rebuilt by the count" });
       await bo.page.mouse.up();
     }
     const straddled = await within(async () => (await drawn(bo))?.seat === 1, 3000);
     check("a click pressed while the controls are rebuilt by somebody else's move still lands (Bo takes seat 2)", straddled >= 0, `${straddled} ms`);
     if (straddled < 0) await press(bo, "Seat 2");
-    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e) => {
+    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e: Error) => {
       throw new Error(e.message + " " + JSON.stringify({ controls: (await modal(bo))?.buttons.slice(0, 10), log: (await logOf(bo)).slice(-3), sent: bo.sent.slice(-3), vp: bo.page.viewport() }));
     });
     // (Old Maid's controls, Deal all and Count but no Deal N, new pile, draw or look: hq-card-pouilleux/test/oldMaid.test.ts)
