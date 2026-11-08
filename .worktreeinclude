@@ -1,0 +1,4 @@
+# Git-ignored files Claude Code copies into each worktree it creates (gitignore syntax; https://code.claude.com/docs/en/worktrees.md).
+# The local settings (.env.example), and fdash's cache so a new worktree starts with what already passed here.
+.env
+.fdash/
