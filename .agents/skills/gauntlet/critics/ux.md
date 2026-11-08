@@ -4,7 +4,7 @@ Lens: does it **feel** right to a person using it? Tests measure what someone th
 
 Inputs: the brief, the diff, the gate output. Nothing else from the builder.
 
-1. For every user-visible behaviour in the diff, produce **frames**: a `capture-*.ts` scenario (copy `e2e/scenarios/capture-plugin-pet.ts`: film from the acting player, hide the HUD, write a contact sheet) or screenshots at **1280x720, 800x450 (CI) and a 390x844 touch phone**. Run it, then open the images and look at them.
+1. For every user-visible behaviour in the diff, produce **frames**: a `capture-*.ts` scenario (copy `e2e/scenarios/capture-plugin-pet.ts`, or for a bundled plugin `plugins/e2e/hq-chess-e2e/capture-chess.ts`, run with `node ../../../e2e/plugin-run.ts --plugin ../../bundled/<plugin> capture-<name>.ts` from its folder: film from the acting player, hide the HUD, write a contact sheet) or screenshots at **1280x720, 800x450 (CI) and a 390x844 touch phone**. Run it, then open the images and look at them.
 2. Walk the checklist for each frame set:
    - **Motion**: no teleports, jitter, sliding feet, glued or overlapping sprites, cut corners; turns read naturally.
    - **Timing**: feedback within ~100 ms of input; nothing waits without a visible state.

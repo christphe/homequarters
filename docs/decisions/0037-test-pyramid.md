@@ -110,7 +110,7 @@ Measured on the Windows 11 desktop (12 logical CPUs, Node 24, Go 1.27.0, Chrome,
 | `test:e2e` | the `e2e/` suite (26 scenarios, two shards) and the 4 plugin e2e projects | about 20 min for the suite; hq-chess-e2e 32 s, hq-cards-e2e 30 s alone |
 | whole gauntlet | everything above, nothing cached | 22 min |
 
-Outputs in the cache, per stored pass: the server binary 63 MB (the Windows build, with its debug information), `web/dist` 2.3 MB, `site/dist` 3.7 MB. CI keeps only the records a run used, so its cache grows by about one copy of each per key in use. The size of a CI cache with outputs is not measured yet: records are published by runs on `main` only.
+Outputs in the cache, per stored pass: the server binary about 32 MB (the Windows build, with its debug information; a leftover `bin/homequarters` from another build matches the same pattern and is stored beside it on that machine, CI builds only one), `web/dist` 2.3 MB, `site/dist` 3.7 MB. CI keeps only the records a run used, so its cache grows by about one copy of each per key in use. The size of a CI cache with outputs is not measured yet: records are published by runs on `main` only.
 
 Not measured: these times on CI's runners, and on Linux or macOS.
 

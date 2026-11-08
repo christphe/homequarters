@@ -39,7 +39,7 @@ Each check goes to the cheapest seam that can see it. Rules and logic (a game's 
 
 | Critic | Lens | Evidence it must produce |
 | --- | --- | --- |
-| **UX** | does it *feel* right: motion, timing, layout at 800x450 and on a phone, overlap with other UI | frames or a contact sheet (see `e2e/scenarios/capture-*.ts`), viewed, plus the scenario run |
+| **UX** | does it *feel* right: motion, timing, layout at 800x450 and on a phone, overlap with other UI | frames or a contact sheet (see `e2e/scenarios/capture-*.ts`, and for a plugin `plugins/e2e/<plugin>-e2e/capture-*.ts`), viewed, plus the scenario run |
 | **Invariants** | the AGENTS.md invariants: authoritative server, no per-frame sends, bounded queues, no content in logs, consent, audit, i18n, a11y | the `file:line` that breaks one, and the test that would catch it |
 | **Regression and security** | what else this change can break; input validation, token scope, rate limits | a failing command |
 

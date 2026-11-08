@@ -21,7 +21,7 @@ node tools/fdash/cli.ts list [--pkg server]         # the tasks, in file order
 Several names on the command line run as **stages**, one after the other: the tasks of the first name, then
 those of the second, and so on; a task already run by an earlier stage is not repeated, and a failed stage
 stops the next ones. Inside a stage, tasks run at once as far as `--jobs` and their order (below) allow.
-`--pkg` applies to every stage: `run build test:integration --pkg maps` fails when `maps` has no `build`.
+`--pkg` applies to every stage: `run build test:integration --pkg maps` fails when `maps` has no `build`. A task name runs its projects' tasks as far as `--jobs` allows; a group's `jobs` limits only that group: in this repository `run browser` runs the browser suites one at a time, while `run test:e2e` starts them together.
 To build another project first, run it as its own command: `run build --pkg core`, then
 `run test:integration --pkg maps`.
 

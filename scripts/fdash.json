@@ -25,8 +25,7 @@
         "/web/pnpm-lock.yaml",
         "/tools/fdash/**",
         "/e2e/shards.ts",
-        "/web/node_modules/oxlint/dist/**",
-        "/web/node_modules/@types/node/**"
+        "/web/node_modules/oxlint/dist/**"
       ]
     },
     "test:unit": {
