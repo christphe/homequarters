@@ -174,7 +174,7 @@ func TestInputFloodCannotOutrunTheServerSpeed(t *testing.T) {
 		}
 	}
 	if err := s.c.Write(context.Background(), websocket.MessageText, []byte(`{"t":"in","s":99999,"x":0,"y":0}`)); err != nil {
-		s = ana.socket(t)
+		ana.socket(t).send(t, `{"t":"in","s":99999,"x":0,"y":0}`)
 	}
 	time.Sleep(600 * time.Millisecond)
 	s = ana.socket(t) // a fresh connection answers whatever the flood did to the last one
