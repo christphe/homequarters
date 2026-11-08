@@ -93,6 +93,7 @@ mod mac {
 
 /// What each key types without modifiers, in lower case like Chromium's layout map; None where it is not
 /// read (other systems, or an input source with no keyboard layout data).
+#[allow(unsafe_code)] // macOS: the Text Input Sources and Core Foundation calls that read the keyboard layout
 pub fn current() -> Option<BTreeMap<&'static str, String>> {
     #[cfg(target_os = "macos")]
     unsafe {

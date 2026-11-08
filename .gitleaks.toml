@@ -10,7 +10,9 @@ description = "local or generated files that are never committed, and the fake s
 # git-ignored folders and files (.gitignore): local settings, builds, caches, other agents' worktrees
 paths = [
   '''(^|/)\.env$''',
-  '''(^|/)(node_modules|dist|target|gen|\.fdash|\.run|\.gauntlet|\.tools|\.vitest|\.claude)/''',
+  '''(^|/)(node_modules|dist|target|gen|\.fdash|\.run|\.gauntlet|\.tools|\.vitest)/''',
+  # only the worktrees under .claude are ignored: its committed skills and settings are scanned
+  '''^\.claude/worktrees/''',
   '''^bin/''',
   '''^server/data/''',
   '''^plugins/installed/''',

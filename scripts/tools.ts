@@ -86,7 +86,21 @@ export async function ensure(name: string): Promise<string> {
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   const tmp = fs.mkdtempSync(dir + ".tmp-");
   try {
-    const res = await fetch(asset.url, { redirect: "follow" });
+    // GitHub's release downloads fail now and then (twice on 2026-11-08): three tries, 2 s and 4 s apart
+    let res: Response | undefined;
+    for (let attempt = 1; !res; attempt++) {
+      try {
+        res = await fetch(asset.url, { redirect: "follow" });
+        if (res.status >= 500 && attempt < 3) res = undefined;
+      } catch (e) {
+        if (attempt >= 3) {
+          // offline, a proxy, DNS: say which tool and where, not only "fetch failed"
+          const why = `${(e as Error).message}${(e as Error).cause ? ` (${String((e as Error).cause)})` : ""}`;
+          throw new Error(`tools: could not download ${name} from ${asset.url}: ${why}. Behind a proxy, set HTTPS_PROXY and NODE_USE_ENV_PROXY=1 (Node's fetch ignores the proxy otherwise).`, { cause: e });
+        }
+      }
+      if (!res) await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
     if (!res.ok) throw new Error(`tools: ${asset.url}: HTTP ${res.status}`);
     const file = path.join(tmp, path.basename(new URL(asset.url).pathname));
     fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));

@@ -1,6 +1,8 @@
 // Real UI and authoritative world: reactions, interactive notes, guided walking, portals, doors and boards.
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User, type RunContext } from "../lib.ts";
 import type { EvaluateFunc } from "puppeteer-core";
+import os from "node:os";
+import path from "node:path";
 
 const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
@@ -134,7 +136,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await click(a, "Place text in centre");
     await waitFor(() => b.page.evaluate(() => document.querySelector<HTMLCanvasElement>("canvas.whiteboard")!.getContext("2d")!.getImageData(400, 270, 220, 40).data.some((v) => v < 200)), { what: "text appears on collaborator canvas" });
     check("whiteboard text appears on the other person's canvas", true);
-    await a.page.screenshot({ path: "/tmp/homequarters-whiteboard-qa.png" });
+    await a.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-whiteboard-qa.png") });
     await click(a, "Pen", ".board-tools button");
     const rect = await read(a, () => { const r = document.querySelector("canvas.whiteboard")!.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     await a.page.mouse.move(rect.x + 50, rect.y + 50); await a.page.mouse.down();

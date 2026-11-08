@@ -1,8 +1,3 @@
 # zizmor (pinned in scripts/tools.ts), run offline by `node scripts/lint-repo.ts actions` (decision 0040).
-rules:
-  template-injection:
-    ignore:
-      # the Summary step's ${{ matrix.os }}: runner names written in this file's matrix, or inputs.macos, a
-      # workflow_dispatch choice among three runner names; nothing a pull request or a user can write.
-      # zizmor ignores by line: move this with the line.
-      - desktop.yml:126
+# No ignore is needed: the matrix values that reach `run:` go through `env:`.
+rules: {}

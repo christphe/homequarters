@@ -68,6 +68,9 @@
           "go",
           "version"
         ]
+      ],
+      "envKeys": [
+        "SHELLCHECK_OPTS"
       ]
     },
     "lint:secrets": {
@@ -100,6 +103,9 @@
         "**/*.sh",
         "scripts/lint-repo.ts",
         "scripts/tools.ts"
+      ],
+      "envKeys": [
+        "SHELLCHECK_OPTS"
       ]
     },
     "lint:docker": {
