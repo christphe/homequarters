@@ -2,7 +2,7 @@
 // E2E_PARALLELISM=N shards on one machine (see parallel.ts). Pure: no dependency, no I/O.
 
 // The whole suite of run.ts (the e2e project's items), in the order a single run executes it.
-export const ALL = ["proximity", "consent", "rooms", "access", "editor", "social", "admin", "plugins", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline", "sounds"];
+export const ALL = ["proximity", "consent", "rooms", "editor", "social", "admin", "plugins", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline", "sounds"];
 
 // The plugins' e2e projects (plugins/e2e/*, each run by plugin-run.ts against the testbed, without LiveKit).
 // CI balances them with the scenarios above (plan): each runs whole in the shard it lands in.
@@ -11,7 +11,7 @@ export const PROJECTS = ["hq-chess-e2e", "hq-cards-e2e", "hq-card-pouilleux-e2e"
 // Seconds per scenario (and per e2e project), measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
 // scenario grows; a scenario missing here counts as UNKNOWN seconds.
 export const DURATIONS: Record<string, number> = {
-  proximity: 39, consent: 43, rooms: 110, access: 1, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
+  proximity: 39, consent: 43, rooms: 110, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
   security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
   update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
   "hq-chess-e2e": 30, // its test:e2e alone on a Windows 11 desktop (2026-11-07, the testbed without LiveKit; 34 s as run.ts's chess), not in CI

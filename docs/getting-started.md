@@ -59,7 +59,7 @@ node run.ts proximity rooms     # some of them
 HQ_EXTERNAL_URL=http://127.0.0.1:8080 node run.ts   # against a running stack, e.g. Docker Compose
 ~~~
 
-Scenarios: proximity, consent, rooms, access, editor, social, security, resilience (see [Status](status.md) for what each proves).
+Scenarios: proximity, consent, rooms, editor, social, security, resilience (see [Status](status.md) for what each proves).
 
 ## Run it with Docker
 

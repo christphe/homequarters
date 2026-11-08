@@ -181,11 +181,6 @@
             "scenarios/rooms.ts"
           ]
         },
-        "access": {
-          "inputs": [
-            "scenarios/access.ts"
-          ]
-        },
         "editor": {
           "inputs": [
             "scenarios/editor.ts"
