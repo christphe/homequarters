@@ -305,3 +305,46 @@ func TestOwnedOfficeTitleListsItsOwners(t *testing.T) {
 		t.Fatalf("a free office is named as it is: %q", got)
 	}
 }
+
+// An assigned desk is a room of its own: its owner alone there has no call, somebody at the
+// neighbouring desk (four tiles away, outside the desk's room) does not join it, a visitor who comes
+// into the desk's room starts its call, named after the owner, and leaving ends it.
+func TestADeskRoomCallIsTheOwnersAndTheirVisitorsOnly(t *testing.T) {
+	h := newHarness(t)
+	h.w.owners[1] = "Ana"
+	assignDesk(t, h, 20, 3, 1)
+	di := officeIndex(t, h.w, "desk-20-3")
+	ops := func(p *Player, op string) (out []string) {
+		for _, f := range drain(p) {
+			if strings.Contains(f, `"op":"`+op+`"`) {
+				out = append(out, f)
+			}
+		}
+		return
+	}
+	owner := h.add(1, "member", 20*16+8, 4*16+8) // on the desk's chair
+	h.consent(owner, true)
+	h.run(3 * time.Second)
+	if owner.area != di || len(ops(owner, "join")) != 0 {
+		t.Fatalf("alone at my desk with audio allowed, there is no call (area %d, desk %d)", owner.area, di)
+	}
+	neighbour := h.add(2, "member", 24*16+8, 4*16+8) // the chair of the next desk, 4 tiles away
+	h.consent(neighbour, true)
+	h.run(3 * time.Second)
+	if len(ops(owner, "join")) != 0 || len(ops(neighbour, "join")) != 0 {
+		t.Fatal("sitting at the neighbouring desk does not join my desk's call")
+	}
+	h.teleport(neighbour, 21*16+8, 5*16+8) // just behind my chair, inside my desk's room
+	h.run(3 * time.Second)
+	for _, p := range []*Player{owner, neighbour} {
+		j := ops(p, "join")
+		if len(j) != 1 || !strings.Contains(j[0], `"k":"r"`) || !strings.Contains(j[0], `"name":"Ana's desk"`) {
+			t.Fatalf("coming over to my desk starts its call, named after me, for both of us: %v", j)
+		}
+	}
+	h.teleport(neighbour, 22*16+8, 7*16+8) // back out into the aisle
+	h.run(3 * time.Second)
+	if len(ops(owner, "leave")) != 1 || len(ops(neighbour, "leave")) != 1 || neighbour.group != nil || owner.area != di {
+		t.Fatal("when the visitor leaves, the call ends for both and I stay at my desk alone")
+	}
+}

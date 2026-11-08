@@ -86,6 +86,28 @@ func TestRaisedHandAndStatusNoteAreInTheRoster(t *testing.T) {
 	}
 }
 
+// H pressed twice quickly sends a raise and a lower before the next tick: the hand ends down, for
+// everybody and in my own roster.
+func TestARaiseAndALowerInOneTickLeaveTheHandDown(t *testing.T) {
+	h := newHarness(t)
+	a := h.add(1, "member", sx, sy)
+	b := h.add(2, "member", sx+200, sy)
+	h.run(100 * time.Millisecond)
+	drain(a)
+	drain(b)
+	h.send(a, ev{kind: evHand, b: true})
+	h.send(a, ev{kind: evHand, b: false})
+	h.run(1500 * time.Millisecond)
+	if a.hand {
+		t.Fatal("the hand is down")
+	}
+	for _, p := range []*Player{a, b} {
+		if got := frames(p); strings.Contains(got, `"h":1`) {
+			t.Fatalf("player %d is never told the hand is up: %q", p.ID, got)
+		}
+	}
+}
+
 func TestAreaHeadCountsArePublishedOnChangeOnly(t *testing.T) {
 	h := newHarness(t)
 	a := h.add(1, "member", sx, sy) // social area

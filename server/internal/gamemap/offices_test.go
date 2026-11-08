@@ -71,7 +71,7 @@ func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
 	if len(auto) != 2 {
 		t.Fatalf("one room per assigned desk outside a room, got %+v", auto)
 	}
-	if a := auto[0]; a.Name != "Desk" || a.X != 20 || a.Y != 3 || a.W != 2 || a.H != 3 || a.Kind != KindRoom || a.Access.Mode != AccessOpen || a.Floor != DeskRoomFloor {
+	if a := auto[0]; a.Name != "Desk" || a.X != 20 || a.Y != 3 || a.W != 2 || a.H != 3 || a.Kind != KindRoom || a.Access.Mode != AccessOpen || a.Floor != "desk_mat" { // the desk floor web/src/game/art/tiles.ts paints
 		t.Fatalf("desk room: %+v", a)
 	}
 	room := func(x, y int) string {
