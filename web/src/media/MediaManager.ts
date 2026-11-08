@@ -14,6 +14,7 @@ import {
 import { getState, setState, toast } from "../store";
 import { t } from "../i18n";
 import { isListed } from "./devices";
+import { describeShareError, SHARE_MESSAGES } from "./shareErrors";
 
 export interface Tile {
   identity: string;
@@ -47,20 +48,6 @@ export function describeMediaError(e: unknown): string {
 /** Screen capture needs getDisplayMedia: phones and some embedded browsers do not have it. */
 export const canShareScreen = () => typeof navigator.mediaDevices?.getDisplayMedia === "function";
 
-/** Why a screen share did not start, or "" when the person simply closed the picker. */
-export function describeShareError(e: unknown): string {
-  const { name = "", message = "" } = (e ?? {}) as { name?: string; message?: string };
-  if (name === "NotAllowedError") {
-    if (/system/i.test(message)) return t("share.systemDenied");
-    if (/policy/i.test(message)) return t("share.blocked");
-    return ""; // the person closed the picker
-  }
-  if (name === "SecurityError") return t("share.blocked");
-  if (name === "NotSupportedError") return t("share.unsupported");
-  return t("share.couldNotStart");
-}
-
-const SHARE_MESSAGES = ["share.unsupported", "share.systemDenied", "share.blocked", "share.couldNotStart", "share.needCall"] as const;
 /** Clears a message about screen sharing, leaving camera and microphone problems on screen. */
 export function clearShareMessage() {
   const cur = getState().deviceError;
