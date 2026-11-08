@@ -22,6 +22,8 @@ const STAND: Tile = { x: 13, y: 23 };
 
 type Seat = { id: number; name: string; here: boolean } | null;
 type State = { p: string; w: Seat; b: Seat; r: string; u: boolean; m: { from?: number; to?: number } | null; undone: string | null };
+/** A board as the plugin stores it: seats as {id, name}, the position before the last action and the last move. */
+type Stored = { p: string; w: { id: number; name: string } | null; b: { id: number; name: string } | null; r: string; u?: { p: string; r: string } | null; m?: { from?: number; to?: number } | null };
 type Frame = { t: string; x?: number; y?: number; s?: State; list?: { id: number; side: string }[] };
 
 const beds: Testbed[] = [];
@@ -64,7 +66,7 @@ const count = (m: Member, at: Tile, from = 0): number => boardStates(m, at, from
 const lastBoard = (m: Member, at: Tile, from = 0): State => {
   const all = boardStates(m, at, from);
   assert.ok(all.length, `${m.name} got no state of the board at ${at.x},${at.y}`);
-  return all[all.length - 1]!;
+  return all[all.length - 1];
 };
 
 /** Waits until the member's latest view of a board satisfies `ok`. */
@@ -85,7 +87,7 @@ function seat(s: State, side: "w" | "b"): string {
 /** The playing lists a member got, the last as "id:side" strings. */
 function playingOf(m: Member): string[] | undefined {
   const all = frames(m).filter((f) => f.t === "playing");
-  return all.length ? all[all.length - 1]!.list!.map((e) => `${e.id}:${e.side}`) : undefined;
+  return all.length ? all[all.length - 1].list!.map((e) => `${e.id}:${e.side}`) : undefined;
 }
 const waitPlaying = (m: Member, what: string, want: string[]): Promise<string[]> =>
   until(`${m.name}: ${what}`, () => {
@@ -135,9 +137,9 @@ async function sitAt(bed: Testbed, name: string, ...ats: Tile[]): Promise<Member
   return m;
 }
 
-const stored = async (bed: Testbed, at: Tile, pred: (b: any) => boolean = () => true): Promise<any> => {
-  const kv = await bed.waitKv(PLUGIN, (d) => `board:${at.x},${at.y}` in d && pred(JSON.parse(d[`board:${at.x},${at.y}`]!)));
-  return JSON.parse(kv[`board:${at.x},${at.y}`]!);
+const stored = async (bed: Testbed, at: Tile, pred: (b: Stored) => boolean = () => true): Promise<Stored> => {
+  const kv = await bed.waitKv(PLUGIN, (d) => `board:${at.x},${at.y}` in d && pred(JSON.parse(d[`board:${at.x},${at.y}`]) as Stored));
+  return JSON.parse(kv[`board:${at.x},${at.y}`]) as Stored;
 };
 
 const noErrors = async (bed: Testbed): Promise<void> => {
@@ -581,8 +583,8 @@ test("the last action and its undo survive a server restart", async () => {
   move(alice, A, 52, 12);
   await waitBoard(bob, A, "moved", (s) => s.r === "p" && seat(s, "b") === "Bob");
   const b = await stored(bed, A, (b) => b.u != null && b.m != null);
-  assert.equal(b.u.p, START, "u is the board before the last action");
-  assert.equal(b.u.r, "");
+  assert.equal(b.u?.p, START, "u is the board before the last action");
+  assert.equal(b.u?.r, "");
   await bed.restart();
 
   await bob.reconnect();

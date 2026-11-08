@@ -27,6 +27,7 @@ const unconfirmed = new Map<number, string>();
 // whose budget is spent never holds it back from the others
 const toTell = new Set<number>();
 let playing = "[]"; // the current playing list, as JSON
+let playingNow: { id: number; side: Side }[] = []; // and as a list
 let playingDirty = false; // something changed: the list may differ
 
 const key = (x: number, y: number) => `board:${x},${y}`;
@@ -227,14 +228,16 @@ export function update(): void {
   }
   if (playingDirty) {
     playingDirty = false;
-    const json = JSON.stringify(playingList());
+    const list = playingList();
+    const json = JSON.stringify(list);
     if (json !== playing) {
       playing = json;
+      playingNow = list;
       for (const p of hq.players()) toTell.add(p.id);
     }
   }
   if (toTell.size) {
-    const msg = playingMsg(JSON.parse(playing));
+    const msg = playingMsg(playingNow);
     for (const id of toTell) if (sendTo(id, msg)) toTell.delete(id); // refused: that member waits for the next update
   }
 }
