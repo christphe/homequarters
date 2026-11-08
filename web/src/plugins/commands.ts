@@ -1,5 +1,5 @@
 // The commands a plugin's sandboxed iframe sends to the page, and their validation. Pure (no DOM, no
-// PixiJS) so it runs under node --test. A batch that fails validation stops the plugin on this page.
+// PixiJS) so it runs in web's unit tests, on Node. A batch that fails validation stops the plugin on this page.
 
 export interface Anim {
   row: number;

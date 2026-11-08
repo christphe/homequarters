@@ -3,7 +3,7 @@ import type { Area, MapData, Prop } from "../net/protocol";
 // Where "go back to my desk" leads: next to the desk assigned to me, otherwise inside the private
 // office I own. Pure so it can be tested without a browser.
 
-// same rule as isMyOffice in protocol.ts (a type-only import keeps this module loadable by node --test)
+// same rule as isMyOffice in protocol.ts (a type-only import keeps this module loadable by the unit tests, on Node)
 const mine = (a: Area, me: number) => a.kind === "room" && a.access.mode === "office" && (a.access.users ?? []).includes(me);
 const solidAt = (map: MapData, x: number, y: number) => x < 0 || y < 0 || x >= map.w || y >= map.h || map.solid[y]?.[x] === "1";
 

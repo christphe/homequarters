@@ -1,5 +1,5 @@
 // How a pet follows its owner: pure logic, no PixiJS, so it can be tested with plain Node
-// (node --test 'web/test/*.test.ts'). The view calls followOwner() once per frame for every visible pet.
+// (web's unit tests, Vitest on Node). The view calls followOwner() once per frame for every visible pet.
 
 export const PET_GAP = 20; // px along the owner's trail between the owner's feet and the pet
 export const PET_SNAP = 140; // px: an owner jump farther than this reseeds the trail (portal, teleport)
