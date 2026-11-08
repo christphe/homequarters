@@ -318,8 +318,8 @@ function PluginSettings({ plugin, onClose, onSaved }: { plugin: PluginRow; onClo
   );
 }
 
-/** The server's plugins (bundled with Home Quarters or installed by its operator) and a switch for each. */
-function Plugins() {
+/** The server's plugins (bundled with Home Quarters or installed by its operator) and a switch for each (exported for its component test). */
+export function Plugins() {
   const [rows, setRows] = useState<PluginRow[] | null>(null);
   const [busy, setBusy] = useState("");
   const [settingsOf, setSettingsOf] = useState(""); // the plugin whose settings modal is open

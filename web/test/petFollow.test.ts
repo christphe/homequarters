@@ -216,9 +216,29 @@ test("at rest a roaming pet potters about its owner's feet, the same on every pa
   assert.ok(spots.size > 6, `it moves about (a step about every 20 s): ${spots.size} places`);
   const far = Math.max(...seen.slice(120).map(([x, y]) => Math.hypot(x - 300, y - 300)));
   assert.ok(far <= 10 + 14 + 1, `it stays at the feet: ${far.toFixed(1)} px`);
+  // in front of or behind the owner only a little: a crowd of pets still fits at a desk
+  const tallest = Math.max(...seen.slice(120).map(([, y]) => Math.abs(y - 300)));
+  assert.ok(tallest <= 12, `it stays within 12 px above or below the feet: ${tallest.toFixed(1)} px`);
   let fastest = 0;
   for (let i = 121; i < seen.length; i++) fastest = Math.max(fastest, Math.hypot(seen[i][0] - seen[i - 1][0], seen[i][1] - seen[i - 1][1]));
   assert.ok(fastest <= 1.2, `it strolls, never jumps: ${fastest.toFixed(2)} px a frame`);
+});
+
+test("whatever its seed, a pet of hq-pets' line (beside 10 or 8, roam 14) rests within 28 px of the feet and 12 px above or below", () => {
+  let far = 0, tall = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    for (const beside of [10, 8]) {
+      const s = newPet();
+      for (let i = 0; i < 60 * 60; i++) {
+        const t = i * DT * 1000;
+        followOwner(s, 300, 300, 0, 0, DT, 1000 + t, () => true, 36, { beside, roam: 14, seed, clock: 5_000_000 + t });
+        if (i < 120) continue; // settling from where it appeared
+        far = Math.max(far, Math.hypot(s.px - 300, s.py - 300));
+        tall = Math.max(tall, Math.abs(s.py - 300));
+      }
+    }
+  }
+  assert.ok(far <= 28 && tall <= 12, `farthest ${far.toFixed(1)} px, ${tall.toFixed(1)} px above or below`);
 });
 
 test("a roaming pet never picks a spot where it cannot stand", () => {
