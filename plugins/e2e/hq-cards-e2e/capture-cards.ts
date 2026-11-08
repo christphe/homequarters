@@ -49,7 +49,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
   };
   const viewButton = async (u: User, text: string) => {
     const f = (await viewFrame(u))!;
-    for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return h.click();
+    for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
   };
   const choose = async (title: string, ...us: Player[]) => {
     await press(us[0], "Reset");
