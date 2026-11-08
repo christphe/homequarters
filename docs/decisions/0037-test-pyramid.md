@@ -155,3 +155,46 @@ Not measured: these times on CI's runners, and on Linux or macOS.
   the binary from source (`node tools/fdash/cli.ts run build --pkg server`, or `go build ./cmd/homequarters`)
   or point `HQ_BIN` at one; the e2e projects also need `web/dist` and Chrome. The branch protection of `main`
   must require the new `unit` check in place of `static`.
+
+## Wave 1 (2026-11-08)
+
+Five pull requests applied this decision to 12 scenarios of the browser suite: #70 (`presence`), #71 (`features`,
+`movement`), #72 (`admin`, `auth`, `offline`, `update`, `social`) and #69 (`offices`, `templates`, `depth`,
+`editor`), after #68 had split the server into one Go module per library ([decision 0041](0041-go-module-per-library.md)).
+Each scenario's header now lists what it still checks in the browser and where every moved check lives.
+
+The rules each group followed:
+
+- **Lowest tier first.** A server rule became a Go test (`world`, `httpapi`, `gamemap`, `cmd`), a client rule a web
+  unit test, a component's behaviour a component test (React Testing Library on jsdom); the browser keeps what only
+  a browser shows: real controls, pixels, sync between pages, Chrome's own verdicts.
+- **Seen red.** Each new test failed with its rule broken before it counted as a replacement.
+- **One real-controls check per feature.** Every feature keeps at least one browser check through its real controls.
+  The critics' reviews restored the ones a first cut had taken: Follow (`features`), Sign out (`auth`), the status note
+  and the minimap click (`presence`), Release desk and Enter anyway, and Lock desk / Unlock desk (`offices`).
+
+Measured on CI (GitHub ubuntu-latest), the seconds each shard prints per scenario, before (run 42476574231) and after
+(run 42523235972, PR #69 with the other four on main):
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| `presence` | 63 | 38 |
+| `features` | 64 | 26 |
+| `movement` | 50 | 24 |
+| `offices` | 70 | 42 |
+| `templates` | 20 | 28 |
+| `depth` | 42 | 48 |
+| `editor` | 31 | 23 |
+| `admin` | 29 | 19 |
+| `auth` | 8 | 3 |
+| `offline` | 36 | 12 |
+| `update` | 14 | 12 |
+| `social` | 10 | 24 |
+| the 12 scenarios | 437 | 299 |
+
+Each figure is a single measurement with shard noise: `templates`, `depth` and `social` went up although they lost
+checks. `e2e/shards.ts` balances the shards on the after figures. Not measured: repeated runs, or the same scenarios
+before and after on one idle machine.
+
+What remains: wave 2 takes the media scenarios, `devices` and `plugins`. Moving the plugins' browser checks out of the
+core suite into the plugins' own e2e projects is in progress in a separate pull request.
