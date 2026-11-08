@@ -94,3 +94,16 @@ test("Old Maid: the page is told the game, unlisted actions change nothing, a de
   await until("the count logged", () => logVerbs(carol!).includes("counted"));
   await noErrors(bed);
 });
+
+test("a window showing the choice of a game: Old Maid turned off leaves its list, turned on comes back", async () => {
+  const { bed, members: [alice] } = await cardBed(dirs, NAMES);
+  openDeck(alice!);
+  await until("Old Maid listed", () => listsOldMaid(alice!));
+  let from = count(alice!);
+  await bed.setPlugin(OLD_MAID, false);
+  await until("Old Maid taken out of the open window's list", () => !!lastOf(alice!, "games", from) && !listsOldMaid(alice!, from));
+  from = count(alice!);
+  await bed.setPlugin(OLD_MAID, true);
+  await until("Old Maid back in the open window's list", () => listsOldMaid(alice!, from));
+  await noErrors(bed);
+});
