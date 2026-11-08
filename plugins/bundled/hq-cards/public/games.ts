@@ -108,11 +108,12 @@ export function validateCards(cards: unknown, from: number, total: number): Resu
 function validateDeck(d: unknown): Result<{ deck: Deck }> {
   if (!isObj(d)) return fail("deck: an object");
   if ("standard" in d) {
-    const s = d.standard;
+    const s: unknown = d.standard;
     if (!Array.isArray(s) || !s.length || s.length > STANDARD.length) return fail("deck: 1 to 54 standard codes");
-    if (s.some((c) => typeof c !== "string" || !STANDARD.includes(c))) return fail("deck: an unknown standard code");
-    if (new Set(s).size !== s.length) return fail("deck: a standard code twice");
-    return { ok: true, deck: { standard: [...s] as string[] } };
+    const codes: unknown[] = s;
+    if (codes.some((c) => typeof c !== "string" || !STANDARD.includes(c))) return fail("deck: an unknown standard code");
+    if (new Set(codes).size !== codes.length) return fail("deck: a standard code twice");
+    return { ok: true, deck: { standard: [...codes] as string[] } };
   }
   const { sheet, cell, back, total, cards } = d;
   if (typeof sheet !== "string" || !/^shared\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.png$/.test(sheet)) return fail("sheet: a .png under shared/");
@@ -133,8 +134,11 @@ export function validateDefinition(d: unknown): Result<{ def: GameDefinition }> 
   }
   let allow: Action[] | undefined;
   if (d.allow !== undefined) {
-    if (!Array.isArray(d.allow) || d.allow.some((a) => !ACTIONS.includes(a))) return fail("allow: actions among " + ACTIONS.join(", "));
-    allow = [...new Set(d.allow as Action[])];
+    const given: unknown = d.allow;
+    if (!Array.isArray(given)) return fail("allow: actions among " + ACTIONS.join(", "));
+    const asked: unknown[] = given;
+    if (asked.some((a) => !(ACTIONS as readonly unknown[]).includes(a))) return fail("allow: actions among " + ACTIONS.join(", "));
+    allow = [...new Set(asked as Action[])];
   }
   const deck = validateDeck(d.deck);
   if (!deck.ok) return deck;

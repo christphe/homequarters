@@ -64,7 +64,7 @@ function stateOf(k: string): TableState {
 
 function queue(id: number, k: string, what: { h?: boolean; s?: boolean; l?: boolean; o?: boolean }): void {
   let m = toSend.get(id);
-  if (!m) toSend.set(id, (m = new Map()));
+  if (!m) toSend.set(id, (m = new Map<string, { h: boolean; s: boolean; l: boolean; o: boolean }>()));
   const q = m.get(k) ?? { h: false, s: false, l: false, o: false };
   m.set(k, { h: q.h || !!what.h, s: q.s || !!what.s, l: q.l || !!what.l, o: q.o || !!what.o });
 }
@@ -215,7 +215,7 @@ function count(k: string, p: HQ.Player, t: Table, g: Game): void {
     done(k, p.id, counted(now, seat, text, g));
   };
   hq.plugins
-    .call<unknown>(g.name, "count", countArgs(t))
+    .call(g.name, "count", countArgs(t))
     .then((text) => ask(typeof text === "string" && text.trim() ? text : "Count unavailable"))
     .catch(() => ask("Count unavailable"));
 }
@@ -276,7 +276,7 @@ function act(p: HQ.Player, k: string, m: Act): void {
       const pile = t.piles.find((x) => x.id === m.pile);
       if (seat === null || !pile || !allows(g, "viewPile")) return done(k, p.id, { ok: false });
       let l = lookers.get(k);
-      if (!l) lookers.set(k, (l = new Map()));
+      if (!l) lookers.set(k, (l = new Map<number, string>()));
       if (l.get(p.id) === pile.id) return; // already looking: nothing new for the log
       l.set(p.id, pile.id);
       return done(k, p.id, { ok: true, log: { s: seat, v: "looked", p: pile.name } });
@@ -303,7 +303,7 @@ export function onMessage(p: HQ.Player, raw: unknown): void {
     return leaveTable(k, p.id);
   }
   if (typeof m.t !== "string") return;
-  act(p, k, m as Act);
+  act(p, k, m);
 }
 
 function headOf(k: string): ToClient {

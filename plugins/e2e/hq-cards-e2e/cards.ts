@@ -46,7 +46,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
       const s = await read(ann, () => window.__hq.view.objSprites.filter((x) => !x.destroyed).map((x) => ({ x: x.x, y: x.y, w: x.texture.width, h: x.texture.height, on: x.visible })));
       return s.find((x) => x.w === 16 && x.x === 13 * 16) ?? null;
     }, { what: "the deck sprite" });
-    check("1: the deck's sprite is drawn on its tile of the table (16x16)", sprite!.on && sprite!.y === (DECK.y + 1) * T, JSON.stringify(sprite));
+    check("1: the deck's sprite is drawn on its tile of the table (16x16)", sprite.on && sprite.y === (DECK.y + 1) * T, JSON.stringify(sprite));
     const hint = await waitFor(() => read(ann, () => document.querySelector(".interaction-hint")?.textContent ?? ""), { what: "the X hint" });
     check("1: standing beside it, the X hint names it", hint.includes("Card deck") && hint.includes("X"), JSON.stringify(hint));
 
@@ -59,8 +59,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
       const r = b.getBoundingClientRect();
       return { top: r.top, bottom: r.bottom, H: innerHeight };
     }, MODAL), { what: "Bo's choice" });
-    check("UX: at 800x450 the game choice shows when the window opens", choiceSeen!.top >= 0 && choiceSeen!.bottom <= choiceSeen!.H, JSON.stringify(choiceSeen));
-    const only = await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table") && (await modal(ann)), { what: "the game choice" }) as NonNullable<Awaited<ReturnType<typeof modal>>>;
+    check("UX: at 800x450 the game choice shows when the window opens", choiceSeen.top >= 0 && choiceSeen.bottom <= choiceSeen.H, JSON.stringify(choiceSeen));
+    const only = await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table") && (await modal(ann)), { what: "the game choice" });
     check("2: a new table offers Free table, and no game while none runs", only.buttons.some((b) => b.text === "Free table") && !only.buttons.some((b) => b.text === "Old Maid"), JSON.stringify(only.buttons));
 
     // ---- criterion 4: seats
@@ -170,12 +170,12 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const lookingSeen = await within(async () => (await read(bo, () => 0), (await drawn(bo))!.cards.length >= 0) && (await logOf(bo)).includes(`${ann.name} looked at Stock`), 1000);
     const row = await waitFor(async () => { const r = (await drawn(ann))!.cards.filter((c) => c.where === "look"); return r.length > 2 ? r : null; }, { what: "the pile's row" });
     const k = (await drawn(ann))!.scale;
-    const a0 = { x: row![0].x / k + 4, y: row![0].y / k + 10 }, a2 = { x: row![2].x / k + 4, y: row![2].y / k + 10 };
+    const a0 = { x: row[0].x / k + 4, y: row[0].y / k + 10 }, a2 = { x: row[2].x / k + 4, y: row[2].y / k + 10 };
     await drag(ann, a0, a2);
     const moved = (await drawn(ann))!.cards.filter((c) => c.where === "look");
     await pressInView(ann, "Done");
     const reordered = await within(async () => (await logOf(bo)).includes(`${ann.name} reordered Stock`), 1000);
-    check("6: Ann looks through Stock and reorders it: Bo's log says so within 1 s of each", lookingSeen >= 0 && reordered >= 0 && moved[2].c === row![0].c, JSON.stringify({ lookingSeen, reordered }));
+    check("6: Ann looks through Stock and reorders it: Bo's log says so within 1 s of each", lookingSeen >= 0 && reordered >= 0 && moved[2].c === row[0].c, JSON.stringify({ lookingSeen, reordered }));
     // (the log names no card Ann saw alone: the entries of draw and reorderPile and their sentences, cards.test.ts)
 
     // ---- criterion 7: Ann offers her hand to Bo, who picks her third card
@@ -191,9 +191,9 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await click(bo, seatAt(8, 1, 0));
     await pressInView(bo, `Draw a card from ${ann.name}`).catch(() => {}); // the click on Ann's seat already opened the row
     const pickRow = await waitFor(async () => { const r = (await drawn(bo))!.cards.filter((c) => c.where === "pick"); return r.length === annBefore.length ? r : null; }, { what: "Bo's pick row" });
-    check("7: the hand offered shows to Bo as backs only", pickRow!.every((c) => !c.up));
+    check("7: the hand offered shows to Bo as backs only", pickRow.every((c) => !c.up));
     const kb = (await drawn(bo))!.scale;
-    await click(bo, { x: pickRow![2].x / kb + 4, y: pickRow![2].y / kb + 10 });
+    await click(bo, { x: pickRow[2].x / kb + 4, y: pickRow[2].y / kb + 10 });
     const picked = await within(async () => (await logOf(cy)).includes(`${bo.name} drew a card from ${ann.name}'s hand`), 1000);
     const annAfter = await handOf(ann);
     check("7: Bo picks the third card: it leaves Ann's hand, it is logged for everybody", picked >= 0 && annAfter.length === annBefore.length - 1 && !annAfter.some((c) => c.c === annBefore[2].c), `${picked} ms`);
@@ -212,7 +212,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     for (let i = 0; i < handN + looseN; i++) await ann.page.keyboard.press("ArrowRight"); // to the first pile, Stock
     await ann.page.keyboard.press("Enter");
     const kbd = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} put a card on Stock`, 1000);
-    check("13: with the keyboard only, Ann puts a card on Stock; Bo's log has it within 1 s, Ann's live region spoke", kbd >= 0 && /your hand/.test(sayFirst!), JSON.stringify({ kbd, sayFirst }));
+    check("13: with the keyboard only, Ann puts a card on Stock; Bo's log has it within 1 s, Ann's live region spoke", kbd >= 0 && /your hand/.test(sayFirst), JSON.stringify({ kbd, sayFirst }));
 
     // (the table, its seats and its log survive a server restart: cards.ispec.ts)
 
@@ -303,7 +303,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(async () => (await logOf(bo)).at(-1) === `${ann.name} gathered all the cards`, { what: "gathered" });
     await press(ann, "Count");
     const outCount = await waitFor(async () => (await modal(bo))?.texts.find((x) => x.startsWith("Count: ")) ?? null, { timeout: 5000, what: "the count" }).catch(() => "");
-    check("R6: a card set aside stays out through Gather all (Count: Stock 53 and 1 set aside)", /Stock 53/.test(outCount!) && /1 set aside/.test(outCount!), outCount!);
+    check("R6: a card set aside stays out through Gather all (Count: Stock 53 and 1 set aside)", /Stock 53/.test(outCount) && /1 set aside/.test(outCount), outCount);
     // a named pile turned over as a whole: the stock, face down, comes face up (its bottom card on top)
     await click(ann, stockAt);
     await pressInView(ann, "Turn the pile over");
