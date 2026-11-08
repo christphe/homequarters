@@ -567,7 +567,7 @@ fn main() {
             app.manage(update::Updates::default());
             // the user's own app looks for updates; a profile of its own (a test) only with a feed given
             if args.data_dir.is_none() || args.update_url.is_some() {
-                update::watch(app.handle().clone(), args.update_url.clone(), update_ready);
+                update::watch(app.handle().clone(), args.update_url, update_ready);
             }
             let offices = app.state::<Shell>().offices.lock().unwrap().list.clone();
             for o in

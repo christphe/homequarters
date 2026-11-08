@@ -8,7 +8,7 @@ const MAX: usize = 20;
 /// The web client's page title in an office ("app.titleOffice" in web/src/i18n.ts).
 const TITLE_PREFIX: &str = "Home Quarters - ";
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Office {
     pub url: String,
     /// The office's name, read from the page title once it has been opened.

@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn every_position_has_one_key_code() {
         let mut codes: Vec<_> = KEYS.iter().map(|k| k.1).collect();
-        codes.sort();
+        codes.sort_unstable();
         codes.dedup();
         assert_eq!(codes.len(), KEYS.len());
         assert!(KEYS.iter().any(|k| k.0 == "KeyW") && KEYS.iter().any(|k| k.0 == "Digit1"));
