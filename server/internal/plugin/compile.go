@@ -88,9 +88,15 @@ func (i *Info) code() (*compiled, error) {
 // time, as cp -p or rsync -t do, is still seen). node_modules and dot folders are not code the server
 // compiles from (imports of packages are refused) and are skipped.
 func fingerprint(dir string) (string, error) {
+	// files are opened through a root on dir, so a folder swapped for a link during the walk cannot lead outside it
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
 	h := sha256.New()
 	n := 0
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -106,7 +112,11 @@ func fingerprint(dir string) (string, error) {
 		if n++; n > maxPluginFiles {
 			return fmt.Errorf("more than %d files in the plugin folder", maxPluginFiles)
 		}
-		f, err := os.Open(p)
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		f, err := root.Open(rel)
 		if err != nil {
 			return err
 		}
