@@ -4,7 +4,7 @@
 // OfficeScreen; here it is the store's `toast`. The browser suite keeps one real round trip of each: the profile
 // save (e2e/scenarios/social.ts) and the failures through the real page (e2e/scenarios/offline.ts).
 import { offlineFetch, renderUI, stubFetch, unhandledRejections, type StubRequest } from "./support"; // first: canvas before PixiJS
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { getState } from "../src/store";
 import { SettingsDialog } from "../src/ui/SettingsDialog";
@@ -57,4 +57,44 @@ it("a sign-in link the server made is shown whole, with this page's origin", asy
   await user.click(screen.getByRole("button", { name: "Create a sign-in link" }));
   const field = await screen.findByRole<HTMLInputElement>("textbox", { name: "Use this account on another machine" });
   expect(field.value).toBe(location.origin + "/link/abc");
+});
+
+it("a look chosen in the appearance dialog is saved with the profile when the dialog's Save is pressed, and not before", async () => {
+  const net = stubFetch({ "PUT /api/profile": { status: 200 } });
+  const { user } = show();
+  await user.click(screen.getByRole("button", { name: "Change appearance" }));
+  const dialog = screen.getByRole("dialog", { name: "Appearance" });
+  await user.click(within(within(dialog).getByRole("radiogroup", { name: "Hair" })).getByRole("radio", { name: "Afro" }));
+  expect(net.requests).toEqual([]); // a draft until Save
+  await user.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(getState().toast).toBe("Profile updated"));
+  expect(net.requests.map((r) => r.body)).toEqual([{ name: "Me", avatar: { ...getState().myAvatar, hs: 7 } }]);
+  expect(getState().myAvatar.hs).toBe(7);
+  expect(screen.queryByRole("dialog", { name: "Appearance" })).toBeNull();
+});
+
+// Sign-in (auth.providers set): the browser keeps the sign-in round trip itself (e2e/scenarios/auth.ts); what signing
+// out does on the server is TestSignOutForgetsThisBrowser (server/internal/httpapi/auth_test.go).
+const SIGNS_IN = { auth: { providers: ["fake-oidc"], signup: null, link: null } };
+
+it("without sign-in the cookie is the account: a sign-in link for another machine, and nothing to sign out of", () => {
+  show();
+  screen.getByRole("button", { name: "Create a sign-in link" });
+  expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+});
+
+it("with sign-in on, the settings offer to sign out and no personal link", () => {
+  renderUI(<SettingsDialog onClose={() => {}} />, SIGNS_IN);
+  screen.getByRole("button", { name: "Sign out" });
+  expect(screen.queryByRole("button", { name: "Create a sign-in link" })).toBeNull();
+  expect(screen.queryByText("Use this account on another machine")).toBeNull();
+});
+
+it("Sign out asks the server to end the session; when it cannot, it says so and stays", async () => {
+  const net = stubFetch({ "POST /api/signout": { status: 500 } });
+  const { user } = renderUI(<SettingsDialog onClose={() => {}} />, SIGNS_IN);
+  await user.click(screen.getByRole("button", { name: "Sign out" }));
+  await waitFor(() => expect(getState().toast).toBe("Could not sign out. Try again."));
+  expect(net.requests.map((r) => `${r.method} ${r.path}`)).toEqual(["POST /api/signout"]);
+  screen.getByRole("button", { name: "Sign out" });
 });
