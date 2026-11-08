@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "devDependencies": {
     "@types/node": "catalog:",
-    "axe-core": "^4.13.0",
+    "axe-core": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "puppeteer-core": "^25.12.0",
