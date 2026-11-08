@@ -20,6 +20,12 @@ export function bannerSlide(t: number) {
   return 1 - (1 - k) * (1 - k);
 }
 
+/** The areas that get a name tag of their own: not desk rooms (derived from assigned desks, "auto"),
+ *  which the desk's own label already names. */
+export function labelledAreas(map: MapData): number[] {
+  return map.areas.flatMap((a, ai) => (a.auto ? [] : [ai]));
+}
+
 export class LabelLayer implements Layer {
   private ctx!: ViewContext;
   areaLabels: { text: BitmapText; ai: number }[] = [];
@@ -42,13 +48,12 @@ export class LabelLayer implements Layer {
     const hud = this.ctx.hud;
     this.areaLabels.forEach((l) => l.text.destroy());
     // desk rooms (derived from assigned desks, "auto") are named after the area under them
-    this.areaLabels = map.areas.flatMap((a, ai) => {
-      if (a.auto) return []; // the desk's own label already names it
+    this.areaLabels = labelledAreas(map).map((ai) => {
       const text = new BitmapText({ text: this.areaLabel(ai), style: TAG_STYLE });
       text.anchor.set(0.5, 0);
       text.alpha = 0.85;
       hud.addChild(text);
-      return [{ text, ai }];
+      return { text, ai };
     });
     // assigned desks show their owner
     this.deskLabels.forEach((l) => l.text.destroy());

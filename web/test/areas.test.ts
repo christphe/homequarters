@@ -49,6 +49,15 @@ test("a desk room is named after the plain area around it, other areas after the
   assert.equal(shownArea(new Int16Array(0), 5), 5, "an index the table does not know yet names itself");
 });
 
+test("at my desk the place shown is still the plain area around it, and the desk room has no name tag of its own", async () => {
+  const { areaTitle } = await import("../src/game/places.ts");
+  const { labelledAreas } = await import("../src/game/labelLayer.ts");
+  const mine = { ...office, areas: office.areas.map((a, i) => (i === 2 ? { ...a, access: { mode: "open" as const, users: [4] } } : a)) };
+  const shown = shownAreas(mine);
+  assert.equal(areaTitle(mine.areas[shownArea(shown, 2)], (id) => (id === 4 ? "Ana" : undefined)), "open", "the desks area, not \"Ana's desk\"");
+  assert.deepEqual(labelledAreas(mine), [0, 1], "the meeting room and the open space are labelled; the desk rooms are not");
+});
+
 test("deskRoom finds the desk room of an assigned desk", () => {
   const desk = { t: "desk", x: 2, y: 3 } as Prop;
   assert.equal(deskRoom(office, desk), 2);

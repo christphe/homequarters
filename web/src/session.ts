@@ -3,6 +3,8 @@ import { cachedLooks } from "./game/avatars";
 import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
 import { homeTile } from "./game/home";
+import { nextHand } from "./hand";
+import { goToast, waveToast } from "./replies";
 import { ownerMap } from "./game/places";
 import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, MuteKind, Person, Prop, ServerMsg, Status } from "./net/protocol";
@@ -242,13 +244,13 @@ class Session {
         setState({ following: m.id ? { id: m.id, name: m.n } : null });
         break;
       case "self": view.applySelf(m); break;
-      case "go":
-        if (m.ok) {
-          view.setGuided(true);
-          if (m.near) toast(t("go.door"));
-        }
-        else { view.clearDest(); toast(t("go.unreachable")); }
+      case "go": {
+        if (m.ok) view.setGuided(true);
+        else view.clearDest();
+        const msg = goToast(m);
+        if (msg) toast(msg);
         break;
+      }
       case "wv":
         setState({ wave: { id: m.from, name: m.n } });
         chime("wave");
@@ -267,7 +269,7 @@ class Session {
       }
       case "wvr": {
         const name = getState().roster.get(m.id)?.n ?? "?";
-        toast(t(`wave.${m.st}`, { name }));
+        toast(waveToast(m.st, name));
         break;
       }
       case "ac": setState({ areaCounts: m.c }); break;
@@ -420,9 +422,7 @@ class Session {
   /** H key and the hand button: invert what was last asked for, so quick presses do not repeat a raise. */
   toggleHand() {
     const s = getState();
-    // a request the server never confirmed (dropped by the rate limit) stops counting after a second
-    const pending = Date.now() - this.handAskedAt < 1000 ? this.handWanted : null;
-    this.hand(!(pending ?? !!s.roster.get(s.meId)?.h));
+    this.hand(nextHand(!!s.roster.get(s.meId)?.h, this.handWanted, this.handAskedAt, Date.now()));
   }
   note(text: string) {
     if (text) localStorage.setItem("hq.note", text);
