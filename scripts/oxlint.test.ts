@@ -1,6 +1,6 @@
 // Which trees scripts/oxlint.ts lints: the folders given (from the current folder), else all of them.
-// Run: node --test scripts/oxlint.test.ts  (scripts' test:unit)
-import { test } from "node:test";
+// Run: pnpm exec vitest run oxlint.test.ts  (scripts' test:unit)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { ALL_TREES, plan, projectOf } from "./oxlint.ts";

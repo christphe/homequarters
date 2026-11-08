@@ -1,6 +1,6 @@
 // Tests of the project's own Oxlint rules (scripts/oxlint-hq.ts) with Oxlint's RuleTester.
-// Run: node --test scripts/oxlint-hq.test.ts  (part of the web-unit gate)
-import { describe, it } from "node:test";
+// Run: pnpm exec vitest run oxlint-hq.test.ts  (part of the web-unit gate)
+import { describe, it } from "vitest";
 import { RuleTester } from "oxlint/plugins-dev";
 import plugin from "./oxlint-hq.ts";
 

@@ -1,5 +1,5 @@
-// Which run of main CI takes fdash's records from (scripts/ci-fdash-records.ts). Run: node --test scripts/ci-fdash-records.test.ts  (the scripts:test gate)
-import { test } from "node:test";
+// Which run of main CI takes fdash's records from (scripts/ci-fdash-records.ts). Run: pnpm exec vitest run ci-fdash-records.test.ts  (the scripts:test gate)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { pickRuns } from "./ci-fdash-records.ts";
 

@@ -38,17 +38,20 @@
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "oxlint-hq.test.ts",
-          "oxlint.test.ts",
-          "check-protocol-docs.test.ts",
-          "gauntlet.test.ts",
-          "ci-fdash-records.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run"
         ]
       ],
       "inputs": [
         "/**"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     }
   }

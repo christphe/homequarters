@@ -85,10 +85,10 @@
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "shards.test.ts",
-          "slots.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run"
         ]
       ],
       "inputs": [
@@ -96,6 +96,12 @@
         "/package.json",
         "/pnpm-workspace.yaml",
         "/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:e2e": {

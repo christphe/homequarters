@@ -1,5 +1,5 @@
-// The gauntlet on fdash: its gates in the workspace, the tree fingerprint, the record. Run: node --test scripts/gauntlet.test.ts  (scripts' test:unit)
-import { test } from "node:test";
+// The gauntlet on fdash: its gates in the workspace, the tree fingerprint, the record. Run: pnpm exec vitest run gauntlet.test.ts  (scripts' test:unit)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
@@ -50,8 +50,8 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     ["server:test:unit", "server", "go test -race -count=1 ./...", false, false, "{}"],
     ["web:test:unit", "web", "pnpm exec vitest run", false, false, "{}"],
     ["site:test:unit", "site", "node check.ts", false, false, "{}"],
-    ["e2e:test:unit", "e2e", "node --test shards.test.ts slots.test.ts", false, false, "{}"],
-    ["scripts:test:unit", "scripts", "node --test oxlint-hq.test.ts oxlint.test.ts check-protocol-docs.test.ts gauntlet.test.ts ci-fdash-records.test.ts", false, false, "{}"],
+    ["e2e:test:unit", "e2e", "pnpm exec vitest run", false, false, "{}"],
+    ["scripts:test:unit", "scripts", "pnpm exec vitest run", false, false, "{}"],
     unit("fdash:test:unit", "tools/fdash"),
     unit("hq-card-lastcard:test:unit", "plugins/bundled/hq-card-lastcard"),
     unit("hq-card-pouilleux:test:unit", "plugins/bundled/hq-card-pouilleux"),
