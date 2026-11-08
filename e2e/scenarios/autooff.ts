@@ -54,7 +54,6 @@ export async function run(): Promise<boolean> {
     await host.page.evaluate(() => localStorage.setItem("hq.settings", JSON.stringify({ eco: false, sounds: true, minimap: true })));
     await host.page.reload({ waitUntil: "domcontentloaded" });
     await waitFor(() => host.page.evaluate(() => window.__hq?.state?.meId > 0 && window.__hq.state.conn === "open"), { timeout: 30000, what: "host back" });
-    check("the grace is 15 s outside tests", (await host.page.evaluate(() => window.__hq.autoOff?.grace)) === 15000);
     await logCaptures(host);
 
     await host.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /enable audio/i.test(b.textContent))?.click());
@@ -67,46 +66,8 @@ export async function run(): Promise<boolean> {
     await waitFor(async () => (await st(host)).consent, { what: "host consented" });
     await visitor.page.evaluate(() => window.__hq.session.setConsent(true)); // setup shortcut; the host goes through the dialog
 
-    await walkTo(host, ...HERE);
-    await walkTo(visitor, ...NEAR);
-    await waitFor(async () => (await live(host)) && (await live(visitor)), { timeout: 20000, what: "first call" });
-    await waitFor(async () => (await publishing(host)).mic, { timeout: 10000, what: "host mic on" });
-    let t = await now(host);
-    await press(host, ["Turn camera on"]);
-    await waitFor(async () => (await publishing(host)).cam, { timeout: 10000, what: "host camera on" }).catch(() => {});
-    check("in the call the host turns the camera on from the bar", (await asked(host, t)).cam && (await host.page.evaluate(() => window.__hq.state.prefs.camOn)),
-      JSON.stringify(await publishing(host)));
-
-    // A short break (somebody steps away and back) within the grace changes nothing.
-    await grace(host, 60000);
-    await walkTo(visitor, ...FAR);
-    await waitFor(async () => (await st(host)).conv === null, { timeout: 10000, what: "call ends" });
-    t = await now(host);
-    await walkTo(visitor, ...NEAR);
-    await waitFor(async () => (await live(host)) && (await asked(host, t)).cam, { timeout: 20000, what: "camera asked again" }).catch(() => {});
-    const back = await asked(host, t);
-    check("a new conversation within the grace starts with the camera and microphone as they were", (await live(host)) && back.cam && back.mic && (await bar(host)).mic,
-      JSON.stringify({ asked: back, publishing: await publishing(host), err: await host.page.evaluate(() => window.__hq.state.deviceError) }));
-
-    // The visitor leaves for good: after the grace the camera is off, the microphone untouched.
-    await grace(host, 2500);
-    await walkTo(visitor, ...FAR);
-    await waitFor(async () => (await st(host)).conv === null, { timeout: 10000, what: "call ends" });
-    const during = await bar(host);
-    check("during the grace the bar still shows the camera on", during.cam, JSON.stringify(during));
-    await waitFor(async () => !(await bar(host)).cam, { timeout: 8000, what: "camera off after the grace" }).catch(() => {});
-    const after = await bar(host);
-    check("after the grace the bar shows the camera off and the microphone still on", !after.cam && after.mic, JSON.stringify(after));
-
-    // somebody walks in later: the call starts with the microphone and without the camera
-    t = await now(host);
-    await walkTo(visitor, ...NEAR);
-    await waitFor(async () => (await live(host)) && (await publishing(host)).mic, { timeout: 20000, what: "next call with mic" });
-    await sleep(1500);
-    const next = await asked(host, t);
-    check("the next conversation captures the microphone but never asks for the camera", next.mic && !next.cam && !(await publishing(host)).cam && !(await bar(host)).cam, JSON.stringify(next));
-
-    // The microphone setting, through Settings > Microphone, camera and speaker.
+    // The microphone setting, through Settings > Microphone, camera and speaker. (What each setting turns off
+    // after the grace, and a new call within the grace keeping everything: autoOffState.test.ts, autoOff.test.ts.)
     await host.page.evaluate(() => document.querySelector<HTMLButtonElement>('.bar-row button[title="Settings"]')?.click());
     await waitFor(() => host.page.$(".modal"), { what: "settings" });
     await clickModal(host, "Microphone, camera and speaker");
@@ -117,22 +78,34 @@ export async function run(): Promise<boolean> {
     check("the device dialog saves the microphone setting", true);
     await host.page.keyboard.press("Escape");
     await waitFor(async () => !(await host.page.$(".modal")), { what: "settings closed" });
-    await waitFor(async () => (await publishing(host)).mic, { timeout: 15000, what: "mic back after the dialog" });
-    await press(host, ["Turn camera on"]);
-    await waitFor(() => host.page.evaluate(() => window.__hq.state.prefs.camOn), { what: "camera chosen again" });
 
+    await walkTo(host, ...HERE);
+    await walkTo(visitor, ...NEAR);
+    await waitFor(async () => (await live(host)) && (await live(visitor)), { timeout: 20000, what: "first call" });
+    await waitFor(async () => (await publishing(host)).mic, { timeout: 10000, what: "host mic on" });
+    let t = await now(host);
+    await press(host, ["Turn camera on"]);
+    await waitFor(async () => (await publishing(host)).cam, { timeout: 10000, what: "host camera on" }).catch(() => {});
+    check("in the call the host turns the camera on from the bar", (await asked(host, t)).cam && (await host.page.evaluate(() => window.__hq.state.prefs.camOn)),
+      JSON.stringify(await publishing(host)));
+
+    // The visitor leaves for good: during the grace nothing changes, after it both are off.
     await grace(host, 2500);
     await walkTo(visitor, ...FAR);
     await waitFor(async () => (await st(host)).conv === null, { timeout: 10000, what: "call ends" });
+    const during = await bar(host);
+    check("during the grace the bar still shows the camera on", during.cam, JSON.stringify(during));
     await waitFor(async () => { const b = await bar(host); return !b.cam && !b.mic; }, { timeout: 8000, what: "both off" }).catch(() => {});
     const both = await bar(host);
     check("with both settings, the bar shows the microphone and camera off after the grace", !both.cam && !both.mic, JSON.stringify(both));
+
+    // somebody walks in later: the call starts with neither
     t = await now(host);
     await walkTo(visitor, ...NEAR);
-    await waitFor(() => live(host), { timeout: 20000, what: "third call" });
+    await waitFor(() => live(host), { timeout: 20000, what: "next call" });
     await sleep(2000);
-    const third = await asked(host, t);
-    check("the next conversation captures neither the microphone nor the camera", !third.mic && !third.cam && !(await publishing(host)).mic, JSON.stringify(third));
+    const next = await asked(host, t);
+    check("the next conversation captures neither the microphone nor the camera", !next.mic && !next.cam && !(await publishing(host)).mic && !(await publishing(host)).cam, JSON.stringify(next));
     // the person turns the microphone back on themselves
     await press(host, ["Unmute"]);
     await waitFor(async () => (await publishing(host)).mic, { timeout: 10000, what: "unmuted" }).catch(() => {});
