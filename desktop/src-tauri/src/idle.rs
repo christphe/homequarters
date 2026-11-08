@@ -8,6 +8,7 @@ extern "C" {
 }
 
 /// Seconds since the last input event of any kind, or None where the app does not measure it.
+#[allow(unsafe_code)] // macOS: one call into CoreGraphics, a plain C function with no pointers
 pub fn seconds() -> Option<f64> {
     #[cfg(target_os = "macos")]
     {

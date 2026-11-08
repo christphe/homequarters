@@ -71,6 +71,7 @@
       ]
     },
     "lint:secrets": {
+      "cache": false,
       "run": [
         [
           "node",

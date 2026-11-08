@@ -43,7 +43,7 @@ const isSeat = (v: unknown): v is string | null => v === null || typeof v === "s
 function countArgs(v: unknown): CountArgs {
   const a = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
   const { seats, hands } = a;
-  if (!Array.isArray(seats) || seats.length > 8 || !seats.every(isSeat))throw new Error("seats");
+  if (!Array.isArray(seats) || seats.length > 8 || !seats.every(isSeat)) throw new Error("seats");
   if (!Array.isArray(hands) || hands.length > 8 || !hands.every(cardList)) throw new Error("hands");
   return { seats, hands, piles: [], loose: [] }; // Old Maid's count reads only the hands
 }
