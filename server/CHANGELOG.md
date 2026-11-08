@@ -12,6 +12,9 @@
 ### Fixed
 - A plugin error is counted and logged before the request that caused it gets its answer (#55)
 
+### Security
+- The server is built with Go 1.27.3, which fixes vulnerabilities of Go 1.27.0's standard library in net/http, HTTP/2, crypto/tls, crypto/x509, html/template and os (#62)
+
 ## [0.6.0] - 2026-11-07
 
 ### Changed

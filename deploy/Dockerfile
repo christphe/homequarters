@@ -12,7 +12,7 @@ RUN pnpm install --frozen-lockfile --filter homequarters-web
 COPY web/ web/
 RUN cd web && pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS server
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /s
