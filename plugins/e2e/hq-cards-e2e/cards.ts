@@ -1,205 +1,27 @@
-// Cards: the bundled hq-cards plugin (plugins/bundled/hq-cards) and its games (hq-card-pouilleux, Old Maid;
-// hq-card-lastcard, Last Card), turned on by an administrator, a deck placed on a table of the map through the
-// map API, then three players at the table (Ann, Bo, Cy) and a late spectator (Di). Everything a player does
-// goes through the real controls: X, the window's buttons and fields, real mouse drags on the table view's
-// canvas and the keyboard. What a page's view shows is read from what it drew (window.__drawn in the view:
+// Cards, the table: the bundled hq-cards plugin (plugins/bundled/hq-cards) alone, turned on by an administrator, a
+// deck placed on a table of the map through the map API, then three players at the table (Ann, Bo, Cy). Everything a
+// player does goes through the real controls: X, the window's buttons and fields, real mouse drags on the table
+// view's canvas and the keyboard. What a page's view shows is read from what it drew (window.__drawn in the view:
 // each card with its face, in canvas pixels) and from its live region.
-// Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves.
+// Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves. The games
+// have their own scenarios: Old Maid in plugins/e2e/hq-card-pouilleux-e2e/oldMaid.ts (a game turned on and off in
+// the choice, Old Maid's table), Last Card in plugins/e2e/hq-card-lastcard-e2e/lastCard.ts (criteria 10 and 10b);
+// the helpers the three share are in lib.ts.
 // Rules and logic are unit-tested, not here: the table, the log, snapping and the layout in
 // plugins/bundled/hq-cards/test/cards.test.ts, Old Maid and Last Card in plugins/bundled/hq-card-pouilleux/test/oldMaid.test.ts and hq-card-lastcard/test/lastCard.test.ts, the server
 // side (who may act, restarts, game hooks such as Old Maid's count, a game turned off and on) in
 // server/internal/plugin/cards_test.go and oldmaid_test.go. This scenario keeps what needs the browser: real
-// controls, drags and the keyboard, what each page draws, sync between pages, a game's own card sheet.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type RunContext, type User } from "../lib.ts";
-import type { CDPSession, ElementHandle, Frame } from "puppeteer-core";
-import { CARD_W, CARD_H } from "../../plugins/bundled/hq-cards/public/art.ts";
-import { FX, FY, NARROW, GRID, CASCADE, cardAt, handSpots, seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
-import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
-import type { ToServer } from "../../plugins/bundled/hq-cards/public/messages.ts";
-
-/** A member of this scenario: the plugin frames their page sent (countFrames), its CDP session, where they stand to play. */
-type Player = User & { sent: ToServer[]; cdp?: CDPSession; spot?: { x: number; y: number } };
-/** A point of the table view, in view units. */
-type Point = { x: number; y: number };
-/** A card as the table view drew it (window.__drawn in public/view.ts), in canvas pixels. */
-type DrawnCard = { c: number; up: boolean; x: number; y: number; w: number; where: "hand" | "loose" | "pile" | "seat" | "look" | "pick" };
-/** What the table view publishes for tests (publish() in public/view.ts). */
-type Drawn = { cards: DrawnCard[]; scale: number; layout: "narrow" | "wide"; font: number; seat: number | null; sheet: "loaded" | "loading" | null; log: string[] };
-/** The admin map as the scenario edits it: only the props are touched. */
-type AdminMap = { props: { t: string; x: number; y: number; w: number; h: number }[] };
-
-const PLUGIN = "hq-cards";
-const T = 16;
-const DECK = { x: 13, y: 22 }; // bottom row of the social area's 4x2 table at (12, 21), as the chess scenario
-const MODAL = '.modal.plugin-modal[aria-label="Cards"]';
-
-const admin = (ctx: RunContext, method: string, path: string, body?: object) =>
-  fetch(API + path, { method, headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: body && JSON.stringify(body) });
-const setPlugin = (ctx: RunContext, name: string, enabled: boolean) => admin(ctx, "PUT", "/api/admin/plugins/" + name, { enabled });
-const installed = async (ctx: RunContext) => ((await (await admin(ctx, "GET", "/api/admin/plugins")).json()) as { name: string }[]).map((p) => p.name);
-async function setDecks(ctx: RunContext, at: { x: number; y: number }[]) {
-  const m = (await (await admin(ctx, "GET", "/api/admin/map")).json()) as AdminMap;
-  m.props = m.props.filter((p) => p.t !== PLUGIN + "/deck");
-  for (const d of at) m.props.push({ t: PLUGIN + "/deck", x: d.x, y: d.y, w: 1, h: 1 });
-  return (await admin(ctx, "PUT", "/api/map", m)).ok;
-}
-
-const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg) as Promise<Awaited<R>>;
-async function viewFrame(u: User): Promise<Frame | null> {
-  const el = await u.page.$(MODAL + ' iframe.plugin-view[data-view="table"]');
-  return el ? el.contentFrame() : null;
-}
-/** What the page's table view drew, its seat, and its log. */
-async function drawn(u: User): Promise<Drawn | null> {
-  const f = await viewFrame(u);
-  return f ? f.evaluate(() => (window as unknown as { __drawn?: Drawn }).__drawn ?? null) : null;
-}
-const handOf = async (u: User) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "hand");
-const looseOf = async (u: User) => ((await drawn(u))?.cards ?? []).filter((c) => c.where === "loose");
-const logOf = async (u: User) => (await drawn(u))?.log ?? [];
-
-/** The window's controls, wherever they are: its own buttons and texts (the choice of a game, Close) and,
- * with a game, the controls of the table view's panel. */
-const modal = async (u: User) => {
-  const own = await read(u, (sel: string) => {
-    const m = document.querySelector(sel);
-    if (!m) return null;
-    return {
-      buttons: [...m.querySelectorAll<HTMLButtonElement>(".plugin-body button, .modal-actions button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-      texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent!.trim()),
-    };
-  }, MODAL);
-  if (!own) return null;
-  const f = await viewFrame(u);
-  const inView = f ? await f.evaluate(() => ({
-    buttons: [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-    texts: [...document.querySelectorAll(".controls p")].map((p) => p.textContent!.trim()),
-  })).catch(() => null) : null;
-  return { buttons: [...own.buttons, ...(inView?.buttons ?? [])], texts: [...own.texts, ...(inView?.texts ?? [])] };
-};
-const hasButton = async (u: User, text: string) => !!(await modal(u))?.buttons.find((b) => b.text === text && !b.disabled);
-/** Clicks a control by its text with the real mouse: in the window, or in the table view's panel. The panel
- * is rebuilt when the table changes: a button found just before may be gone, so it is looked for again. */
-async function press(u: User, text: string): Promise<void> {
-  for (let tries = 0; ; tries++) {
-    try {
-      for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return await h.click();
-      const f = await viewFrame(u);
-      if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) {
-        await h.evaluate((b) => b.scrollIntoView({ block: "center" }));
-        return await h.click();
-      }
-      throw new Error("no button " + text + " for " + u.name);
-    } catch (e) {
-      if (tries >= 3 || !/detached|no button|not clickable/.test(String(e))) throw e;
-      await sleep(200);
-    }
-  }
-}
-async function pressInView(u: User, text: string) {
-  const f = (await viewFrame(u))!;
-  for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return h.click();
-  throw new Error("no view button " + text + " for " + u.name);
-}
-/** Types into a field of the table view's panel, found by its label. */
-async function type(u: User, label: string, value: string) {
-  const f = (await viewFrame(u))!;
-  const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent!.trim().startsWith(label))?.querySelector("input"), label) as ElementHandle<HTMLInputElement>;
-  await input.click({ count: 3 }); // selects what the field holds, so typing replaces it
-  await input.type(value);
-}
-
-/** Page coordinates of view points (view units), the view scrolled into sight. */
-async function onPage(u: User, ...pts: Point[]) {
-  await u.page.evaluate((sel) => document.querySelector(sel + " iframe.plugin-view")?.scrollIntoView({ block: "center" }), MODAL);
-  const f = (await viewFrame(u))!;
-  const k = (await drawn(u))!.scale;
-  await f.evaluate((ys) => {
-    const r = document.querySelector("canvas")!.getBoundingClientRect();
-    scrollTo(0, Math.max(0, r.top + scrollY + (Math.min(...ys) + Math.max(...ys)) / 2 - innerHeight / 2));
-  }, pts.map((p) => p.y * k));
-  const box = (await (await f.$("canvas"))!.boundingBox())!;
-  return pts.map((p) => ({ x: box.x + p.x * k, y: box.y + p.y * k }));
-}
-const centre = (c: Point) => ({ x: c.x + CARD_W / 2, y: c.y + CARD_H / 2 });
-const handAt = async (u: User, i: number) => centre(handSpots((await handOf(u)).length)[i]);
-const pileAt = (at: [number, number]) => centre(cardAt(at));
-const feltAt = (x: number, y: number) => ({ x: FX + x, y: FY + y });
-const seatAt = (seats: number, me: number, seat: number) => seatSpots(seats, me).find((s) => s.seat === seat)!;
-
-/** A real mouse drag between two view points; the plg frames sent while dragging and in all. */
-async function drag(u: Player, a: Point, b: Point) {
-  const [from, to] = await onPage(u, a, b);
-  const n0 = u.sent.length;
-  await u.page.mouse.move(from.x, from.y);
-  await u.page.mouse.down();
-  await u.page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 6 });
-  await u.page.mouse.move(to.x, to.y, { steps: 6 });
-  await sleep(200); // CDP reports a sent frame asynchronously
-  const during = u.sent.length - n0;
-  await u.page.mouse.up();
-  await sleep(250);
-  return { during, total: u.sent.length - n0, msgs: u.sent.slice(n0) };
-}
-/** count real clicks at a view point, 60 ms apart: the view itself takes two clicks within 400 ms as a double click. */
-async function click(u: User, p: Point, count = 1) {
-  const [q] = await onPage(u, p);
-  for (let i = 0; i < count; i++) {
-    await u.page.mouse.click(q.x, q.y);
-    if (i + 1 < count) await sleep(60);
-  }
-  await sleep(150);
-}
-
-/** Counts the plugin frames this page sends on its game socket (u.sent: their payloads). */
-async function countFrames(u: Player) {
-  u.sent = [];
-  if (u.cdp) return; // one listener per page: a page reloaded keeps its session (a second one would count every frame twice)
-  const s = (u.cdp = await u.page.createCDPSession());
-  await s.send("Network.enable");
-  s.on("Network.webSocketFrameSent", (e) => {
-    try {
-      const m = JSON.parse(e.response.payloadData);
-      if (m.t === "plg" && m.pl === PLUGIN) u.sent.push(m.d);
-    } catch { /* not JSON */ }
-  });
-}
-async function within(fn: () => Promise<unknown>, limit: number) {
-  const t0 = Date.now();
-  for (;;) {
-    let ok = false;
-    try { ok = !!(await fn()); } catch { ok = false; }
-    if (ok) return Date.now() - t0;
-    if (Date.now() - t0 > limit) return -1;
-    await sleep(40);
-  }
-}
-const nearDeck = (u: User) => read(u, () => window.__hq.state.nearby?.t === "hq-cards/deck");
-/** Walks to a spot within reach of the deck, again if a walk stopped short (another avatar in the way). */
-async function goTo(u: Player, x: number, y: number) {
-  u.spot = { x, y };
-  for (let i = 0; i < 3; i++) {
-    await walkTo(u, x, y).catch(() => {});
-    if (await waitFor(() => nearDeck(u), { timeout: 3000, what: "near" }).catch(() => false)) return;
-  }
-}
-async function openWithX(u: Player) {
-  if (!(await nearDeck(u)) && u.spot) await goTo(u, u.spot.x, u.spot.y);
-  await waitFor(() => nearDeck(u), { what: u.name + " next to the deck" });
-  // X does nothing while a dialog's scrim is still on the page (a window closing): pressed until it opens
-  let tries = 0;
-  await waitFor(async () => {
-    if (await u.page.$(MODAL)) return true;
-    if (tries++ % 20 === 0) await u.page.keyboard.press("x");
-    return false;
-  }, { what: u.name + "'s Cards window" });
-  // the table's view shows once a game is chosen; the choice of a game has none
-  // the choice of a game and the "not available" window have no view; a game has the table's view
-  await waitFor(async () => {
-    const m = await modal(u);
-    return m?.buttons.some((b) => b.text === "Free table") || m?.texts.some((x) => x.startsWith("This game is not available")) || ((await viewFrame(u)) && (await drawn(u)) !== null);
-  }, { what: u.name + "'s table drawn" });
-}
+// controls, drags and the keyboard, what each page draws, sync between pages.
+// It runs against the testbed, without LiveKit (e2e/plugin-run.ts): node tools/fdash/cli.ts run test:e2e --pkg hq-cards-e2e
+// (after "node tools/fdash/cli.ts run build --pkg server --pkg web"). Of its RunContext it uses only adminCookie.
+import { check, summary, resetChecks, launch, joinAs, waitFor, sleep, type RunContext, type User } from "../../../e2e/lib.ts";
+import { CARD_H } from "../../bundled/hq-cards/public/art.ts";
+import { NARROW, GRID, CASCADE, cardAt, handSpots } from "../../bundled/hq-cards/public/layout.ts";
+import { FREE } from "../../bundled/hq-cards/public/games.ts";
+import {
+  PLUGIN, T, DECK, MODAL, FEET, SPOTS, setPlugin, setDecks, read, viewFrame, drawn, handOf, looseOf, logOf, modal, hasButton, press, pressInView, type,
+  handAt, pileAt, feltAt, seatAt, drag, click, countFrames, within, goTo, openWithX, consoleErrors, type Player,
+} from "./lib.ts";
 
 export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
@@ -207,8 +29,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
   const users: Player[] = [];
   try {
     const t = String(Date.now() % 10000);
-    const games = await installed(ctx);
-    const hasLastCard = games.includes("hq-card-lastcard");
     check("an administrator turns hq-cards on (admin API)", (await setPlugin(ctx, PLUGIN, true)).ok);
     check("a deck is placed on a table through the map API", await setDecks(ctx, [DECK]));
     const ann = await joinAs(browser, "Ann" + t, { avatar: { sk: 1, hs: 1, hc: 2, sh: 2, pa: 1 } }) as Player;
@@ -217,8 +37,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const cy = await joinAs(browser, "Cyrillia Featherston" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } }) as Player;
     users.push(ann, bo, cy);
     for (const u of users) await countFrames(u);
-    const feet = 23 * T + 8;
-    await Promise.all([goTo(ann, 204, feet), goTo(bo, 212, feet), goTo(cy, 220, feet)]);
+    await Promise.all([goTo(ann, SPOTS[0], FEET), goTo(bo, SPOTS[1], FEET), goTo(cy, SPOTS[2], FEET)]);
 
     // ---- criterion 1: the deck on the table, with the X hint
     const sprite = await waitFor(async () => {
@@ -241,12 +60,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("UX: at 800x450 the game choice shows when the window opens", choiceSeen!.top >= 0 && choiceSeen!.bottom <= choiceSeen!.H, JSON.stringify(choiceSeen));
     const only = await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table") && (await modal(ann)), { what: "the game choice" }) as NonNullable<Awaited<ReturnType<typeof modal>>>;
     check("2: a new table offers Free table, and no game while none runs", only.buttons.some((b) => b.text === "Free table") && !only.buttons.some((b) => b.text === "Old Maid"), JSON.stringify(only.buttons));
-    await setPlugin(ctx, "hq-card-pouilleux", true);
-    const listed = await within(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), 5000);
-    check("2: turning Old Maid on adds it to the open window's choice", listed >= 0, `${listed} ms`);
-    await setPlugin(ctx, "hq-card-pouilleux", false);
-    const unlisted = await within(async () => !(await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), 5000);
-    check("2: turning it off takes it away", unlisted >= 0, `${unlisted} ms`);
 
     // ---- criterion 4: seats
     await press(ann, "Free table");
@@ -396,89 +209,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
 
     // (the table, its seats and its log survive a server restart: cards_test.go)
 
-    // ---- criteria 8 and 9: Old Maid, with its narrowed actions and its count
-    await setPlugin(ctx, "hq-card-pouilleux", true);
-    await press(ann, "Reset");
-    await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Old Maid"), { timeout: 5000, what: "Old Maid offered after the reset" })
-      .catch(async (e) => { throw new Error(e.message + " " + JSON.stringify({ sent: ann.sent.slice(-4), log: (await logOf(ann)).slice(-3), cards: await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => (globalThis as unknown as { __cards?: () => unknown }).__cards?.()).catch(() => "?"), m: await modal(ann) })); });
-    await press(ann, "Old Maid");
-    await waitFor(() => hasButton(ann, "Seat 1"), { what: "Old Maid's seats" });
-    await press(ann, "Seat 1");
-    // Bo looks before he clicks: Ann's name in seat 1 widens it and moves seat 2
-    await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 free for Bo" });
-    // Bo's click straddles a rebuild of his controls (Ann counts between his press and his release): it still lands
-    {
-      const f = (await viewFrame(bo))!;
-      const seat2 = await f.evaluateHandle(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].find((b) => b.textContent!.trim() === "Seat 2")) as ElementHandle<HTMLButtonElement>;
-      await seat2.evaluate((b) => b.scrollIntoView({ block: "center" }));
-      const box = (await seat2.boundingBox())!;
-      await bo.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await bo.page.mouse.down();
-      await press(ann, "Count");
-      await waitFor(async () => (await (await viewFrame(bo))!.evaluate(() => [...document.querySelectorAll(".controls p")].some((p) => p.textContent!.startsWith("Count: ")))), { timeout: 3000, what: "Bo's controls rebuilt by the count" });
-      await bo.page.mouse.up();
-    }
-    const straddled = await within(async () => (await drawn(bo))?.seat === 1, 3000);
-    check("a click pressed while the controls are rebuilt by somebody else's move still lands (Bo takes seat 2)", straddled >= 0, `${straddled} ms`);
-    if (straddled < 0) await press(bo, "Seat 2");
-    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Old Maid" }).catch(async (e) => {
-      throw new Error(e.message + " " + JSON.stringify({ controls: (await modal(bo))?.buttons.slice(0, 10), log: (await logOf(bo)).slice(-3), sent: bo.sent.slice(-3), vp: bo.page.viewport() }));
-    });
-    // (Old Maid's controls, Deal all and Count but no Deal N, new pile, draw or look: hq-card-pouilleux/test/oldMaid.test.ts)
-    await press(ann, "Deal all");
-    await waitFor(async () => (await handOf(ann)).length + (await handOf(bo)).length === 49, { what: "Old Maid dealt" });
-    // (its 49 cards: oldMaid.test.ts; "Deal all" through its button is what the wait above proves)
-    // (Old Maid's pairs, offer, count from its hook, and turning it off and on: oldMaid.test.ts, oldmaid_test.go,
-    // cards_test.go; the same controls are checked on the free table and with Last Card)
-
-    // ---- criterion 10b: Last Card, a game with its own cards
-    if (hasLastCard) {
-      await setPlugin(ctx, "hq-card-lastcard", true);
-      await press(ann, "Reset");
-      await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Last Card"), { timeout: 5000, what: "Last Card offered" });
-      await press(ann, "Last Card");
-      // a game with its own cards starts each window's view afresh (its security policy then admits the game's images)
-      const renewed = await Promise.all([ann, bo].map((u) => within(async () => (await drawn(u))?.sheet === "loaded" && (await hasButton(u, "Seat 1")), 5000)));
-      check("10b: on choosing Last Card, every open window's view renews and loads the game's own sheet (shared/cards.png)", renewed.every((ms) => ms >= 0), JSON.stringify(renewed));
-      // a click right after the views renew was once lost (2026-10-26, no seat message sent): pressed again
-      // until the seat is taken, and the number of presses reported
-      let annPresses = 0;
-      const annSeated = await waitFor(async () => {
-        if ((await drawn(ann))?.seat === 0) return true;
-        if (annPresses < 3) { annPresses++; await press(ann, "Seat 1").catch(() => {}); }
-        await sleep(700);
-        return false;
-      }, { timeout: 8000, what: "Ann seated at Last Card" }).catch(() => false);
-      check("10b: Ann takes seat 1 at Last Card through its button", annSeated === true, `${annPresses} press(es)`);
-      const nAnn = ann.sent.length;
-      await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" }).catch(async (e) => {
-        throw new Error(e.message + " " + JSON.stringify({ annSent: ann.sent.slice(nAnn - 2), ann: (await modal(ann))?.buttons.slice(0, 4), bo: (await modal(bo))?.buttons.slice(0, 4), log: (await logOf(bo)).slice(-2) }));
-      });
-      const nSeat = bo.sent.length;
-      await press(bo, "Seat 2");
-      await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
-        throw new Error(e.message + " " + JSON.stringify({ sent: bo.sent.slice(nSeat), frames: (await bo.page.$$("iframe.plugin-view")).length, log: (await logOf(bo)).slice(-3), seat: (await drawn(bo))?.seat }));
-      });
-      await press(ann, "Deal");
-      await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7, { what: "Last Card dealt" });
-      await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
-      const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });
-      check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog!), lcLog!);
-      // (Last Card's count, through the real host: lastcard_test.go; the Count button and its text: the Old Maid part above)
-      // turned off and on with the window open: the page learns of the plugin after the game is back, and the
-      // view must still end up drawing the game's own sheet
-      await setPlugin(ctx, "hq-card-lastcard", false);
-      const off = await within(async () => { const m = (await modal(ann))!; return m.texts.some((x) => x.startsWith("This game is not available")) && m.buttons.filter((b) => b.text !== "Close").every((b) => b.text === "Reset"); }, 5000);
-      check("10: a game turned off: its table offers only Reset", off >= 0, JSON.stringify(await modal(ann)));
-      // the window opened again while the game is off: its view starts without the game's images allowed
-      await press(ann, "Close");
-      await openWithX(ann);
-      await setPlugin(ctx, "hq-card-lastcard", true);
-      const again = await within(async () => (await drawn(ann))?.sheet === "loaded" && (await handOf(ann)).length === 6, 20000); // a plugin turned on under load can take seconds to register
-      const inWindow = await (await (await ann.page.$('iframe.plugin-frame[data-plugin="hq-cards"]'))?.contentFrame())?.evaluate(() => (globalThis as unknown as { __cards?: () => unknown }).__cards?.()).catch((x) => String(x));
-      check("10b: Last Card off, the window opened, Last Card on: its cards come back drawn from its sheet", again >= 0, `${again} ms, sheet ${(await drawn(ann))?.sheet} ` + JSON.stringify({ inWindow, modal: await modal(ann), hand: (await handOf(ann)).length, seat: (await drawn(ann))?.seat }));
-    } else check("10b: Last Card (hq-card-lastcard is not in this tree yet)", false, "not installed");
-
     // ---- round 2 (R1-R7): a solitaire on the free table, Ann alone, through the real controls; Bo watches
     await press(ann, "Reset");
     await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table"), { timeout: 8000, what: "the choice for the solitaire" });
@@ -585,8 +315,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const m32 = /Stock (\d+) · (\d+) set aside/.exec(deck32 ?? "");
     check("a 32-card game from the panel: whole ranks set aside in one line of the log; at most 32 cards left, the rest set aside", ranksOut >= 0 && !!m32 && Number(m32[1]) <= 32 && Number(m32[1]) + Number(m32[2]) === 54, `${ranksOut} ms; ${deck32}`);
 
-    const real = (u: User) => u.logs.filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
-    for (const u of users) check(`${u.name}: no console errors`, real(u).length === 0, real(u).slice(0, 3).join(" | "));
+    for (const u of users) check(`${u.name}: no console errors`, consoleErrors(u).length === 0, consoleErrors(u).slice(0, 3).join(" | "));
     // leave the table as new for later scenarios that put a deck on the same tile
     await press(ann, "Reset").catch(() => {});
     await waitFor(async () => (await modal(ann))?.buttons.some((b) => b.text === "Free table"), { timeout: 5000, what: "the table reset" }).catch(() => {});
@@ -595,12 +324,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
     if (process.env.HQ_FAIL_SHOTS) for (const u of users) await u.page.screenshot({ path: `${process.env.HQ_FAIL_SHOTS}/${u.name}.png` }).catch((x) => console.log("no shot of " + u.name + ": " + x));
     check("scenario completed", false, String((e && (e as Error).stack) || e));
   } finally {
-    for (const name of ["hq-card-lastcard", "hq-card-pouilleux", PLUGIN]) await setPlugin(ctx, name, false).catch(() => {});
+    await setPlugin(ctx, PLUGIN, false).catch(() => {});
     await setDecks(ctx, []).catch(() => {});
     await browser.close();
   }
   return summary();
 }
 
-export type { Player, Point };
-export { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK };

@@ -13,8 +13,11 @@ import { BROWSER, closing, header, plan, recordLines } from "./gauntlet.ts";
 import { ALL } from "../e2e/shards.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
-/** A plugin's browser suite (plugins/e2e/hq-chess-e2e), run by e2e/plugin-run.ts against the testbed. */
-const PLUGIN_SUITE = "hq-chess-e2e:test:e2e";
+/** The plugins' e2e projects (plugins/e2e/*), each run by e2e/plugin-run.ts against the testbed, in the workspace's order. */
+const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e2e", "hq-chess-e2e"];
+const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
+/** The projects with integration tests (*.ispec.ts against the testbed), in the workspace's order. */
+const INTEGRATION = ["sdk", "hq-card-lastcard", "hq-card-pouilleux", "hq-cards", "hq-pets"].map((p) => `${p}:test:integration`);
 
 test("the workspace holds the gauntlet's gates, as the conventional tasks of each project, with their commands", () => {
   const config = loadWorkspace(root);
@@ -40,7 +43,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     plugin("hq-cards", ["tsconfig.json", "public/tsconfig.json"]),
     plugin("hq-chess", ["tsconfig.json", "public/tsconfig.json"]),
     plugin("hq-pets", ["tsconfig.json", "public/tsconfig.json"]),
-    ["hq-chess-e2e:lint", "plugins/e2e/hq-chess-e2e", `node ../../../e2e/node_modules/typescript/bin/tsc -p tsconfig.json && ${ox("../../../")}`, false, false, "{}"],
+    ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `node ../../../e2e/node_modules/typescript/bin/tsc -p tsconfig.json && ${ox("../../../")}`, false, false, "{}"]),
     ["server:build", "server", "go build -o ../bin/ ./cmd/homequarters", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
@@ -54,12 +57,17 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     unit("hq-card-pouilleux:test:unit", "plugins/bundled/hq-card-pouilleux"),
     unit("hq-cards:test:unit", "plugins/bundled/hq-cards"),
     unit("hq-chess:test:unit", "plugins/bundled/hq-chess"),
-    ["sdk:test:integration", "plugins/sdk", "node --test **/*.ispec.ts", false, false, "{}"],
+    ...INTEGRATION.map((n) => [n, n.startsWith("sdk:") ? "plugins/sdk" : `plugins/bundled/${n.split(":")[0]}`, "node --test **/*.ispec.ts", false, false, "{}"]),
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
-    [PLUGIN_SUITE, "plugins/e2e/hq-chess-e2e", "node ../../../e2e/plugin-run.ts --plugin ../../bundled/hq-chess chess.ts", false, false, '{"E2E_VIEWPORT":"small"}'],
+    ...[
+      ["hq-card-lastcard-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-lastcard lastCard.ts"],
+      ["hq-card-pouilleux-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-pouilleux oldMaid.ts"],
+      ["hq-cards-e2e", "--plugin ../../bundled/hq-cards cards.ts"],
+      ["hq-chess-e2e", "--plugin ../../bundled/hq-chess chess.ts"],
+    ].map(([p, args]) => [`${p}:test:e2e`, `plugins/e2e/${p}`, `node ../../../e2e/plugin-run.ts ${args}`, false, false, '{"E2E_VIEWPORT":"small"}']),
   ]);
   // the integration and browser suites start once the build is done: default runs its members one after the other
-  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", "sdk:test:integration", BROWSER, PLUGIN_SUITE], jobs: 1, after: [] });
+  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", ...INTEGRATION, BROWSER, ...PLUGIN_SUITES], jobs: 1, after: [] });
   assert.equal((config.get("static") as { jobs?: number }).jobs, undefined);
 });
 
@@ -73,9 +81,9 @@ test("every plugin has its own tsconfig.json files checked by its lint, the e2e 
 
 test("the gauntlet runs default; named scenarios go to the e2e project's suite only", () => {
   const config = loadWorkspace(root);
-  assert.deepEqual(plan(config, [], false), { names: ["default"], skip: [], suites: [BROWSER, PLUGIN_SUITE] });
-  assert.deepEqual(plan(config, [], true).skip, [BROWSER, PLUGIN_SUITE]);
-  assert.deepEqual(plan(config, ["social"], false).skip, [PLUGIN_SUITE]);
+  assert.deepEqual(plan(config, [], false), { names: ["default"], skip: [], suites: [BROWSER, ...PLUGIN_SUITES] });
+  assert.deepEqual(plan(config, [], true).skip, [BROWSER, ...PLUGIN_SUITES]);
+  assert.deepEqual(plan(config, ["social"], false).skip, PLUGIN_SUITES);
 });
 
 test("build tasks declare what they produce; site checks its build after making it", () => {
@@ -105,12 +113,15 @@ test("every gate is cached, and every scenario of the suite is an item with its 
   assert.deepEqual([...e2e.items!.keys()], ALL);
   for (const [s, item] of e2e.items!) assert.ok(item.inputs.includes(`e2e/scenarios/${s}.ts`), s);
   assert.ok(e2e.inputs!.includes("!e2e/scenarios/**"), "a scenario's file reruns that scenario only");
-  // scenarios that turn a bundled plugin on, or list the plugins' catalog, follow that plugin's code
+  // scenarios that turn a bundled plugin on follow that plugin's code; scenarios that list the plugins' catalog
+  // follow every plugin's manifest (the catalog reads plugin.json and checks the files exist, it compiles nothing:
+  // load in server/internal/plugin/catalog.go)
   const follows = (s: string, p: string) => e2e.items!.get(s)!.inputs.some((i) => typeof i === "string" && path.posix.matchesGlob(`plugins/bundled/${p}/main.ts`, i));
+  const manifests = (s: string) => [...e2e.inputs!, ...e2e.items!.get(s)!.inputs].some((i) => typeof i === "string" && path.posix.matchesGlob("plugins/bundled/hq-any/plugin.json", i));
   for (const s of ALL) {
     const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".ts"), "utf8");
     for (const p of fs.readdirSync(path.join(root, "plugins/bundled"))) if (text.includes(p)) assert.ok(follows(s, p), `${s} names ${p}: its folder is an input`);
-    if (/\[role=tab\]", "Plugins"|Plugins tab|plugins tab/.test(text)) assert.ok(follows(s, "hq-"), `${s} lists the plugins: every plugin is an input`);
+    if (/\[role=tab\]", "Plugins"|Plugins tab|plugins tab/.test(text)) assert.ok(manifests(s), `${s} lists the plugins: every plugin's plugin.json is an input`);
   }
 });
 
@@ -120,7 +131,8 @@ test("each plugin's tests run in its project, and import nothing outside it and 
   for (const p of fs.readdirSync(bundled)) {
     const dir = path.join(bundled, p, "test");
     if (!fs.existsSync(dir)) continue;
-    const task = config.get(`${p}:test:unit`) as Command | undefined;
+    // a plugin may have only integration tests (hq-pets: test/*.ispec.ts)
+    const task = (config.get(`${p}:test:unit`) ?? config.get(`${p}:test:integration`)) as Command | undefined;
     assert.ok(task, `${p} has tests, so a project with a test task`);
     const deps: string[] = JSON.parse(fs.readFileSync(path.join(bundled, p, "fdash.json"), "utf8")).dependsOn ?? [];
     const allowed = [path.join(bundled, p), ...deps.map((d) => (d === "sdk" ? path.join(root, "plugins/sdk") : path.join(bundled, d)))];

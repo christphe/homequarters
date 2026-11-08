@@ -182,13 +182,6 @@
             "/plugins/bundled/**"
           ]
         },
-        "cards": {
-          "inputs": [
-            "scenarios/cards.ts",
-            "/plugins/bundled/hq-cards/**",
-            "/plugins/bundled/hq-card-*/**"
-          ]
-        },
         "a11y": {
           "inputs": [
             "scenarios/a11y.ts",
@@ -272,8 +265,7 @@
         },
         "offline": {
           "inputs": [
-            "scenarios/offline.ts",
-            "/plugins/bundled/**"
+            "scenarios/offline.ts"
           ]
         },
         "sounds": {

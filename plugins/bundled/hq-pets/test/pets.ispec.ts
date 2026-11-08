@@ -65,7 +65,8 @@ async function joinAdmin(bed: Testbed, name: string): Promise<{ ann: Member; coo
   let cookie = "";
   globalThis.fetch = (async (...a: Parameters<typeof fetch>) => {
     const r = await real(...a);
-    if (String(a[0]).endsWith("/api/join")) cookie = r.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+    const url = typeof a[0] === "string" ? a[0] : a[0] instanceof URL ? a[0].href : a[0].url;
+    if (url.endsWith("/api/join")) cookie = r.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
     return r;
   }) as typeof fetch;
   try {
