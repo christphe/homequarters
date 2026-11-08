@@ -1,7 +1,9 @@
-// node --test e2e/shards.test.ts
+// node --test e2e/shards.test.ts (the last test reads plugins/e2e: e2e:test:unit has it in its inputs)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ALL, DURATIONS, UNKNOWN, shard, parseShard, shardsFor } from "./shards.ts";
+import fs from "node:fs";
+import path from "node:path";
+import { ALL, DURATIONS, PROJECTS, UNKNOWN, plan, shard, parseShard, shardsFor } from "./shards.ts";
 
 const cost = (names: string[]) => names.reduce((s, n) => s + (DURATIONS[n] ?? UNKNOWN), 0);
 
@@ -46,4 +48,28 @@ void test("shardsFor: never more shards than scenarios, at least one", () => {
   assert.equal(shardsFor(3, 2), 2);
   assert.equal(shardsFor(1, 0), 1);
   assert.equal(shardsFor(NaN, 5), 1);
+});
+
+void test("plan: the 4 CI shards run every scenario and every e2e project once, balanced together", () => {
+  const parts = [1, 2, 3, 4].map((i) => plan(i, 4));
+  assert.deepEqual(parts.flatMap((p) => p.scenarios).sort(), [...ALL].sort());
+  assert.deepEqual(parts.flatMap((p) => p.projects).sort(), [...PROJECTS].sort());
+  const loads = parts.map((p) => cost([...p.scenarios, ...p.projects]));
+  const mean = cost([...ALL, ...PROJECTS]) / 4;
+  // oxlint-disable-next-line typescript/restrict-template-expressions -- the loads print as a comma list on purpose
+  for (const l of loads) assert.ok(l <= Math.max(DURATIONS.offices, mean * 1.15), `loads ${loads}`);
+  assert.deepEqual(plan(1, 1), { scenarios: ALL, projects: PROJECTS });
+  assert.throws(() => plan(1, 2, ["a", "b"], ["b"]), /a project has a scenario's name: b/);
+});
+
+void test("PROJECTS lists every e2e project of plugins/e2e, each with a test:e2e and a measured duration", () => {
+  const dir = path.resolve(import.meta.dirname, "../plugins/e2e");
+  const found = fs.readdirSync(dir).filter((p) => fs.existsSync(path.join(dir, p, "fdash.json")));
+  assert.deepEqual([...PROJECTS].sort(), found.sort());
+  for (const p of found) {
+    const config = JSON.parse(fs.readFileSync(path.join(dir, p, "fdash.json"), "utf8")) as { name?: string; tasks: Record<string, unknown> };
+    assert.equal(config.name ?? p, p, `${p}: the project is named after its folder`);
+    assert.ok("test:e2e" in config.tasks, `${p} has a test:e2e task`);
+    assert.ok(p in DURATIONS, `${p} has a duration`);
+  }
 });

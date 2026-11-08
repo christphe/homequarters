@@ -1,9 +1,11 @@
 // fdash workspaces: fdash-workspace.json at the root lists the projects, each a folder with its own
-// fdash.json. A project's tasks are named <project>:<task>, run in its folder, and by default read every file
-// of it plus the files of the projects it depends on. Everything ends up as one flat Config.
+// fdash.json. A project's tasks run in its folder and by default read every file of it plus the files of the
+// projects it depends on. Everything ends up as one flat Config, a project's task under `<project>:<task>`;
+// on the command line and in groups a task is named without its project (`test:unit`), which means that task
+// in every project defining it.
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_FILE, finishConfig, loadConfig, parseJson, parseTasks, type Command, type Config, type Input, type Task } from "./config.ts";
+import { CONFIG_FILE, finishConfig, loadConfig, localName, parseJson, parseTasks, type Command, type Config, type Input, type Task } from "./config.ts";
 
 export const WORKSPACE_FILE = "fdash-workspace.json";
 
@@ -38,7 +40,7 @@ function fromRoot(dir: string, pattern: string): string {
   const rooted = body.startsWith("/") ? body.slice(1) : posix(dir, body);
   return (neg ? "!" : "") + rooted;
 }
-const inputFromRoot = (dir: string, i: Input): Input => (typeof i === "string" ? fromRoot(dir, i) : { ...i, cwd: posix(dir, i.cwd) });
+const inputFromRoot = (dir: string, i: Input): Input => (typeof i === "string" ? fromRoot(dir, i) : "disk" in i ? { disk: fromRoot(dir, i.disk) } : { ...i, cwd: posix(dir, i.cwd) });
 
 function readProject(root: string, dir: string): Project {
   const file = posix(dir, CONFIG_FILE);
@@ -100,36 +102,98 @@ export function loadWorkspace(root: string): Config {
   const config: Config = new Map();
   const wsTasks = parseTasks((raw.tasks as Record<string, unknown> | undefined) ?? {});
   for (const [n, t] of wsTasks) config.set(n, t.kind === "command" && !t.cache ? { ...t, inputs: undefined } : t);
+  // the projects defining each name, in project order
+  const across = new Map<string, string[]>();
   for (const p of projects) {
-    const qualify = (m: string) => (m.includes(":") ? m : `${p.name}:${m}`);
     const inherited = [posix(p.dir, "**"), ...depFiles(p, [])];
     for (const t of p.tasks.values()) {
       const name = `${p.name}:${t.name}`;
+      if (wsTasks.has(t.name) || config.has(name)) throw new Error(`${wsTasks.has(t.name) ? t.name : name}: both a workspace task and a project task (${p.file}), so the name would mean two things`);
       let task: Task;
-      if (t.kind === "group") task = { ...t, name, tasks: t.tasks.map(qualify) };
+      if (t.kind === "group") task = { ...t, name, project: p.name };
       else {
         const own = (t.inputs ?? []).map((i) => inputFromRoot(p.dir, i));
         const c: Command = {
-          ...t, name, cwd: posix(p.dir, t.cwd),
+          ...t, name, project: p.name, cwd: posix(p.dir, t.cwd), outputs: t.outputs.map((o) => fromRoot(p.dir, o)),
           inputs: t.cache ? [...inherited, ...own] : undefined,
           items: t.items && new Map([...t.items].map(([k, v]) => [k, { inputs: v.inputs.map((i) => inputFromRoot(p.dir, i)) }])),
         };
         task = c;
       }
       config.set(name, task);
+      across.set(t.name, [...(across.get(t.name) ?? []), name]);
     }
   }
-  // *:<task>: that task in every project that has it, in project order
+  // a group's member: a task of the group's own project, else that name in every project defining it, else
+  // the workspace's task of that name
   for (const t of config.values()) {
     if (t.kind !== "group") continue;
     t.tasks = t.tasks.flatMap((m) => {
-      if (!m.startsWith("*:")) return [m];
-      const found = projects.map((p) => `${p.name}:${m.slice(2)}`).filter((n) => config.has(n));
-      if (!found.length) throw new Error(`${t.name}: ${m} matches no task`);
-      return found;
+      const own = t.project === undefined ? undefined : config.get(`${t.project}:${m}`);
+      if (own && own.project === t.project) return [own.name];
+      const found = across.get(m);
+      if (found) return found;
+      if (wsTasks.has(m)) return [m];
+      throw new Error(`${t.name}: no task named ${m}`);
     });
   }
+  // order: a project's task starts after the tasks of its own project it names in `after`, and after the same
+  // task of the nearest projects it depends on that define it (walking through those that do not)
+  const nearest = (p: Project, name: string): string[] => {
+    const out: string[] = [];
+    for (const d of p.dependsOn) {
+      const q = byName.get(d)!;
+      for (const n of q.tasks.has(name) ? [`${q.name}:${name}`] : nearest(q, name)) if (!out.includes(n)) out.push(n);
+    }
+    return out;
+  };
+  for (const n of wsTasks.keys()) {
+    const t = config.get(n)!;
+    for (const a of t.after) if (!wsTasks.has(a)) throw new Error(`${n}: after names ${a}, which is no task of ${WORKSPACE_FILE}`);
+  }
+  for (const p of projects) {
+    for (const local of p.tasks.keys()) {
+      const t = config.get(`${p.name}:${local}`)!;
+      const own = t.after.map((a) => {
+        if (config.get(`${p.name}:${a}`)?.project !== p.name) throw new Error(`${t.name}: after names ${a}, which is no task of ${p.name}`);
+        return `${p.name}:${a}`;
+      });
+      t.after = [...own, ...nearest(p, local).filter((n) => !own.includes(n))];
+    }
+  }
   return finishConfig(config);
+}
+
+/** The tasks to run for names given on the command line: a workspace task by its name, a project's task in
+ * every project defining it, or only in `pkgs` when some are named (each must define it). */
+export function select(config: Config, names: string[], pkgs: string[]): string[] {
+  const tasks = [...config.values()];
+  const projects = new Set(tasks.flatMap((t) => (t.project === undefined ? [] : [t.project])));
+  for (const p of pkgs) if (!projects.has(p)) throw new Error(`no project named ${p}${projects.size ? ` (projects with tasks: ${[...projects].join(", ")})` : ""}`);
+  const out: string[] = [];
+  const add = (n: string) => { if (!out.includes(n)) out.push(n); };
+  for (const n of names) {
+    const own = config.get(n);
+    if (own && own.project === undefined) {
+      if (pkgs.length) throw new Error(`${n} is a workspace task, not a project's: --pkg cannot restrict it`);
+      add(n);
+      continue;
+    }
+    if (pkgs.length) {
+      for (const p of pkgs) {
+        if (config.get(`${p}:${n}`)?.project !== p) throw new Error(`${p} has no task ${n}`);
+        add(`${p}:${n}`);
+      }
+      continue;
+    }
+    const found = tasks.filter((t) => t.project !== undefined && localName(t) === n);
+    if (found.length === 0) {
+      if (own) throw new Error(`no task named ${n} (a project's task is named without its project: ${localName(own)} --pkg ${own.project})`);
+      throw new Error(`no task named ${n}`);
+    }
+    for (const t of found) add(t.name);
+  }
+  return out;
 }
 
 /** The workspace's config when there is one, else the single fdash.json of `root`. */

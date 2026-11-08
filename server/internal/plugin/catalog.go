@@ -258,6 +258,30 @@ func Scan(root string) ([]Info, error) {
 	return dedupe(out), errors.Join(errs...)
 }
 
+// LoadDirs builds a catalog from explicit plugin folders (the testbed's): a folder whose parent is
+// named bundled is a bundled plugin, any other an installed one, under the same name rules and twin
+// check as Scan. A folder that is not a plugin is listed broken. Same order as Scan.
+func LoadDirs(dirs []string) []Info {
+	out := make([]Info, 0, len(dirs))
+	for _, d := range dirs {
+		if abs, err := filepath.Abs(d); err == nil {
+			d = abs
+		}
+		source := Installed
+		if filepath.Base(filepath.Dir(d)) == Bundled {
+			source = Bundled
+		}
+		out = append(out, load(d, source))
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Source != out[j].Source {
+			return out[i].Source == Bundled
+		}
+		return out[i].Name < out[j].Name
+	})
+	return dedupe(out)
+}
+
 // FlatLayout reports whether root holds plugin folders directly, the layout before bundled/ and
 // installed/: those are not read, and the operator should move them into installed/.
 func FlatLayout(root string) bool {

@@ -88,7 +88,14 @@ const LK_PORT = Number(process.env.HQ_TEST_LK_PORT ?? (slots.length && ownLiveKi
 process.env.HQ_LK_HTTP ??= `http://127.0.0.1:${LK_PORT}`;
 process.env.HQ_TEST_LK_URL = `ws://127.0.0.1:${LK_PORT}`;
 
-if (!process.env.SKIP_BUILD && !EXTERNAL) {
+// E2E_PREBUILT=1 (fdash's test:e2e): the build tasks of server and web made bin/ and web/dist from the same
+// sources this run is keyed on, so nothing is built here and the results are recorded as usual.
+const PREBUILT = !!process.env.E2E_PREBUILT;
+if (PREBUILT && !process.env.SKIP_BUILD && !EXTERNAL) {
+  const absent = [BIN, path.join(root, "web", "dist", "index.html")].filter((f) => !fs.existsSync(f));
+  if (absent.length) { console.log(`# E2E_PREBUILT: ${absent.map((f) => path.relative(root, f)).join(", ")} missing: run "node tools/fdash/cli.ts run build" first`); process.exit(1); }
+}
+if (!process.env.SKIP_BUILD && !PREBUILT && !EXTERNAL) {
   console.log("# building web + server");
   execFileSync("pnpm", ["build"], { cwd: path.join(root, "web"), stdio: "inherit", shell: WIN });
   execFileSync("go", ["build", "-o", BIN, "./cmd/homequarters"], { cwd: path.join(root, "server"), stdio: "inherit" });

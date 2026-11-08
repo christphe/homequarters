@@ -1,6 +1,8 @@
-// The gauntlet's automatic gates, run by fdash (tools/fdash; fdash-workspace.json and each project's fdash.json). Usage:
-//   node scripts/gauntlet.ts                  # static gates + the whole browser suite (CI viewport)
-//   node scripts/gauntlet.ts social movement  # static gates + only these scenarios
+// The gauntlet's automatic gates, run by fdash (tools/fdash; fdash-workspace.json and each project's fdash.json):
+// the workspace's task "default" (lint, build and unit tests of every project, then the browser suites). Usage:
+//   node scripts/gauntlet.ts                  # everything, with the whole browser suite (CI viewport)
+//   node scripts/gauntlet.ts social movement  # everything, but of the browser suites only these scenarios of the
+//                                             # e2e project's (as fdash run test:e2e --pkg e2e -- social movement)
 //   GAUNTLET_SKIP_E2E=1 node scripts/gauntlet.ts
 //   FDASH_JOBS=1 node scripts/gauntlet.ts     # static gates one at a time (default: half the logical CPUs)
 //   E2E_PARALLELISM=2 node scripts/gauntlet.ts   # the browser suite as 2 shards at once (see e2e/parallel.ts)
@@ -13,13 +15,24 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadWorkspace } from "../tools/fdash/workspace.ts";
+import { loadWorkspace, select } from "../tools/fdash/workspace.ts";
+import type { Config } from "../tools/fdash/config.ts";
 import { parseArgs, printResult, resultLine } from "../tools/fdash/cli.ts";
 import { run, type Result } from "../tools/fdash/run.ts";
 import { fingerprint } from "./gauntlet-fingerprint.ts";
 
 /** The browser suite's task (fdash-workspace.json, e2e/fdash.json); its scenarios are its items. */
-export const BROWSER = "e2e:browser";
+export const BROWSER = "e2e:test:e2e";
+/** The task every browser suite defines, in each project that has one. */
+export const E2E_TASK = "test:e2e";
+
+/** What the gauntlet asks fdash to run: always "default", without the browser suites when they are skipped,
+ * and with only the e2e project's when scenarios are named (they are its items). */
+export function plan(config: Config, scenarios: string[], skipE2e: boolean): { names: string[]; skip: string[]; suites: string[] } {
+  const suites = select(config, [E2E_TASK], []);
+  const skip = skipE2e ? suites : scenarios.length ? suites.filter((s) => s !== BROWSER) : [];
+  return { names: ["default"], skip, suites };
+}
 
 const iso = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z");
 
@@ -63,11 +76,12 @@ async function main(): Promise<number> {
   process.on("SIGINT", () => ac.abort());
   const t0 = Date.now();
   let staticEnd = t0;
+  const { names, skip, suites } = plan(config, scenarios, skipE2e);
   const { results, interrupted } = await run({
-    root, config, names: ["default"], skip: skipE2e ? [BROWSER] : [], jobs, extraArgs: scenarios,
+    root, config, names, skip, jobs, extraArgs: scenarios,
     force: !!process.env.FDASH_FORCE, signal: ac.signal,
     onResult: (r) => {
-      if (!r.name.startsWith(BROWSER + ":")) staticEnd = Date.now();
+      if (!suites.some((s) => r.name === s || r.name.startsWith(s + ":"))) staticEnd = Date.now();
       printResult(r);
     },
   });

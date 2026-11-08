@@ -19,7 +19,10 @@ type Config struct {
 	DBPath    string
 	StaticDir string
 	// PluginsDir holds operator-installed plugins (HQ_PLUGINS_DIR); empty turns plugins off.
-	PluginsDir     string
+	PluginsDir string
+	// PluginDirs, when set, replaces PluginsDir with explicit plugin folders (plugin.LoadDirs). Only
+	// the testbed sets it; it is never read from the environment.
+	PluginDirs     []string
 	Version        string // the deploy's commit (HQ_VERSION); empty: derived from the built page
 	AllowedOrigins []string
 	OfficeSlug     string

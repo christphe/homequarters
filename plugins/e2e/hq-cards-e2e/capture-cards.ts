@@ -1,4 +1,6 @@
-// UX capture for the critic (not part of the default suite): run "node run.ts capture-cards".
+// UX capture for the critic (not part of the project's test:e2e): from this folder, run
+// "node ../../../e2e/plugin-run.ts --plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-pouilleux
+// --plugin ../../bundled/hq-card-lastcard capture-cards.ts" (the testbed, no LiveKit).
 // hq-cards and its two games on, a deck on the social area's table, Ann, Bo and the administrator at the
 // table. Writes frames to a fresh folder inside $HQ_CAPTURE_DIR (default /tmp/hq-capture):
 //   table-*.png       the deck on the table at the office's zoom
@@ -13,10 +15,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launch, joinAs, walkTo, sleep, waitFor, type RunContext, type User } from "../lib.ts";
-import { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK, type Player, type Point } from "./cards.ts";
-import { FREE } from "../../plugins/bundled/hq-cards/public/games.ts";
-import { seatSpots } from "../../plugins/bundled/hq-cards/public/layout.ts";
+import { launch, joinAs, walkTo, sleep, waitFor, type RunContext, type User } from "../../../e2e/lib.ts";
+import { setPlugin, setDecks, viewFrame, drawn, handOf, press, modal, openWithX, drag, handAt, pileAt, feltAt, MODAL, DECK, type Player, type Point } from "./lib.ts";
+import { FREE } from "../../bundled/hq-cards/public/games.ts";
+import { seatSpots } from "../../bundled/hq-cards/public/layout.ts";
 
 const HUD = ".topbar,.side,.social-controls,.bar,.minimap,.toast,.dock{display:none!important}";
 const NO_MODAL = ".scrim,.modal{visibility:hidden!important}";

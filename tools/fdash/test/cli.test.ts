@@ -12,12 +12,17 @@ const here = import.meta.dirname;
 const cli = path.join(here, "..", "cli.ts");
 
 test("parseArgs: default task, flags, jobs from the CPUs or FDASH_JOBS, refusals", () => {
-  assert.deepEqual(parseArgs(["run"], {}, 12), { cmd: "run", tasks: ["default"], skip: [], jobs: 6, force: false, extra: [] });
+  assert.deepEqual(parseArgs(["run"], {}, 12), { cmd: "run", tasks: ["default"], skip: [], pkgs: [], jobs: 6, force: false, extra: [] });
   assert.equal(parseArgs(["run"], {}, 1).jobs, 1);
-  assert.deepEqual(parseArgs(["run", "a", "--skip", "b", "--jobs", "3", "--force", "--", "x", "--y"], {}, 8), { cmd: "run", tasks: ["a"], skip: ["b"], jobs: 3, force: true, extra: ["x", "--y"] });
+  assert.deepEqual(parseArgs(["run", "a", "--skip", "b", "--jobs", "3", "--force", "--", "x", "--y"], {}, 8), { cmd: "run", tasks: ["a"], skip: ["b"], pkgs: [], jobs: 3, force: true, extra: ["x", "--y"] });
   assert.equal(parseArgs(["run", "--jobs=4"], { FDASH_JOBS: "2" }, 8).jobs, 4);
   assert.equal(parseArgs(["run"], { FDASH_JOBS: "2" }, 8).jobs, 2);
   assert.equal(parseArgs(["list"], {}, 8).cmd, "list");
+  assert.deepEqual(parseArgs(["run", "test:unit", "--pkg", "a", "--pkg", "b"], {}, 4).pkgs, ["a", "b"]);
+  assert.deepEqual(parseArgs(["run", "test:unit", "--pkg=a"], {}, 4).pkgs, ["a"]);
+  assert.deepEqual(parseArgs(["list", "--pkg", "a"], {}, 4).pkgs, ["a"]);
+  assert.throws(() => parseArgs(["run", "test:unit", "--pkg"], {}, 4), /--pkg needs a project name/);
+  assert.throws(() => parseArgs(["list", "x"], {}, 4), /list takes no arguments/);
   assert.equal(parseArgs(["--help"], {}, 8).cmd, "help");
   for (const bad of ["0", "-1", "abc", "1.5", ""]) assert.throws(() => parseArgs(["run"], { FDASH_JOBS: bad }, 8), /FDASH_JOBS/);
   assert.throws(() => parseArgs(["run", "--jobs"], {}, 8), /--jobs/);
@@ -85,6 +90,57 @@ test("fdash imports only node: modules and its own files, and names nothing of t
       assert.ok(target.startsWith(top + path.sep), `${path.relative(top, f)} imports ${spec}, outside fdash`);
     }
   }
+});
+
+test("a workspace on the command line: a name across projects, --pkg, list --pkg", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-cli-"));
+  const say = (s: string) => ({ run: [[process.execPath, "-e", `console.log(${JSON.stringify(s)})`]] });
+  const files: Record<string, unknown> = {
+    "fdash-workspace.json": { projects: ["a", "b"], tasks: { default: { tasks: ["test:unit"] } } },
+    "a/fdash.json": { tasks: { "test:unit": say("a"), lint: say("a lint") } },
+    "b/fdash.json": { tasks: { "test:unit": say("b") } },
+  };
+  for (const [f, v] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
+    fs.writeFileSync(path.join(root, f), JSON.stringify(v));
+  }
+  const fdash = (...a: string[]) => spawnSync(process.execPath, [cli, ...a], { cwd: root, encoding: "utf8" });
+  const lines = (s: string) => s.trim().split(/\r?\n/);
+  assert.deepEqual(lines(fdash("run", "test:unit", "--jobs", "1").stdout), ["PASS a:test:unit", "PASS b:test:unit"]);
+  assert.deepEqual(lines(fdash("run", "test:unit", "--pkg", "b").stdout), ["PASS b:test:unit"]);
+  const lacking = fdash("run", "lint", "--pkg", "b");
+  assert.equal(lacking.status, 2);
+  assert.match(lacking.stderr, /b has no task lint/);
+  const qualified = fdash("run", "a:lint");
+  assert.equal(qualified.status, 2);
+  assert.match(qualified.stderr, /no task named a:lint .*lint --pkg a/);
+  assert.deepEqual(lines(fdash("list", "--pkg", "a").stdout), ["a:test:unit", "a:lint"]);
+  assert.equal(fdash("list", "--pkg", "nope").status, 2);
+});
+
+test("names on the command line run as stages, one after the other; a failed stage stops the next", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-stages-"));
+  const log = path.join(root, "order.txt");
+  // each command appends its name after a delay: run at once, the slower first stage would land last
+  const step = (s: string, ms: number, fail = false) => ({ run: [[process.execPath, "-e", `setTimeout(() => { require("fs").appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(s + "\n")}); process.exit(${fail ? 1 : 0}); }, ${ms})`]] });
+  const files: Record<string, unknown> = {
+    "fdash-workspace.json": { projects: ["a", "b"] },
+    "a/fdash.json": { tasks: { build: step("a build", 400), "test:integration": step("a it", 0) } },
+    "b/fdash.json": { tasks: { build: step("b build", 300, true), "test:integration": step("b it", 0) } },
+  };
+  for (const [f, v] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
+    fs.writeFileSync(path.join(root, f), JSON.stringify(v));
+  }
+  const fdash = (...a: string[]) => spawnSync(process.execPath, [cli, ...a], { cwd: root, encoding: "utf8" });
+  const order = () => fs.readFileSync(log, "utf8").trim().split("\n");
+  const ok = fdash("run", "build", "test:integration", "--pkg", "a", "--jobs", "4");
+  assert.equal(ok.status, 0);
+  assert.deepEqual(order(), ["a build", "a it"]);
+  fs.rmSync(log);
+  const failed = fdash("run", "build", "test:integration", "--jobs", "4");
+  assert.equal(failed.status, 1);
+  assert.ok(!order().some((l) => l.endsWith(" it")), "a failed build stage stops the test stage: " + order().join(", "));
 });
 
 test("a command missing from PATH fails its task without crashing the run", () => {

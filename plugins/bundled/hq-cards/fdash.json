@@ -1,9 +1,46 @@
 {
   "dependsOn": [
+    "server",
     "sdk"
   ],
   "tasks": {
-    "test": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json"
+        ],
+        [
+          "node",
+          "../../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "public/tsconfig.json"
+        ],
+        [
+          "node",
+          "../../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.test.json"
+        ],
+        [
+          "node",
+          "../../../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml",
+        "/plugins/sdk/testbed.ts",
+        "/plugins/sdk/server.d.ts"
+      ]
+    },
+    "test:unit": {
       "run": [
         [
           "node",
@@ -11,6 +48,23 @@
           "test/*.test.ts"
         ]
       ]
+    },
+    "test:integration": {
+      "run": [
+        [
+          "node",
+          "--test",
+          "**/*.ispec.ts"
+        ]
+      ],
+      "inputs": [
+        {
+          "disk": "/bin/homequarters*"
+        }
+      ],
+      "env": {
+        "HQ_BIN_REPO_ONLY": "1"
+      }
     }
   }
 }

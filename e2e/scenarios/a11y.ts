@@ -236,7 +236,9 @@ export async function run(ctx: RunContext): Promise<boolean> {
       window: await p.evaluate((sel) => ({ buttons: [...document.querySelectorAll<HTMLButtonElement>(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS),
       panel: await (await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame())?.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : ""))).catch(() => null),
     });
-    await waitFor(() => cardsButton("Seat 1"), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
+    // a press of "Free table" was once lost on CI (2026-11-08: the window still offered "Free table"): pressed
+    // again until the table's "Seat 1" shows, which is then pressed
+    await waitFor(async () => (await cardsButton("Seat 1")) || ((await cardsButton("Free table")) && false), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     await waitFor(() => cardsButton("Deal"), { what: "Deal" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
     const cardsView = (await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" }))!;
     await waitFor(() => cardsView.evaluate(() => (window as unknown as { __drawn?: { cards: { where: string }[] } }).__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });

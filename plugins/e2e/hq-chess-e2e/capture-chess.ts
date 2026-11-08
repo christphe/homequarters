@@ -1,4 +1,5 @@
-// UX capture for the critic (not part of the default suite): run "node run.ts capture-chess".
+// UX capture for the critic (not part of the project's test:e2e): from this folder, run
+// "node ../../../e2e/plugin-run.ts --plugin ../../bundled/hq-chess capture-chess.ts" (the testbed, no LiveKit).
 // hq-chess on, a board on the social area's table, Ann (White) and the administrator (Black) seated with
 // their windows open, Di standing just north of the table. Writes frames and a contact sheet to a fresh
 // folder inside $HQ_CAPTURE_DIR (default /tmp/hq-capture):
@@ -15,8 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launch, joinAs, walkTo, sleep, waitFor, type RunContext, type User } from "../lib.ts";
-import type { BoundingBox } from "puppeteer-core";
+import { launch, joinAs, walkTo, sleep, waitFor, type BoundingBox, type RunContext, type User } from "../../../e2e/lib.ts";
 import { setPlugin, setBoards, board, dragSq, press, button, openWithX, countFrames, viewFrame, sq, MODAL, BOARD, type Player } from "./chess.ts";
 
 const HUD = ".topbar,.side,.social-controls,.bar,.minimap,.toast,.dock{display:none!important}";

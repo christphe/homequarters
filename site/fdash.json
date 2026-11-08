@@ -1,13 +1,25 @@
 {
   "tasks": {
-    "tsc": {
+    "lint": {
       "run": [
         [
           "pnpm",
           "exec",
           "tsc",
           "--noEmit"
+        ],
+        [
+          "node",
+          "../scripts/oxlint.ts",
+          "."
         ]
+      ],
+      "inputs": [
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
       ],
       "tools": [
         [
@@ -21,11 +33,24 @@
         [
           "node",
           "build.ts"
-        ],
+        ]
+      ],
+      "inputs": [
+        "/**"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "test:unit": {
+      "run": [
         [
           "node",
           "check.ts"
         ]
+      ],
+      "after": [
+        "build"
       ],
       "inputs": [
         "/**"

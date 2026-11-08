@@ -3,8 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** A path pattern relative to the root (a leading "!" excludes), or the files of Go packages. */
-export type Input = string | { go: string; cwd: string; tests: boolean };
+/** A path pattern relative to the root (a leading "!" excludes), the files of Go packages, or a path pattern
+ * of files read from the disk, git-ignored ones included (build artefacts a command runs or serves). */
+export type Input = string | { go: string; cwd: string; tests: boolean } | { disk: string };
 
 export type Command = {
   kind: "command";
@@ -20,16 +21,33 @@ export type Command = {
   envKeys: string[];
   tools: string[][];
   items: Map<string, { inputs: Input[] }> | undefined;
+  /** In a workspace, the project the command belongs to (its name is then `<project>:<task>`); unset for the
+   * workspace's own tasks and in a lone fdash.json. */
+  project?: string;
+  /** The commands this one starts after, when they are part of the same run. Written, the names of tasks of
+   * the same file or project; once the config is finished, the commands they stand for, with those coming
+   * from groups and (in a workspace) from the projects it depends on. */
+  after: string[];
+  /** Path patterns (relative to the root, a leading "!" excludes) of the files the command produces: part of
+   * the cache key, stored with a pass and restored on a hit. */
+  outputs: string[];
 };
-export type Group = { kind: "group"; name: string; tasks: string[]; jobs?: number };
+/** `after`: the tasks every command of the group starts after (see Command). */
+export type Group = { kind: "group"; name: string; tasks: string[]; jobs?: number; project?: string; after: string[] };
 export type Task = Command | Group;
 /** Tasks by name, in the order of the file. */
 export type Config = Map<string, Task>;
 
 export const CONFIG_FILE = "fdash.json";
 
-const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache"]);
-const GROUP_KEYS = new Set(["tasks", "jobs"]);
+const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache", "after", "outputs"]);
+const GROUP_KEYS = new Set(["tasks", "jobs", "after"]);
+
+function parseAfter(name: string, v: unknown): string[] {
+  if (v === undefined) return [];
+  if (!isStrings(v)) throw new Error(`${name}: after must be a list of task names`);
+  return v;
+}
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isArgv = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every((s) => typeof s === "string");
@@ -42,7 +60,8 @@ function parseInputs(name: string, key: string, v: unknown): Input[] {
     if (isObject(x) && typeof x.go === "string" && typeof x.cwd === "string" && Object.keys(x).every((k) => k === "go" || k === "cwd" || k === "tests") && (x.tests === undefined || typeof x.tests === "boolean")) {
       return { go: x.go, cwd: x.cwd, tests: x.tests === true };
     }
-    throw new Error(`${name}: ${key} holds ${JSON.stringify(x)}: a path pattern or { "go": <packages>, "cwd": <module dir>, "tests"?: <bool> }`);
+    if (isObject(x) && typeof x.disk === "string" && x.disk !== "" && !x.disk.startsWith("!") && Object.keys(x).length === 1) return { disk: x.disk };
+    throw new Error(`${name}: ${key} holds ${JSON.stringify(x)}: a path pattern, { "go": <packages>, "cwd": <module dir>, "tests"?: <bool> } or { "disk": <path pattern> }`);
   });
 }
 
@@ -53,6 +72,9 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
   for (const k of ["failOnOutput", "args", "cache"] as const) if (t[k] !== undefined && typeof t[k] !== "boolean") throw new Error(`${name}: ${k} must be true or false`);
   if (t.envKeys !== undefined && !isStrings(t.envKeys)) throw new Error(`${name}: envKeys must be a list of names`);
   if (t.tools !== undefined && !(Array.isArray(t.tools) && t.tools.every(isArgv))) throw new Error(`${name}: tools must be a list of commands, each a non-empty list of strings`);
+  if (t.outputs !== undefined && !(isStrings(t.outputs) && t.outputs.every((p) => p.replace(/^!/, "") !== ""))) throw new Error(`${name}: outputs must be a list of path patterns`);
+  // items are cached one by one, and which of them produced which file is unknown
+  if (t.outputs !== undefined && t.items !== undefined) throw new Error(`${name}: outputs cannot be combined with items`);
   let items: Command["items"];
   if (t.items !== undefined && t.args !== true) throw new Error(`${name}: items needs "args": true (the items to run are given as arguments)`);
   if (t.items !== undefined) {
@@ -76,13 +98,16 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
     envKeys: (t.envKeys as string[] | undefined) ?? [],
     tools: (t.tools as string[][] | undefined) ?? [],
     items,
+    after: parseAfter(name, t.after),
+    outputs: (t.outputs as string[] | undefined) ?? [],
   };
 }
 
 function parseGroup(name: string, t: Record<string, unknown>): Group {
   if (!isStrings(t.tasks)) throw new Error(`${name}: tasks must be a list of task names`);
   if (t.jobs !== undefined && !(typeof t.jobs === "number" && Number.isInteger(t.jobs) && t.jobs >= 1)) throw new Error(`${name}: jobs must be a positive integer, got ${JSON.stringify(t.jobs)}`);
-  return t.jobs === undefined ? { kind: "group", name, tasks: t.tasks } : { kind: "group", name, tasks: t.tasks, jobs: t.jobs as number };
+  const after = parseAfter(name, t.after);
+  return t.jobs === undefined ? { kind: "group", name, tasks: t.tasks, after } : { kind: "group", name, tasks: t.tasks, jobs: t.jobs as number, after };
 }
 
 /** Parses JSON, naming the file in the error. */
@@ -115,10 +140,15 @@ export function parseTasks(tasks: Record<string, unknown>): Config {
   return config;
 }
 
-/** Checks that every group member exists and that groups form no cycle. */
+/** A task's name as its project's fdash.json writes it (`test:unit` for `server:test:unit`). */
+export const localName = (t: Task): string => (t.project === undefined ? t.name : t.name.slice(t.project.length + 1));
+
+/** Checks that every group member and every `after` exists and that neither groups nor `after` form a cycle,
+ * then turns each command's `after` into the commands it starts after. */
 export function finishConfig(config: Config): Config {
   for (const t of config.values()) {
     if (t.kind === "group") for (const m of t.tasks) if (!config.has(m)) throw new Error(`${t.name}: no task named ${m}`);
+    for (const a of t.after) if (!config.has(a)) throw new Error(`${t.name}: after names ${a}, which is no task`);
   }
   // a cycle between groups would never end
   const state = new Map<string, "open" | "done">();
@@ -131,6 +161,33 @@ export function finishConfig(config: Config): Config {
     state.set(name, "done");
   };
   for (const name of config.keys()) visit(name, []);
+
+  // every command a task reaches starts after every command its `after` reaches: a command's own first, then
+  // those of the groups it is in
+  const tasks = [...config.values()];
+  const written = new Map(tasks.map((t) => [t.name, t.after]));
+  const before = new Map<string, string[]>();
+  for (const t of [...tasks.filter((x) => x.kind === "command"), ...tasks.filter((x) => x.kind === "group")]) {
+    const preds = expand(config, written.get(t.name)!, []).map((c) => c.name);
+    if (preds.length === 0) continue;
+    for (const c of expand(config, [t.name], [])) {
+      const list = before.get(c.name) ?? [];
+      for (const p of preds) if (!list.includes(p)) list.push(p);
+      before.set(c.name, list);
+    }
+  }
+  for (const t of tasks) if (t.kind === "command") t.after = before.get(t.name) ?? [];
+
+  // a command waiting for itself, through others, would never start
+  const seen = new Map<string, "open" | "done">();
+  const walk = (name: string, trail: string[]) => {
+    if (seen.get(name) === "done") return;
+    if (seen.get(name) === "open") throw new Error(`after forms a cycle: ${[...trail.slice(trail.indexOf(name)), name].join(" -> ")}`);
+    seen.set(name, "open");
+    for (const p of (config.get(name) as Command).after) walk(p, [...trail, name]);
+    seen.set(name, "done");
+  };
+  for (const t of tasks) if (t.kind === "command") walk(t.name, []);
   return config;
 }
 

@@ -109,7 +109,7 @@ hq.onUpdate((_dt, world) => {
   draw();
 });
 
-// for tests (e2e/scenarios/cards.ts): the last messages this window got, and what it shows
+// for tests (plugins/e2e/hq-cards-e2e): the last messages this window got, and what it shows
 const heard: string[] = [];
 (globalThis as unknown as { __cards: () => unknown }).__cards = () => ({ heard, open, game: game?.name ?? null, unavailable: state?.unavailable ?? null, viewShown, viewFor, renewing });
 

@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { parseConfig } from "../config.ts";
 import { run, type Result } from "../run.ts";
-import { resolveInputs } from "../cache.ts";
+import { cacheKey, resolveInputs, resolveOutputs } from "../cache.ts";
+import { printResult } from "../cli.ts";
 
 const NODE = process.execPath;
 const node = (code: string) => [NODE, "-e", code];
@@ -186,4 +187,167 @@ test("items: inputs that cannot be resolved after the run give results, not a cr
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"]);
   fs.renameSync(path.join(root, ".git-off"), path.join(root, ".git"));
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS e:x"], "not recorded");
+});
+
+// a command that writes out/a.txt (and out/sub/b.txt) with what <root>/src.txt holds, counting its runs
+const producing = (extra: object = {}) => ({
+  ...counting("build"),
+  run: [node(`const fs=require("fs");fs.appendFileSync("count-build","x");fs.mkdirSync("out/sub",{recursive:true});const s=fs.readFileSync("src.txt","utf8");fs.writeFileSync("out/a.txt","a"+s);fs.writeFileSync("out/sub/b.txt","b"+s)`)],
+  inputs: ["src.txt"], outputs: ["out/**"], ...extra,
+});
+const read = (root: string, f: string) => fs.readFileSync(path.join(root, f), "utf8");
+
+test("outputs: stored with a pass, restored on a hit (a fresh folder, or over a stale file)", async () => {
+  // out/ is ignored by git, as a build's output is: the outputs are read from the disk, not from git
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  const tasks = { build: producing() };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS build"]);
+  assert.equal(read(root, "out/a.txt"), "a1");
+  fs.rmSync(path.join(root, "out"), { recursive: true });
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  assert.deepEqual([read(root, "out/a.txt"), read(root, "out/sub/b.txt"), runs(root, "build")], ["a1", "b1", 1]);
+  write(root, "out/a.txt", "stale");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  assert.equal(read(root, "out/a.txt"), "a1", "a hit overwrites what is on disk");
+  // another key, another set of outputs; going back restores the first one's
+  write(root, "src.txt", "2");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS build"]);
+  assert.equal(read(root, "out/a.txt"), "a2");
+  write(root, "src.txt", "1");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  assert.deepEqual([read(root, "out/a.txt"), runs(root, "build")], ["a1", 2]);
+});
+
+test("outputs: a record whose outputs are not in the cache is a miss, with a warning", async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  const tasks = { build: producing() };
+  await go(root, tasks);
+  const cacheDir = path.join(root, ".fdash", "cache");
+  const stored = fs.readdirSync(cacheDir).filter((f) => f.endsWith(".out"));
+  assert.equal(stored.length, 1, fs.readdirSync(cacheDir).join(", "));
+  // as a record made before outputs existed: the record is there, the outputs are not
+  fs.rmSync(path.join(cacheDir, stored[0]), { recursive: true });
+  fs.rmSync(path.join(root, "out"), { recursive: true });
+  const r = (await go(root, tasks)).results;
+  assert.deepEqual(lines(r), ["PASS build"]);
+  assert.equal(r[0].warn, "outputs not in the cache");
+  assert.deepEqual([read(root, "out/a.txt"), runs(root, "build")], ["a1", 2]);
+  const printed: string[] = [];
+  const log = console.log;
+  console.log = (s: string) => printed.push(s);
+  try {
+    printResult(r[0]);
+  } finally {
+    console.log = log;
+  }
+  assert.deepEqual(printed, ["WARN cache miss build: outputs not in the cache", "PASS build"]);
+  // and the run stored them again
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  assert.equal((await go(root, tasks)).results[0].warn, undefined);
+});
+
+test("outputs: a pass recorded before the command had outputs is a miss, with a warning; another miss is not", async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  // the record a cache made before outputs existed: the same command, without outputs in its key
+  assert.deepEqual(lines((await go(root, { build: producing({ outputs: [] }) })).results), ["PASS build"]);
+  const tasks = { build: producing() };
+  const r = (await go(root, tasks)).results;
+  assert.deepEqual([lines(r), r[0].warn, runs(root, "build")], [["PASS build"], "a pass recorded before outputs were cached", 2]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  // inputs that never passed: an ordinary miss, no warning
+  write(root, "src.txt", "2");
+  const changed = (await go(root, tasks)).results;
+  assert.deepEqual([lines(changed), changed[0].warn], [["PASS build"], undefined]);
+});
+
+test("outputs: a hit touches the stored copies (a cache pruned of what a run did not use keeps them); one pruned is a miss", async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  const tasks = { build: producing() };
+  await go(root, tasks);
+  const cacheDir = path.join(root, ".fdash", "cache");
+  const out = path.join(cacheDir, fs.readdirSync(cacheDir).find((f) => f.endsWith(".out"))!);
+  const old = new Date(Date.now() - 3600_000);
+  for (const f of ["out/a.txt", "out/sub/b.txt"]) fs.utimesSync(path.join(out, f), old, old);
+  fs.utimesSync(out + ".json", old, old);
+  const start = Date.now() - 1000;
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  for (const f of [path.join(out, "out/a.txt"), path.join(out, "out/sub/b.txt"), out + ".json"]) assert.ok(fs.statSync(f).mtimeMs >= start, f);
+  // what CI's pruning would leave of a store no run touched: the list, not all the files
+  fs.rmSync(path.join(out, "out/sub/b.txt"));
+  const r = (await go(root, tasks)).results;
+  assert.deepEqual([lines(r), r[0].warn, runs(root, "build")], [["PASS build"], "outputs not in the cache", 2]);
+});
+
+test("outputs: part of the key; a command without them keeps its key; resolved from the disk, ignored files included", () => {
+  const root = repo({ "src.txt": "1", ".gitignore": "out/\n" });
+  const key = (outputs?: string[]) => {
+    const c = parseConfig(JSON.stringify({ tasks: { t: { run: [["x"]], inputs: ["src.txt"], ...(outputs ? { outputs } : {}) } } })).get("t") as Parameters<typeof cacheKey>[1];
+    return cacheKey(root, c, [], ["src.txt"], {});
+  };
+  assert.notEqual(key(["out/**"]), key(["dist/**"]));
+  assert.notEqual(key(["out/**"]), key());
+  assert.equal(key([]), key());
+  write(root, "out/x.txt", "1");
+  write(root, "out/deep/y.txt", "1");
+  write(root, "out/skip.map", "1");
+  write(root, "out/.vite/manifest.json", "1");
+  write(root, "bin/app", "1");
+  assert.deepEqual(resolveOutputs(root, ["out/**", "!out/*.map"]), ["out/.vite/manifest.json", "out/deep/y.txt", "out/x.txt"]);
+  assert.deepEqual(resolveOutputs(root, ["bin/app", "out/*.txt"]), ["bin/app", "out/x.txt"]);
+  assert.deepEqual(resolveOutputs(root, ["nothing/**", "bin/none"]), []);
+});
+
+test("outputs: a restored file gets the mode it had when stored, even if the cache lost it (CI artifacts keep 0644)", { skip: process.platform === "win32" && "file modes are not meaningful on Windows (only a read-only flag)" }, async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  const tasks = { build: producing({ run: [node(`const fs=require("fs");fs.appendFileSync("count-build","x");fs.mkdirSync("out",{recursive:true});fs.writeFileSync("out/app","#!/bin/sh\\n");fs.chmodSync("out/app",0o755);fs.writeFileSync("out/a.txt","a")`)] }) };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS build"]);
+  const cacheDir = path.join(root, ".fdash", "cache");
+  const out = path.join(cacheDir, fs.readdirSync(cacheDir).find((f) => f.endsWith(".out"))!);
+  // what actions/upload-artifact and a download give back: every file 0644
+  fs.chmodSync(path.join(out, "out/app"), 0o644);
+  fs.rmSync(path.join(root, "out"), { recursive: true });
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  assert.equal(fs.statSync(path.join(root, "out/app")).mode & 0o777, 0o755);
+  assert.equal(fs.statSync(path.join(root, "out/a.txt")).mode & 0o111, 0, "a file stored without the executable bit stays without it");
+});
+
+test("outputs: a restore removes files the outputs match that the pass did not produce", async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\nkeep/\n" });
+  const tasks = { build: producing({ outputs: ["out/**", "!out/*.keep"] }) };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS build"]);
+  write(root, "out/stale.txt", "from another branch");
+  write(root, "out/sub/old.txt", "from another branch");
+  write(root, "out/note.keep", "excluded from the outputs");
+  write(root, "keep/x.txt", "not an output");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  for (const f of ["out/stale.txt", "out/sub/old.txt"]) assert.equal(fs.existsSync(path.join(root, f)), false, f);
+  assert.deepEqual([read(root, "out/a.txt"), read(root, "out/sub/b.txt"), read(root, "out/note.keep"), read(root, "keep/x.txt")], ["a1", "b1", "excluded from the outputs", "not an output"]);
+});
+
+test("disk inputs: files read from the disk, git-ignored ones included; a changed artefact reruns, a missing one contributes nothing", async () => {
+  // bin/ is ignored by git, as a build's binary is; the test reads it, so a stale binary must give another key
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nbin/\n" });
+  const tasks = { test: counting("test", { inputs: ["src.txt", { disk: "bin/app*" }] }) };
+  const inputs = (parseConfig(JSON.stringify({ tasks })).get("test") as Parameters<typeof cacheKey>[1]).inputs!;
+  write(root, "bin/app", "v1");
+  assert.deepEqual(resolveInputs(root, inputs), ["bin/app", "src.txt"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED test"]);
+  write(root, "bin/app", "v2");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "a rebuilt binary");
+  write(root, "bin/app.exe", "v1");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "another file the pattern matches");
+  fs.rmSync(path.join(root, "bin"), { recursive: true });
+  assert.deepEqual(resolveInputs(root, inputs), ["src.txt"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "no artefact: no crash, another key");
+  assert.equal(runs(root, "test"), 4);
+  if (process.platform !== "win32") {
+    // the mode is not part of the key: a binary whose mode a cache lost, then restored, is the same input
+    const c = parseConfig(JSON.stringify({ tasks })).get("test") as Parameters<typeof cacheKey>[1];
+    write(root, "bin/app", "v2");
+    fs.chmodSync(path.join(root, "bin/app"), 0o755);
+    const k1 = cacheKey(root, c, [], ["bin/app"], {});
+    fs.chmodSync(path.join(root, "bin/app"), 0o644);
+    assert.equal(cacheKey(root, c, [], ["bin/app"], {}), k1);
+  }
 });

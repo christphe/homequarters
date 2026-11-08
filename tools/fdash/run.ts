@@ -1,17 +1,18 @@
 // Running tasks: a command's steps in sequence, a group's members `jobs` at once, each command once per run,
-// and the cache (inputs, items) around commands that declare inputs.
+// and the cache (inputs, items, outputs) around commands that declare inputs.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expand, type Command, type Config } from "./config.ts";
-import { cacheKey, passed, recordPass, resolveInputs, signature } from "./cache.ts";
+import { cacheKey, passed, recordPass, resolveInputs, resolveOutputs, restoreOutputs, signature, storeOutputs } from "./cache.ts";
 import { launch, spawnSpec } from "./spawn.ts";
 
 export { spawnSpec };
 
-/** One line of the report: a command, or one item of a command (`<command>:<item>`). */
-export type Result = { name: string; ok: boolean; cached: boolean; log: string; ms: number };
+/** One line of the report: a command, or one item of a command (`<command>:<item>`). `failedAfter`: the
+ * command was not run because this predecessor failed. `warn`: why a command that had passed ran again. */
+export type Result = { name: string; ok: boolean; cached: boolean; log: string; ms: number; failedAfter?: string; warn?: string };
 
 export type RunOptions = {
   root: string;
@@ -42,7 +43,7 @@ function runStep(argv: string[], o: { cwd: string; env: NodeJS.ProcessEnv; log: 
     // settled once: a program that cannot start emits "error" and then "close", and the log file is closed
     // as soon as the step is settled, so nothing may be written after that
     let settled = false;
-    const write = (s: string | Buffer) => { if (!settled) (typeof s === "string" ? fs.writeSync(o.log, s) : fs.writeSync(o.log, s)); };
+    const write = (s: string | Uint8Array) => { if (!settled) (typeof s === "string" ? fs.writeSync(o.log, s) : fs.writeSync(o.log, s)); };
     const settle = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
     let child;
     try {
@@ -117,6 +118,8 @@ function readReport(file: string): { said: Map<string, boolean>; nocache: boolea
 export async function run(o: RunOptions): Promise<{ results: Result[]; interrupted: boolean }> {
   const skip = new Set(o.skip ?? []);
   const order = expand(o.config, o.names, o.skip ?? []);
+  // what this run starts: a predecessor outside it is not waited for, and never started
+  const inRun = new Set(order.map((c) => c.name));
   const logDir = o.logDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "fdash."));
   const cacheDir = o.cacheDir ?? process.env.FDASH_CACHE_DIR ?? path.join(o.root, ".fdash", "cache");
   const stop = () => o.signal?.aborted === true;
@@ -160,12 +163,39 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       if (c.items) fs.appendFileSync(log, `fdash: arguments that are not items, running without the cache: ${extra.join(" ")}\n`);
       if (c.items) return plain();
       const key = cacheKey(o.root, c, extra, common, process.env);
-      if (!o.force && passed(cacheDir, c.name, key)) return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
+      let warn: string | undefined;
+      if (!o.force && passed(cacheDir, c.name, key)) {
+        // a hit puts the outputs of that pass on disk, over what is there; without them it is a miss
+        let restored: string;
+        let failure = "";
+        try {
+          restored = c.outputs.length ? restoreOutputs(cacheDir, c.name, key, o.root, c.outputs) : "restored";
+        } catch (e) {
+          // in the cache, but not put back: a file in use (a running binary on Windows), a permission
+          failure = (e as Error).message;
+          fs.appendFileSync(log, `fdash: the outputs could not be restored: ${failure}\n`);
+          restored = "missing";
+        }
+        if (restored === "restored") return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
+        warn = failure ? `the outputs could not be restored (${failure})` : "outputs not in the cache";
+      } else if (!o.force && c.outputs.length && passed(cacheDir, c.name, cacheKey(o.root, { ...c, outputs: [] }, extra, common, process.env))) {
+        // the outputs are part of the key: a pass recorded before they were declared (or cached) has the key
+        // the command would have without them, and does not count, since nothing of it can be restored
+        warn = "a pass recorded before outputs were cached";
+      }
       const before = key + signature(o.root, common);
       const [r] = await plain();
       const now = () => { const files = resolveInputs(o.root, c.inputs!); return cacheKey(o.root, c, extra, files, process.env) + signature(o.root, files); };
-      if (r.ok && unchanged(before, now)) recordPass(cacheDir, c.name, key, r.ms);
-      return [r];
+      if (r.ok && unchanged(before, now)) {
+        try {
+          // the outputs first: a record is only ever written once its outputs are kept
+          if (c.outputs.length) storeOutputs(cacheDir, c.name, key, o.root, resolveOutputs(o.root, c.outputs));
+          recordPass(cacheDir, c.name, key, r.ms);
+        } catch (e) {
+          fs.appendFileSync(log, `fdash: the outputs could not be stored, nothing recorded: ${(e as Error).message}\n`);
+        }
+      }
+      return [warn ? { ...r, warn } : r];
     }
     // items: each keyed on its own, the command run once with the items that have not passed
     const items = [...c.items.keys()].filter((i) => extra.length === 0 || extra.includes(i));
@@ -205,6 +235,18 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
       : { name: `${c.name}:${i}`, ok: true, cached: true, log: "", ms: 0 });
   }
 
+  /** A command first waits for its predecessors that are part of this run; one not started yet is run here, in
+   * this command's lane, so that a lane never waits for work that no lane is free to start. */
+  async function afterPredecessors(c: Command): Promise<Result[]> {
+    for (const a of c.after) {
+      if (!inRun.has(a)) continue;
+      const ok = await task(a);
+      if (stop()) return [];
+      if (!ok) return [{ name: c.name, ok: false, cached: false, log: "", ms: 0, failedAfter: a }];
+    }
+    return stop() ? [] : command(c);
+  }
+
   async function task(name: string): Promise<boolean> {
     if (skip.has(name)) return true;
     const t = o.config.get(name)!;
@@ -212,7 +254,7 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
     let p = started.get(name);
     if (!p) {
       if (stop()) return false;
-      p = command(t).then((rs) => { done.set(name, rs); return report(rs); });
+      p = afterPredecessors(t).then((rs) => { done.set(name, rs); return report(rs); });
       started.set(name, p);
     }
     return (await p).every((r) => r.ok);

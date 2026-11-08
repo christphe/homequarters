@@ -1,0 +1,1 @@
+{"name": "caller", "title": "Caller", "version": "1.0.0", "description": "Test fixture: calls the hooks of hq-pets for the member whose message it handles.", "server": "main.ts"}

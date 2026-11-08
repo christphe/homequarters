@@ -1,11 +1,22 @@
 {
   "tasks": {
-    "fmt": {
+    "lint": {
       "run": [
         [
           "gofmt",
           "-l",
           "."
+        ],
+        [
+          "go",
+          "vet",
+          "./..."
+        ],
+        [
+          "go",
+          "tool",
+          "staticcheck",
+          "./..."
         ]
       ],
       "failOnOutput": true,
@@ -23,13 +34,18 @@
         "GOOS"
       ]
     },
-    "vet": {
+    "build": {
       "run": [
         [
           "go",
-          "vet",
-          "./..."
+          "build",
+          "-o",
+          "../bin/",
+          "./cmd/homequarters"
         ]
+      ],
+      "outputs": [
+        "/bin/homequarters*"
       ],
       "tools": [
         [
@@ -45,30 +61,7 @@
         "GOOS"
       ]
     },
-    "staticcheck": {
-      "run": [
-        [
-          "go",
-          "tool",
-          "staticcheck",
-          "./..."
-        ]
-      ],
-      "tools": [
-        [
-          "go",
-          "version"
-        ]
-      ],
-      "envKeys": [
-        "GOFLAGS",
-        "CGO_ENABLED",
-        "GOEXPERIMENT",
-        "GOARCH",
-        "GOOS"
-      ]
-    },
-    "test": {
+    "test:unit": {
       "run": [
         [
           "go",
@@ -79,7 +72,6 @@
         ]
       ],
       "inputs": [
-        "/plugins/**",
         "/web/dev/**"
       ],
       "tools": [

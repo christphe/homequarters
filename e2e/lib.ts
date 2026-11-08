@@ -3,6 +3,8 @@ import { chrome } from "./env.ts";
 import puppeteer, { type Browser, type BrowserContext, type Page, type Viewport } from "puppeteer-core";
 import type { ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
+// for scenarios outside e2e/ (plugins/e2e/*), which cannot resolve puppeteer-core from their own folder
+export type { BoundingBox, Browser, BrowserContext, CDPSession, ElementHandle, Frame, HTTPRequest, Page } from "puppeteer-core";
 
 /** A player of a scenario: an isolated browser context with its page, joined as name (joinAs). */
 export type User = { ctx: BrowserContext; page: Page; name: string; logs: string[]; id: number };

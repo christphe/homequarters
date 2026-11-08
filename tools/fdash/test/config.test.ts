@@ -13,8 +13,8 @@ test("parseConfig: defaults and order", () => {
     a: { cwd: "w", run: [["y", "1"], ["z"]], env: { K: "v" }, failOnOutput: true, args: true },
   }));
   assert.deepEqual([...c.keys()], ["b", "g", "h", "a"]);
-  assert.deepEqual(c.get("b"), { kind: "command", name: "b", cwd: ".", run: [["x"]], env: {}, failOnOutput: false, args: false, cache: true, inputs: undefined, envKeys: [], tools: [], items: undefined });
-  assert.deepEqual(c.get("g"), { kind: "group", name: "g", tasks: ["b", "a"], jobs: 2 });
+  assert.deepEqual(c.get("b"), { kind: "command", name: "b", cwd: ".", run: [["x"]], env: {}, failOnOutput: false, args: false, cache: true, inputs: undefined, envKeys: [], tools: [], items: undefined, after: [], outputs: [] });
+  assert.deepEqual(c.get("g"), { kind: "group", name: "g", tasks: ["b", "a"], jobs: 2, after: [] });
   assert.equal((c.get("h") as Group).jobs, undefined);
   const a = c.get("a") as Command;
   assert.deepEqual([a.cwd, a.run, a.env, a.failOnOutput, a.args], ["w", [["y", "1"], ["z"]], { K: "v" }, true, true]);
@@ -24,13 +24,13 @@ test("parseConfig: inputs, envKeys, tools and items", () => {
   const c = parseConfig(cfg({
     e: {
       run: [["node", "run.mjs"]], args: true,
-      inputs: ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server" }, { go: "./...", cwd: "server", tests: true }],
+      inputs: ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server" }, { go: "./...", cwd: "server", tests: true }, { disk: "bin/x*" }],
       envKeys: ["V"], tools: [["go", "version"]],
       items: { one: { inputs: ["s/one.mjs"] }, two: {} },
     },
   }));
   const e = c.get("e") as Command;
-  assert.deepEqual(e.inputs, ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server", tests: false }, { go: "./...", cwd: "server", tests: true }]);
+  assert.deepEqual(e.inputs, ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server", tests: false }, { go: "./...", cwd: "server", tests: true }, { disk: "bin/x*" }]);
   assert.deepEqual(e.envKeys, ["V"]);
   assert.deepEqual(e.tools, [["go", "version"]]);
   assert.deepEqual([...e.items!.entries()], [["one", { inputs: ["s/one.mjs"] }], ["two", { inputs: [] }]]);
@@ -57,11 +57,22 @@ test("parseConfig: every refusal names the task", () => {
     [{ t: { run: [["x"]], inputs: [1] } }, /t: inputs/],
     [{ t: { run: [["x"]], inputs: [{ go: "./x" }] } }, /t: inputs/],
     [{ t: { run: [["x"]], inputs: [{ go: "./x", cwd: "s", foo: 1 }] } }, /t: inputs/],
+    [{ t: { run: [["x"]], inputs: [{ disk: "" }] } }, /t: inputs/],
+    [{ t: { run: [["x"]], inputs: [{ disk: "!bin/x" }] } }, /t: inputs/],
+    [{ t: { run: [["x"]], inputs: [{ disk: "bin/x", go: "./x" }] } }, /t: inputs/],
     [{ t: { run: [["x"]], envKeys: [1] } }, /t: envKeys/],
     [{ t: { run: [["x"]], tools: [[]] } }, /t: tools/],
     [{ t: { run: [["x"]], args: true, items: { a: { foo: 1 } } } }, /t: items/],
     [{ t: { run: [["x"]], items: [] } }, /t: items/],
     [{ t: { run: [["x"]], items: { a: {} } } }, /t: items needs "args": true/],
+    [{ t: { run: [["x"]], after: "a" } }, /t: after/],
+    [{ t: { run: [["x"]], outputs: "out/**" } }, /t: outputs/],
+    [{ t: { run: [["x"]], outputs: [""] } }, /t: outputs/],
+    [{ t: { run: [["x"]], args: true, items: { a: {} }, outputs: ["out/**"] } }, /t: outputs.*items/],
+    [{ t: { run: [["x"]], after: ["nope"] } }, /t: after names nope/],
+    [{ g: { tasks: [], after: [1] } }, /g: after/],
+    [{ a: { run: [["x"]], after: ["b"] }, b: { run: [["x"]], after: ["a"] } }, /after forms a cycle/],
+    [{ a: { run: [["x"]], after: ["g"] }, g: { tasks: ["a"] } }, /after forms a cycle: a -> a/],
   ];
   for (const [tasks, re] of bad) assert.throws(() => parseConfig(cfg(tasks)), re, JSON.stringify(tasks));
   assert.throws(() => parseConfig("{"), /fdash\.json/);
@@ -82,4 +93,14 @@ test("expand: depth first, each command once, skip a command or a group, unknown
   assert.deepEqual(names(["e", "a"]), ["e", "a"]);
   assert.throws(() => names(["nope"]), /nope/);
   assert.throws(() => names(["all"], ["nope"]), /nope/);
+});
+
+test("after: a group's predecessors become its commands', a predecessor group stands for its commands", () => {
+  const c = parseConfig(cfg({
+    build: { tasks: ["b1", "b2"] }, b1: { run: [["x"]] }, b2: { run: [["x"]] },
+    tests: { tasks: ["t1", "t2"], after: ["build"] }, t1: { run: [["x"]] }, t2: { run: [["x"]], after: ["t1"] },
+  }));
+  assert.deepEqual((c.get("t1") as Command).after, ["b1", "b2"]);
+  assert.deepEqual((c.get("t2") as Command).after, ["t1", "b1", "b2"]);
+  assert.deepEqual((c.get("b1") as Command).after, []);
 });

@@ -50,6 +50,7 @@ type Server struct {
 	plugins []plugin.Info
 	hosts   map[int64]*plugin.Host
 	kvQ     chan kvWrite
+	kvWait  kvPending // writes queued in kvQ and not yet stored, per office and plugin
 	plugLim *limiter
 	// mapMu orders map changes (admin edits, desk claims) so the saved map is the one last applied.
 	mapMu sync.Mutex
@@ -143,7 +144,7 @@ func (s *Server) savePositions(ctx context.Context) {
 						s.log.Error("save last position", "err", err)
 					}
 				case k := <-s.kvQ:
-					s.writeKV(fctx, k)
+					s.saveKV(fctx, k)
 				default:
 					return
 				}
@@ -157,7 +158,7 @@ func (s *Server) savePositions(ctx context.Context) {
 				s.log.Error("audit action", "err", err)
 			}
 		case k := <-s.kvQ:
-			s.writeKV(ctx, k)
+			s.saveKV(ctx, k)
 		case c := <-s.chatQ:
 			if err := s.st.AppendChat(ctx, c.office, c.user, c.text, c.ts); err != nil {
 				s.log.Error("save chat", "err", err) // never log the message text

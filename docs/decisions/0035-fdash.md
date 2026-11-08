@@ -1,6 +1,13 @@
 # 0035: fdash, a task runner with a cache, under the gauntlet
 
-Date: 2026-11-07. Status: accepted.
+Date: 2026-11-07. Status: accepted; amended by [decision 0037](0037-test-pyramid.md).
+
+**Changed since (decision 0037):** tasks have conventional names (`build`, `lint`, `test:unit`,
+`test:integration`, `test:e2e`) and the command line names them without their project (`fdash run test:unit`,
+`--pkg` to restrict); tasks are ordered by the project graph and by `after`; several names run as stages;
+`outputs` are stored with a pass and restored on a hit; the bundled plugins' Go tests moved into the plugins
+as integration tests against `homequarters testbed`; CI runs `unit`, `integration` and `e2e` instead of
+`static` and `e2e`. The text below describes fdash and CI as this decision left them.
 
 ## Context
 

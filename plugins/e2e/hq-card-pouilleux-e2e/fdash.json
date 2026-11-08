@@ -1,0 +1,83 @@
+{
+  "dependsOn": [
+    "hq-card-pouilleux",
+    "web"
+  ],
+  "tasks": {
+    "lint": {
+      "run": [
+        [
+          "node",
+          "../../../e2e/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json"
+        ],
+        [
+          "node",
+          "../../../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/plugins/e2e/hq-cards-e2e/lib.ts",
+        "/e2e/lib.ts",
+        "/e2e/env.ts",
+        "/e2e/globals.d.ts",
+        "/e2e/package.json",
+        "/e2e/pnpm-lock.yaml",
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/web/package.json",
+        "/web/pnpm-lock.yaml"
+      ]
+    },
+    "test:e2e": {
+      "run": [
+        [
+          "node",
+          "../../../e2e/plugin-run.ts",
+          "--plugin",
+          "../../bundled/hq-cards",
+          "--plugin",
+          "../../bundled/hq-card-pouilleux",
+          "oldMaid.ts"
+        ]
+      ],
+      "env": {
+        "E2E_VIEWPORT": "small",
+        "HQ_BIN_REPO_ONLY": "1"
+      },
+      "inputs": [
+        "/e2e/lib.ts",
+        "/e2e/env.ts",
+        "/e2e/plugin-run.ts",
+        "/e2e/slots.ts",
+        "/e2e/globals.d.ts",
+        "/e2e/package.json",
+        "/e2e/pnpm-lock.yaml",
+        "/plugins/e2e/hq-cards-e2e/lib.ts",
+        "!capture-*.ts",
+        {
+          "disk": "/bin/homequarters*"
+        },
+        {
+          "disk": "/web/dist/**"
+        }
+      ],
+      "envKeys": [
+        "E2E_VIEWPORT",
+        "CHROME_VERSION",
+        "CI",
+        "GOFLAGS",
+        "CGO_ENABLED"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    }
+  }
+}

@@ -321,6 +321,47 @@ Updates are skipped while your code has not finished the previous one, so a slow
 
 Labels and texts come from your plugin and are shown as they are (plain text): they do not go through Home Quarters' translation dictionary.
 
+## Testing a plugin
+
+A plugin's tests come in three tiers ([decision 0037](decisions/0037-test-pyramid.md)). The bundled plugins use all three; copy the one you need.
+
+- **Unit tests** (`test/*.test.ts`, run with `node --test`): the rules and the logic, on pure modules of your plugin (a game's moves, what a view sends or announces). Fast, no server.
+- **Integration tests** (`*.ispec.ts`, anywhere in the plugin folder, run with `node --test "**/*.ispec.ts"`): your plugin's server code running in the real server, driven by members over the real HTTP and WebSocket API. No browser, no LiveKit.
+- **Browser tests** (an e2e project of their own): what only a browser shows, such as your views, buttons and pixels, against the real server and the built client.
+
+**Integration tests.** [`plugins/sdk/testbed.ts`](../plugins/sdk/testbed.ts) starts `homequarters testbed` (the real server in dev mode, without LiveKit, with a throwaway database and only the plugin folders you give, already turned on) and drives it. It needs Node 24 and nothing else.
+
+~~~ts
+import path from "node:path";
+import { after, test } from "node:test";
+import { testbed } from "../../../sdk/testbed.ts";
+
+test("a member who opens the board gets its state", async () => {
+  const bed = await testbed({ plugins: [path.resolve(import.meta.dirname, "..")] });
+  after(() => bed.close());
+  await bed.join("Ann");                                  // the first member is the administrator
+  await bed.placeObject("board", { x: 13, y: 22 });       // through the admin map API
+  const bob = await bed.join("Bob", { at: { x: 13, y: 23 } });
+  bob.use({ x: 13, y: 22 });                              // X next to the object
+  await bob.waitFor("my-plugin", (d) => d.t === "state"); // fails after a timeout, naming the last frames
+});
+~~~
+
+The bed also turns plugins on and off (`setPlugin`), changes a setting (`setSetting`), reads and seeds your plugin's stored data (`kv`, `waitKv`, `seedKv`), counts the errors your plugin logged (`errors`) and restarts the server on the same database (`restart`); a member sends your plugin's messages (`send`), leaves and reconnects (within the server's reconnect grace, about 10 s, your plugin sees neither), and goes invisible and back (`setStatus`: a leave and a join for your plugin, at once). Every method is documented in the file. Wait for messages, never for a fixed time: to prove that nothing happened, send a message your plugin always answers and check that nothing else came before the answer, or use the member's bounded `quiet(ms)`.
+
+**The binary.** The client looks for `HQ_BIN`, then `bin/homequarters` (`.exe` on Windows) in a parent folder, then `homequarters` on `PATH`; it never builds it. Build it from source: in this repository, `node tools/fdash/cli.ts run build --pkg server` writes `bin/homequarters`; elsewhere, `go build -o <file> ./cmd/homequarters` in `server/` and set `HQ_BIN` to that file. No release ships the binary or the client for now. The testbed refuses to start with `HQ_ENV=production`, and its test-only endpoints (`/api/testbed/...`, placing an offline member, a plugin's data, error counts) exist only in that process. A plugin folder whose parent is named `bundled` is loaded as bundled (an `hq-` name), any other as installed (any other name).
+
+**Browser tests.** In this repository, a plugin's browser scenarios live in a project of their own, `plugins/e2e/<plugin>-e2e/` (outside the plugin folder, so the plugin's tests do not rerun when the web client changes and the image does not ship them). `e2e/plugin-run.ts` runs them: real Chrome against the testbed serving `web/dist`, no LiveKit. Each scenario file exports `run(ctx)` like those of `e2e/scenarios/` and uses `e2e/lib.ts`; `hq-chess-e2e` is the one to copy.
+
+**In this repository.** Each bundled plugin is an fdash project with `lint`, `test:unit` and `test:integration`; each e2e project has `lint` and `test:e2e`:
+
+~~~bash
+node tools/fdash/cli.ts run build --pkg server                  # bin/homequarters, needed by the next two
+node tools/fdash/cli.ts run test:integration --pkg hq-chess
+node tools/fdash/cli.ts run build --pkg web                     # web/dist, for the browser tests
+node tools/fdash/cli.ts run test:e2e --pkg hq-chess-e2e
+~~~
+
 ## The protocol underneath
 
 Messages ride the game WebSocket as `{"t":"plg","pl":<plugin>,"d":<json>}` in both directions. `{"t":"plgs"}` tells pages that the set of running plugins changed. See [WebSocket protocol](protocol.md) for the endpoints and limits.

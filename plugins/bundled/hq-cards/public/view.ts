@@ -533,7 +533,7 @@ function rowIndexAt(n: number, x: number, y: number): number | null {
   return null;
 }
 
-/** For tests (e2e/scenarios/cards.ts): what the canvas shows, in canvas pixels, and the log as written. */
+/** For tests (plugins/e2e/hq-cards-e2e): what the canvas shows, in canvas pixels, and the log as written. */
 function publish(): void {
   (window as unknown as { __drawn: unknown }).__drawn = {
     cards: drawn.map((d) => ({ ...d, x: d.x * scale, y: d.y * scale, w: (d.w ?? CARD_W) * scale })),

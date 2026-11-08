@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"homequarters/internal/plugin"
@@ -36,10 +37,70 @@ type kvWrite struct {
 	del       bool
 }
 
+// kvPending counts the plugin writes queued in kvQ and not yet stored, per office and plugin, so that
+// a caller can wait until what a stopped plugin wrote has reached the database (KVSettled).
+type kvPending struct {
+	mu sync.Mutex
+	n  map[kvOwner]int
+}
+
+type kvOwner struct {
+	office int64
+	plugin string
+}
+
+func (p *kvPending) add(o kvOwner, d int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.n == nil {
+		p.n = map[kvOwner]int{}
+	}
+	if p.n[o] += d; p.n[o] <= 0 {
+		delete(p.n, o)
+	}
+}
+
+func (p *kvPending) count(o kvOwner) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.n[o]
+}
+
+// KVSettled waits until every write of plugin in office queued before the call has been stored (or
+// failed and been logged), or until ctx ends. Used by internal/testbed before it replaces a stopped
+// plugin's data: a write queued by the plugin's last moments must not land after the replacement.
+func (s *Server) KVSettled(ctx context.Context, office int64, plugin string) error {
+	o := kvOwner{office, plugin}
+	for s.kvWait.count(o) > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Millisecond):
+		}
+	}
+	return nil
+}
+
+// saveKV stores one write taken from kvQ.
+func (s *Server) saveKV(ctx context.Context, k kvWrite) {
+	s.writeKV(ctx, k)
+	s.kvWait.add(kvOwner{k.office, k.plugin}, -1)
+}
+
 func (s *Server) setupPlugins() {
 	s.hosts = map[int64]*plugin.Host{}
 	s.kvQ = make(chan kvWrite, 1024)
 	s.plugLim = newLimiter(5, 10)
+	if len(s.cfg.PluginDirs) > 0 { // the testbed's explicit folders
+		s.plugins = plugin.LoadDirs(s.cfg.PluginDirs)
+		for _, i := range s.plugins {
+			if i.Err != "" {
+				s.log.Warn("plugin is broken", "plugin", i.Name, "source", i.Source, "err", i.Err)
+			}
+		}
+		s.log.Info("plugins loaded from folders", "count", len(s.plugins))
+		return
+	}
 	if s.cfg.PluginsDir == "" {
 		return
 	}
@@ -100,10 +161,13 @@ func (k storeKV) put(w kvWrite) error {
 		k.s.writeKV(ctx, w)
 		return nil
 	}
+	o := kvOwner{w.office, w.plugin}
+	k.s.kvWait.add(o, 1) // before the send: the worker may store it at once
 	select {
 	case k.s.kvQ <- w:
 		return nil
 	default:
+		k.s.kvWait.add(o, -1)
 		return errors.New("storage busy, try again later")
 	}
 }

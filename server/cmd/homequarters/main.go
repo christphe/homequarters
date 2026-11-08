@@ -24,6 +24,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "testbed" { // a subcommand, before the server's own flags
+		os.Exit(testbedMain(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	healthcheck := flag.Bool("healthcheck", false, "probe /healthz on HQ_ADDR and exit (for container health checks)")
 	inviteRole := flag.String("invite", "", "print a new invite link path for this role (admin|member) and exit; use it to bootstrap the first admin")
 	inviteUses := flag.Int("invite-uses", 1, "max uses of the invite created with -invite")
@@ -31,6 +34,12 @@ func main() {
 	accountLink := flag.String("account-link", "", "print the personal link of this member and exit; opening it on another machine signs in as them and ends their other sessions")
 	backup := flag.String("backup", "", "write a consistent online backup of the SQLite database to this path and exit")
 	flag.Parse()
+	// a word this binary does not know (a newer version's subcommand, a typo) must not start the server, which
+	// would open the default database wherever it was run
+	if flag.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "unknown argument %q (subcommands: testbed)\n", flag.Arg(0))
+		os.Exit(2)
+	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg, err := config.Load()
 	if err != nil {

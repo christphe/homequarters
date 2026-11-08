@@ -1,0 +1,25 @@
+{
+  // The cards browser scenarios (the table; capture-cards.ts; lib.ts, which the games' e2e projects also use), run
+  // by Node as it is (type stripping) through e2e/plugin-run.ts: the same options as e2e/tsconfig.json. Its types
+  // (Node, puppeteer-core through e2e/lib.ts) come from e2e/node_modules.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
+    "typeRoots": ["../../../e2e/node_modules/@types"],
+    "types": ["node"]
+  },
+  "include": ["*.ts", "../../../e2e/globals.d.ts"]
+}
