@@ -1,7 +1,7 @@
 // The pets plugin's browser code (public/client.ts) against a stand-in of the page's `hq`: what it asks the page to
 // draw, the modal it builds and the wander goals it sends, without a browser. The page's side (following a trail,
 // pottering at the feet, walking to a goal) is web/test/petFollow.test.ts and tilePath.test.ts; the browser suite
-// keeps the pets drawn and walking on real pages (e2e/scenarios/plugins.ts).
+// keeps the pets drawn and walking on real pages (plugins/e2e/hq-pets-e2e/pets.ts).
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Goals, MemberPets, PetsMessage, YouMessage } from "../public/messages.ts";
 

@@ -121,7 +121,7 @@ The member creates the token in your plugin's modal (`hq.ui.appToken()`, which n
 curl -X POST -H "Authorization: Bearer $TOKEN" -d "Sparky" https://office.example.com/plugins/sparkmice/api/pet
 ~~~
 
-The suite's test plugin [`critters`](../../../../e2e/fixtures/plugins/installed/critters) does exactly this, and `e2e/scenarios/plugins.ts` checks it end to end.
+The suite's test plugin [`critters`](../../../../e2e/fixtures/plugins/installed/critters) does exactly this, and `plugins/e2e/hq-pets-e2e/pets.ts` checks it end to end.
 
 Installed plugins must not start with `hq-` (reserved for bundled ones), and their art is theirs: nothing taken from games or other people's work goes into this repository.
 
@@ -137,4 +137,4 @@ Installed plugins must not start with `hq-` (reserved for bundled ones), and the
 
 - **Who decides what.** The server keeps pets, names, colours, modes and the limit, and checks every message (rate-limited: 5 changes a second per member). The owner's page runs its pets' moods and picks their wander spots; the server relays them and every page walks the pets there (`hq.walkTo`, `hq.follow` with a sprite to go along). The server also keeps each wandering pet's last spot and gives them to a page that starts later, which puts the pets there at once: every page shows them in the same place, not behind their owner until the next step. Following, resting and pottering are computed on each page from the sprite and the clock (`hq.follow` with `roam`), so pages agree without messages.
 - **Sizes.** A member has at most 8 pets and 4 guests; names are 24 characters; a broadcast never goes over 3.5 KB, whatever the script of the names; a page draws at most 240 of the plugin's sprites, its own member's first.
-- **Tests.** `plugins/bundled/hq-pets/test/pets.ispec.ts`, run against the real server by the testbed (`node tools/fdash/cli.ts run test:integration --pkg hq-pets`: limit, names, sizes in any script, hooks, malformed and spammed messages, a full office arriving), `server/internal/plugin/hooks_test.go` (hooks in general), `e2e/scenarios/plugins.ts` (everything through the real controls, the hooks from outside the browser), `web/test/petFollow.test.ts` (following, resting, pottering).
+- **Tests.** `plugins/bundled/hq-pets/test/pets.ispec.ts`, run against the real server by the testbed (`node tools/fdash/cli.ts run test:integration --pkg hq-pets`: limit, names, sizes in any script, hooks, malformed and spammed messages, a full office arriving), `server/internal/plugin/hooks_test.go` (hooks in general), `plugins/e2e/hq-pets-e2e/pets.ts` (everything through the real controls on the testbed, the hooks from outside the browser), `web/test/petFollow.test.ts` (following, resting, pottering).
