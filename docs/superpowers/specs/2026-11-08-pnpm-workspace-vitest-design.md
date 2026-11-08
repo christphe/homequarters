@@ -62,3 +62,17 @@ next pull request.
 
 The exact Vitest config layout, pool and timeouts (integration suites start a server: generous timeouts), how
 `tsResolve.ts` and other Node-runner workarounds are retired, and the order of the migration.
+
+## Second part: browser checks move down (decided by the user on 2026-11-08: in this pull request)
+
+A browser scenario keeps what only a browser shows (real controls, pixels, iframes, media through LiveKit, sync
+between pages); a server rule moves to a Go test (the world, `httpapi`'s in-process server) or a testbed
+`*.ispec.ts`; client logic moves to a web unit test, a component's behaviour to a component test; a plugin view's
+logic to a test in the plugin.
+
+8. Every check removed from a scenario names its replacement (file and test) in the report, and that replacement
+   was seen red with the rule broken (or already existed and covers the same inputs: then named, not rewritten).
+9. Every feature keeps at least one check through its real controls in a browser.
+10. Browser time measured before and after (the suite's scenarios and the plugin e2e projects, locally and on
+    CI's shards); `e2e/shards.ts` durations updated from the measurements.
+11. No check is weakened in the move: same inputs, same assertions, or stronger.
