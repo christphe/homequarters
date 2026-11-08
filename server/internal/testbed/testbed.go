@@ -88,6 +88,15 @@ var linger = world.DefaultConfig().Grace + time.Second
 // Start opens the database, enables every plugin given (with an audit row by the testbed), and serves
 // the server until Close or until ctx ends. A plugin that cannot run makes Start fail.
 func Start(ctx context.Context, o Options) (bed *Bed, err error) {
+	addr := o.Addr
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+	// checked before listening: a listener on all interfaces, even for an instant, makes the Windows firewall
+	// ask about the binary (each go test build is a new one)
+	if !loopbackAddr(addr) {
+		return nil, fmt.Errorf("the testbed listens on this machine only: %s is not a loopback address (its test endpoints have no authentication)", addr)
+	}
 	if env := os.Getenv("HQ_ENV"); env != "" && env != "dev" {
 		return nil, fmt.Errorf("the testbed is for tests: it refuses HQ_ENV=%s", env)
 	}
@@ -147,19 +156,11 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 		}
 	}
 
-	addr := o.Addr
-	if addr == "" {
-		addr = "127.0.0.1:0"
-	}
 	ln, err := listen(addr)
 	if err != nil {
 		return nil, err
 	}
 	tcp := ln.Addr().(*net.TCPAddr)
-	if !tcp.IP.IsLoopback() { // all interfaces (0.0.0.0, ":0") included
-		ln.Close()
-		return nil, fmt.Errorf("the testbed listens on this machine only: %s is not a loopback address (its test endpoints have no authentication)", addr)
-	}
 	b.URL = "http://" + net.JoinHostPort(tcp.IP.String(), strconv.Itoa(tcp.Port))
 
 	cfg := &config.Config{Env: "dev", Addr: tcp.String(), DBPath: b.db, StaticDir: o.Static, PluginDirs: o.Plugins,
@@ -488,4 +489,12 @@ func listenWith(netListen func(network, addr string) (net.Listener, error), addr
 		defer ln.Close() // held until a good one is found, so the OS does not hand the same one back
 	}
 	return nil, fmt.Errorf("no free port outside the ports browsers refuse after 20 tries")
+}
+
+// loopbackAddr reports whether addr names a loopback IP ("127.0.0.1:0", "[::1]:8080"). An empty host
+// (":0") or "0.0.0.0" means every interface, and a name other than localhost could resolve elsewhere: refused.
+func loopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	ip := net.ParseIP(host)
+	return err == nil && (host == "localhost" || ip != nil && ip.IsLoopback())
 }
