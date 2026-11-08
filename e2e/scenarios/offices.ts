@@ -1,7 +1,8 @@
 // Private offices and desks through their real controls, one browser check per feature: an administrator assigns an
 // office in the editor and everybody sees it labelled with its owner; a visitor knocks with the Knock button, the
 // owner is asked and lets them in, and the visitor walks in; Ctrl+D runs the owner back into their office from the
-// hall; a member takes a free desk with Take this desk and its confirmation, and everybody sees it taken.
+// hall; a member with no place (the administrator) takes a free desk with Take this desk and its confirmation, and
+// everybody sees it taken. The walks run at once where the story allows: they are most of the scenario's time.
 // Moved down (no longer checked here):
 // - the map stores the owner's id, not their name; a rename follows on the office for everybody: Go
 //   TestOwnerNamesAreJoinedNotStored (httpapi/owners_test.go), TestPlacesAreNamedAfterTheirOwnersCurrentName
@@ -43,6 +44,21 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const t = String(Date.now() % 10000);
     const [boss, owner, guest] = await Promise.all([joinAs(browser, "Admin", { cookie }), joinAs(browser, "Owner" + t), joinAs(browser, "Guest" + t)]);
 
+    // the owner heads for Office 2 (still free) and the visitor for its door, while the administrator takes a desk
+    // and assigns the office: the walks are the scenario's time, so they run at once
+    const placed = Promise.all([walkTo(owner, ...at(13, 42)), walkTo(guest, ...at(15, 37))]);
+
+    // ---- a member without a place (the administrator, near the entrance) takes a free desk with the button next to it
+    const desk = await boss.page.evaluate(() => window.__hq.view.map!.props.find((p) => p.t === "desk" && !p.assign && p.y < 14)!);
+    const assigned = (u: User) => u.page.evaluate((x, y) => window.__hq.view.map!.props.find((p) => p.t === "desk" && p.x === x && p.y === y)?.assign, desk.x, desk.y);
+    await walkTo(boss, ...at(desk.x + 1, desk.y + 1));
+    await waitFor(() => hasButton(boss, /^Take this desk$/), { what: "Take this desk button" });
+    await button(boss, /^Take this desk$/);
+    await waitFor(() => boss.page.$("[role=dialog]"), { what: "confirmation" });
+    await button(boss, /^Take it$/);
+    await waitFor(async () => (await assigned(guest)) === boss.id, { what: "everybody sees the desk taken" });
+    check("Take this desk and its confirmation give the desk to the member, for everybody", true);
+
     // ---- the administrator assigns Office 2 to Owner in the editor (same tool as desks)
     await walkTo(boss, ...at(12, 37));
     await boss.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Edit office")?.click());
@@ -62,7 +78,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const oi = await areaIndex(guest, "office-2");
 
     // ---- the owner sits in their office; a visitor knocks from the hall with the Knock button and is let in
-    await Promise.all([walkTo(owner, ...at(13, 42)), walkTo(guest, ...at(15, 37))]);
+    await placed;
     await waitFor(async () => (await here(owner)) === oi, { what: "owner in their office" });
     await waitFor(() => hasButton(guest, /^Knock · Office 2/), { what: "knock button" });
     await button(guest, /^Knock · Office 2/);
@@ -74,32 +90,16 @@ export async function run(ctx: RunContext): Promise<boolean> {
       console.log("DIAG", JSON.stringify({ ownerKnock: await owner.page.evaluate(() => window.__hq.state.knock), guestDeny: await guest.page.evaluate(() => [...window.__hq.view.deny]), toast: await guest.page.evaluate(() => document.querySelector(".toast")?.textContent), ownerArea: await here(owner), oi }));
       throw e;
     });
-    await walkTo(guest, ...at(15, 42));
-    check("the admitted visitor walks in", (await here(guest)) === oi);
 
-    // the visitor heads for a free desk (taken below) while the owner goes on
-    const desk = await boss.page.evaluate(() => window.__hq.view.map!.props.find((p) => p.t === "desk" && !p.assign && p.y < 14)!);
-    const guestAtDesk = walkTo(guest, ...at(desk.x + 1, desk.y + 1)).then(() => null, (e: Error) => e);
-
-    // ---- Ctrl+D brings the owner back to their office from the hall, with the real keys
+    // ---- the visitor walks in while Ctrl+D brings the owner back to their office from the hall, with the real keys
+    const walkedIn = walkTo(guest, ...at(15, 42)).then(async () => (await here(guest)) === oi, () => false);
     await walkTo(owner, ...at(13, 37));
     await owner.page.keyboard.down("Control");
     await owner.page.keyboard.press("d");
     await owner.page.keyboard.up("Control");
     await waitFor(async () => (await here(owner)) === oi && !(await owner.page.evaluate(() => window.__hq.view.guided)), { timeout: 20000, what: "owner back in their office" });
     check("Ctrl+D runs the owner back into their own office", true);
-
-    // ---- a member without a place takes a free desk with the button shown next to it
-    const takeDesk = /^Take this desk$/;
-    const assigned = (u: User) => u.page.evaluate((x, y) => window.__hq.view.map!.props.find((p) => p.t === "desk" && p.x === x && p.y === y)?.assign, desk.x, desk.y);
-    const walkErr = await guestAtDesk;
-    if (walkErr) throw walkErr;
-    await waitFor(() => hasButton(guest, takeDesk), { what: "Take this desk button" });
-    await button(guest, takeDesk);
-    await waitFor(() => guest.page.$("[role=dialog]"), { what: "confirmation" });
-    await button(guest, /^Take it$/);
-    await waitFor(async () => (await assigned(boss)) === guest.id, { what: "everybody sees the desk taken" });
-    check("Take this desk and its confirmation give the desk to the member, for everybody", true);
+    check("the admitted visitor walks in", await walkedIn);
     const errs = [boss, owner, guest].flatMap((u) => u.logs);
     check("no console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
   } catch (e) {

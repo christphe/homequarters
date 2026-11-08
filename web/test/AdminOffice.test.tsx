@@ -5,8 +5,9 @@
 // name is renamed with its own form. The server's answers are stubbed. The server's side (admin only, desks carried
 // over by number, the new spawn, the audit row, everybody told and reconnected) is
 // TestAdminAppliesATemplateAndDesksCarryOver (httpapi/templates_test.go) and TestReplaceMapChangesSizeAndRespawnsEverybody
-// (world/template_test.go); the row the activity log shows for it is the last test here. The browser keeps one switch through this tab's real controls, against the real server:
-// e2e/scenarios/templates.ts (the member online gets the new map without a reload and walks past the old edge).
+// (world/template_test.go); the activity log's row for a switch is tested here too. The browser keeps one switch
+// through this tab's real controls, against the real server: e2e/scenarios/templates.ts (the member online gets the
+// new map without a reload and walks past the old edge). Renaming through the real dialog is the `admin` scenario.
 import { renderUI, stubFetch, type StubRequest } from "./support";
 import { screen, within } from "@testing-library/react";
 import { expect, it } from "vitest";
@@ -16,9 +17,9 @@ import { AdminDialog } from "../src/ui/AdminDialog";
 import { expectNoAxeViolations } from "./axe";
 
 const row = (id: string, name: string, w: number, h: number, desks: number, rooms: number, corners: number, current = false) =>
-  ({ id, name, w, h, current, summary: { desks, rooms, corners, offices: id === "loft" ? 4 : 0 }, carry: { kept: 1, lost: 0 } });
-/** What GET /api/admin/templates answers on the Loft with one desk assigned (as the browser suite's office). */
-const TEMPLATES = { templates: [row("loft", "Loft", 60, 46, 18, 6, 0, true), row("manor", "Manor", 85, 51, 48, 10, 12), row("lodge", "Lodge", 77, 51, 36, 8, 6)] };
+  ({ id, name, w, h, current, summary: { desks, rooms, corners, offices: id === "loft" ? 6 : 0 }, carry: { kept: 1, lost: 0 } });
+/** What GET /api/admin/templates answers on the Loft with one desk assigned (as the browser suite's office showed it). */
+const TEMPLATES = { templates: [row("loft", "Loft", 60, 46, 18, 4, 0, true), row("lodge", "Lodge", 77, 51, 36, 8, 8), row("manor", "Manor", 85, 51, 48, 10, 12)] };
 
 /** The dialog on its Office tab, the server answering `apply` to the switch. */
 async function office(apply: (req: StubRequest) => { status?: number; json?: unknown } = () => ({ json: { carry: { kept: 1, lost: 0 } } })) {
@@ -38,9 +39,9 @@ it("lists the three layouts with what they offer, the one in use marked", async 
   const { list, container } = await office();
   const rows = within(list).getAllByRole("listitem").map((li) => li.textContent);
   expect(rows).toHaveLength(3);
-  expect(rows[0]).toMatch(/^Loft · in use18 desks · 6 rooms · 4 private offices · 60 × 46 tiles/);
-  expect(rows[1]).toMatch(/^Manor48 desks · 10 rooms · 12 corners · 85 × 51 tiles/);
-  expect(rows[2]).toMatch(/^Lodge36 desks/);
+  expect(rows[0]).toMatch(/^Loft · in use18 desks · 4 rooms · 6 private offices · 60 × 46 tiles/);
+  expect(rows[1]).toMatch(/^Lodge36 desks · 8 rooms · 8 corners · 77 × 51 tiles/);
+  expect(rows[2]).toMatch(/^Manor48 desks · 10 rooms · 12 corners · 85 × 51 tiles/);
   // the layout in use offers a reset, the others a switch
   expect(screen.getByRole("button", { name: "Reset the Loft layout" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Use the Manor layout" })).toBeTruthy();
