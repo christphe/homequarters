@@ -53,7 +53,8 @@ without dependency ([decision 0035](0035-fdash.md)). The browser suites are unch
 `e2e/plugin-run.ts` are runners, not test files.
 
 **Cache keys.** Every fdash command of a project with a `package.json` reads the root `package.json`,
-`pnpm-workspace.yaml` and `pnpm-lock.yaml`: one global input, simple and safe.
+`pnpm-workspace.yaml` and `pnpm-lock.yaml`: one global input, simple and safe. (Since [decision
+0039](0039-fdash-pnpm-input.md), only the part of `pnpm-lock.yaml` its member installs.)
 
 **The Docker image** installs only what the client's build needs: `pnpm install --frozen-lockfile --filter
 homequarters-web` from the root lockfile, in the build stage.
