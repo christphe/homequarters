@@ -96,6 +96,7 @@ declare global {
       /** A sandboxed iframe in a modal (at most one per modal) running the manifest view `view` ("views" in plugin.json);
        * label is its accessible title, height a preset (default "medium"), the width the modal's. onMessage gets what the
        * view sends with hqView.send. Redrawing the modal with the same view keeps the iframe and its state. */
+      // oxlint-disable-next-line typescript/no-explicit-any -- public API: plugins type onMessage(msg: TheirShape), which unknown would refuse
       view(opts: { view: string; label: string; height?: "small" | "medium" | "large" | "full" /* full: in a modal of size full */; onMessage?: (msg: any) => void }): UINode;
       /** Sends to the open view's hqView.onMessage (anything JSON, at most 4096 bytes; 30 a second). */
       post(msg: unknown): void;
@@ -139,6 +140,7 @@ declare global {
       loadSprite(key: string, source: { from: string; metadata: Json }, opts: { anims?: Anims }): void;
       /** Draws, on this page, the sheet of a pet this plugin put with hq-pets' setPet({ metadata }): fn gets the
        * metadata and returns a sheet in hq-pets' format (4 rows of 3 cells: still, step A, step B). */
+      // oxlint-disable-next-line typescript/no-explicit-any -- public API: plugins type fn(metadata: TheirShape), which unknown would refuse
       provideSheet(fn: (metadata: any) => { image: Blob | ImageBitmap; frameW: number; frameH: number } | Promise<{ image: Blob | ImageBitmap; frameW: number; frameH: number }>): void;
       /** Without x/y a new sprite waits for follow/moveTo, an existing one keeps its place (only its sheet changes). */
       spawn(id: string, key: string, opts?: { x?: number; y?: number; anim?: string }): void;
