@@ -106,7 +106,7 @@ test("dependsOn from a go.mod: the projects its replace directives point at, wit
     "b/fdash.json": { dependsOn: ["a"], tasks: { t: { run: [["x"]], afterDependsOn: false, after: ["u"] }, u: { run: [["x"]] } } },
   });
   assert.deepEqual(loadWorkspace(free).get("b:t")!.after, ["b:u"]);
-  assert.throws(() => loadWorkspace(tree({ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { tasks: { t: { run: [["x"]], afterDependsOn: "no" } } } })), /a:t: afterDependsOn must be true or false/);
+  assert.throws(() => loadWorkspace(tree({ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { tasks: { t: { run: [["x"]], afterDependsOn: "no" } } } })), /a\/fdash\.json: t: afterDependsOn must be true or false/);
   const bad: [Record<string, unknown>, RegExp][] = [
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] } }, /a\/fdash\.json: dependsOn reads a\/go\.mod, which does not exist/],
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] }, "a/go.mod": goMod(["b"], "replace b => ../b") }, /a\/go\.mod: b is replaced by \.\.\/b, which is no project \(list b in fdash-workspace\.json\)/],
