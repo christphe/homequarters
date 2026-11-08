@@ -9,6 +9,9 @@
 - In development, the server listens on 127.0.0.1:8080 by default instead of every address; set HQ_ADDR=:8080 to reach it from the network (#55)
 - The server binary refuses an argument it does not know instead of starting the server (#54)
 
+### Fixed
+- A plugin error is counted and logged before the request that caused it gets its answer (#55)
+
 ## [0.6.0] - 2026-11-07
 
 ### Changed

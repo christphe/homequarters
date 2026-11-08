@@ -401,13 +401,17 @@ func (in *instance) handle(e event) error {
 	case evRoute:
 		in.actor = e.req.Player.ID
 		resp, err := in.route(e)
+		// counted (and logged) before the caller hears back: whoever reads the error count after the
+		// answer sees this one
+		stop := in.check(err)
 		e.reply <- routeResult{resp, err}
-		return in.check(err)
+		return stop
 	case evHook:
 		in.actor = e.actor
 		v, err := in.hook(e)
+		stop := in.check(err)
 		e.hreply <- hookResult{v, err}
-		return in.check(err)
+		return stop
 	}
 	return nil
 }
