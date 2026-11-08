@@ -134,11 +134,7 @@ test("a plugin depends on the server and the SDK, never on the web client; the s
 
 test("every gate is cached, and every scenario of the suite is an item with its own file", () => {
   const gates = expand(loadWorkspace(root), ["default"], []);
-  // lint:secrets scans the working tree, git-ignored files included (a secret pasted in a local log), which no
-  // input can follow: it runs every time, in about a second
-  const uncached = new Set(["lint:secrets"]);
-  for (const g of gates) if (!uncached.has(g.name)) assert.ok(g.inputs && g.inputs.length > 0 && g.cache, `${g.name} is cached`);
-  for (const n of uncached) assert.ok(gates.some((g) => g.name === n && !g.cache), `${n} is a gate and runs every time`);
+  for (const g of gates) assert.ok(g.inputs && g.inputs.length > 0 && g.cache, `${g.name} is cached`);
   const e2e = gates.find((g) => g.name === BROWSER)!;
   assert.deepEqual([...e2e.items!.keys()], ALL);
   for (const [s, item] of e2e.items!) assert.ok(item.inputs.includes(`e2e/scenarios/${s}.ts`), s);

@@ -1,12 +1,15 @@
 // The repository-wide linters, one subcommand each (the workspace's fdash tasks lint:actions, lint:secrets,
 // lint:shell and lint:docker run them; decision 0040):
 //   actions  actionlint (with shellcheck on the run: scripts) and zizmor on .github/
-//   secrets  gitleaks on the working tree (.gitleaks.toml), not the history
+//   secrets  gitleaks on the files git would commit (tracked and untracked, not ignored: the inputs fdash caches
+//            it on), copied to a temporary folder; not the history
 //   shell    shellcheck on every tracked *.sh
 //   docker   hadolint on deploy/Dockerfile
 // The Go tools are `go tool`s in tools/go/<tool>/go.mod; shellcheck, zizmor and hadolint are pinned downloads
 // (scripts/tools.ts). Run: node scripts/lint-repo.ts <actions|secrets|shell|docker>
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { ensure } from "./tools.ts";
 
@@ -27,7 +30,7 @@ export function gitFiles(specs: string[]): string[] {
 }
 
 /** A Go tool pinned in tools/go/<name>/go.mod, built there (`go tool -n` prints the cached binary), run from the root. */
-function goTool(name: string, args: string[], extraPath: string[] = []): number {
+function goTool(name: string, args: string[], extraPath: string[] = [], cwd = root): number {
   const built = spawnSync("go", ["tool", "-n", name], { cwd: path.join(root, "tools", "go", name), encoding: "utf8" });
   if (built.error) {
     console.log(`go tool ${name}: go did not start (${built.error.message}); is Go on PATH?`);
@@ -38,7 +41,26 @@ function goTool(name: string, args: string[], extraPath: string[] = []): number 
     console.log(`go tool ${name}: ${built.stderr || "no binary"}`);
     return 1;
   }
-  return run(exe, args, { path: extraPath });
+  return run(exe, args, { path: extraPath, cwd });
+}
+
+/** gitleaks on a copy of the files git would commit, so an ignored local file (a log, a build) never turns the
+ * gate red here while CI passes, and the pass is keyed on exactly what was scanned. Findings name the file,
+ * line and rule (-v); --redact hides the value. */
+function secrets(): number {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hq-gitleaks-"));
+  try {
+    for (const f of gitFiles(["."])) {
+      const from = path.join(root, f);
+      if (!fs.existsSync(from) || !fs.statSync(from).isFile()) continue; // deleted but still in the index
+      fs.mkdirSync(path.join(tmp, path.dirname(f)), { recursive: true });
+      fs.copyFileSync(from, path.join(tmp, f));
+    }
+    // "." from the copy: the allow-list's paths are root-relative
+    return goTool("gitleaks", ["dir", ".", "--config", path.join(root, ".gitleaks.toml"), "--no-banner", "--redact", "-v", "--exit-code", "1"], [], tmp);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -53,8 +75,7 @@ export async function main(argv: string[]): Promise<number> {
       return a || z;
     }
     case "secrets":
-      // "." from the root: the allow-list's paths are root-relative
-      return goTool("gitleaks", ["dir", ".", "--config", ".gitleaks.toml", "--no-banner", "--redact", "--exit-code", "1"]);
+      return secrets();
     case "shell":
       return run(await ensure("shellcheck"), ["--format=gcc", ...gitFiles(["*.sh"])]);
     case "docker":
