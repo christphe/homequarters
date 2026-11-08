@@ -1,6 +1,8 @@
 # Dependency updates. Security updates arrive as soon as an advisory is published (enabled in the
 # repository settings); the routine ones below are weekly and grouped per ecosystem and directory,
 # because every pull request runs the whole CI (browser suite shards with a real LiveKit).
+# A release waits 7 days before a routine update proposes it (cooldown), so that a compromised or broken
+# version is usually pulled before it gets here; security updates are not delayed.
 # Majors come in a pull request of their own: check the changelog and the license (THIRD_PARTY_LICENSES.md).
 version: 2
 
@@ -8,6 +10,7 @@ updates:
   - package-ecosystem: gomod
     directory: /server
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     groups:
       go:
         update-types: [minor, patch]
@@ -15,6 +18,7 @@ updates:
   - package-ecosystem: gomod
     directories: [/bench/mediagen, /bench/plugin-runtime]
     schedule: { interval: monthly }
+    cooldown: { default-days: 7 }
     groups:
       bench-go:
         patterns: ["*"]
@@ -23,6 +27,7 @@ updates:
   - package-ecosystem: gomod
     directories: [/tools/go/golangci-lint, /tools/go/govulncheck, /tools/go/actionlint, /tools/go/gitleaks]
     schedule: { interval: monthly }
+    cooldown: { default-days: 7 }
     groups:
       lint-go:
         patterns: ["*"]
@@ -30,6 +35,7 @@ updates:
   - package-ecosystem: npm
     directories: [/web, /e2e, /site]
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     groups:
       web:
         update-types: [minor, patch]
@@ -37,6 +43,7 @@ updates:
   - package-ecosystem: npm
     directory: /desktop
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     groups:
       desktop-npm:
         update-types: [minor, patch]
@@ -44,6 +51,7 @@ updates:
   - package-ecosystem: cargo
     directory: /desktop/src-tauri
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     groups:
       desktop-cargo:
         update-types: [minor, patch]
@@ -51,6 +59,7 @@ updates:
   - package-ecosystem: docker
     directory: /deploy
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     groups:
       docker:
         patterns: ["*"]
@@ -60,6 +69,7 @@ updates:
   - package-ecosystem: docker-compose
     directory: /deploy
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     ignore:
       - dependency-name: livekit/livekit-server
     groups:
@@ -69,6 +79,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
     groups:
       actions:
         patterns: ["*"]

@@ -6,7 +6,7 @@
 # SSH and handed to mediagen through its environment, never as arguments (those show in the process list).
 #   HQ_VM=ubuntu@1.2.3.4 HQ_LK_URL=https://rtc.example.com HQ_SSH_KEY=~/.ssh/key bench/run-vm-media.sh "B-2x4 -rooms 2 -per-room 4"
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 VM=${HQ_VM:?ssh target}
 LK=${HQ_LK_URL:?public LiveKit URL, e.g. https://rtc.example.com}
 KEY=${HQ_SSH_KEY:-$HOME/.ssh/id_ed25519}
