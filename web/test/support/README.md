@@ -51,4 +51,4 @@ Everything a helper sets up is undone after each test (`cleanup.ts`): Testing Li
 
 **Toasts.** `toast()` (web/src/store.ts) is drawn by OfficeScreen; a dialog's test reads `getState().toast`. Its 4 s timer is real: use `vi.useFakeTimers()` in a test that waits for a toast to go.
 
-**Accessibility.** An axe helper for component tests is being added by the accessibility work (branch `a11y-component-axe`, pull request pending when this was written); use it once it lands rather than writing another one here, and replace this line with its path.
+**Accessibility.** Use `web/test/axe.ts` (from #63): `await expectNoAxeViolations(container)` after rendering, or `axeViolations()` to read the rule ids. It runs the browser suite's tags with colour contrast off (jsdom paints nothing) and frames not entered; contrast and full screens stay in the browser `a11y` scenario. Do not write a second axe helper.
