@@ -10,12 +10,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { boardModel } from "../src/game/boardModel";
 import { t } from "../src/i18n";
-import { session } from "../src/session";
 import { setState } from "../src/store";
 import { WhiteboardDialog } from "../src/ui/WhiteboardDialog";
 import { expectNoAxeViolations } from "./axe";
 
-vi.mock("../src/session", () => ({ session: { board: vi.fn() } }));
+const board = vi.hoisted(() => vi.fn());
+vi.mock("../src/session", () => ({ session: { board } }));
 
 afterEach(() => {
   cleanup();
@@ -48,36 +48,35 @@ describe("whiteboard dialog", () => {
 describe("whiteboard dialog controls", () => {
   // what the features scenario checked in two browsers; the server's half (only an administrator clears, and the
   // clear reaches everybody at the board) is world TestWhiteboardAuthorityFanoutUndoAndClear
-  const board = () => vi.mocked(session.board);
 
   it("a member gets no Clear board button; Undo asks the server to take back my last stroke", async () => {
-    board().mockClear();
+    board.mockClear();
     render(<WhiteboardDialog onClose={() => {}} />);
     expect(screen.queryByRole("button", { name: t("board.clear") })).toBeNull();
     await userEvent.setup().click(screen.getByRole("button", { name: t("board.undo") }));
-    expect(board().mock.calls).toEqual([[{ bk: boardModel.key, op: "undo" }]]);
+    expect(board.mock.calls).toEqual([[{ bk: boardModel.key, op: "undo" }]]);
   });
 
   it("an administrator clears the board only once they confirm", async () => {
-    board().mockClear();
+    board.mockClear();
     setState({ role: "admin" });
     render(<WhiteboardDialog onClose={() => {}} />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: t("board.clear") }));
-    expect(board()).not.toHaveBeenCalled();
+    expect(board).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: t("board.confirmClear") }));
-    expect(board().mock.calls).toEqual([[{ bk: boardModel.key, op: "clear" }]]);
+    expect(board.mock.calls).toEqual([[{ bk: boardModel.key, op: "clear" }]]);
     screen.getByRole("button", { name: t("board.clear") }); // and asks again next time
   });
 
   it("text placed in the centre goes to the server as one text stroke", async () => {
-    board().mockClear();
+    board.mockClear();
     render(<WhiteboardDialog onClose={() => {}} />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: t("board.text") }));
     await user.type(screen.getByRole("textbox"), "  Shared test text ");
     await user.click(screen.getByRole("button", { name: t("board.placeText") }));
-    expect(board().mock.calls).toEqual([[expect.objectContaining({ bk: boardModel.key, op: "draw", k: 1, p: [400, 300], tx: "Shared test text" })]]);
+    expect(board.mock.calls).toEqual([[expect.objectContaining({ bk: boardModel.key, op: "draw", k: 1, p: [400, 300], tx: "Shared test text" })]]);
   });
 
   it("Escape closes the board", async () => {

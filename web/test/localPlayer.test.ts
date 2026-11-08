@@ -1,8 +1,11 @@
-// My avatar when the server moves it (localPlayer.ts applySelf): a portal's teleport stops me and drops what was
-// held, and a follower keeps its leader's pace. It replaces the browser checks "walking onto the portal teleports
-// once and stops movement" and the follower's own page running with a leader who runs (features); the server's half
-// is world TestPortalsTeleportOncePerArrivalAndNotIntoLockedRooms, TestFollowWalksAroundWallsAndStopsOnInput and
-// TestFollowerKeepsTheLeadersPace. The browser keeps a request to lead through the people panel's real menu (features).
+// My avatar's predicted speed and what the server does to it (localPlayer.ts): walking and running speeds, a portal's
+// teleport that stops me, and a follower keeping its leader's pace. It replaces the browser checks "walking speed is
+// ~72 px/s" and "running is about twice as fast" (movement), "walking onto the portal teleports once and stops
+// movement" and the follower's own page running with a leader who runs (features); the server's half is world
+// TestSpeedIsServerEnforced, TestRunningDoublesSpeedAndIsCarriedInTheStateRecord,
+// TestPortalsTeleportOncePerArrivalAndNotIntoLockedRooms, TestFollowWalksAroundWallsAndStopsOnInput and
+// TestFollowerKeepsTheLeadersPace. The browser keeps the movement scenario's jitter checks at run speed and a request
+// to lead through the people panel's real menu (features).
 // Run: pnpm exec vitest run (in web/)
 import { test } from "vitest";
 import assert from "node:assert/strict";
