@@ -178,7 +178,7 @@ func (c *Config) loadAuth() error {
 func Load() (*Config, error) {
 	c := &Config{
 		Env:            env("HQ_ENV", "dev"),
-		Addr:           env("HQ_ADDR", ":8080"),
+		Addr:           env("HQ_ADDR", ""),
 		DBPath:         env("HQ_DB", "data/homequarters.db"),
 		StaticDir:      env("HQ_STATIC_DIR", ""),
 		PluginsDir:     env("HQ_PLUGINS_DIR", ""),
@@ -211,6 +211,12 @@ func Load() (*Config, error) {
 	}
 	if c.Env != "dev" && c.Env != "production" {
 		return nil, errors.New("HQ_ENV must be dev or production")
+	}
+	if c.Addr == "" { // loopback in dev: no firewall prompt, nothing exposed; production sits behind a proxy or a port mapping
+		c.Addr = "127.0.0.1:8080"
+		if c.Env == "production" {
+			c.Addr = ":8080"
+		}
 	}
 	if err := c.loadAuth(); err != nil {
 		return nil, err

@@ -22,9 +22,13 @@ import (
 var binPath string
 
 // TestMain builds the binary once: the testbed subcommand is tested as a process, as the plugin test
-// client runs it.
+// client runs it. The binary sits at a fixed, git-ignored path of the checkout (.run/go-test): Windows'
+// firewall keys its rules on an executable's path, so a new temporary folder on each run would ask again.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "hq-testbed-bin-*")
+	dir, err := filepath.Abs(filepath.Join("..", "..", "..", ".run", "go-test"))
+	if err == nil {
+		err = os.MkdirAll(dir, 0o755)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -35,12 +39,9 @@ func TestMain(m *testing.M) {
 	}
 	if out, err := exec.Command("go", "build", "-o", binPath, ".").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build: %v\n%s", err, out)
-		os.RemoveAll(dir)
 		os.Exit(1)
 	}
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 var echoPlugin = filepath.Join("..", "..", "internal", "httpapi", "testdata", "plugins", "installed", "echo")

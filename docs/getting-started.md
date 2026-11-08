@@ -76,7 +76,7 @@ Everything is configured through environment variables.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HQ_ENV` | `dev` | `dev` or `production` |
-| `HQ_ADDR` | `:8080` | HTTP listen address |
+| `HQ_ADDR` | `127.0.0.1:8080` in dev, `:8080` in production | HTTP listen address (dev listens on loopback only unless set, e.g. `:8080` for every address) |
 | `HQ_DB` | `data/homequarters.db` | SQLite file (WAL mode) |
 | `HQ_STATIC_DIR` | empty | Directory with the built web app to serve |
 | `HQ_PLUGINS_DIR` | empty (plugins off) | Folder holding `bundled/` (shipped, `hq-*`) and `installed/` (yours), both optional; administrators turn each plugin on in the admin dialog ([Plugins](plugins.md)). The image sets `/app/plugins`; `scripts/dev.sh` uses the repository's `plugins/` |

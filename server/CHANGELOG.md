@@ -6,6 +6,7 @@
 - homequarters testbed: the server without LiveKit, with the given plugins enabled, for plugin integration tests (#54)
 
 ### Changed
+- In development, the server listens on 127.0.0.1:8080 by default instead of every address; set HQ_ADDR=:8080 to reach it from the network (#55)
 - The server binary refuses an argument it does not know instead of starting the server (#54)
 
 ## [0.6.0] - 2026-11-07
