@@ -26,7 +26,7 @@ docker compose -f deploy/docker-compose.local.yml up --build
 4. Create the first administrator invite: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env run --rm homequarters -invite admin` prints `/?invite=…`; open it on your domain. Then invite others from *Settings → Invite people* (admins only).
 5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build`.
 
-The stack uses the prebuilt image `ghcr.io/christphe/homequarters:latest` (linux/amd64 and linux/arm64, published by `.github/workflows/docker.yml`). Drop `--build` to pull it instead of building on the server; set `HQ_IMAGE` in `.env` to pin a version.
+The stack uses the prebuilt image `ghcr.io/christphe/homequarters:latest` (linux/amd64 and linux/arm64, published by `.github/workflows/docker.yml`). Drop `--build` to pull it instead of building on the server; set `HQ_IMAGE` in `.env` to pin a version. Building the image needs only Docker: its build stage installs the web client's tools from the repository's single pnpm lockfile (`pnpm install --frozen-lockfile --filter homequarters-web`), so nothing is installed on the host. To work on the code instead, run `pnpm install` once at the root of the repository ([Getting started](../docs/getting-started.md)).
 
 ### No domain yet?
 

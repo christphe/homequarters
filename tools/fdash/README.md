@@ -102,8 +102,11 @@ before a lone `fdash.json`):
 { "tasks": { "build": { "run": [["go", "build", "-o", "../bin/", "./cmd/app"]], "outputs": ["/bin/app*"] },
              "test:unit": { "run": [["go", "test", "./..."]] } } }
 // addons/maps/fdash.json
-{ "dependsOn": ["core"], "tasks": { "test:unit": { "run": [["node", "--test", "test/*.test.ts"]] },
-                                    "test:integration": { "run": [["node", "--test", "**/*.ispec.ts"]] } } }
+{ "dependsOn": ["core"],
+  "tasks": { "test:unit": { "run": [["pnpm", "exec", "vitest", "run", "--project", "maps"]],
+                            "tools": [["pnpm", "--version"]] },
+             "test:integration": { "run": [["pnpm", "exec", "vitest", "run", "--project", "maps:integration"]],
+                                   "tools": [["pnpm", "--version"]] } } }
 ```
 
 | Workspace key | Meaning |
@@ -241,4 +244,6 @@ reach them, with `warn` set when a command that had passed ran again and `failed
 
 ## Tests
 
-`node --test 'tools/fdash/test/*.test.ts'`
+`node --test 'tools/fdash/test/*.test.ts'`: fdash tests itself with Node's own runner, since it is what starts
+everything else (installs included) and has no dependency. In this repository, the other TypeScript projects run
+their tests with Vitest.

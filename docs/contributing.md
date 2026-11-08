@@ -14,13 +14,17 @@ Thanks for looking. The project is early, so the most useful contributions are c
 Every change runs the [gauntlet loop](gauntlet.md): written acceptance criteria, a test seen red first, `scripts/gauntlet.sh` green, and independent critics (UX, invariants, regression) with evidence.
 
 ~~~bash
+pnpm install                     # once, at the root: one pnpm workspace for every TypeScript project, one lockfile
 ./scripts/dev.sh                 # full local stack
 cd server && go vet ./... && go tool staticcheck ./... && go test -race ./...   # server checks and tests
 cd web && pnpm exec tsc --noEmit                   # type-check the client
-cd e2e && pnpm install && pnpm exec tsc --noEmit   # type-check the browser suite (the static gates need e2e/ and site/ installed too)
+cd web && pnpm exec vitest run                     # the client's unit and component tests (Vitest on jsdom)
+node tools/fdash/cli.ts run lint test:unit         # every project's lint and unit tests, skipping what already passed
 node scripts/oxlint.ts                            # lint the client, the plugins and the tooling (type-aware)
-cd e2e && pnpm install && node run.ts             # real-browser suite: own server, fresh database, real LiveKit
+cd e2e && node run.ts                             # real-browser suite: own server, fresh database, real LiveKit
 ~~~
+
+A project declares every tool it runs in its own `package.json` (TypeScript, Vitest, oxlint, `@types/node`); a version that more than one project uses is written once, in the `catalog` of `pnpm-workspace.yaml`, and referenced as `"catalog:"`. The root `package.json` declares no dependency ([decision 0038](decisions/0038-pnpm-workspace-vitest.md)).
 
 ## Invariants worth protecting
 

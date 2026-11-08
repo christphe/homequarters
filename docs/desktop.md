@@ -41,8 +41,8 @@ Each desktop [release](https://github.com/christphe/homequarters/releases) (`des
 Needs Rust and Node.js with pnpm, plus the system web view's development files on Linux.
 
 ```bash
+pnpm install                     # at the root of the repository (one workspace; --filter homequarters-desktop installs only the app's tools)
 cd desktop
-pnpm install
 pnpm tauri build                 # installer or .dmg in src-tauri/target/release/bundle
 pnpm tauri build --no-bundle     # the executable alone
 ```
