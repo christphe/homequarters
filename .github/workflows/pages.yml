@@ -7,10 +7,9 @@ on:
     paths: ["site/**", "docs/**", "deploy/README.md", "README.md", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
+# each job gets what it uses: the build reads the code and the Pages settings, only the deploy writes
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -19,6 +18,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read # configure-pages reads the site's Pages configuration
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,6 +48,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write # to deploy
+      id-token: write # deploy-pages proves the run's identity with an OIDC token
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
