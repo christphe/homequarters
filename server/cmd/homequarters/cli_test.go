@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -38,6 +39,18 @@ func runCLI(t *testing.T, env []string, args ...string) (int, string, string) {
 	return 0, out.String(), errOut.String()
 }
 
+// httpDo sends a request with the test's context.
+func httpDo(t *testing.T, method, target, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(t.Context(), method, target, body)
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	return http.DefaultClient.Do(req)
+}
+
 // Production mode refuses to start with insecure media settings: the process exits with status 2.
 func TestProductionRefusesToStart(t *testing.T) {
 	db := "HQ_DB=" + filepath.Join(t.TempDir(), "prod-check.db")
@@ -68,14 +81,14 @@ func TestCLIMintsABootstrapInvite(t *testing.T) {
 // -backup writes a copy of the database while the server that uses it is running.
 func TestOnlineBackupWhileTheServerRuns(t *testing.T) {
 	dir := t.TempDir()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	addr := l.Addr().String()
 	l.Close()
 	db := "HQ_DB=" + filepath.Join(dir, "e2e.db")
-	srv := exec.Command(binPath)
+	srv := exec.CommandContext(context.Background(), binPath) // stopped by the cleanup below, gracefully first
 	srv.Env = append(os.Environ(), "HQ_ENV=dev", "HQ_ADDR="+addr, db, "HQ_PLUGINS_DIR="+filepath.Join(dir, "plugins"), "HQ_STOP_ON_STDIN_CLOSE=1")
 	stdin, err := srv.StdinPipe()
 	if err != nil {
@@ -97,7 +110,7 @@ func TestOnlineBackupWhileTheServerRuns(t *testing.T) {
 	})
 	ready := false
 	for i := 0; i < 100 && !ready; i++ {
-		if resp, err := http.Get("http://" + addr + "/readyz"); err == nil {
+		if resp, err := httpDo(t, http.MethodGet, "http://"+addr+"/readyz", "", nil); err == nil {
 			resp.Body.Close()
 			ready = resp.StatusCode == http.StatusOK
 		}
@@ -108,8 +121,13 @@ func TestOnlineBackupWhileTheServerRuns(t *testing.T) {
 	if !ready {
 		t.Fatal("the server did not become ready")
 	}
-	if resp, err := http.Post("http://"+addr+"/api/join", "application/json", strings.NewReader(`{"name":"Ana","avatar":{}}`)); err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("join: %v %v", resp, err)
+	resp, err := httpDo(t, http.MethodPost, "http://"+addr+"/api/join", "application/json", strings.NewReader(`{"name":"Ana","avatar":{}}`))
+	if err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("join: %s", resp.Status)
 	}
 	bk := filepath.Join(dir, "backup.db")
 	code, out, stderr := runCLI(t, []string{db}, "-backup", bk)

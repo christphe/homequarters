@@ -14,7 +14,7 @@ func (r *rig) joinWith(body string) (*user, int) {
 	r.t.Helper()
 	jar, _ := cookiejar.New(nil)
 	u := &user{r: r, c: &http.Client{Jar: jar}}
-	resp, err := u.c.Post(r.ts.URL+"/api/join", "application/json", strings.NewReader(body))
+	resp, err := u.post(r.ts.URL+"/api/join", "application/json", strings.NewReader(body))
 	if err != nil {
 		r.t.Fatal(err)
 	}

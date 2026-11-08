@@ -54,9 +54,13 @@ func TestRolesRemovalAndTheLastAdminGuard(t *testing.T) {
 func TestChatLinesSurviveMemberRemoval(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
-	s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
+	if _, _, err := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), ""); err != nil {
+		t.Fatal(err)
+	}
 	b, _, _ := s.AddMember(ctx, o.ID, "Bia", json.RawMessage("{}"), "")
-	s.AppendChat(ctx, o.ID, b, "hello", 1)
+	if err := s.AppendChat(ctx, o.ID, b, "hello", 1); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.RemoveMember(ctx, o.ID, b); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +75,9 @@ func TestInviteListingAndRevocation(t *testing.T) {
 	ctx := context.Background()
 	a, _, _ := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
 	tok, _ := s.CreateInvite(ctx, o.ID, "member", 1, time.Hour, a)
-	s.CreateInvite(ctx, o.ID, "admin", 5, time.Hour, a)
+	if _, err := s.CreateInvite(ctx, o.ID, "admin", 5, time.Hour, a); err != nil {
+		t.Fatal(err)
+	}
 
 	list, err := s.ListInvites(ctx, o.ID, 50)
 	if err != nil || len(list) != 2 {
@@ -95,7 +101,9 @@ func TestInviteListingAndRevocation(t *testing.T) {
 		t.Fatalf("an invite of another office cannot be revoked: %v", err)
 	}
 	exhausted, _ := s.CreateInvite(ctx, o.ID, "member", 1, time.Hour, a)
-	s.ConsumeInvite(ctx, exhausted)
+	if _, err := s.ConsumeInvite(ctx, exhausted); err != nil {
+		t.Fatal(err)
+	}
 	list, _ = s.ListInvites(ctx, o.ID, 50)
 	if list[0].Status != "exhausted" {
 		t.Fatalf("status: %+v", list[0])
@@ -106,8 +114,12 @@ func TestAuditTrailOrderAndPruning(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
 	a, _, _ := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
-	s.Audit(ctx, o.ID, a, "member.role", 7, "Bia", "member -> admin")
-	s.Audit(ctx, o.ID, 0, "invite.create", 0, "", "role=member")
+	if err := s.Audit(ctx, o.ID, a, "member.role", 7, "Bia", "member -> admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Audit(ctx, o.ID, 0, "invite.create", 0, "", "role=member"); err != nil {
+		t.Fatal(err)
+	}
 	es, err := s.ListAudit(ctx, o.ID, 10)
 	if err != nil || len(es) != 2 {
 		t.Fatalf("audit: %+v %v", es, err)
@@ -116,10 +128,14 @@ func TestAuditTrailOrderAndPruning(t *testing.T) {
 		t.Fatalf("newest first, system actor for id 0: %+v", es)
 	}
 	for range auditKeep + 20 {
-		s.Audit(ctx, o.ID, a, "x", 0, "", "")
+		if err := s.Audit(ctx, o.ID, a, "x", 0, "", ""); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var n int
-	s.DB.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE office_id=?`, o.ID).Scan(&n)
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE office_id=?`, o.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n > auditKeep+1 {
 		t.Fatalf("audit log must be pruned, has %d", n)
 	}
@@ -153,7 +169,9 @@ func TestPositionsSavedTogetherWhenTheServerStops(t *testing.T) {
 func TestRemovalWaitsForAConcurrentWriter(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
-	s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
+	if _, _, err := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), ""); err != nil {
+		t.Fatal(err)
+	}
 	stop := make(chan struct{})
 	saved := make(chan struct{})
 	go func() {
@@ -163,7 +181,10 @@ func TestRemovalWaitsForAConcurrentWriter(t *testing.T) {
 			case <-stop:
 				return
 			default:
-				s.SaveMap(ctx, o.ID, "{}")
+				if _, err := s.SaveMap(ctx, o.ID, "{}"); err != nil {
+					t.Error(err) // Fatal belongs to the test's goroutine
+					return
+				}
 				time.Sleep(100 * time.Microsecond) // an editor saving often, not a writer that never yields
 			}
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,7 +44,7 @@ func TestMain(m *testing.M) {
 	// reused; when it differs and is busy, this run keeps its own copy.
 	binPath = filepath.Join(dir, "homequarters"+exe)
 	own := filepath.Join(dir, fmt.Sprintf("homequarters-%d%s", os.Getpid(), exe))
-	if out, err := exec.Command("go", "build", "-o", own, ".").CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(context.Background(), "go", "build", "-o", own, ".").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build: %v\n%s", err, out)
 		os.Exit(1)
 	}
@@ -103,7 +104,7 @@ func (s *syncBuf) String() string {
 // the inherited one).
 func runBed(t *testing.T, env []string, args ...string) *bedProc {
 	t.Helper()
-	cmd := exec.Command(binPath, append([]string{"testbed"}, args...)...)
+	cmd := exec.CommandContext(context.Background(), binPath, append([]string{"testbed"}, args...)...) // its tests stop it through stdin
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(kv), "HQ_ENV=") {
 			cmd.Env = append(cmd.Env, kv)
@@ -189,7 +190,7 @@ func TestTestbedServesAndStopsOnStdinClose(t *testing.T) {
 	tmp := t.TempDir()
 	p := runBed(t, []string{"TMP=" + tmp, "TEMP=" + tmp, "TMPDIR=" + tmp}, "--plugin", echoPlugin)
 	u := p.url(t)
-	resp, err := http.Get(u.String() + "/healthz")
+	resp, err := httpDo(t, http.MethodGet, u.String()+"/healthz", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +209,7 @@ func TestTestbedServesAndStopsOnStdinClose(t *testing.T) {
 	if code := p.wait(t, 10*time.Second); code != 0 {
 		t.Fatalf("exit %d; stderr: %s", code, p.stderr)
 	}
-	if c, err := net.DialTimeout("tcp", u.Host, time.Second); err == nil {
+	if c, err := (&net.Dialer{Timeout: time.Second}).DialContext(t.Context(), "tcp", u.Host); err == nil {
 		c.Close()
 		t.Fatalf("%s still accepts connections", u.Host)
 	}
@@ -247,7 +248,9 @@ func TestTestbedTempDatabase(t *testing.T) {
 	db := filepath.Join(dir, "bed.db")
 	p := runBed(t, nil, "--plugin", echoPlugin, "--db", db, "--db-temp")
 	p.url(t)
-	io.WriteString(p.stdin, "keep\n")
+	if _, err := io.WriteString(p.stdin, "keep\n"); err != nil {
+		t.Fatal(err)
+	}
 	p.stdin.Close()
 	if code := p.wait(t, 10*time.Second); code != 0 {
 		t.Fatalf("exit %d; stderr: %s", code, p.stderr)
@@ -278,7 +281,7 @@ func TestTestbedTempDatabaseWhenTheClientDied(t *testing.T) {
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(binPath, "testbed", "--plugin", echoPlugin, "--db", filepath.Join(dir, "bed.db"), "--db-temp")
+	cmd := exec.CommandContext(context.Background(), binPath, "testbed", "--plugin", echoPlugin, "--db", filepath.Join(dir, "bed.db"), "--db-temp") // stopped through stdin
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(kv), "HQ_ENV=") {
 			cmd.Env = append(cmd.Env, kv)
@@ -333,7 +336,7 @@ func TestTestbedStopsOnInterrupt(t *testing.T) {
 	if code := p.wait(t, 10*time.Second); code != 0 {
 		t.Fatalf("exit %d; stderr: %s", code, p.stderr)
 	}
-	if c, err := net.DialTimeout("tcp", u.Host, time.Second); err == nil {
+	if c, err := (&net.Dialer{Timeout: time.Second}).DialContext(t.Context(), "tcp", u.Host); err == nil {
 		c.Close()
 		t.Fatalf("%s still accepts connections", u.Host)
 	}
@@ -376,7 +379,7 @@ func TestTestbedProductionPrintsNothing(t *testing.T) {
 // server instead, it would open the default database wherever it was run.
 func TestUnknownArgumentIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	cmd := exec.Command(binPath, "nonsense")
+	cmd := exec.CommandContext(t.Context(), binPath, "nonsense")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "HQ_ENV=dev")
 	out, err := cmd.CombinedOutput()

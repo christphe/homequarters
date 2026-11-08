@@ -483,6 +483,13 @@ var blockedPorts = map[int]bool{1719: true, 1720: true, 1723: true, 2049: true, 
 func listen(addr string) (net.Listener, error) { return listenWith(net.Listen, addr) }
 
 func listenWith(netListen func(network, addr string) (net.Listener, error), addr string) (net.Listener, error) {
+	// the refused ones are held until a good one is found, so the OS does not hand the same one back
+	var refused []net.Listener
+	defer func() {
+		for _, ln := range refused {
+			_ = ln.Close() // never served: nothing to lose
+		}
+	}()
 	for range 20 {
 		ln, err := netListen("tcp", addr)
 		if err != nil {
@@ -492,7 +499,7 @@ func listenWith(netListen func(network, addr string) (net.Listener, error), addr
 		if port != "0" || !blockedPorts[ln.Addr().(*net.TCPAddr).Port] {
 			return ln, nil
 		}
-		defer func() { _ = ln.Close() }() // held until a good one is found, so the OS does not hand the same one back
+		refused = append(refused, ln)
 	}
 	return nil, fmt.Errorf("no free port outside the ports browsers refuse after 20 tries")
 }

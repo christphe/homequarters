@@ -99,10 +99,13 @@ func (s *socket) locate(t *testing.T, id int64) (float64, float64) {
 	for _, v := range slices.Backward(s.frames) {
 		if strings.Contains(v, `"t":"loc"`) {
 			var l struct {
-				OK   bool
-				X, Y float64
+				OK bool    `json:"ok"`
+				X  float64 `json:"x"`
+				Y  float64 `json:"y"`
 			}
-			json.Unmarshal([]byte(v), &l)
+			if err := json.Unmarshal([]byte(v), &l); err != nil {
+				t.Fatal(err)
+			}
 			if !l.OK {
 				t.Fatalf("locate %d: %s", id, v)
 			}
@@ -144,7 +147,7 @@ func TestOversizedFrameClosesWith1009AndNoSessionIs401(t *testing.T) {
 		t.Fatalf("an oversized frame closes the connection with 1009: %v (%v)", code, err)
 	}
 
-	resp, err := http.Get(r.ts.URL + "/ws")
+	resp, err := request(t, http.MethodGet, r.ts.URL+"/ws")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +215,9 @@ func TestPositionAndSessionSurviveARestart(t *testing.T) {
 	sa.c.Close(websocket.StatusNormalClosure, "")
 	o, _ := r.st.OfficeBySlug(context.Background(), "default")
 	saved := func(id int64) (x, y float64) {
-		r.st.DB.QueryRow(`SELECT last_x, last_y FROM memberships WHERE office_id=? AND user_id=?`, o.ID, id).Scan(&x, &y)
+		if err := r.st.DB.QueryRow(`SELECT last_x, last_y FROM memberships WHERE office_id=? AND user_id=?`, o.ID, id).Scan(&x, &y); err != nil {
+			t.Fatal(err)
+		}
 		return
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {

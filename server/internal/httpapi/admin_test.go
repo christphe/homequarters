@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,12 +63,45 @@ type user struct {
 	ID int64
 }
 
+// get, post and postForm are the client's methods of the same names, with the test's context.
+func (u *user) get(target string) (*http.Response, error) {
+	return u.send(http.MethodGet, target, "", nil)
+}
+
+func (u *user) post(target, contentType string, body io.Reader) (*http.Response, error) {
+	return u.send(http.MethodPost, target, contentType, body)
+}
+
+func (u *user) postForm(target string, form url.Values) (*http.Response, error) {
+	return u.post(target, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+}
+
+func (u *user) send(method, target, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(u.r.t.Context(), method, target, body)
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	return u.c.Do(req)
+}
+
+// request sends a request without cookies, with the test's context.
+func request(t *testing.T, method, target string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(t.Context(), method, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(req)
+}
+
 func (r *rig) join(name, invite string) (*user, int) {
 	r.t.Helper()
 	jar, _ := cookiejar.New(nil)
 	u := &user{r: r, c: &http.Client{Jar: jar}}
 	body, _ := json.Marshal(map[string]any{"name": name, "invite": invite})
-	resp, err := u.c.Post(r.ts.URL+"/api/join", "application/json", bytes.NewReader(body))
+	resp, err := u.post(r.ts.URL+"/api/join", "application/json", bytes.NewReader(body))
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -74,7 +109,7 @@ func (r *rig) join(name, invite string) (*user, int) {
 	var out struct {
 		ID int64 `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&out)
+	_ = json.NewDecoder(resp.Body).Decode(&out) // a refusal has no id: the status says so
 	u.ID = out.ID
 	return u, resp.StatusCode
 }
@@ -86,7 +121,7 @@ func (u *user) do(method, path string, body any) (int, map[string]any) {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
-	req, _ := http.NewRequest(method, u.r.ts.URL+path, rd)
+	req, _ := http.NewRequestWithContext(u.r.t.Context(), method, u.r.ts.URL+path, rd)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -96,7 +131,7 @@ func (u *user) do(method, path string, body any) (int, map[string]any) {
 	}
 	defer resp.Body.Close()
 	var out map[string]any
-	json.NewDecoder(resp.Body).Decode(&out)
+	_ = json.NewDecoder(resp.Body).Decode(&out) // a body that is not JSON reads as nil: callers check the status
 	return resp.StatusCode, out
 }
 
@@ -223,7 +258,7 @@ func TestInviteLifecycleThroughTheAPI(t *testing.T) {
 
 func TestMetricsPolicy(t *testing.T) {
 	get := func(r *rig, auth string) int {
-		req, _ := http.NewRequest(http.MethodGet, r.ts.URL+"/metrics", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, r.ts.URL+"/metrics", nil)
 		if auth != "" {
 			req.Header.Set("Authorization", auth)
 		}

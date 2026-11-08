@@ -74,7 +74,11 @@ func TestExchangeSendsPKCEAndNeverEchoesTheBody(t *testing.T) {
 	var form map[string][]string
 	ok := true
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		if err := r.ParseForm(); err != nil {
+			t.Error(err) // Fatal belongs to the test's goroutine
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		form = r.PostForm
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)

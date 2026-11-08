@@ -85,7 +85,7 @@ func (s *socket) wait(t *testing.T, sub string, n int) {
 
 func (u *user) raw(method, path string, body []byte) (int, http.Header, string) {
 	u.r.t.Helper()
-	req, _ := http.NewRequest(method, u.r.ts.URL+path, bytes.NewReader(body))
+	req, _ := http.NewRequestWithContext(u.r.t.Context(), method, u.r.ts.URL+path, bytes.NewReader(body))
 	resp, err := u.c.Do(req)
 	if err != nil {
 		u.r.t.Fatal(err)
@@ -277,7 +277,7 @@ func TestPluginRouteLimiterKeysOnlyRunningPlugins(t *testing.T) {
 
 func bearer(r *rig, method, path, tok, body string) (int, string) {
 	r.t.Helper()
-	req, _ := http.NewRequest(method, r.ts.URL+path, strings.NewReader(body))
+	req, _ := http.NewRequestWithContext(r.t.Context(), method, r.ts.URL+path, strings.NewReader(body))
 	if tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}

@@ -29,7 +29,9 @@ func claims(t *testing.T, tok string) map[string]any {
 		t.Fatal(err)
 	}
 	var m map[string]any
-	json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
 	return m
 }
 
@@ -92,7 +94,10 @@ func (f *fakeLK) handler(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	f.adminHdr = append(f.adminHdr, r.Header.Get("Authorization"))
 	var body map[string]string
-	json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/ListRooms"):
 		var rs []map[string]string
@@ -201,7 +206,10 @@ func (f *fakeTracks) handler(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var body map[string]any
-	json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/GetParticipant"):
 		f.gets = append(f.gets, body["room"].(string)+"/"+body["identity"].(string))

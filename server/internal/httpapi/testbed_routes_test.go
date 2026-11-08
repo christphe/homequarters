@@ -17,7 +17,7 @@ func TestServerHasNoTestbedEndpoints(t *testing.T) {
 		{"PUT", "/api/testbed/kv/echo", `{"k":"v"}`},
 		{"POST", "/api/testbed/position", `{"id":1,"x":5,"y":5}`},
 	} {
-		req, _ := http.NewRequest(c.method, r.ts.URL+c.path, strings.NewReader(c.body))
+		req, _ := http.NewRequestWithContext(t.Context(), c.method, r.ts.URL+c.path, strings.NewReader(c.body))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := admin.c.Do(req)
 		if err != nil {

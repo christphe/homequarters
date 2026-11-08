@@ -508,7 +508,7 @@ func TestPresenceNeverWaitsForLoad(t *testing.T) {
 	h, sink, _ := newHost(t, map[string]string{"slow": `
 export function load() { const t0 = hq.now(); while (hq.now() - t0 < 0.04) {} }
 export function onJoin(p: { id: number }) { hq.broadcast({ joined: p.id }); }`})
-	go h.Start("slow")
+	go func() { _ = h.Start("slow") }() // what is measured is Presence's wait, not the start's outcome
 	time.Sleep(10 * time.Millisecond)
 	start := time.Now()
 	h.Presence(alice, true)

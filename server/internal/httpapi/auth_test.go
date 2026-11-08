@@ -79,7 +79,7 @@ func (r *authRig) browser() *user {
 // consent page, following every redirect; it returns where the browser lands.
 func (u *user) signIn(query, decision string) *url.URL {
 	u.r.t.Helper()
-	resp, err := u.c.Get(u.r.ts.URL + "/auth/fake-oidc/start?" + query)
+	resp, err := u.get(u.r.ts.URL + "/auth/fake-oidc/start?" + query)
 	if err != nil {
 		u.r.t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func (u *user) signIn(query, decision string) *url.URL {
 	}
 	form := resp.Request.URL.Query()
 	form.Set("decision", decision)
-	resp, err = u.c.PostForm(u.r.ts.URL+"/auth/fake-oidc/authorize", form)
+	resp, err = u.postForm(u.r.ts.URL+"/auth/fake-oidc/authorize", form)
 	if err != nil {
 		u.r.t.Fatal(err)
 	}
@@ -132,7 +132,12 @@ func TestNoProviderKeepsTodaysJoin(t *testing.T) {
 	if auth, ok := u.do("GET", "/api/me", nil); auth != 200 || ok["authenticated"] != true || len(ok["auth"].([]any)) != 0 {
 		t.Fatalf("me: %v", ok)
 	}
-	if resp, _ := http.Get(r.ts.URL + "/auth/fake-oidc/start"); resp.StatusCode == http.StatusSeeOther || resp.Request.URL.Path != "/auth/fake-oidc/start" {
+	resp, err := request(t, http.MethodGet, r.ts.URL+"/auth/fake-oidc/start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusSeeOther || resp.Request.URL.Path != "/auth/fake-oidc/start" {
 		t.Fatal("no sign-in route exists without a provider")
 	}
 }
@@ -310,7 +315,7 @@ func TestPersonalLinksStopAtLinkedAccounts(t *testing.T) {
 	tok, _ := r.st.CreateAccountLink(ctx, pat.ID, o.ID)
 	// still unlinked: the link opens a session, which then has to link
 	fresh := r.browser()
-	resp, err := fresh.c.Get(r.ts.URL + "/link/" + tok)
+	resp, err := fresh.get(r.ts.URL + "/link/" + tok)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +325,7 @@ func TestPersonalLinksStopAtLinkedAccounts(t *testing.T) {
 	}
 	fresh.signIn("login_hint=pat@acme.test", "allow")
 	tok, _ = r.st.CreateAccountLink(ctx, pat.ID, o.ID)
-	resp, _ = r.browser().c.Get(r.ts.URL + "/link/" + tok)
+	resp, _ = r.browser().get(r.ts.URL + "/link/" + tok)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("a linked member's personal link is refused: %d", resp.StatusCode)
@@ -342,28 +347,28 @@ func TestCallbackRefusesForgedOrReplayedState(t *testing.T) {
 		}
 		return nil
 	}
-	resp, _ := b.c.Get(r.ts.URL + "/auth/fake-oidc/start")
+	resp, _ := b.get(r.ts.URL + "/auth/fake-oidc/start")
 	resp.Body.Close()
 	form := resp.Request.URL.Query()
 	form.Set("decision", "allow")
-	resp, _ = b.c.PostForm(r.ts.URL+"/auth/fake-oidc/authorize", form)
+	resp, _ = b.postForm(r.ts.URL+"/auth/fake-oidc/authorize", form)
 	resp.Body.Close()
 	callback := resp.Header.Get("Location")
 	b.c.CheckRedirect = nil
 
 	// another browser cannot use it: the state is bound to the one that started
-	resp, _ = r.browser().c.Get(callback)
+	resp, _ = r.browser().get(callback)
 	resp.Body.Close()
 	landed(t, resp.Request.URL, "failed")
 	// a tampered state fails too
-	resp, _ = b.c.Get(strings.Replace(callback, "state=", "state=x", 1))
+	resp, _ = b.get(strings.Replace(callback, "state=", "state=x", 1))
 	resp.Body.Close()
 	landed(t, resp.Request.URL, "failed")
 	// the real one still works once (each state has its own cookie), then it is spent
-	resp, _ = b.c.Get(callback)
+	resp, _ = b.get(callback)
 	resp.Body.Close()
 	landed(t, resp.Request.URL, "")
-	resp, _ = b.c.Get(callback)
+	resp, _ = b.get(callback)
 	resp.Body.Close()
 	landed(t, resp.Request.URL, "failed")
 }
@@ -408,13 +413,13 @@ func TestSealedValuesCannotBeForgedOrSwapped(t *testing.T) {
 func TestManySignInsInProgressLockNobodyOut(t *testing.T) {
 	r := newAuthRig(t, nil)
 	// an attacker keeps no cookies; with a jar the test would resend thousands of them
-	flood := &user{c: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	flood := &user{r: r.rig, c: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	for range 12000 { // more than the old table held (10,000): nothing is kept on the server
-		resp, err := flood.c.Get(r.ts.URL + "/auth/fake-oidc/start")
+		resp, err := flood.get(r.ts.URL + "/auth/fake-oidc/start")
 		if err != nil {
 			t.Fatal(err)
 		}
-		io.Copy(io.Discard, resp.Body) // drained, so the connection is reused
+		_, _ = io.Copy(io.Discard, resp.Body) // drained, so the connection is reused
 		resp.Body.Close()
 	}
 	// The flood shares this test's address and drained its rate bucket (per IP, older than sign-in);
@@ -434,16 +439,16 @@ func TestTwoTabsSignInAtOnce(t *testing.T) {
 	}
 	var callbacks []string
 	for range 2 {
-		resp, _ := b.c.Get(r.ts.URL + "/auth/fake-oidc/start")
+		resp, _ := b.get(r.ts.URL + "/auth/fake-oidc/start")
 		resp.Body.Close()
 		form := resp.Request.URL.Query()
 		form.Set("decision", "allow")
-		resp, _ = b.c.PostForm(r.ts.URL+"/auth/fake-oidc/authorize", form)
+		resp, _ = b.postForm(r.ts.URL+"/auth/fake-oidc/authorize", form)
 		resp.Body.Close()
 		callbacks = append(callbacks, resp.Header.Get("Location"))
 	}
 	b.c.CheckRedirect = nil
-	resp, _ := b.c.Get(callbacks[0]) // the first tab finishes after the second one started
+	resp, _ := b.get(callbacks[0]) // the first tab finishes after the second one started
 	resp.Body.Close()
 	landed(t, resp.Request.URL, "")
 }
@@ -457,7 +462,12 @@ func TestAFailedSignInKeepsTheInvite(t *testing.T) {
 }
 
 func TestSignOutForgetsThisBrowser(t *testing.T) {
-	if resp, _ := http.Post(newRig(t, nil).ts.URL+"/api/signout", "", nil); resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+	resp, err := request(t, http.MethodPost, newRig(t, nil).ts.URL+"/api/signout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("without sign-in there is no sign-out (the cookie is the account): %d", resp.StatusCode)
 	}
 	r := newAuthRig(t, nil)
@@ -568,7 +578,9 @@ func TestSignInLogsNoSecrets(t *testing.T) {
 	seen := ""
 	for rows.Next() {
 		var a, n, d string
-		rows.Scan(&a, &n, &d)
+		if err := rows.Scan(&a, &n, &d); err != nil {
+			t.Fatal(err)
+		}
 		seen += a + "|" + n + "|" + d + "\n"
 	}
 	if !strings.Contains(seen, "member.join|Sam|role=admin provider=fake-oidc via=domain") || strings.Contains(seen, "secret.person") {

@@ -117,7 +117,9 @@ func TestChatHistoryOrderAndPruning(t *testing.T) {
 		t.Fatalf("history must be the newest 100, oldest first: %q .. %q", rows[0].Text, rows[99].Text)
 	}
 	var n int
-	s.DB.QueryRow("SELECT COUNT(*) FROM chat_messages").Scan(&n)
+	if err := s.DB.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM chat_messages").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n > chatKeep+1 {
 		t.Fatalf("history must be pruned to ~%d rows, got %d", chatKeep, n)
 	}
@@ -130,7 +132,9 @@ func TestMigrationsAreIdempotentAndBackupWorks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.EnsureOffice(context.Background(), "x", "X", "{}")
+	if _, err := s.EnsureOffice(context.Background(), "x", "X", "{}"); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.BackupTo(context.Background(), filepath.Join(dir, "b.db")); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +172,9 @@ func TestInstanceIDIsStablePerDatabaseAndDiffersBetweenDatabases(t *testing.T) {
 func TestLinkIdentityRules(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
-	s.AddMember(ctx, o.ID, "Admin", json.RawMessage(`{}`), "admin")
+	if _, _, err := s.AddMember(ctx, o.ID, "Admin", json.RawMessage(`{}`), "admin"); err != nil {
+		t.Fatal(err)
+	}
 	ann, _, _ := s.AddMember(ctx, o.ID, "Ann", json.RawMessage(`{}`), "member")
 	bob, _, _ := s.AddMember(ctx, o.ID, "Bob", json.RawMessage(`{}`), "member")
 	g := Identity{Provider: "google", Subject: "1", Email: "Ann@X.com"}

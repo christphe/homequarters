@@ -11,7 +11,7 @@ import (
 
 func privacyBody(t *testing.T, ts string) string {
 	t.Helper()
-	resp, err := http.Get(ts + "/privacy")
+	resp, err := request(t, http.MethodGet, ts+"/privacy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestPrivacyPolicyFollowsTheConfiguration(t *testing.T) {
 func TestAboutPageIsPublicAndExplainsTheOffice(t *testing.T) {
 	get := func(ts string) string {
 		t.Helper()
-		resp, err := http.Get(ts + "/about")
+		resp, err := request(t, http.MethodGet, ts+"/about")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestAboutPageOffersTheSourceUnderTheAGPL(t *testing.T) {
 		c.SourceURL = "https://git.example.com/acme/hq-fork"
 		c.Version = "abc1234"
 	})
-	resp, err := http.Get(r.ts.URL + "/about")
+	resp, err := request(t, http.MethodGet, r.ts.URL+"/about")
 	if err != nil {
 		t.Fatal(err)
 	}

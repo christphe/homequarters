@@ -187,7 +187,9 @@ func TestCacheSeesContentChangesWithTheSameSizeAndTime(t *testing.T) {
 	}
 	h.Stop("p")
 	write(t, root, map[string]string{"p/main.ts": `export function load() { hq.kv.set("v", "BBB"); }`})
-	os.Chtimes(main, st.ModTime(), st.ModTime())
+	if err := os.Chtimes(main, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.Start("p"); err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +249,7 @@ func TestJunctionOutOfThePluginIsRefused(t *testing.T) {
 	link, target := filepath.Join(root, "p", "lib"), filepath.Join(root, "outside")
 	var err error
 	if runtime.GOOS == "windows" {
-		err = exec.Command("cmd", "/c", "mklink", "/J", link, target).Run()
+		err = exec.CommandContext(t.Context(), "cmd", "/c", "mklink", "/J", link, target).Run()
 	} else {
 		err = os.Symlink(target, link)
 	}
