@@ -53,6 +53,12 @@ export interface Member {
   send(plugin: string, d: unknown): void;
   /** Sends the "use" intent for the object at `at` (`{"t":"use","x":..,"y":..}`). */
   use(at: Tile): void;
+  /**
+   * Sets the member's status (`{"t":"st","v":status}`). Going invisible is leaving for plugins (onLeave), and
+   * coming back from invisible is joining (onJoin), at once: unlike `leave()` and `reconnect()`, which within the
+   * server's reconnect grace (about 10 s) are neither. An invisible member gets no plugin frames.
+   */
+  setStatus(status: "available" | "busy" | "away" | "invisible"): void;
   /** Every `d` this member got from `plugin`, in order. */
   received(plugin: string): unknown[];
   /**
@@ -72,7 +78,7 @@ export interface Member {
   reconnect(o?: { at?: Tile }): Promise<void>;
 }
 
-const NO_BINARY = 'no homequarters binary: run "fdash run build" first (or set HQ_BIN)';
+const NO_BINARY = 'no homequarters binary: run "node tools/fdash/cli.ts run build --pkg server" first (or set HQ_BIN)';
 const START_MS = 30_000;
 const STOP_MS = 15_000;
 const HTTP_MS = 10_000;
@@ -118,7 +124,9 @@ type Proc = { child: ChildProcess; url: string; exited: Promise<number | null>; 
 
 /** Spawns the testbed and waits for its {"url":...} line. stdin stays piped: the server stops when this process ends. */
 async function startProcess(bin: string, args: string[]): Promise<Proc> {
-  const child = spawn(bin, ["testbed", ...args], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  // detached on Windows: libuv puts children in a job object killed with this process, which would give the
+  // server no chance to remove its --db-temp database; it stops on its own when stdin ends
+  const child = spawn(bin, ["testbed", ...args], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform === "win32" });
   const stderr: string[] = [];
   readline.createInterface({ input: child.stderr! }).on("line", (l) => {
     stderr.push(l);
@@ -153,9 +161,13 @@ async function startProcess(bin: string, args: string[]): Promise<Proc> {
   }
 }
 
-/** Ends stdin (the server's stop signal) and waits for the exit; kills it after STOP_MS. */
-async function stopProcess(p: Proc): Promise<void> {
+/**
+ * Ends stdin (the server's stop signal) and waits for the exit; kills it after STOP_MS. `keep` first sends
+ * the line "keep": the server leaves its --db-temp database for the next start (a restart).
+ */
+async function stopProcess(p: Proc, keep = false): Promise<void> {
   p.child.ref();
+  if (keep) p.child.stdin?.write("keep\n");
   p.child.stdin?.end();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const stopped = await Promise.race([
@@ -176,7 +188,9 @@ export async function testbed(o: { plugins: string[]; static?: string; timeoutMs
   const bin = findBinary();
   const waitMs = o.timeoutMs ?? 5000;
   const dir = mkdtempSync(path.join(os.tmpdir(), "hq-testbed-client-"));
-  const args = ["--db", path.join(dir, "testbed.db")];
+  // --db-temp: the server removes the database and this folder when it stops, even when this process died
+  // without close(); restart() tells it to keep them
+  const args = ["--db", path.join(dir, "testbed.db"), "--db-temp"];
   for (const p of o.plugins) args.push("--plugin", path.resolve(p));
   if (o.static) args.push("--static", path.resolve(o.static));
 
@@ -313,7 +327,7 @@ export async function testbed(o: { plugins: string[]; static?: string; timeoutMs
     },
     async restart() {
       if (closed) throw new Error("restart after close");
-      await stopProcess(proc);
+      await stopProcess(proc, true);
       proc = await startProcess(bin, args);
     },
     close() {
@@ -424,6 +438,10 @@ class MemberImpl implements Member {
 
   use(at: Tile): void {
     this.#sendRaw({ t: "use", x: at.x, y: at.y });
+  }
+
+  setStatus(status: "available" | "busy" | "away" | "invisible"): void {
+    this.#sendRaw({ t: "st", v: status });
   }
 
   #sendRaw(m: unknown): void {

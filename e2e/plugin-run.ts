@@ -12,7 +12,8 @@
 // member (its administrator) and gives every scenario a RunContext; startServer, stopServer and defer throw:
 // they need run.ts's server and LiveKit. On a CI runner (CI set) it takes no slot and any free port. Writes
 // each scenario's outcome to FDASH_REPORT when fdash gives one, and ends with ALL SCENARIOS PASSED or SOME
-// CHECKS FAILED.
+// CHECKS FAILED. Its temporary folder (homequarters-plugin-e2e-*: database, server log) is removed after a pass
+// and kept after a failure. The environment reaches the testbed unchanged: it refuses HQ_ENV=production.
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -102,9 +103,9 @@ async function main(): Promise<number> {
   const log = fs.openSync(logFile, "a");
   const bedArgs = ["testbed", "--addr", `127.0.0.1:${port}`, "--static", path.join(root, "web", "dist"), "--db", path.join(dir, "testbed.db")];
   for (const p of plugins) bedArgs.push("--plugin", p);
-  // stdin stays open: the testbed stops when it closes, so it never outlives this process, however it ends
-  const env = { ...process.env, HQ_ENV: "dev" };
-  const child: ChildProcess = spawn(bin, bedArgs, { env, stdio: ["pipe", "pipe", log], windowsHide: true });
+  // stdin stays open: the testbed stops when it closes, so it never outlives this process, however it ends.
+  // The environment goes through as it is: the testbed itself refuses HQ_ENV=production.
+  const child: ChildProcess = spawn(bin, bedArgs, { stdio: ["pipe", "pipe", log], windowsHide: true });
   const exited = new Promise<number | null>((r) => child.once("exit", (code) => r(code)));
   let stopping: Promise<void> | null = null;
   const stop = () => stopping ??= (async () => {
@@ -161,6 +162,10 @@ async function main(): Promise<number> {
     await stop();
   }
   if (process.env.FDASH_REPORT) for (const [item, passed] of outcome) fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ item, ok: passed }) + "\n");
+  // the run's folder (database, server log, what scenarios wrote) is kept only to look at a failure
+  fs.closeSync(log);
+  if (ok) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  else console.log(`# kept for inspection: ${dir}`);
   console.log(ok ? "\nALL SCENARIOS PASSED" : "\nSOME CHECKS FAILED");
   return ok ? 0 : 1;
 }

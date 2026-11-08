@@ -300,3 +300,51 @@ func TestTestbedRefusesBrokenPlugin(t *testing.T) {
 		t.Fatalf("the error does not name the plugin: %v", err)
 	}
 }
+
+func TestTestbedRefusesAnAddressBeyondLoopback(t *testing.T) {
+	for _, addr := range []string{"0.0.0.0:0", ":0"} {
+		bed, err := Start(context.Background(), Options{Plugins: []string{echoDir}, Addr: addr})
+		if err == nil {
+			bed.Close()
+			t.Fatalf("started on %s", addr)
+		}
+		if !strings.Contains(err.Error(), "loopback") {
+			t.Fatalf("%s: the error does not say why: %v", addr, err)
+		}
+	}
+	bed, err := Start(context.Background(), Options{Plugins: []string{echoDir}, Addr: "localhost:0"})
+	if err != nil {
+		t.Fatalf("localhost refused: %v", err)
+	}
+	bed.Close()
+}
+
+// The writes a plugin queues as it stops reach the database after the disable answered: a replacement
+// of its data waits for them, or they would land on top of it.
+func TestTestbedKVReplaceWaitsForQueuedWrites(t *testing.T) {
+	bed, err := Start(context.Background(), Options{Plugins: []string{filepath.Join("testdata", "writer")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bed.Close()
+	ann := join(t, bed, "Ann")
+	for i := range 3 {
+		if code, body := ann.do("PUT", "/api/admin/plugins/writer", map[string]bool{"enabled": false}); code != http.StatusOK {
+			t.Fatalf("disable: %d %s", code, body)
+		}
+		// at once, as seedKv does: the 600 writes of the plugin's unload may still be queued
+		if code, body := ann.do("PUT", "/api/testbed/kv/writer", map[string]string{"seeded": "yes"}); code != http.StatusNoContent {
+			t.Fatalf("kv put: %d %s", code, body)
+		}
+		time.Sleep(200 * time.Millisecond) // a write still queued would land meanwhile
+		code, body := ann.do("GET", "/api/testbed/kv/writer", nil)
+		var kv map[string]string
+		json.Unmarshal(body, &kv)
+		if code != http.StatusOK || len(kv) != 1 || kv["seeded"] != "yes" {
+			t.Fatalf("round %d: %d keys after the replace, want only the seeded one (%d)", i, len(kv), code)
+		}
+		if code, body := ann.do("PUT", "/api/admin/plugins/writer", map[string]bool{"enabled": true}); code != http.StatusOK {
+			t.Fatalf("enable: %d %s", code, body)
+		}
+	}
+}

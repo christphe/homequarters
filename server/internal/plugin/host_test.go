@@ -336,6 +336,34 @@ export function update() { if (sent !== null && hq.broadcast({ sent })) sent = n
 	}
 }
 
+// The send budget is per recipient: a member whose budget is spent (a flooded page) holds back no
+// message sent to another member on its own, as hq-chess sends its playing list.
+func TestSpentRecipientDoesNotHoldBackOthers(t *testing.T) {
+	h, sink, _ := newHost(t, map[string]string{"p": `
+export function onMessage(p: { id: number }, m: { flood: number; then: number }) {
+  let spent = 0;
+  while (spent < 100 && hq.send(m.flood, { f: spent })) spent++;
+  const refused = !hq.send(m.flood, { f: -1 });
+  hq.send(m.then, { spent, refused });
+}`})
+	carol := Player{ID: 3, Name: "Carol", Role: "member"}
+	for _, p := range []Player{alice, bob, carol} {
+		h.Presence(p, true)
+	}
+	if err := h.Start("p"); err != nil {
+		t.Fatal(err)
+	}
+	h.Message(alice, "p", []byte(`{"flood":2,"then":3}`))
+	eventually(t, "Carol's message after Bob's budget was spent", func() bool { return sink.find(3, "spent", nil) })
+	d := sink.data(3)[0]
+	if d["spent"] != float64(sendBurst) || d["refused"] != true {
+		t.Fatalf("Bob took %v messages (want the burst, %d) and the next was refused: %v", d["spent"], sendBurst, d["refused"])
+	}
+	if n := len(sink.data(2)); n != sendBurst {
+		t.Fatalf("Bob got %d messages, want %d", n, sendBurst)
+	}
+}
+
 func TestKV(t *testing.T) {
 	src := `
 const fails = (f: () => void) => { try { f(); return false; } catch { return true; } };

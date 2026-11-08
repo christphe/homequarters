@@ -10,7 +10,7 @@
 // Rules and logic are unit-tested, not here: the table, the log, snapping and the layout in
 // plugins/bundled/hq-cards/test/cards.test.ts, Old Maid and Last Card in plugins/bundled/hq-card-pouilleux/test/oldMaid.test.ts and hq-card-lastcard/test/lastCard.test.ts, the server
 // side (who may act, restarts, game hooks such as Old Maid's count, a game turned off and on) in
-// server/internal/plugin/cards_test.go and oldmaid_test.go. This scenario keeps what needs the browser: real
+// plugins/bundled/hq-cards/test/cards.ispec.ts and hq-card-pouilleux/test/oldMaid.ispec.ts. This scenario keeps what needs the browser: real
 // controls, drags and the keyboard, what each page draws, sync between pages.
 // It runs against the testbed, without LiveKit (e2e/plugin-run.ts): node tools/fdash/cli.ts run test:e2e --pkg hq-cards-e2e
 // (after "node tools/fdash/cli.ts run build --pkg server --pkg web"). Of its RunContext it uses only adminCookie.
@@ -147,7 +147,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     if (!(await cy.page.$(MODAL))) await openWithX(cy);
     await waitFor(async () => (await drawn(cy))?.layout === "wide", { timeout: 5000, what: "Cy back to the wide layout" }).catch(() => {});
 
-    // (a spectator cannot move a card: cards.test.ts, cards_test.go)
+    // (a spectator cannot move a card: cards.test.ts, cards.ispec.ts)
 
     // ---- criterion 6: a pile created, shuffled, drawn from, looked through and reordered, all logged
     await type(ann, "New pile", "Discard");
@@ -207,7 +207,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const kbd = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} put a card on Stock`, 1000);
     check("13: with the keyboard only, Ann puts a card on Stock; Bo's log has it within 1 s, Ann's live region spoke", kbd >= 0 && /your hand/.test(sayFirst!), JSON.stringify({ kbd, sayFirst }));
 
-    // (the table, its seats and its log survive a server restart: cards_test.go)
+    // (the table, its seats and its log survive a server restart: cards.ispec.ts)
 
     // ---- round 2 (R1-R7): a solitaire on the free table, Ann alone, through the real controls; Bo watches
     await press(ann, "Reset");

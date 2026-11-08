@@ -210,6 +210,40 @@ func TestTestbedKeepsGivenDatabase(t *testing.T) {
 	}
 }
 
+// --db-temp: the client's database survives a restart ("keep" on stdin) and goes with its folder when
+// stdin ends without it, as when the test process dies.
+func TestTestbedTempDatabase(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "client")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(dir, "bed.db")
+	p := runBed(t, nil, "--plugin", echoPlugin, "--db", db, "--db-temp")
+	p.url(t)
+	io.WriteString(p.stdin, "keep\n")
+	p.stdin.Close()
+	if code := p.wait(t, 10*time.Second); code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, p.stderr)
+	}
+	if _, err := os.Stat(db); err != nil {
+		t.Fatalf("a kept database is gone: %v", err)
+	}
+	p = runBed(t, nil, "--plugin", echoPlugin, "--db", db, "--db-temp")
+	p.url(t)
+	p.stdin.Close()
+	if code := p.wait(t, 10*time.Second); code != 0 {
+		t.Fatalf("exit %d; stderr: %s", code, p.stderr)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		entries, _ := os.ReadDir(dir)
+		t.Fatalf("the temporary database's folder is still there (%v): %v", err, entries)
+	}
+	// and --db-temp alone is a mistake
+	if code := runBed(t, nil, "--plugin", echoPlugin, "--db-temp").wait(t, 30*time.Second); code != 2 {
+		t.Fatalf("--db-temp without --db: exit %d", code)
+	}
+}
+
 func TestTestbedStopsOnInterrupt(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no SIGINT to send to a child process on Windows")

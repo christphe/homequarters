@@ -1,0 +1,1 @@
+{"name": "writer", "title": "Writer", "version": "1.0.0", "description": "Test plugin that writes many keys as it stops.", "server": "main.ts"}

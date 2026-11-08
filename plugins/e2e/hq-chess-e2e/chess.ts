@@ -6,7 +6,7 @@
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-objects-chess-design.md it proves.
 // Rules and logic are unit-tested, not here: the rules in plugins/bundled/hq-chess/test/chess.test.ts; what the view lets a member
 // pick up, sends, says and undoes, and the window's buttons, in plugins/bundled/hq-chess/test/chessView.test.ts; the server side
-// (seats, presence, hello, reset, the playing list, restarts) in server/internal/plugin/chess_test.go. This
+// (seats, presence, hello, reset, the playing list, restarts) in plugins/bundled/hq-chess/test/chess.ispec.ts. This
 // scenario keeps what needs the browser: real controls, pixels, the live region, sync between pages, badges.
 // It runs against the testbed, without LiveKit (e2e/plugin-run.ts): node tools/fdash/cli.ts run test:e2e --pkg hq-chess-e2e
 // (after "node tools/fdash/cli.ts run build --pkg server --pkg web"). Of its RunContext it uses only adminCookie.
@@ -320,7 +320,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
       return badgeAbove(a, "w") && badgeAbove(o, "b") ? { a, o } : null;
     }, { timeout: 5000, what: "badges on Cy's page" }).catch(() => null);
     check("13: Cy's page shows a white badge above Ann and a black one above Bo", !!badgesUp, JSON.stringify([await badgeOf(cy, ann.id), await badgeOf(cy, bo.id)]));
-    // (no badge over a spectator: the playing list, chess_test.go; a spectator, or White picking up a black
+    // (no badge over a spectator: the playing list, chess.ispec.ts; a spectator, or White picking up a black
     // piece, sends nothing: chessView.test.ts)
     let expected: Board = { p: START, r: "", w: { id: ann.id, name: "" }, b: { id: bo.id, name: "" } };
 
@@ -472,7 +472,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("13: once Ann is on Di's screen, her badge shows above her", !!near, JSON.stringify(await badgeOf(di, ann.id)));
 
     // ---- criterion 7: away and reset (a reloaded page's hello makes its member away, the seat kept:
-    // chess_test.go; the hello itself is sent below, by the page that loads the plugin late)
+    // chess.ispec.ts; the hello itself is sent below, by the page that loads the plugin late)
     // Bo closes his window: away within 1 s
     await press(bo, "Close");
     const closeMs = await within(async () => (await modalState(ann))!.holders.endsWith(`Black: ${bo.name} (away)`), 1000);
@@ -493,7 +493,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("7: Reset puts the start position back, empties the reserve and frees both seats", resetOk, JSON.stringify({ afterReset: await modalState(cy), cyBoard: await board(cy) }));
     await press(cy, "Close");
 
-    // ---- a game for the plugin's off and on below (a server restart keeps it: chess_test.go)
+    // ---- a game for the plugin's off and on below (a server restart keeps it: chess.ispec.ts)
     await openWithX(ann);
     await openWithX(bo);
     await press(ann, "White");
@@ -532,7 +532,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const backOn = await waitFor(async () => (await board(ann))?.p === expected.p && (await modalState(ann))!.holders === bothHere, { timeout: 5000, what: "seats after off/on" }).catch(() => false);
     check("4, 8: plugin on again: the board is back, X opens it, with its game and its players", backOn === true, (await modalState(ann))!.holders);
     check("a window opened before the plugin ran on that page stays open (the page's late hello does not close it)", xFirst && backOn === true, JSON.stringify({ xFirst, holders: (await modalState(ann))!.holders }));
-    // (a reset empties the playing list: chess_test.go; a badge leaving a page is checked above)
+    // (a reset empties the playing list: chess.ispec.ts; a badge leaving a page is checked above)
     await press(ann, "Reset"); // leaves the board as new
     await waitFor(async () => (await board(ann))?.p === START, { timeout: 3000, what: "final reset" }).catch(() => {});
 

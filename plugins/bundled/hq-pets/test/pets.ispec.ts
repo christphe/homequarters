@@ -61,17 +61,33 @@ async function say(m: Member, ...msgs: unknown[]): Promise<void> {
 test("it survives a full office arriving", async () => {
   const bed = await open();
   const three = `[[0,"","a1"],[3,"ff8800","b2"],[8,"","c3"]]`;
-  const crowd = await Promise.all(Array.from({ length: 80 }, (_, i) => bed.join(`m${i + 1}`)));
+  const first = await Promise.all(Array.from({ length: 40 }, (_, i) => bed.join(`m${i + 1}`)));
+  // members are numbered in the order they join (a fresh database): the 40 still to come get the next ids,
+  // and their pets are stored before they arrive
+  const top = Math.max(...first.map((m) => m.id));
   const seed: Record<string, string> = {};
-  for (const m of crowd) seed[`p:${m.id}`] = three;
-  // the plugin starts again with 80 members online and their pets in the database: all of them arrive at once
+  for (let id = Math.min(...first.map((m) => m.id)); id <= top + 40; id++) seed[`p:${id}`] = three;
+  const watcher = first[0]!;
+  const seen = frames(watcher).length; // what came before the restart does not count
+  // the plugin starts again with 40 members online and their pets in the database: all of them arrive at once
   await bed.seedKv(PETS, seed);
-  const last = crowd[crowd.length - 1]!;
+  // and 40 more arrive while it runs
+  const later = await Promise.all(Array.from({ length: 40 }, (_, i) => bed.join(`n${i + 1}`)));
+  for (const m of later) assert.ok(m.id > top && m.id <= top + 40, `member ${m.id} got an id outside the seeded ones (${top + 1}-${top + 40})`);
+  const crowd = [...first, ...later];
+  // the broadcasts alone announce everybody's pets to a member already there: no page asked (no sync)
+  const announced = (id: number): number => {
+    let n = -1;
+    for (const f of frames(watcher).slice(seen)) for (const e of f.set ?? []) if (e.id === id) n = e.pets.length;
+    return n;
+  };
+  await until("the pets of all 80 members, from the broadcasts", () => crowd.every((m) => announced(m.id) === 3));
+  for (const m of crowd) assert.equal(announced(m.id), 3, `member ${m.id}`);
   // a page that starts asks for everybody's pets, which come in pieces
+  const last = later[later.length - 1]!;
   last.send(PETS, { t: "sync" });
-  await until("the pets of all 80 members", () => crowd.every((m) => petsOf(last, m.id).length === 3));
-  for (const m of crowd) assert.equal(petsOf(last, m.id).length, 3, `member ${m.id}`);
-  for (const m of [last, crowd[0]!]) {
+  await until("the pets of all 80 members, from a sync", () => crowd.every((m) => petsOf(last, m.id).length === 3));
+  for (const m of [last, watcher]) {
     for (const f of frames(m)) assert.ok(bytes(f) <= 4096, `a ${bytes(f)}-byte message: the office's pets must be cut into pieces`);
   }
   assert.deepEqual(await bed.errors(), {});
@@ -219,10 +235,20 @@ test("it survives control spam", async () => {
     bob.send(PETS, spam[(i + 3) % spam.length]);
     await sleep(100);
   }
-  for (let i = 0; i < 5; i++) { // and Bob keeps coming and going
-    await bob.leave();
-    await bob.reconnect();
+  // and Bob keeps leaving and coming back: invisible and back is a leave and a join for the plugin at once
+  // (a socket closed and reopened within the server's reconnect grace, about 10 s, would be neither)
+  const seen = frames(ann).length;
+  for (let i = 0; i < 15; i++) {
+    bob.setStatus("invisible");
+    await sleep(150);
+    bob.setStatus("available");
+    await sleep(150);
   }
+  const after = frames(ann).slice(seen);
+  const left = after.filter((f) => f.del?.includes(bob.id)).length;
+  assert.ok(left >= 10,`Ann was told ${left} times that Bob left: the churn did not reach the plugin`);
+  const lastLeft = after.findLastIndex((f) => f.del?.includes(bob.id));
+  await until("Bob back after the churn", () => frames(ann).slice(seen + lastLeft + 1).some((f) => f.set?.some((e) => e.id === bob.id)));
   // the probe: still running, and it still broadcasts
   await say(ann, { t: "mode", m: "follow" }, { t: "mode", m: "wander" });
   await until("a broadcast after the spam", () => entryOf(ann, ann.id)?.mode === "wander");

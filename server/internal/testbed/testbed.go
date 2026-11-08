@@ -8,7 +8,8 @@
 //	GET  /api/testbed/errors                          {"<plugin>": count} of "plugin error" logs
 //
 // The server stays authoritative: placement writes where an offline member stood, the world restores
-// it when they join; a connected member is never moved. It refuses to start with HQ_ENV=production.
+// it when they join; a connected member is never moved. It refuses to start with HQ_ENV=production, and
+// on any address but loopback.
 package testbed
 
 import (
@@ -36,7 +37,8 @@ import (
 )
 
 // Options configures a testbed. Plugins are plugin folders (a folder whose parent is named bundled
-// is a bundled plugin, any other an installed one). Addr defaults to 127.0.0.1:0 (a free port).
+// is a bundled plugin, any other an installed one). Addr defaults to 127.0.0.1:0 (a free port); an
+// address that is not loopback is refused.
 // Static, when set, is a built web client (web/dist) to serve. DB, when set, is kept after Close (a
 // restart test reopens it); otherwise the database lives in a temporary folder removed by Close. Log
 // receives the server's logs (none when nil).
@@ -154,14 +156,11 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 		return nil, err
 	}
 	tcp := ln.Addr().(*net.TCPAddr)
-	host := tcp.IP.String()
-	if tcp.IP.IsUnspecified() {
-		host = "127.0.0.1"
+	if !tcp.IP.IsLoopback() { // all interfaces (0.0.0.0, ":0") included
+		ln.Close()
+		return nil, fmt.Errorf("the testbed listens on this machine only: %s is not a loopback address (its test endpoints have no authentication)", addr)
 	}
-	if !tcp.IP.IsLoopback() {
-		log.Warn("testbed listening beyond this machine: its test endpoints have no authentication", "addr", tcp.String())
-	}
-	b.URL = "http://" + net.JoinHostPort(host, strconv.Itoa(tcp.Port))
+	b.URL = "http://" + net.JoinHostPort(tcp.IP.String(), strconv.Itoa(tcp.Port))
 
 	cfg := &config.Config{Env: "dev", Addr: tcp.String(), DBPath: b.db, StaticDir: o.Static, PluginDirs: o.Plugins,
 		OfficeSlug: officeSlug, OfficeName: "Testbed", SessionTTL: 24 * time.Hour, TickHz: 15, AOICells: 2,
@@ -367,6 +366,12 @@ func (b *Bed) putKV(w http.ResponseWriter, r *http.Request) {
 	}
 	if flags[name] {
 		fail(w, http.StatusConflict, "the plugin is enabled: disable it first (PUT /api/admin/plugins/"+name+" {\"enabled\":false})")
+		return
+	}
+	// what the plugin wrote before it stopped (its unload included) is queued for the database: let it
+	// land first, or it would overwrite the data put here
+	if err := b.srv.KVSettled(ctx, b.office, name); err != nil {
+		fail(w, http.StatusServiceUnavailable, "the plugin's last writes are still being saved")
 		return
 	}
 	old, err := b.st.PluginKV(ctx, b.office, name)

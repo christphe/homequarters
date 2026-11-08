@@ -32,16 +32,19 @@ The design note is `docs/superpowers/specs/2026-11-07-test-pyramid-plugin-testbe
 
 **`homequarters testbed`** (`server/cmd/homequarters/testbed.go`, `server/internal/testbed`) starts the real
 server for tests: dev mode, no LiveKit, a database in a temporary folder (or `--db FILE`, kept, for restart
-tests), join limits raised, and only the plugin folders given with `--plugin`, each enabled at start with an
-audit row by the testbed. It prints `{"url":"http://127.0.0.1:PORT"}` on stdout once it listens and stops when
-its stdin closes, so it never outlives the test that started it. `--static web/dist` serves the client for
+tests; with `--db-temp` it is removed at the stop unless a line `keep` came on stdin first, which is how the
+client restarts it without leaving a folder behind when the test process dies), join limits raised, and only
+the plugin folders given with `--plugin`, each enabled at start with an audit row by the testbed. It refuses
+`HQ_ENV=production` and any listen address but loopback. It prints `{"url":"http://127.0.0.1:PORT"}` on stdout
+once it listens and stops when its stdin closes, so it never outlives the test that started it. `--static web/dist` serves the client for
 browser scenarios. Next to the server's own routes, its own mux serves four test-only endpoints:
 
 - `POST /api/testbed/position`: the saved position of an offline member, at a tile. A connected member is
   never moved (409, also during the reconnect grace after they left), and the world restores the position when they join, so clients still never send
   positions (invariant 1).
 - `GET` and `PUT /api/testbed/kv/{plugin}`: a plugin's stored keys and values; a write only while the plugin
-  is disabled.
+  is disabled, and after the writes it queued before it stopped have reached the database (httpapi's
+  `KVSettled`), so none of them lands on top of the new data.
 - `GET /api/testbed/errors`: how many "plugin error" log lines each plugin produced.
 
 `httpapi` never registers them; it only learns to load plugins from explicit folders (`PluginDirs`, set by

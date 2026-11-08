@@ -4,8 +4,8 @@
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves; the
 // table itself is plugins/e2e/hq-cards-e2e/cards.ts, whose helpers (lib.ts) this scenario uses.
 // Rules and logic are unit-tested, not here: Old Maid's controls, its 49 cards, pairs, offer and count in
-// plugins/bundled/hq-card-pouilleux/test/oldMaid.test.ts; through the real host, and turning it off and on, in
-// server/internal/plugin/oldmaid_test.go and cards_test.go.
+// plugins/bundled/hq-card-pouilleux/test/oldMaid.test.ts; through the real server, and turning it off and on, in
+// plugins/bundled/hq-card-pouilleux/test/oldMaid.ispec.ts and plugins/bundled/hq-cards/test/cards.ispec.ts.
 // It runs against the testbed, without LiveKit (e2e/plugin-run.ts), with hq-cards and hq-card-pouilleux loaded:
 // node tools/fdash/cli.ts run test:e2e --pkg hq-card-pouilleux-e2e (after "node tools/fdash/cli.ts run build --pkg
 // server --pkg web"). Of its RunContext it uses only adminCookie.
@@ -63,8 +63,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await press(ann, "Deal all");
     await waitFor(async () => (await handOf(ann)).length + (await handOf(bo)).length === 49, { what: "Old Maid dealt" });
     // (its 49 cards: oldMaid.test.ts; "Deal all" through its button is what the wait above proves)
-    // (Old Maid's pairs, offer, count from its hook, and turning it off and on: oldMaid.test.ts, oldmaid_test.go,
-    // cards_test.go; the same controls are checked on the free table and with Last Card)
+    // (Old Maid's pairs, offer, count from its hook, and turning it off and on: oldMaid.test.ts, oldMaid.ispec.ts,
+    // cards.ispec.ts; the same controls are checked on the free table and with Last Card)
     // the console stays clean (not a check of its own: the table's scenario has those; this throws, and the
     // scenario then fails with "scenario completed")
     noConsoleErrors(users);

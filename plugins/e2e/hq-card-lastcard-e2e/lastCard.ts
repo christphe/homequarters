@@ -4,7 +4,7 @@
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves; the
 // table itself is plugins/e2e/hq-cards-e2e/cards.ts, whose helpers (lib.ts) this scenario uses.
 // Rules and logic are unit-tested, not here: Last Card's rules in plugins/bundled/hq-card-lastcard/test/lastCard.test.ts,
-// its count through the real host in server/internal/plugin/lastcard_test.go.
+// its count through the real server in plugins/bundled/hq-card-lastcard/test/lastCard.ispec.ts.
 // It runs against the testbed, without LiveKit (e2e/plugin-run.ts), with hq-cards and hq-card-lastcard loaded:
 // node tools/fdash/cli.ts run test:e2e --pkg hq-card-lastcard-e2e (after "node tools/fdash/cli.ts run build --pkg
 // server --pkg web"). Of its RunContext it uses only adminCookie.
@@ -55,7 +55,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
     const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });
     check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog!), lcLog!);
-    // (Last Card's count, through the real host: lastcard_test.go; the Count button and its text: the Old Maid and table scenarios)
+    // (Last Card's count, through the real server: lastCard.ispec.ts; the Count button and its text: the Old Maid and table scenarios)
     // turned off and on with the window open: the page learns of the plugin after the game is back, and the
     // view must still end up drawing the game's own sheet
     await setPlugin(ctx, GAME, false);

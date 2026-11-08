@@ -2,9 +2,12 @@
 // the echo fixture plugin of the server's tests: onMessage stores {v} under "k" and answers {echo: v}.
 // Run: node --test "plugins/sdk/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { testbed } from "../testbed.ts";
 import type { Testbed } from "../testbed.ts";
 
@@ -103,6 +106,26 @@ test("restart keeps the database; members come back with reconnect", async () =>
   await bed.setPlugin("echo", true);
 });
 
+test("a test process that dies without close() leaves no temporary folder behind", async () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "hq-testbed-dies-"));
+  try {
+    // a child test process opens a bed, restarts it once, then exits at once: no close(), no cleanup
+    const script = `import { testbed } from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, "../testbed.ts")).href)};
+const bed = await testbed({ plugins: [${JSON.stringify(echo)}] });
+await bed.restart();
+process.exit(0);`;
+    const env = { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp };
+    const child = spawnSync(process.execPath, ["--input-type=module", "-e", script], { env, encoding: "utf8", timeout: 60_000 });
+    assert.equal(child.status, 0, child.stderr);
+    // the server sees stdin end and stops, removing its database and the client's folder
+    const deadline = Date.now() + 15_000;
+    while (readdirSync(tmp).length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(readdirSync(tmp), [], "left behind in the temporary folder");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test("seedKv replaces a plugin's data; setPlugin and placeObject need the administrator", async () => {
   const bed = await open();
   await assert.rejects(bed.placeObject("box", { x: 12, y: 7 }), /first member is the administrator/);
@@ -138,7 +161,7 @@ test("no binary: the documented error", async () => {
   process.env.HQ_BIN = missing;
   try {
     await assert.rejects(testbed({ plugins: [echo] }), (e: Error) => {
-      assert.match(e.message, /^no homequarters binary: run "fdash run build" first \(or set HQ_BIN\)/);
+      assert.match(e.message, /^no homequarters binary: run "node tools\/fdash\/cli\.ts run build --pkg server" first \(or set HQ_BIN\)/);
       return true;
     });
   } finally {

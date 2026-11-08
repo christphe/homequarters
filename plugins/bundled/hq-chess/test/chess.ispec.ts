@@ -382,10 +382,12 @@ test("the playing list names the present seated players, and a joining member ge
   await waitPlaying(alice, "a reset frees both seats", []);
 });
 
-// The playing list goes to each member on its own: a member whose send budget is spent does not hold it
-// back from the others, and gets it once the budget allows. The Go test spent Bob's budget directly; here
-// Bob spends it as a page would, with a stream of refused moves, each answered by a state sent to him.
-test("the playing list goes to each member on its own: a flooded member does not hold it back", async () => {
+// The playing list reaches every member while one of them keeps the plugin busy with refused moves, each
+// answered by a state sent to him. This does not spend Bob's send budget: members' messages are let in at
+// 5 a second (httpapi) while the budget refills at 10, so a page cannot flood it. That a spent recipient
+// holds back no message sent to another member on its own is the host's behaviour, tested in Go on a
+// fixture plugin: TestSpentRecipientDoesNotHoldBackOthers (server/internal/plugin/host_test.go).
+test("the playing list reaches every member while one of them sends a stream of refused moves", async () => {
   const bed = await open(A);
   const alice = await sitAt(bed, "Alice", A);
   const bob = await sitAt(bed, "Bob", A);
@@ -396,18 +398,18 @@ test("the playing list goes to each member on its own: a flooded member does not
   let flooding = true;
   const flood = (async () => {
     while (flooding) {
-      move(bob, A, 27, 27); // refused: his state is sent again, a message of his budget
+      move(bob, A, 27, 27); // refused: his state is sent again
       await sleep(40);
     }
   })();
   try {
     alice.send(PLUGIN, { t: "close", ...A });
-    await waitPlaying(carol, "Carol gets the new list while Bob is flooded", [`${bob.id}:b`]);
+    await waitPlaying(carol, "Carol gets the new list while Bob sends refused moves", [`${bob.id}:b`]);
   } finally {
     flooding = false;
     await flood;
   }
-  await waitPlaying(bob, "Bob gets it once his budget allows", [`${bob.id}:b`]);
+  await waitPlaying(bob, "Bob gets it too", [`${bob.id}:b`]);
 });
 
 test("the reserve of captured pieces, place, stash and promotion, and the reserve survives a restart", async () => {
