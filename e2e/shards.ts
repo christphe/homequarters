@@ -8,19 +8,16 @@ export const ALL = ["proximity", "consent", "rooms", "editor", "social", "admin"
 // CI balances them with the scenarios above (plan): each runs whole in the shard it lands in.
 export const PROJECTS = ["hq-chess-e2e", "hq-cards-e2e", "hq-card-pouilleux-e2e", "hq-card-lastcard-e2e"];
 
-// Seconds per scenario (and per e2e project), measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
-// scenario grows or checks move out (each CI shard prints "# <scenario> took N s"); a scenario missing here counts as
-// UNKNOWN seconds.
+// Seconds per scenario, as each CI shard prints them ("# <scenario> took N s"), measured in CI run 42476574231 (GitHub
+// ubuntu-latest, 2026-11-08, after browser checks moved down the pyramid). Refresh them when a scenario grows or checks
+// move out; a scenario missing here counts as UNKNOWN seconds.
 export const DURATIONS: Record<string, number> = {
-  proximity: 39, consent: 43, rooms: 110, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
-  security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
-  update: 14, auth: 12, autooff: 49, devices: 40, templates: 30,
+  proximity: 38, consent: 21, rooms: 66, editor: 31, social: 10, admin: 29, plugins: 52, a11y: 71,
+  security: 39, resilience: 34, features: 64, spotlight: 58, mute: 55, movement: 50, presence: 63, offices: 70, idle: 39,
+  update: 14, auth: 8, autooff: 32, devices: 34, templates: 20, depth: 42, offline: 36, sounds: 17,
   "hq-chess-e2e": 30, // its test:e2e alone on a Windows 11 desktop (2026-11-07, the testbed without LiveKit; 34 s as run.ts's chess), not in CI
   // the three card projects' test:e2e one after the other on the same desktop (2026-11-07, the testbed; 32 s as run.ts's cards), not in CI
   "hq-cards-e2e": 26, "hq-card-pouilleux-e2e": 9, "hq-card-lastcard-e2e": 10,
-  depth: 60, // an estimate (two layout switches and an editor save) until a CI run measures it
-  offline: 50, // an estimate (one page, eight failed requests, each after the previous toast has gone) until a CI run measures it
-  sounds: 30, // an estimate (two people, three reloads and three waves) until a CI run measures it
 };
 export const UNKNOWN = 60;
 
