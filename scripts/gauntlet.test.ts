@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { expand, type Command } from "../tools/fdash/config.ts";
 import { loadWorkspace } from "../tools/fdash/workspace.ts";
+import { parseYaml, pnpmPart } from "../tools/fdash/pnpm.ts";
 import { fingerprint } from "./gauntlet-fingerprint.ts";
 import { BROWSER, closing, header, plan, recordLines } from "./gauntlet.ts";
 import { ALL } from "../e2e/shards.ts";
@@ -298,7 +299,39 @@ test("one install for the repository: no package reaches into another's node_mod
     const declared = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const n of needs) if (!declared[n]) problems.push(`${c.name} runs ${n}, not declared in ${c.cwd}/package.json`);
     const inputs = (c.inputs ?? []).filter((i): i is string => typeof i === "string");
-    for (const f of ["pnpm-lock.yaml", "pnpm-workspace.yaml"]) if (!inputs.some((i) => i === "**" || i === f)) problems.push(`${c.name} runs installed tools: /${f} is not an input`);
+    if (!inputs.some((i) => i === "**" || i === "pnpm-workspace.yaml")) problems.push(`${c.name} runs installed tools: /pnpm-workspace.yaml is not an input`);
+    // what its own member installs, its part of the lockfile (fdash's pnpm input), not the whole lockfile
+    if (!inputs.includes("**") && !(c.inputs ?? []).some((i) => typeof i === "object" && "pnpm" in i && i.pnpm === c.cwd)) problems.push(`${c.name} runs installed tools: { "pnpm": "." } is not an input`);
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("cache keys hold a member's part of the pnpm lockfile, not the whole file: no fdash.json lists it, each pnpm input names a member, and a task reading another member's code declares that member", () => {
+  // a bump of a package only one member installs reruns only the tasks of the members that install it
+  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "fdash.json", "*/fdash.json", "fdash-workspace.json"], { cwd: root, encoding: "utf8" }).split("\n").filter((f) => f && !f.includes("/fixtures/") && fs.existsSync(path.join(root, f)));
+  assert.deepEqual(files.filter((f) => fs.readFileSync(path.join(root, f), "utf8").includes("pnpm-lock.yaml")), [], "fdash.json files listing the raw lockfile");
+  const members = Object.keys(parseYaml(fs.readFileSync(path.join(root, "pnpm-lock.yaml"), "utf8")).importers as object).filter((m) => m !== ".");
+  // the members whose code a pattern reaches: not the oxlint wrapper and its rules (they import nothing
+  // installed: the project's own oxlint loads them), not data files (fdash.json, package.json)
+  const reached = (pattern: string) => {
+    const segs = pattern.split("/");
+    const last = segs[segs.length - 1];
+    if (pattern.startsWith("!") || /^scripts\/oxlint(-hq)?\.ts$/.test(pattern) || (!/[*?[{]/.test(last) && !/\.(ts|tsx|js|mjs)$/.test(last))) return [];
+    return members.filter((m) => segs.length > m.split("/").length && path.posix.matchesGlob(m, segs.slice(0, m.split("/").length).join("/")));
+  };
+  const problems: string[] = [];
+  for (const c of [...loadWorkspace(root).values()].filter((t): t is Command => t.kind === "command")) {
+    const declared = (c.inputs ?? []).flatMap((i) => (typeof i === "object" && "pnpm" in i ? [i.pnpm] : []));
+    if (declared.length === 0) continue;
+    for (const d of declared) {
+      try {
+        pnpmPart(root, d);
+      } catch (e) {
+        problems.push(`${c.name}: ${(e as Error).message}`);
+      }
+    }
+    const strings = (c.inputs ?? []).filter((i): i is string => typeof i === "string");
+    for (const m of new Set(strings.flatMap(reached))) if (!declared.includes(m)) problems.push(`${c.name} reads code of ${m} without { "pnpm": ${JSON.stringify(m)} }`);
   }
   assert.deepEqual(problems, []);
 });

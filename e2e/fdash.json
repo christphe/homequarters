@@ -73,7 +73,30 @@
         "/.oxlintrc.json",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../web"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-card-lastcard"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-card-pouilleux"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-cards"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-chess"
+        },
+        {
+          "pnpm": "../plugins/bundled/hq-pets"
+        },
+        {
+          "pnpm": "../plugins/sdk"
+        }
       ],
       "tools": [
         [
@@ -95,7 +118,9 @@
         "/plugins/e2e/*/fdash.json",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        }
       ],
       "tools": [
         [
@@ -137,7 +162,15 @@
         },
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../web"
+        },
+        {
+          "pnpm": "../plugins/sdk"
+        }
       ],
       "envKeys": [
         "E2E_VIEWPORT",

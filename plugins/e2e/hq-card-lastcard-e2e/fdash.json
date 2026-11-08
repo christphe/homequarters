@@ -30,7 +30,27 @@
         "/.oxlintrc.json",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-card-lastcard"
+        },
+        {
+          "pnpm": "../../bundled/hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../hq-cards-e2e"
+        },
+        {
+          "pnpm": "../../../e2e"
+        }
       ],
       "tools": [
         [
@@ -72,7 +92,27 @@
         },
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-card-lastcard"
+        },
+        {
+          "pnpm": "../../bundled/hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
+        },
+        {
+          "pnpm": "../hq-cards-e2e"
+        }
       ],
       "envKeys": [
         "E2E_VIEWPORT",

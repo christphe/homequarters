@@ -41,7 +41,12 @@
         "/plugins/sdk/server.d.ts",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../sdk"
+        }
       ],
       "tools": [
         [
@@ -90,7 +95,12 @@
         },
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../sdk"
+        }
       ],
       "tools": [
         [

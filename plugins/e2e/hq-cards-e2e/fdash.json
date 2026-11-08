@@ -30,7 +30,21 @@
         "/.oxlintrc.json",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
+        }
       ],
       "tools": [
         [
@@ -70,7 +84,21 @@
         },
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
+        }
       ],
       "envKeys": [
         "E2E_VIEWPORT",

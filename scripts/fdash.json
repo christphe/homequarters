@@ -26,7 +26,15 @@
         "/e2e/shards.ts",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../tools/fdash"
+        },
+        {
+          "pnpm": "../e2e"
+        }
       ],
       "tools": [
         [

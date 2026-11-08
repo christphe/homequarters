@@ -43,7 +43,12 @@
         "/plugins/sdk/view.d.ts",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../plugins/sdk"
+        }
       ],
       "tools": [
         [
@@ -73,7 +78,9 @@
       "inputs": [
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        }
       ]
     },
     "test:unit": {
@@ -91,7 +98,9 @@
         "/server/internal/world/types.go",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        }
       ],
       "tools": [
         [

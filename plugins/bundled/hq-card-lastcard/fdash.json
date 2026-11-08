@@ -37,7 +37,15 @@
         "/plugins/bundled/hq-cards/public/**",
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        }
       ],
       "tools": [
         [
@@ -60,7 +68,15 @@
       "inputs": [
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        }
       ],
       "tools": [
         [
@@ -86,7 +102,15 @@
         },
         "/package.json",
         "/pnpm-workspace.yaml",
-        "/pnpm-lock.yaml"
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../hq-cards"
+        },
+        {
+          "pnpm": "../../sdk"
+        }
       ],
       "tools": [
         [
