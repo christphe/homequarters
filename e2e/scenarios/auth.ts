@@ -1,14 +1,16 @@
 // Sign-in with a provider (HQ_AUTH_PROVIDERS=fake-oidc) through the real screens: the one round trip of the join
-// screen's button, the fake provider's consent page, the name form and the office; and axe on the two pages the server
-// renders itself (the privacy policy and the page about the office), whole pages with their real colours. It runs its
-// own server with sign-in on (another port, its own database).
+// screen's button, the fake provider's consent page, the name form and the office, then Sign out from the settings back
+// to the sign-in screen (the page's reload is what takes the person out of the office); and axe, contrast included, on
+// the sign-in screen and on the two pages the server renders itself (the privacy policy and the page about the office).
+// It runs its own server with sign-in on (another port, its own database).
 // What moved below the browser (decision 0037), and where it lives now:
 // - the join screen: the provider's button and no name field, the about and privacy links, an invite announced and
 //   carried through the sign-in (kept after a cancelled one), refusals saying why (an outsider, an account already used
 //   by another member), a member from before sign-in asked by name to link, "Not Pat?" starting fresh, a sign-in that
 //   expired before the name was sent, the confirmation after linking with a clean address, and the axe audits of the
-//   sign-in and link screens: web/test/JoinScreen.test.tsx. Their contrast: the a11y scenario's join screen, same card.
-// - settings: no personal link while sign-in is on, Sign out offered (and none without sign-in):
+//   sign-in and link screens: web/test/JoinScreen.test.tsx (no contrast in jsdom: the sign-in screen's own audit stays
+//   here; the link screen adds only a .btn, as in the audited dialogs).
+// - settings: no personal link while sign-in is on, Sign out offered (and none without sign-in), a failed sign-out:
 //   web/test/SettingsDialog.test.tsx; admins seeing who has linked: web/test/AdminMembers.test.tsx.
 // - the server's rules, in server/internal/httpapi/auth_test.go: nobody joins without signing in
 //   (TestSignInIsRequiredToJoin), a reload keeps the session and signing in again lands in the same member
@@ -79,6 +81,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await ana.setViewport({ width: 1280, height: 720 });
     await ana.goto(BASE, { waitUntil: "domcontentloaded" });
     await ana.waitForSelector(".join-card .signin a");
+    await audit(ana, "the sign-in screen");
     await Promise.all([ana.waitForNavigation(), click(ana, ".signin a", "Continue with fake sign-in (development)")]);
     check("the join screen's button leads to the provider's consent page", ana.url().includes("/auth/fake-oidc/authorize") && (await text(ana)).includes("Authorize"), ana.url());
     const anaEmail = await ana.$eval("#fake-email", (e) => e.textContent);
@@ -90,6 +93,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => inOffice(ana), { timeout: 30000, what: "Ana in the office" });
     const anaName = await ana.evaluate(() => window.__hq.state.roster.get(window.__hq.state.meId)?.n);
     check("back from the provider, the new member picks a name and is in the office under it", signedInAs && anaName === "Ana", JSON.stringify({ anaEmail, signedInAs, anaName }));
+
+    // Sign out from the settings: the page reloads onto the sign-in screen, out of the office.
+    await ana.evaluate(() => document.querySelector<HTMLButtonElement>('button[title="Settings"]')!.click());
+    await waitFor(() => ana.$(".modal"), { what: "settings" });
+    await Promise.all([ana.waitForNavigation(), click(ana, ".modal button", "Sign out")]);
+    await ana.waitForSelector(".signin a");
+    check("Sign out in the settings leads back to the sign-in screen", (await text(ana)).includes("Sign in to enter the office") && !(await inOffice(ana)));
 
     // The two pages the server renders itself, open without signing in: axe on the whole page, contrast included.
     const page = await (await browser.createBrowserContext()).newPage();

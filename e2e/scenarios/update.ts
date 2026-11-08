@@ -8,7 +8,7 @@
 // - the manifest's name, display, start and scope, its 192, 512 and maskable icons, each a PNG of its size:
 //   web/test/manifest.test.ts; served as a manifest, revalidated: TestTheManifestIsServedAsAManifestAndRevalidated.
 // - a browser upgraded from the Tilework keys keeping its name, avatar, settings and consent under hq.*:
-//   web/test/storageMigration.test.ts (run as the store loads); the join screen's field showing the saved name:
+//   web/test/storageMigration.test.ts, run as the store loads: storeLoad.test.ts; the join field showing the saved name:
 //   web/test/JoinScreen.test.tsx.
 import type { Browser } from "puppeteer-core";
 import { check, resetChecks, summary, launch, joinAs, waitFor, APP, type RunContext, type User } from "../lib.ts";

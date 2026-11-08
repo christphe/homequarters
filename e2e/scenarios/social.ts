@@ -9,8 +9,9 @@
 // - the avatar editor's hair, beards, hats, hat colours once a hat is on, any shirt colour: web/test/AvatarEditor.test.tsx;
 //   the appearance dialog's look saved with the profile, and no Sign out without sign-in: web/test/SettingsDialog.test.tsx.
 // - another person seeing the new hair, beard, hat and custom shirt: web/test/avatarLook.test.ts and
-//   TestNormalizeAvatarDropsUnknownFields; a profile change reaching the roster: TestPresenceCarriesNewNames; look
-//   changes leaving the avatar cache the same size: web/test/lookCache.test.ts.
+//   TestNormalizeAvatarDropsUnknownFields; a profile change reaching the roster (also checked here):
+//   TestHelloCarriesOfficeChatHistoryAndProfileChangesReachTheRoster (server/internal/world/world_test.go); look changes
+//   leaving the avatar cache the same size: web/test/lookCache.test.ts.
 // - a desk assigned by an admin and its owner's label: server/internal/httpapi/desk_test.go, owners_test.go and
 //   web/test/places.test.ts (the map edit stays here, as the setup of the bitmap font check).
 // - the conversation composer off without a conversation, a phone reaction closing the menu:

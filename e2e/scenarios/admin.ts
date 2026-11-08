@@ -11,8 +11,9 @@
 // - rename: an empty name (400), a member renaming (403), the audit row with the old and new name:
 //   TestAdminRenamesTheOfficeForEverybodyOnline (server/internal/httpapi/office_test.go).
 // - the activity log naming role changes, invites and the rename: AdminMembers.test.tsx and TestAuditTrailOrderAndPruning.
-// - removal: the removed session dead and the admin API closed to it, everybody seeing the member leave:
-//   TestRoleChangeRemovalAndTheLastAdminGuard, TestEvictRemovesThePlayerEndsTheCallAndTellsTheConnection.
+// - removal: the removed session no longer signed in (TestRoleChangeRemovalAndTheLastAdminGuard), so the admin API
+//   answers it as anybody signed out (401, TestAdminEndpointsRequireTheAdminRole); the member leaving the world:
+//   TestEvictRemovesThePlayerEndsTheCallAndTellsTheConnection.
 // - each tab failing on the network: web/test/Offline.test.tsx.
 import os from "node:os";
 import path from "node:path";

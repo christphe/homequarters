@@ -4,11 +4,12 @@
 // (server/internal/httpapi/static_test.go). The browser keeps Chrome's own verdict, with no service worker in the way of
 // deploys: e2e/scenarios/update.ts.
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { expect, it } from "vitest";
 
-const pub = new URL("../public/", import.meta.url);
+const pub = path.join(import.meta.dirname, "../public");
 type Manifest = { name?: string; display?: string; start_url?: string; scope?: string; icons?: { src: string; sizes: string; type?: string; purpose?: string }[] };
-const manifest = JSON.parse(readFileSync(new URL("manifest.webmanifest", pub), "utf8")) as Manifest;
+const manifest = JSON.parse(readFileSync(path.join(pub, "manifest.webmanifest"), "utf8")) as Manifest;
 
 /** A PNG's width and height, from its IHDR chunk (bytes 16-23), or null when the file is not a PNG. */
 function pngSize(file: Buffer): string | null {
@@ -17,7 +18,7 @@ function pngSize(file: Buffer): string | null {
 }
 
 it("the page links the manifest", () => {
-  expect(readFileSync(new URL("../index.html", import.meta.url), "utf8")).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
+  expect(readFileSync(path.join(import.meta.dirname, "../index.html"), "utf8")).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
 });
 
 it("names Home Quarters as a standalone app from /", () => {
@@ -32,6 +33,6 @@ it("lists 192 and 512 px icons, one of them maskable", () => {
 it("every icon it lists is a PNG of the size it claims", () => {
   for (const icon of manifest.icons ?? []) {
     expect(icon.src.startsWith("/")).toBe(true);
-    expect({ src: icon.src, size: pngSize(readFileSync(new URL(icon.src.slice(1), pub))) }).toEqual({ src: icon.src, size: icon.sizes });
+    expect({ src: icon.src, size: pngSize(readFileSync(path.join(pub, icon.src.slice(1)))) }).toEqual({ src: icon.src, size: icon.sizes });
   }
 });

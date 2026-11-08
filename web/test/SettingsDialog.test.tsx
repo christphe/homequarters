@@ -76,8 +76,9 @@ it("a look chosen in the appearance dialog is saved with the profile when the di
   expect(screen.queryByRole("dialog", { name: "Appearance" })).toBeNull();
 });
 
-// Sign-in (auth.providers set): the browser keeps the sign-in round trip itself (e2e/scenarios/auth.ts); what signing
-// out does on the server is TestSignOutForgetsThisBrowser (server/internal/httpapi/auth_test.go).
+// Sign-in (auth.providers set): the browser keeps the sign-in round trip and a successful Sign out, whose reload is what
+// takes the person out of the office (e2e/scenarios/auth.ts); what signing out does on the server is
+// TestSigningOutOfALinkedAccountEndsTheSession and TestSignOutForgetsThisBrowser (server/internal/httpapi/auth_test.go).
 const SIGNS_IN = { auth: { providers: ["fake-oidc"], signup: null, link: null } };
 
 it("without sign-in the cookie is the account: a sign-in link for another machine, and nothing to sign out of", () => {
