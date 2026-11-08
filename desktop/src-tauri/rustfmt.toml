@@ -1,0 +1,4 @@
+# The shell's code is written up to 120 columns, like the rest of the repository (Go, TypeScript); "Max" keeps
+# short calls and literals on one line instead of rustfmt's narrower defaults (decision 0040).
+max_width = 120
+use_small_heuristics = "Max"

@@ -1,0 +1,263 @@
+# golangci-lint v2 for every Go module of the repository (server/, bench/mediagen, bench/plugin-runtime),
+# pinned in tools/go/golangci-lint/go.mod and run as `go tool -modfile=../tools/go/golangci-lint/go.mod
+# golangci-lint run ./...` from server/ (its fdash `lint` task). Decision 0040 lists every linter considered,
+# the ones left out and why. Rule of this file: a linter is on when what it finds here is real; a narrow
+# exclusion says why; nothing is lowered to a warning.
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - copyloopvar
+    - depguard
+    - durationcheck
+    - errcheck
+    - errorlint
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - makezero
+    - mirror
+    - misspell
+    - modernize
+    - musttag
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - reassign
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        # struct field order for padding: a micro-optimisation that reorders structs away from their reading order
+        - fieldalignment
+        # `if err := f(); err != nil` inside a function that has an err: the idiom, not a bug (50 findings, all of it)
+        - shadow
+
+    # The server's package graph as a rule (today's `go list` imports, tests included): each rule denies every
+    # internal package and allows back the ones the package may import (the longer match wins). A new import
+    # across packages is a decision: change the list here in the same change. And AGENTS.md's "keep
+    # internal/media the only package that speaks to LiveKit".
+    depguard:
+      rules:
+        leaves:
+          files:
+            - "**/internal/auth/**"
+            - "**/internal/config/**"
+            - "**/internal/gamemap/**"
+            - "**/internal/media/**"
+            - "**/internal/plugin/**"
+            - "**/internal/store/**"
+            - "**/cmd/loadgen/**"
+          deny:
+            - pkg: homequarters/internal
+              desc: "a leaf package: it imports no other package of the server"
+        world:
+          list-mode: lax
+          files: ["**/internal/world/**"]
+          deny:
+            - pkg: homequarters/internal
+              desc: "the simulation imports only the map format and media rooms"
+          allow:
+            - homequarters/internal/gamemap
+            - homequarters/internal/media
+        httpapi:
+          list-mode: lax
+          files: ["**/internal/httpapi/**"]
+          deny:
+            - pkg: homequarters/internal
+              desc: "httpapi sits above every package but the testbed"
+          allow:
+            - homequarters/internal/auth
+            - homequarters/internal/config
+            - homequarters/internal/gamemap
+            - homequarters/internal/media
+            - homequarters/internal/plugin
+            - homequarters/internal/store
+            - homequarters/internal/world
+        testbed:
+          list-mode: lax
+          files: ["**/internal/testbed/**"]
+          deny:
+            - pkg: homequarters/internal
+              desc: "the testbed builds a server from these packages only"
+          allow:
+            - homequarters/internal/config
+            - homequarters/internal/gamemap
+            - homequarters/internal/httpapi
+            - homequarters/internal/media
+            - homequarters/internal/plugin
+            - homequarters/internal/store
+            - homequarters/internal/world
+        command:
+          list-mode: lax
+          files: ["**/cmd/homequarters/**"]
+          deny:
+            - pkg: homequarters/internal
+              desc: "the command wires these packages only"
+          allow:
+            - homequarters/internal/config
+            - homequarters/internal/gamemap
+            - homequarters/internal/httpapi
+            - homequarters/internal/media
+            - homequarters/internal/store
+            - homequarters/internal/testbed
+        livekit:
+          # the server only: bench/mediagen is a LiveKit client by design
+          files:
+            - "**/server/**"
+            - "!**/server/internal/media/**"
+          deny:
+            - pkg: github.com/livekit
+              desc: "internal/media is the only package that speaks to LiveKit (AGENTS.md)"
+
+    staticcheck:
+      checks:
+        - all
+        # De Morgan's law as a "quick fix": either form reads fine; taste
+        - -QF1001
+
+    errcheck:
+      # an explicit `_ =` or `x, _ :=` stays allowed: the discard is visible in the code
+      check-blank: false
+      exclude-functions:
+        # an HTTP response body read to the end: its Close cannot lose data
+        - (io.ReadCloser).Close
+        # sql.Rows: rows.Err() is what says a read failed (rowserrcheck checks it), not Close
+        - (*database/sql.Rows).Close
+        # deferred after Commit, Rollback returns sql.ErrTxDone by design
+        - (*database/sql.Tx).Rollback
+        # a write to a response or a log stream that failed means the reader went away: there is no one to tell
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*encoding/json.Encoder).Encode
+        - (*html/template.Template).Execute
+        # closing a WebSocket that is being torn down: its error has no reader either
+        - (*github.com/coder/websocket.Conn).Close
+        - (*github.com/coder/websocket.Conn).CloseNow
+
+    gocritic:
+      # the checks that find bugs, plus the few others whose findings here were real
+      enabled-tags:
+        - diagnostic
+      enabled-checks:
+        - equalFold
+      disabled-checks:
+        # the world's wire encoder reuses a buffer on purpose: b := append(w.buf[:0], ...) (every finding)
+        - appendAssign
+        # an if-else chain or `err =` instead of `err :=`: either form reads fine; taste
+        - ifElseChain
+        - sloppyReassign
+
+    gosec:
+      excludes:
+        # names like "secret" or "token" in provider URLs and test fixtures; gitleaks scans the tree for real secrets
+        - G101
+        # unhandled errors: errcheck reports them, with the exclusions above
+        - G104
+        # integer conversions: player ids, tiles and kick reasons are bounded by the code that makes them (44 findings, none real)
+        - G115
+        # cookies: HttpOnly and SameSite are set; Secure follows the deployment (plain http in development)
+        - G124
+        # SQL built from "?" placeholders only (store/admin.go), never from values
+        - G202
+        # tests and tools start binaries they built or name themselves
+        - G204
+        # file and directory modes in tests, fixtures and the plugin folders the operator owns
+        - G301
+        - G302
+        - G306
+        # files read from paths the server builds from its own configuration (static folder, plugin folders)
+        - G304
+        # math/rand for jitter, spawn spread and benchmarks, never for secrets (auth uses crypto/rand)
+        - G404
+
+    nolintlint:
+      # a //nolint names the linter and says why, like a //lint:ignore
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    modernize:
+      disable:
+        # Info{Manifest: Manifest{Name: x}} names where the field lives; dropping the type is taste
+        - embedlit
+
+    unparam:
+      check-exported: false
+
+  exclusions:
+    generated: strict
+    rules:
+      # coder/websocket: "you never need to close resp.Body yourself" (Dial's documentation)
+      - linters: [bodyclose]
+        source: websocket\.Dial\(
+      # teardown in tests (closing, killing, removing what the test made): a failure there does not change
+      # what the test checked
+      - linters: [errcheck]
+        path: _test\.go
+        text: 'Error return value of `([\w.]+\.(Close|CloseNow|Kill)|os\.Remove|os\.RemoveAll)` is not checked'
+      # a test waiting for a process it stopped (<-done): the error is the one the stop caused
+      - linters: [errcheck]
+        path: _test\.go
+        text: '^Error return value is not checked$'
+      # savePositions: the defer is in the branch that drains the queues and returns, run once
+      - linters: [gocritic]
+        path: server/internal/httpapi/server\.go
+        text: deferInLoop
+      # ivffix is a command-line tool: it reads and writes the files its arguments name
+      - linters: [gosec]
+        path: bench/mediagen/cmd/ivffix/
+        text: G703
+      # tests walk folders they made themselves
+      - linters: [gosec]
+        path: _test\.go
+        text: G122
+      # test helpers keep general parameters even when today's callers pass one value
+      - linters: [unparam]
+        path: _test\.go
+        text: always receives
+      # the static handler joins filepath.Clean("/"+path) under its folder: no traversal (server.go)
+      - linters: [gosec]
+        path: server/internal/httpapi/server\.go
+        text: G703
+      # redirects to the identity provider's configured URL (auth.go) and, in the fake provider, to a
+      # redirect_uri checked to be this server's own callback on the request's host (fake.go)
+      - linters: [gosec]
+        path: server/internal/(httpapi/auth|auth/fake)\.go
+        text: G710
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,23 @@
+# gitleaks (pinned in tools/go/gitleaks/go.mod), run on the working tree by `node scripts/lint-repo.ts secrets`
+# (the workspace's fdash task lint:secrets). Its default rules, plus what this repository needs (decision 0040).
+title = "homequarters"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "local or generated files that are never committed, and the fake secrets of tests"
+# git-ignored folders and files (.gitignore): local settings, builds, caches, other agents' worktrees
+paths = [
+  '''(^|/)\.env$''',
+  '''(^|/)(node_modules|dist|target|gen|\.fdash|\.run|\.gauntlet|\.tools|\.vitest|\.claude)/''',
+  '''^bin/''',
+  '''^server/data/''',
+  '''^plugins/installed/''',
+  '''^bench/mediagen/assets/''',
+]
+# the tests' obviously fake keys: repeated 0123456789abcdef
+regexes = [
+  '''^(0123456789abcdef)+$''',
+]
+regexTarget = "secret"

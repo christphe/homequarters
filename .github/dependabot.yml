@@ -19,6 +19,14 @@ updates:
       bench-go:
         patterns: ["*"]
 
+  # the pinned Go linters (decision 0040), one module each; scripts/tools.ts's downloads are bumped by hand
+  - package-ecosystem: gomod
+    directories: [/tools/go/golangci-lint, /tools/go/govulncheck, /tools/go/actionlint, /tools/go/gitleaks]
+    schedule: { interval: monthly }
+    groups:
+      lint-go:
+        patterns: ["*"]
+
   - package-ecosystem: npm
     directories: [/web, /e2e, /site]
     schedule: { interval: weekly, day: monday }

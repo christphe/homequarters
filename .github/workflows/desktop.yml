@@ -67,6 +67,8 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
@@ -85,6 +87,14 @@ jobs:
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
       # at the root (one lockfile for the repository), only what the desktop app needs
       - run: pnpm install --frozen-lockfile --filter homequarters-desktop
+      # rustfmt.toml and the [lints] of Cargo.toml (decision 0040); on each system, since clippy sees only the
+      # code that system compiles (the macOS idle time and keyboard layout are cfg'd per system)
+      - name: Lint the shell (cargo fmt, cargo clippy)
+        shell: bash
+        working-directory: desktop/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
       - name: Build
         shell: bash
         working-directory: desktop

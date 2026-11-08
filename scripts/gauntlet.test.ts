@@ -33,7 +33,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     [`${p}:test:${tier}`, p === "sdk" ? "plugins/sdk" : `plugins/bundled/${p}`, `pnpm exec vitest run --project ${tier === "unit" ? p : `${p}:integration`}`, false, false, tier === "unit" ? "{}" : '{"HQ_BIN_REPO_ONLY":"1"}'];
   const fixtures = ["critters/tsconfig.json", "drawn-pet/tsconfig.json", "drawn-pet/public/tsconfig.json", "drawn-sheet/public/tsconfig.json", "ui-demo/tsconfig.json", "ui-demo/public/tsconfig.json", "ui-demo/public/views/tsconfig.json"];
   assert.deepEqual(gates.map(row), [
-    ["server:lint", "server", "gofmt -l . && go vet ./... && go tool staticcheck ./...", true, false, "{}"],
+    ["server:lint", "server", "go tool -modfile=../tools/go/golangci-lint/go.mod golangci-lint run ./...", false, false, "{}"],
     ["web:lint", "web", ["pnpm exec tsc --noEmit", "pnpm exec tsc -p tsconfig.test.json --noEmit", "pnpm exec tsc -p tsconfig.sdk.json", ox("../", "src test")].join(" && "), false, false, "{}"],
     ["site:lint", "site", `pnpm exec tsc --noEmit && ${ox("../")}`, false, false, "{}"],
     ["e2e:lint", "e2e", ["pnpm exec tsc --noEmit", ...fixtures.map((f) => tsc("fixtures/plugins/installed/" + f)), ox("../")].join(" && "), false, false, "{}"],
@@ -48,6 +48,8 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     plugin("hq-chess", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
     plugin("hq-pets", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
     ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `${tsc("tsconfig.json")} && ${ox("../../../")}`, false, false, "{}"]),
+    // the repository-wide linters (scripts/lint-repo.ts), workspace tasks run from the root
+    ...["actions", "secrets", "shell", "docker"].map((c) => [`lint:${c}`, ".", `node scripts/lint-repo.ts ${c}`, false, false, "{}"]),
     ["server:build", "server", "go build -o ../bin/ ./cmd/homequarters", false, false, "{}"],
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
@@ -85,7 +87,13 @@ test("every plugin has its own tsconfig.json files checked by its lint, the e2e 
   const tracked = execFileSync("git", ["ls-files", "--", "plugins/**/tsconfig.json", "e2e/fixtures/plugins/**/tsconfig.json"], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);
   const lints = [...config.values()].filter((t): t is Command => t.kind === "command" && t.name.endsWith(":lint"));
   const checked = lints.flatMap((c) => c.run.filter((s) => s.includes("-p")).map((s) => path.posix.join(c.cwd, s[s.indexOf("-p") + 1])));
-  assert.deepEqual(tracked.filter((t) => !checked.includes(t)), []);
+  // a tsconfig.json that only extends a checked config (test/ and tools/ folders: it gives Oxlint's type-aware
+  // rules the test program, scripts/oxlint-tsconfigs.ts) adds no file of its own to check
+  const shim = (t: string) => {
+    const m = /^\{\s*"extends":\s*"([^"]+)"\s*\}\s*$/.exec(fs.readFileSync(path.join(root, t), "utf8"));
+    return !!m && checked.includes(path.posix.join(path.posix.dirname(t), m[1]!));
+  };
+  assert.deepEqual(tracked.filter((t) => !checked.includes(t) && !shim(t)), []);
 });
 
 test("the gauntlet runs default; named scenarios go to the e2e project's suite only", () => {

@@ -4,6 +4,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { ALL_TREES, plan, projectOf } from "./oxlint.ts";
+import { KNOWN, untyped } from "./oxlint-tsconfigs.ts";
 
 const root = path.resolve("/repo");
 
@@ -31,3 +32,11 @@ test("the oxlint that runs is the calling project's: the nearest folder with it 
   assert.equal(projectOf(path.join(root, "docs"), root, has), path.join(root, "scripts"));
   assert.equal(projectOf(path.resolve("/elsewhere"), root, has), path.join(root, "scripts"));
 });
+
+test("every file Oxlint lints is in its nearest tsconfig.json's program, but the known ones", () => {
+  // the type-aware rules type a file with that program; a file left out is linted against error types
+  const found = untyped();
+  assert.deepEqual(found.filter((f) => !(f.file in KNOWN)), []);
+  // a known file that is typed now (or gone) leaves the list
+  assert.deepEqual(Object.keys(KNOWN).filter((k) => !found.some((f) => f.file === k)), []);
+}, 60_000);

@@ -34,6 +34,7 @@ jobs:
           cache-dependency-path: |
             server/go.sum
             bench/mediagen/go.sum
+            tools/go/*/go.sum
       # the version comes from packageManager in the root package.json
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -47,11 +48,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-fdash-records.ts fdash-unit
-      - name: Lint, build and unit tests (fdash run lint build test:unit)
+      # lint:repo: actionlint and zizmor, gitleaks, shellcheck, hadolint (scripts/lint-repo.ts); lint:vuln:
+      # govulncheck on the server, keyed on the day as well, since its database changes without the code
+      - name: Lint, build and unit tests (fdash run lint lint:repo lint:vuln build test:unit)
         id: gates
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
-          node tools/fdash/cli.ts run lint build test:unit
+          node tools/fdash/cli.ts run lint lint:repo lint:vuln build test:unit
         env:
           FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
       - name: Logs of the checks
@@ -79,9 +82,13 @@ jobs:
       - name: Build the load generator
         working-directory: server
         run: go build ./cmd/loadgen
-      - name: Build the media benchmark tool
+      # the same golangci-lint and govulncheck as the server's, pinned in tools/go/
+      - name: Lint and build the media benchmark tool
         working-directory: bench/mediagen
-        run: go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@$(cd ../../server && go list -m -f '{{.Version}}' honnef.co/go/tools) ./... && go build -o /dev/null .
+        run: |
+          go tool -modfile=../../tools/go/golangci-lint/go.mod golangci-lint run ./...
+          go tool -modfile=../../tools/go/govulncheck/go.mod govulncheck ./...
+          go build -o /dev/null .
 
   # Tests against a real server without a browser: each test:integration starts the testbed (homequarters
   # testbed), built here with the race detector.

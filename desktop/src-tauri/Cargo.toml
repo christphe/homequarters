@@ -27,3 +27,19 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# Lints (decision 0040): clippy's default groups as errors, plus the few pedantic and nursery lints whose
+# findings here were real. `cargo clippy --all-targets -- -D warnings` runs them (desktop's fdash task
+# lint:rust and the Desktop workflow); `cargo fmt --check` checks the format (rustfmt.toml).
+[lints.rust]
+# the shell calls system APIs only where it must (macOS idle time and keyboard layout): each unsafe block
+# carries #[allow(unsafe_code)] with its reason
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+# pedantic: a stable sort of primitives does needless work
+stable_sort_primitive = "deny"
+# nursery: a clone whose original is never used again; a PartialEq type that could also be Eq
+redundant_clone = "deny"
+derive_partial_eq_without_eq = "deny"

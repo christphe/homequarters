@@ -1,14 +1,17 @@
 // Oxlint for the web client, the plugins and the tooling (the trees are listed there), run by scripts/oxlint.ts (a gauntlet gate and a CI step).
-// The type-aware rules (oxlint-tsgolint) read each file's nearest tsconfig.json with TypeScript 7.
+// The type-aware rules (oxlint-tsgolint) read each file's nearest tsconfig.json with TypeScript 7: a linted file must
+// be in that program (scripts/oxlint-tsconfigs.ts checks it), or those rules see no types at all.
+// Decision 0040 (strict linters) lists every rule considered, the ones turned off below and why.
 {
   "$schema": "./scripts/node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "react", "promise"],
+  "plugins": ["typescript", "unicorn", "oxc", "react", "promise", "import"],
   // the project's own rules: scripts/oxlint-hq.ts
   "jsPlugins": ["./scripts/oxlint-hq.ts"],
-  "categories": { "correctness": "error" },
+  "categories": { "correctness": "error", "suspicious": "error", "perf": "error" },
   "rules": {
-    // promises: a forgotten await, or an async function where a callback's result is dropped
-    "typescript/no-floating-promises": "error",
+    // promises: a forgotten await, or an async function where a callback's result is dropped (node:test's test()
+    // returns a promise its runner awaits itself)
+    "typescript/no-floating-promises": ["error", { "allowForKnownSafeCalls": [{ "from": "package", "package": "node:test", "name": ["test", "it", "describe", "suite"] }] }],
     // JSX handlers may be async (React drops the result): the UI's requests go through request(), which never throws
     "typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }],
     "typescript/await-thenable": "error",
@@ -26,6 +29,75 @@
     "no-new-func": "error",
     "hq/effect-cleanup": "error",
 
+    // values typed `any` flowing into typed code unchecked (JSON payloads, message data): give them a type or unknown
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/restrict-plus-operands": "error",
+    // an assertion (`!`, `as`) that changes nothing hides what the types already say
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-deprecated": "error",
+    // `??` where `||` would also drop a real value; false, 0 and "" stay `||`'s on purpose (an empty name falls back)
+    "typescript/prefer-nullish-coalescing": ["error", { "ignorePrimitives": { "string": true, "number": true, "boolean": true } }],
+    // a type-only import says so; `typeof import("...")` in a type stays allowed (tests and page scripts use it)
+    "typescript/consistent-type-imports": ["error", { "disallowTypeAnnotations": false }],
+    "import/no-cycle": "error",
+    // pedantic rules whose findings here were real; `x == null` stays (null or undefined, on purpose)
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-self-compare": "error",
+
+    // suspicious and perf rules turned off: what they found here was correct code or taste
+    // JSX without React in scope: the client uses the automatic runtime (jsx: react-jsx)
+    "react/react-in-jsx-scope": "off",
+    // window.__hq, the test hook (AGENTS.md)
+    "no-underscore-dangle": "off",
+    // `x as T` narrows on purpose (DOM queries, page globals in e2e, caught errors); unchecked any is caught above
+    "typescript/no-unsafe-type-assertion": "off",
+    // browser steps and test setup run one after another on purpose
+    "no-await-in-loop": "off",
+    // a callback's `s` or `e` shadowing an outer one: taste
+    "no-shadow": "off",
+    "unicorn/consistent-function-scoping": "off",
+    // sort() and reverse() on a copy ([...x].sort()), never on shared state
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    // e2e checks compare to true or false on purpose: a page value may be undefined whatever its type says
+    "typescript/no-unnecessary-boolean-literal-compare": "off",
+    // .then callbacks that set state and return nothing
+    "promise/always-return": "off",
+    // keys of static lists (swatches, emotes) and of plugin UI rebuilt whole
+    "react/no-array-index-key": "off",
+    // MessagePort.postMessage has no target origin (the rule takes ports for windows)
+    "unicorn/require-post-message-target-origin": "off",
+    // effects return a cleanup in one branch only (hq/effect-cleanup checks what they return)
+    "typescript/consistent-return": "off",
+    // includes() on lists of a few items
+    "unicorn/prefer-set-has": "off",
+    "oxc/no-map-spread": "off",
+    // loop conditions changed by a callback or another task (stop flags, a child's exit)
+    "no-unmodified-loop-condition": "off",
+    // CSS side-effect imports and Vite's ?url default imports
+    "import/no-unassigned-import": "off",
+    "import/default": "off",
+    "import/no-named-as-default-member": "off",
+    // `export {}` makes a .d.ts a module (global augmentation)
+    "unicorn/require-module-specifiers": "off",
+    // PixiJS's Graphics.fill(style), not Array.fill
+    "unicorn/no-array-fill-with-reference-type": "off",
+    // effects that run again on a value they do not read (scroll to the end when unread changes)
+    "react/exhaustive-effect-dependencies": "off",
+    // the plugin SDK's onMessage<T>: a generic for the caller's convenience
+    "typescript/no-unnecessary-type-parameters": "off",
+    // String(x) and !!x on values whose declared type nothing checks at run time (request bodies, page values)
+    "typescript/no-unnecessary-type-conversion": "off",
+    // LiveKit's state enums compared with their string values in page scripts
+    "typescript/no-unsafe-enum-comparison": "off",
+
     // [...str] counts code points on purpose (names are limited in code points, like the server does)
     "typescript/no-misused-spread": "off",
     // the art code draws with comma expressions: cond && (R(...), R(...))
@@ -36,6 +108,20 @@
     "react/set-state-in-effect": "off"
   },
   "overrides": [
+    // files outside any tsconfig.json program (scripts/oxlint-tsconfigs.ts lists them): the plain JavaScript SDKs
+    // (checked by web/tsconfig.sdk.json), JavaScript fixture plugins, the Vitest configs beside a plugin's server
+    // program. Without types these rules report the missing types, not the code.
+    {
+      "files": ["web/src/plugins/sdk.js", "web/src/plugins/viewSdk.js", "plugins/bundled/*/test/fixtures/**", "plugins/bundled/*/vitest.config.ts", "e2e/fixtures/plugins/installed/hq-impostor/**"],
+      "rules": {
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/prefer-nullish-coalescing": "off"
+      }
+    },
     // tests spell coordinates as column * T + offset, column 0 included
     { "files": ["web/test/**", "plugins/bundled/*/test/**"], "rules": { "oxc/erasing-op": "off" } },
     // the gauntlet critics' UI invariants (AGENTS.md): text through the i18n dictionary, dialogs through Modal

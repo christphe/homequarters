@@ -60,7 +60,7 @@ Two products are released separately from this repository, each with its own cha
 pnpm install                              # at the root, once: the whole repository is one pnpm workspace (pnpm-workspace.yaml, one pnpm-lock.yaml); each project declares its own tools, shared versions sit in the workspace's catalog
 ./scripts/dev.sh                          # LiveKit (dev) + Go server + Vite; logs in .run/
 cd server && go vet ./... && go test -race ./...
-node scripts/gauntlet.ts [scenario ...]  # all gates through fdash (or scripts/gauntlet.sh): the workspace's default, i.e. lint, build and test:unit of every project (gofmt, vet, staticcheck, race tests, tsc, oxlint, protocol docs, builds, unit tests, site), then every test:integration, then every test:e2e (browser suite and plugin e2e projects, E2E_VIEWPORT=small, CI's 800x450); scenario names run only those of e2e/ and leave the plugin e2e projects out; what already passed on the same inputs is CACHED (FDASH_FORCE=1 reruns all), static gates run FDASH_JOBS at once
+node scripts/gauntlet.ts [scenario ...]  # all gates through fdash (or scripts/gauntlet.sh): the workspace's default, i.e. lint, build and test:unit of every project (golangci-lint, repository linters, race tests, tsc, oxlint, protocol docs, builds, unit tests, site), then every test:integration, then every test:e2e (browser suite and plugin e2e projects, E2E_VIEWPORT=small, CI's 800x450); scenario names run only those of e2e/ and leave the plugin e2e projects out; what already passed on the same inputs is CACHED (FDASH_FORCE=1 reruns all), static gates run FDASH_JOBS at once
 node tools/fdash/cli.ts list             # the tasks of fdash-workspace.json and each project's fdash.json (tools/fdash/README.md)
 node tools/fdash/cli.ts run test:unit    # a conventional task (build, lint, test:unit, test:integration, test:e2e) in every project defining it; --pkg <project> restricts (repeatable)
 node tools/fdash/cli.ts run build test:integration       # names run as stages: every build, then every integration test (they need bin/homequarters; nothing builds it for them)
@@ -69,7 +69,10 @@ cd plugins/bundled/hq-chess && pnpm exec vitest run --project hq-chess:integrati
 node scripts/oxlint.ts [folder ...]     # Oxlint, type-aware, on the folders given (each project's lint runs it on its own) or on web/, the plugins and the tooling (e2e/, scripts/, tools/fdash/, site/, the desktop scripts) (.oxlintrc.json; decision 0033), with the project's rules in scripts/oxlint-hq.ts (effects return a cleanup or nothing, UI text through t(), dialogs through Modal, no fetch in web/src/ui)
 node scripts/check-protocol-docs.ts     # docs/protocol.md lists every message of ws.go's dispatch and of protocol.ts
 node tools/fdash/cli.ts run lint --pkg hq-chess   # a plugin's lint: tsc on each of its tsconfig.json and oxlint on its folder (e2e's lint checks e2e/fixtures/plugins/)
-cd server && go tool staticcheck ./...   # staticcheck, the version pinned in go.mod
+cd server && go tool -modfile=../tools/go/golangci-lint/go.mod golangci-lint run ./...   # server:lint: golangci-lint (.golangci.yml, decision 0040), pinned in tools/go/golangci-lint
+node tools/fdash/cli.ts run lint:repo     # actionlint+zizmor, gitleaks, shellcheck, hadolint (scripts/lint-repo.ts; binaries pinned in tools/go/ and scripts/tools.ts)
+node tools/fdash/cli.ts run lint:vuln     # govulncheck on the server (needs the network)
+node tools/fdash/cli.ts run lint:rust     # cargo fmt --check and clippy on the desktop shell (needs Rust; MSVC on Windows)
 cd web && pnpm exec tsc --noEmit && pnpm exec vite build
 node tools/fdash/cli.ts run test:unit --pkg web  # one project's unit tests through fdash (cached); every TypeScript test runs under Vitest, each project with its own vitest.config.ts whose project is named after the fdash project
 cd web && pnpm exec vitest run           # web's unit and component tests directly (Vitest on Node; component tests `*.test.tsx` start with `// @vitest-environment jsdom`, React Testing Library; type-checked by web/tsconfig.test.json)
@@ -112,7 +115,7 @@ Art (output goes to `site/assets/`; details in `docs/art-style.md`):
 
 ## Conventions
 
-- Go: standard library first, `gofmt`, staticcheck clean (a `//lint:ignore` says why), table-driven tests where natural, no dependency for what a few lines do. Keep `internal/media` the only package that speaks to LiveKit.
+- Go: standard library first, `gofmt`, golangci-lint clean (a `//nolint:<linter> // why` says why; depguard holds the package graph: a new import between internal packages is a line in `.golangci.yml`), table-driven tests where natural, no dependency for what a few lines do. Keep `internal/media` the only package that speaks to LiveKit.
 - TypeScript: `strict` is on; keep `tsc --noEmit` and `node scripts/oxlint.ts` clean (a disable comment says why). Prefer small modules; keep hot paths allocation-light.
 - Tooling (`e2e/`, `scripts/`, `site/`, `tools/`, sprite tools) is TypeScript that Node runs as is: erasable syntax only (no enums, namespaces or parameter properties), `import type` for types, relative imports with their `.ts`. Files served or inlined as text stay JavaScript with `// @ts-check` and JSDoc, checked by a gate: `web/src/plugins/sdk.js`, `viewSdk.js`, `desktop/ui/setup.js`, `desktop/src-tauri/src/missing-apis.js`, `site/src/site.js` ([decision 0036](docs/decisions/0036-tooling-in-typescript.md)).
 - Something new drawn in the world goes in a layer of its own (`web/src/game/layer.ts`, [decision 0034](docs/decisions/0034-world-view-layers.md)): `init` adds its Containers, events are direct calls from `WorldView`, `update(dt, now)` returns whether anything on screen changed (never draw unconditionally) and allocates nothing, and it takes its place in WorldView's `layers` array. Sprites that sort with people go in the shared `entLayer`; `frame()` itself draws nothing.

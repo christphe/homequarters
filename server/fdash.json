@@ -3,27 +3,56 @@
     "lint": {
       "run": [
         [
-          "gofmt",
-          "-l",
-          "."
-        ],
-        [
-          "go",
-          "vet",
-          "./..."
-        ],
-        [
           "go",
           "tool",
-          "staticcheck",
+          "-modfile=../tools/go/golangci-lint/go.mod",
+          "golangci-lint",
+          "run",
           "./..."
         ]
       ],
-      "failOnOutput": true,
+      "inputs": [
+        "/.golangci.yml",
+        "/tools/go/golangci-lint/go.mod",
+        "/tools/go/golangci-lint/go.sum"
+      ],
       "tools": [
         [
           "go",
           "version"
+        ]
+      ],
+      "envKeys": [
+        "GOFLAGS",
+        "CGO_ENABLED",
+        "GOEXPERIMENT",
+        "GOARCH",
+        "GOOS"
+      ]
+    },
+    "lint:vuln": {
+      "run": [
+        [
+          "go",
+          "tool",
+          "-modfile=../tools/go/govulncheck/go.mod",
+          "govulncheck",
+          "./..."
+        ]
+      ],
+      "inputs": [
+        "/tools/go/govulncheck/go.mod",
+        "/tools/go/govulncheck/go.sum"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ],
+        [
+          "node",
+          "-e",
+          "console.log('vulnerability database of ' + new Date().toISOString().slice(0, 10))"
         ]
       ],
       "envKeys": [

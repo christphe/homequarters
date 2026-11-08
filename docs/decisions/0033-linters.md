@@ -1,6 +1,6 @@
 # 0033: Staticcheck for Go, Oxlint for the web client and the plugins
 
-Date: 2026-10-26. Status: accepted.
+Date: 2026-10-26. Status: accepted; amended by [decision 0040](0040-strict-linters.md) (golangci-lint in place of staticcheck, stricter Oxlint, Rust and repository-wide linters).
 
 ## Context
 
