@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Component test of Administration > Plugins (Plugins in web/src/ui/AdminDialog.tsx) through Testing Library: what each
 // row of the server's list shows. The server's side (an installed hq- plugin refused, with the rule) is
-// TestPluginNameRefusalNoRoutes in server/internal/httpapi/plugins_test.go; turning a plugin on through its switch
-// stays in the browser suite (e2e/scenarios/plugins.ts).
+// TestPluginNameRefusalNoRoutes in server/internal/httpapi/plugins_test.go; the switch with no network is
+// web/test/Offline.test.tsx. Turning a plugin on and off through its switch stays in the browser, on the testbed:
+// plugins/e2e/plugin-host-e2e/host.ts (a fixture plugin) and plugins/e2e/hq-pets-e2e/pets.ts (the bundled pets).
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -55,8 +56,8 @@ it("an installed plugin using hq- is listed as refused, with the rule, and has n
 
 // Accessibility (axe, web/test/axe.ts): the tab with no plugin, with every kind of row, and the two modals a row
 // opens. Contrast stays in the browser: e2e/scenarios/a11y.ts audits the administration dialog (Members, the same
-// table, buttons and muted text) and a plugin's own modal; changing a setting through the gear is the `plugins`
-// scenario.
+// table, buttons and muted text), plugins/e2e/plugin-host-e2e/host.ts a plugin's own modal; changing a setting
+// through the gear is plugins/e2e/hq-pets-e2e/pets.ts.
 describe("axe", () => {
   /** A bundled plugin running, with settings (one with help) and a long description. */
   const PETS = row({ name: "hq-pets", title: "Pets", source: "bundled", state: "running", description: "Pets that follow their owner.",

@@ -3,7 +3,7 @@
 // frame and the view of its modal, at what rate, and what it refuses, without a browser. The frames are jsdom
 // iframes that run nothing: the test plays the plugin's SDK on the other end of each MessageChannel (a
 // synchronous stand-in, so fake timers drive the update loop). The browser suite keeps what only a browser shows:
-// the sandbox, the real SDK in a real frame, sprites drawn (e2e/scenarios/plugins.ts).
+// the sandbox, the real SDK in a real frame, sprites drawn (plugins/e2e/plugin-host-e2e/host.ts).
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { PluginHost, type HostDeps } from "../src/plugins/host";
 import { PluginManager } from "../src/plugins/manager";

@@ -23,6 +23,7 @@
         "/e2e/lib.ts",
         "/e2e/env.ts",
         "/e2e/globals.d.ts",
+        "/e2e/axe.ts",
         "/e2e/package.json",
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
@@ -72,6 +73,7 @@
         "/e2e/plugin-run.ts",
         "/e2e/slots.ts",
         "/e2e/globals.d.ts",
+        "/e2e/axe.ts",
         "/e2e/package.json",
         "!capture-*.ts",
         {

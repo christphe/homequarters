@@ -2,22 +2,26 @@
 // E2E_PARALLELISM=N shards on one machine (see parallel.ts). Pure: no dependency, no I/O.
 
 // The whole suite of run.ts (the e2e project's items), in the order a single run executes it.
-export const ALL = ["proximity", "consent", "rooms", "editor", "social", "admin", "plugins", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline", "sounds"];
+export const ALL = ["proximity", "consent", "rooms", "editor", "social", "admin", "a11y", "security", "resilience", "features", "spotlight", "mute", "movement", "presence", "offices", "idle", "update", "auth", "autooff", "devices", "templates", "depth", "offline", "sounds"];
 
-// The plugins' e2e projects (plugins/e2e/*, each run by plugin-run.ts against the testbed, without LiveKit).
+// The plugins' e2e projects (plugins/e2e/*, each run by plugin-run.ts against the testbed, without LiveKit): one per
+// bundled plugin, and plugin-host-e2e for the plugin host with the suite's fixture plugins (the core suite runs without plugins).
 // CI balances them with the scenarios above (plan): each runs whole in the shard it lands in.
-export const PROJECTS = ["hq-chess-e2e", "hq-cards-e2e", "hq-card-pouilleux-e2e", "hq-card-lastcard-e2e"];
+export const PROJECTS = ["hq-chess-e2e", "hq-cards-e2e", "hq-card-pouilleux-e2e", "hq-card-lastcard-e2e", "hq-pets-e2e", "plugin-host-e2e"];
 
 // Seconds per scenario, as each CI shard prints them ("# <scenario> took N s"), measured in CI run 42523235972 (GitHub
 // ubuntu-latest, 2026-11-08, after wave 1 of the test pyramid moved browser checks down: #69 to #72). Refresh them when a scenario grows or checks
 // move out; a scenario missing here counts as UNKNOWN seconds.
 export const DURATIONS: Record<string, number> = {
-  proximity: 38, consent: 22, rooms: 75, editor: 23, social: 24, admin: 19, plugins: 52, a11y: 36,
+  proximity: 38, consent: 22, rooms: 75, editor: 23, social: 24, admin: 19, a11y: 36,
   security: 36, resilience: 38, features: 26, spotlight: 49, mute: 55, movement: 24, presence: 38, offices: 42, idle: 41,
   update: 12, auth: 3, autooff: 44, devices: 25, templates: 28, depth: 48, offline: 12, sounds: 17,
   "hq-chess-e2e": 30, // its test:e2e alone on a Windows 11 desktop (2026-11-07, the testbed without LiveKit; 34 s as run.ts's chess), not in CI
   // the three card projects' test:e2e one after the other on the same desktop (2026-11-07, the testbed; 32 s as run.ts's cards), not in CI
   "hq-cards-e2e": 26, "hq-card-pouilleux-e2e": 9, "hq-card-lastcard-e2e": 10,
+  // their test:e2e through fdash one after the other on the same desktop (2026-11-08, the testbed; the core suite's plugins
+  // scenario they replace took 37 s there with LiveKit), not in CI
+  "hq-pets-e2e": 33, "plugin-host-e2e": 20,
 };
 export const UNKNOWN = 60;
 

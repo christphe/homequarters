@@ -2,16 +2,18 @@
 // and keyboard checks (focus trap and Escape in dialogs, tab semantics). This finds a subset of problems; it is not a
 // substitute for testing with a screen reader (see docs/status.md).
 // The browser audits what only a browser can: colour contrast (real styles, fonts and layout), full screens (the
-// world view, the side panel, overlays) and plugin iframes. A dialog, panel or menu whose structure is all axe needs
+// world view, the side panel, overlays). A dialog, panel or menu whose structure is all axe needs
 // is audited in a component test (web/test/*.test.tsx through web/test/axe.ts, in more states than here): the
 // administration dialog's Invites, Activity and Plugins tabs and a plugin's settings, an object's dialog, the
 // whiteboard. Their contrast is covered by the audits kept here, which show the same styles (decision 0037).
+// It runs without plugins, like the whole core suite: the plugin UI (the side panel's Plugins tab, a plugin's modal)
+// is audited in plugins/e2e/plugin-host-e2e with a fixture plugin, each bundled plugin's windows and views in its own
+// e2e project (plugins/e2e/hq-pets-e2e, hq-chess-e2e, hq-cards-e2e).
 import os from "node:os";
 import path from "node:path";
 import type { Page } from "puppeteer-core";
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, API, type RunContext } from "../lib.ts";
-import { audit, auditView } from "../axe.ts";
-import type { MapData } from "../../web/src/net/protocol.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, type RunContext } from "../lib.ts";
+import { audit } from "../axe.ts";
 
 const click = (page: Page, selector: string, text?: string) => page.evaluate((selector, text) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => (text === undefined ? true : x.textContent.trim() === text));
@@ -113,24 +115,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => p.$(".modal .admin-table"), { what: "admin dialog" });
     await audit(p, "the administration dialog (members)");
     // (the Invites, Activity and Plugins tabs and a plugin's settings: web/test/AdminDialog.test.tsx and
-    // AdminPlugins.test.tsx; the Members tab above has their styles). Pets is turned on through its switch for the
-    // side panel and the plugin's modal below.
-    await click(p, ".modal [role=tab]", "Plugins");
-    await waitFor(() => p.$('.modal tr[data-plugin="hq-pets"]'), { what: "plugins tab" });
-    await p.evaluate(() => document.querySelector<HTMLButtonElement>('.modal button[aria-label="Turn on Pets"]')?.click());
-    await waitFor(() => p.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')?.textContent.includes("Running")), { what: "sample plugin running" });
+    // AdminPlugins.test.tsx; the Members tab above has their styles). The core suite runs without plugins: the side
+    // panel's Plugins tab and a plugin's modal are audited on the testbed with the fixture plugin ui-demo
+    // (plugins/e2e/plugin-host-e2e/host.ts), each bundled plugin's own windows in its e2e project.
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "admin closed" });
-    await waitFor(() => p.evaluate(() => { const b = document.querySelector<HTMLButtonElement>('.side .tabs button[aria-label="Plugins"]'); b?.click(); return !!b; }), { what: "side panel plugins tab" });
-    await waitFor(() => p.$(".plugins-panel button"), { what: "plugin buttons" });
-    await audit(p, "the side panel (plugins)");
-    await p.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".plugins-panel button")].find((b) => b.textContent === "Pets")?.click());
-    await waitFor(() => p.$(".modal.plugin-modal"), { what: "plugin modal" });
-    await audit(p, "a plugin's modal");
-    await p.keyboard.press("Escape");
-    await waitFor(async () => !(await p.$(".modal")), { what: "plugin modal closed" });
-    await fetch(API + "/api/admin/plugins/hq-pets", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
-    await waitFor(() => p.evaluate(() => !document.querySelector(".plugins-panel")), { what: "plugins panel gone" });
 
     await p.evaluate(() => [...document.querySelectorAll("button")].find((b) => /enable audio/i.test(b.textContent + (b.getAttribute("aria-label") ?? "")))?.click());
     await waitFor(() => p.$(".modal"), { what: "media dialog" });
@@ -142,30 +131,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // settings and administration dialogs above have their text, chips and buttons, but not the object dialog's link,
     // which has the browser's default colour; opening them with X is the `features` scenario)
 
-    // the chess window (bundled hq-chess): a board placed on the social area's table, opened with X; the
-    // page and the board view's own document are audited
-    const chessOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/hq-chess", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
-    const setChessboard = async (on: boolean) => {
-      const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then(async (r) => (await r.json()) as MapData);
-      m.props = m.props.filter((x) => x.t !== "hq-chess/chessboard");
-      if (on) m.props.push({ t: "hq-chess/chessboard", x: 13, y: 22, w: 1, h: 1 });
-      await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
-    };
-    await chessOn(true);
-    await setChessboard(true);
-    await walkTo(admin, 13 * 16 + 8, 23 * 16 + 8);
-    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "hq-chess/chessboard"), { what: "nearby chessboard" });
-    await p.keyboard.press("x");
-    const chessView = await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" });
-    await waitFor(() => chessView.evaluate(() => !!document.querySelector("canvas[aria-label]")), { what: "chess board view" });
-    await audit(p, "the chess window");
-    await auditView(chessView, "the chess board view");
-    await p.keyboard.press("Escape");
-    await waitFor(async () => !(await p.$(".modal")), { what: "chess closed" });
-    await chessOn(false);
-    await setChessboard(false);
-
-    // (the Cards window's audit, a dealt free table, is the plugin's: plugins/e2e/hq-cards-e2e/cards.ts)
+    // (the Chess and Cards windows' audits are their plugins': plugins/e2e/hq-chess-e2e/chess.ts and hq-cards-e2e/cards.ts)
 
     // a free desk: its Take button and the confirmation (Escape leaves the desk free)
     // earlier scenarios may have assigned some desks: take the first free one in the desk area

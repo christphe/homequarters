@@ -1,0 +1,126 @@
+{
+  "dependsOn": [
+    "hq-pets",
+    "web"
+  ],
+  "tasks": {
+    "lint": {
+      "run": [
+        [
+          "pnpm",
+          "exec",
+          "tsc",
+          "-p",
+          "tsconfig.json"
+        ],
+        [
+          "node",
+          "../../../scripts/oxlint.ts",
+          "."
+        ]
+      ],
+      "inputs": [
+        "/e2e/lib.ts",
+        "/e2e/env.ts",
+        "/e2e/globals.d.ts",
+        "/e2e/axe.ts",
+        "/e2e/fixtures/plugins/installed/critters/**",
+        "/e2e/fixtures/plugins/installed/drawn-pet/**",
+        "/e2e/package.json",
+        "/scripts/oxlint.ts",
+        "/scripts/oxlint-hq.ts",
+        "/.oxlintrc.json",
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-pets"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
+        }
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
+      ]
+    },
+    "test:e2e": {
+      "run": [
+        [
+          "node",
+          "../../../e2e/plugin-run.ts",
+          "--plugin",
+          "../../bundled/hq-pets",
+          "--plugin",
+          "../../../e2e/fixtures/plugins/installed/critters",
+          "--plugin",
+          "../../../e2e/fixtures/plugins/installed/drawn-pet",
+          "pets.ts"
+        ]
+      ],
+      "env": {
+        "E2E_VIEWPORT": "small",
+        "HQ_BIN_REPO_ONLY": "1"
+      },
+      "inputs": [
+        "/e2e/lib.ts",
+        "/e2e/env.ts",
+        "/e2e/plugin-run.ts",
+        "/e2e/slots.ts",
+        "/e2e/globals.d.ts",
+        "/e2e/axe.ts",
+        "/e2e/package.json",
+        "!capture-*.ts",
+        "/e2e/fixtures/plugins/installed/critters/**",
+        "/e2e/fixtures/plugins/installed/drawn-pet/**",
+        {
+          "disk": "/bin/homequarters*"
+        },
+        {
+          "disk": "/web/dist/**"
+        },
+        "/package.json",
+        "/pnpm-workspace.yaml",
+        {
+          "pnpm": "."
+        },
+        {
+          "pnpm": "../../bundled/hq-pets"
+        },
+        {
+          "pnpm": "../../sdk"
+        },
+        {
+          "pnpm": "../../../web"
+        },
+        {
+          "pnpm": "../../../e2e"
+        }
+      ],
+      "envKeys": [
+        "E2E_VIEWPORT",
+        "CHROME_VERSION",
+        "CI",
+        "GOFLAGS",
+        "CGO_ENABLED"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    }
+  }
+}
