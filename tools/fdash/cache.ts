@@ -23,20 +23,23 @@ function globFiles(root: string, patterns: string[]): string[] {
   return git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...specs]).toString("utf8").split("\0").filter(Boolean);
 }
 
-/** The files of the main module's packages reached by `go list -deps` from a pattern, plus go.mod and go.sum. */
+/** The files of the packages reached by `go list -deps` from a pattern, in the main module and in the modules
+ * it replaces with a folder of the repository (`replace example.com/lib => ../lib`), plus their go.mod and go.sum. */
 function goFiles(root: string, input: { go: string; cwd: string; tests: boolean }): string[] {
   // every file the package builds from: Go, cgo, assembly, C and C++, SWIG, objects, embedded files
   const lists = ["GoFiles", "CgoFiles", "CFiles", "CXXFiles", "MFiles", "HFiles", "FFiles", "SFiles", "SwigFiles", "SwigCXXFiles", "SysoFiles", "EmbedFiles", ...(input.tests ? ["TestGoFiles", "XTestGoFiles"] : [])];
-  const format = "{{if and (not .Standard) .Module}}{{if .Module.Main}}{{.Module.GoMod}}\t{{.Dir}}" + lists.map((l) => `{{range .${l}}}\t{{.}}{{end}}`).join("") + "{{end}}{{end}}";
+  // a module replaced by a folder has a Replace without a version (one replaced by another version is downloaded)
+  const local = "(or .Module.Main (and .Module.Replace (not .Module.Replace.Version)))";
+  const format = `{{if and (not .Standard) .Module}}{{if ${local}}}{{.Module.Dir}}\t{{.Dir}}` + lists.map((l) => `{{range .${l}}}\t{{.}}{{end}}`).join("") + "{{end}}{{end}}";
   const args = ["list", "-deps", ...(input.tests ? ["-test"] : []), "-f", format, input.go];
   const out = execFileSync("go", args, { cwd: path.join(root, input.cwd), maxBuffer: BIG, stdio: ["ignore", "pipe", "pipe"] }).toString("utf8");
   const files = new Set<string>();
   const dirs = new Set<string>();
   for (const line of out.split(/\r?\n/)) {
     if (!line.trim()) continue;
-    const [goMod, dir, ...names] = line.split("\t");
-    files.add(goMod);
-    files.add(path.join(path.dirname(goMod), "go.sum"));
+    const [moduleDir, dir, ...names] = line.split("\t");
+    files.add(path.join(moduleDir, "go.mod"));
+    files.add(path.join(moduleDir, "go.sum"));
     dirs.add(dir);
     // with -test, the generated test main lists files in Go's build cache (absolute): not ours
     for (const n of names) if (!path.isAbsolute(n)) files.add(path.join(dir, n));

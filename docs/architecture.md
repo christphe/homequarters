@@ -3,7 +3,8 @@
 ## Repository layout
 
 ~~~text
-server/   Go: HTTP + WebSocket, authoritative world, SQLite, LiveKit integration
+server/   Go: HTTP + WebSocket, authoritative world, SQLite, LiveKit integration;
+          each folder below is a Go module of its own (decision 0041)
   cmd/homequarters/        entry point
   internal/world/        simulation, spatial grid, proximity groups, backpressure
   internal/gamemap/      map format, validation, collision grids, default office
@@ -11,6 +12,9 @@ server/   Go: HTTP + WebSocket, authoritative world, SQLite, LiveKit integration
   internal/store/        SQLite (WAL), migrations, sessions, invites, chat history, members and the admin audit log
   internal/httpapi/      routes, WebSocket session, limits, metrics, media reconciler
   internal/config/       environment configuration
+  internal/auth/         sign-in through OpenID Connect providers
+  internal/plugin/       operator-installed plugins: catalog, esbuild, QuickJS
+  internal/testbed/      the real server for tests (homequarters testbed)
   cmd/loadgen/           WebSocket load generator (benchmarks)
 web/      TypeScript + React + Vite + PixiJS client
 e2e/      real-browser end-to-end tests and asset generation

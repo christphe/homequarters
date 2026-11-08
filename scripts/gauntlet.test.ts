@@ -22,6 +22,15 @@ const readJson = <T>(file: string) => JSON.parse(fs.readFileSync(file, "utf8")) 
 const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e2e", "hq-chess-e2e"];
 const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
 /** The projects with integration tests (*.ispec.ts against the testbed), in the workspace's order. */
+/** The server's Go modules, one project each (decision 0041), in the workspace's order: [project, folder]. */
+// Every folder of server/ holding a go.mod, in the workspace's order (server/internal/*, then server/cmd/*): a
+// module without its fdash.json would get no lint, build or test, and the gates would stay green.
+const GO = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "server/**/go.mod"], { cwd: path.resolve(import.meta.dirname, ".."), encoding: "utf8" })
+  .split("\n").filter(Boolean).map((f) => path.posix.dirname(f))
+  .sort((a, b) => Number(a.startsWith("server/cmd/")) - Number(b.startsWith("server/cmd/")) || (a < b ? -1 : 1))
+  .map((dir) => [dir === "server/cmd/homequarters" ? "server" : path.posix.basename(dir), dir]);
+/** The Go tasks ignore any go.work: one would accept imports a go.mod does not declare (decision 0041). */
+const GOWORK_OFF = JSON.stringify({ GOWORK: "off" });
 const INTEGRATION = ["sdk", "hq-card-lastcard", "hq-card-pouilleux", "hq-cards", "hq-chess", "hq-pets"].map((p) => `${p}:test:integration`);
 
 test("the workspace holds the gauntlet's gates, as the conventional tasks of each project, with their commands", () => {
@@ -37,7 +46,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     [`${p}:test:${tier}`, p === "sdk" ? "plugins/sdk" : `plugins/bundled/${p}`, `pnpm exec vitest run --project ${tier === "unit" ? p : `${p}:integration`}`, false, false, tier === "unit" ? "{}" : '{"HQ_BIN_REPO_ONLY":"1"}'];
   const fixtures = ["critters/tsconfig.json", "drawn-pet/tsconfig.json", "drawn-pet/public/tsconfig.json", "drawn-sheet/public/tsconfig.json", "ui-demo/tsconfig.json", "ui-demo/public/tsconfig.json", "ui-demo/public/views/tsconfig.json"];
   assert.deepEqual(gates.map(row), [
-    ["server:lint", "server", "go tool -modfile=../tools/go/golangci-lint/go.mod golangci-lint run ./...", false, false, "{}"],
+    ...GO.map(([p, dir]) => [`${p}:lint`, dir, "go tool -modfile=../../../tools/go/golangci-lint/go.mod golangci-lint run ./...", false, false, GOWORK_OFF]),
     ["web:lint", "web", ["pnpm exec tsc --noEmit", "pnpm exec tsc -p tsconfig.test.json --noEmit", "pnpm exec tsc -p tsconfig.sdk.json", ox("../", "src test")].join(" && "), false, false, "{}"],
     ["site:lint", "site", `pnpm exec tsc --noEmit && ${ox("../")}`, false, false, "{}"],
     ["e2e:lint", "e2e", ["pnpm exec tsc --noEmit", ...fixtures.map((f) => tsc("fixtures/plugins/installed/" + f)), ox("../")].join(" && "), false, false, "{}"],
@@ -53,11 +62,11 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     plugin("hq-pets", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
     ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `${tsc("tsconfig.json")} && ${ox("../../../")}`, false, false, "{}"]),
     // the repository-wide linters (scripts/lint-repo.ts), workspace tasks run from the root
-    ...["actions", "secrets", "shell", "docker"].map((c) => [`lint:${c}`, ".", `node scripts/lint-repo.ts ${c}`, false, false, "{}"]),
-    ["server:build", "server", "go build -o ../bin/ ./cmd/homequarters", false, false, "{}"],
+    ...["actions", "secrets", "shell", "docker", "go-modules"].map((c) => [`lint:${c}`, ".", `node scripts/lint-repo.ts ${c}`, false, false, "{}"]),
+    ...GO.filter(([, dir]) => dir.startsWith("server/cmd/")).map(([p, dir]) => [`${p}:build`, dir, "go build -o ../../../bin/ .", false, false, GOWORK_OFF]),
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
-    ["server:test:unit", "server", "go test -race -count=1 ./...", false, false, "{}"],
+    ...GO.map(([p, dir]) => [`${p}:test:unit`, dir, "go test -race -count=1 ./...", false, false, GOWORK_OFF]),
     ["web:test:unit", "web", "pnpm exec vitest run", false, false, "{}"],
     ["site:test:unit", "site", "node check.ts", false, false, "{}"],
     ["e2e:test:unit", "e2e", "pnpm exec vitest run", false, false, "{}"],
@@ -111,10 +120,11 @@ test("build tasks declare what they produce; site checks its build after making 
   const config = loadWorkspace(root);
   const cmd = (n: string) => config.get(n) as Command;
   assert.deepEqual(cmd("server:build").outputs, ["bin/homequarters*"]);
+  assert.deepEqual(cmd("loadgen:build").outputs, ["bin/loadgen*"]);
   assert.deepEqual(cmd("web:build").outputs, ["web/dist/**"]);
   assert.deepEqual(cmd("site:build").outputs, ["site/dist/**"]);
   assert.deepEqual(cmd("site:test:unit").after, ["site:build"]);
-  for (const n of ["server:build", "server:test:unit"]) for (const k of ["GOFLAGS", "CGO_ENABLED"]) assert.ok(cmd(n).envKeys.includes(k), `${n} keys on ${k}`);
+  for (const n of ["server:build", "loadgen:build", ...GO.map(([p]) => `${p}:test:unit`)]) for (const k of ["GOFLAGS", "CGO_ENABLED"]) assert.ok(cmd(n).envKeys.includes(k), `${n} keys on ${k}`);
   // a suite run against what a build wrote reads that artefact as an input: a stale binary or client gives
   // another key, so a pass recorded on it never answers for the rebuilt one
   const disk = (n: string) => (cmd(n).inputs ?? []).flatMap((i) => (typeof i === "object" && "disk" in i ? [i.disk] : []));
@@ -129,7 +139,18 @@ test("a plugin depends on the server and the SDK, never on the web client; the s
     assert.ok(deps.includes("server") && deps.includes("sdk"), `${p} depends on server and sdk`);
     assert.ok(!deps.includes("web"), `${p} does not depend on web`);
   }
-  assert.equal(readJson<FdashJson>(path.join(root, "server/fdash.json")).dependsOn, undefined);
+  // a Go module depends on what its go.mod requires, read by fdash, and on nothing else (decision 0041)
+  for (const [, dir] of GO) assert.deepEqual(readJson<{ dependsOn?: unknown }>(path.join(root, dir, "fdash.json")).dependsOn, [{ goMod: "go.mod" }], dir);
+});
+
+test("the image copies the go.mod of every library the server's go.mod replaces with a folder, before downloading", () => {
+  const goMod = fs.readFileSync(path.join(root, "server/cmd/homequarters/go.mod"), "utf8");
+  const libs = [...goMod.matchAll(/^\s*\S+ => \.\.\/\.\.\/(internal\/[\w-]+)\s*$/gm)].map((m) => m[1]).sort();
+  assert.ok(libs.length > 0);
+  const docker = fs.readFileSync(path.join(root, "deploy/Dockerfile"), "utf8");
+  const copied = [...docker.matchAll(/^COPY server\/(internal\/[\w-]+)\/go\.mod \1\/$/gm)].map((m) => m[1]).sort();
+  assert.deepEqual(copied, libs);
+  assert.ok(docker.indexOf("RUN go mod download") > docker.lastIndexOf("/go.mod internal/"), "the go.mod files come before the download");
 });
 
 test("every gate is cached, and every scenario of the suite is an item with its own file", () => {
@@ -262,12 +283,16 @@ test("files a test reads outside its project are inputs of the task that runs it
   const missing: string[] = [];
   const files = (dir: string, re: RegExp): string[] => fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile() && re.test(e.name) && !e.parentPath.includes("node_modules")).map((e) => path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join("/"));
-  // Go tests climbing out of server/internal/<pkg>: filepath.Join("..", "..", "..", "web", "dev", name)
-  for (const f of files("server", /_test\.go$/)) {
-    for (const m of fs.readFileSync(path.join(root, f), "utf8").matchAll(/filepath\.Join\((?:"\.\.", ){3}((?:"[^"]+"(?:, )?)+)/g)) {
-      const rel = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).join("/");
-      // .run/ is where a test writes (the cmd tests' binary), never what it reads
-      if (!rel.startsWith(".run/") && !covered("server:test:unit", rel)) missing.push(`${f} reads ${rel}, not an input of server:test:unit`);
+  // Go tests climbing out of their module (decision 0041), from the test's folder: filepath.Join("..", "..", "..",
+  // "web", "dev", name) in server/internal/gamemap, filepath.Join("..", "httpapi", "testdata", ...) in the testbed
+  for (const [project, dir] of GO) {
+    for (const f of files(dir, /_test\.go$/)) {
+      for (const m of fs.readFileSync(path.join(root, f), "utf8").matchAll(/filepath\.Join\(((?:"\.\.", )+(?:"[^"]+"(?:, )?)+)/g)) {
+        const rel = path.posix.normalize(path.posix.join(path.posix.dirname(f), ...[...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1])));
+        // .run/ is where a test writes (the cmd tests' binary), never what it reads
+        if (rel.startsWith(dir + "/") || rel.startsWith(".run/")) continue;
+        if (!covered(`${project}:test:unit`, rel)) missing.push(`${f} reads ${rel}, not an input of ${project}:test:unit`);
+      }
     }
   }
   // tests reading files by URL or from their folder (`${import.meta.dirname}/../x`: under Vitest, Vite rewrites

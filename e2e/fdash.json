@@ -146,8 +146,8 @@
         "!*.test.ts",
         "!plugin-run.ts",
         {
-          "go": "./cmd/homequarters",
-          "cwd": "../server"
+          "go": ".",
+          "cwd": "../server/cmd/homequarters"
         },
         "/web/**",
         "!/web/test/**",

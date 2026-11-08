@@ -45,7 +45,7 @@ For a real server, follow the [self-hosting guide](deploy/README.md) (Caddy for 
 Open http://localhost:5173 in two browser profiles, walk the avatars toward each other and enable audio and video when asked. The dev stack uses LiveKit's public development keys and an unauthenticated join; production mode refuses to start with those defaults.
 
 ~~~bash
-cd server && go test -race ./...      # world, store, media
+node tools/fdash/cli.ts run test:unit --pkg world --pkg store --pkg media   # Go race tests, one module per library
 cd web && pnpm exec tsc --noEmit      # type-check the client
 scripts/gauntlet.sh                   # every gate, including the real-browser suite
 ~~~

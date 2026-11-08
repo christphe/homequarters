@@ -1,7 +1,9 @@
 # 0040: strict linters, with no false positive
 
 Date: 2026-11-08. Status: draft. The tools and their configuration are in; the fixes of what they find are
-pending, split by fdash project (below). Amends [decision 0033](0033-linters.md).
+pending, split by fdash project (below). Amends [decision 0033](0033-linters.md). Amended by
+[decision 0041](0041-go-module-per-library.md): one Go module per library, whose go.mod files replace
+depguard's package-graph rules (the LiveKit rule stays); golangci-lint runs once per module.
 
 ## Context
 

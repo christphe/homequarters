@@ -33,7 +33,7 @@ if (await portOpen(Number(PORT))) { console.log(`# port ${PORT} is busy: set HQ_
 if (!process.env.SKIP_BUILD) {
   console.log("# building web + server");
   execFileSync("pnpm", ["build"], { cwd: path.join(root, "web"), stdio: "inherit", shell: WIN });
-  execFileSync("go", ["build", "-o", BIN, "./cmd/homequarters"], { cwd: path.join(root, "server"), stdio: "inherit" });
+  execFileSync("go", ["build", "-o", BIN, "."], { cwd: path.join(root, "server", "cmd", "homequarters"), stdio: "inherit", env: { ...process.env, GOWORK: "off" } });
 }
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "homequarters-banner-"));

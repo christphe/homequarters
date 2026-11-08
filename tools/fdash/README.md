@@ -67,6 +67,7 @@ A task is a **command** or a **group**.
 | `items` | parts of the command cached one by one (below) |
 | `outputs` | the files the command produces, stored with a pass and restored on a hit (below) |
 | `after` | tasks of the same file (or project) this command starts after, when they are part of the run |
+| `afterDependsOn` | `false`: in a workspace, the command does not start after the same task of the projects it depends on (Order, 1); for checks that gain nothing from waiting, such as Go tests, which compile what they test themselves |
 | `cache` | `false` turns the cache off for this command |
 
 | Group key | Meaning |
@@ -118,7 +119,7 @@ before a lone `fdash.json`):
 | --- | --- |
 | `name` | default: the folder's name; two projects with one name are refused |
 | `files` | what other projects see of it, patterns relative to the project (default `**`) |
-| `dependsOn` | project names; their `files`, transitively, are inputs of every task of this project |
+| `dependsOn` | project names; their `files`, transitively, are inputs of every task of this project. An entry `{ "goMod": "go.mod" }` (a go.mod file, relative to the project) adds the projects whose folders that go.mod's `replace` directives point at, for the modules it requires (`require example.com/lib v0.0.0` with `replace example.com/lib => ../lib`): a repository of several Go modules without a go.work declares each dependency once, in the go.mod. A replaced folder that is no project is refused |
 | `tasks` | as in a single `fdash.json` |
 
 - A project's task runs in its folder. On the command line and in groups it is named without its project
@@ -144,7 +145,8 @@ Tasks run as a graph with two kinds of edges, and no other:
 1. **Across projects:** task X of a project starts after task X of each project it depends on. When a
    dependency has no task X, the walk goes through it to its own dependencies: with `maps` depending on
    `cards` depending on `core`, `maps:test:integration` waits for `core:test:integration` even if `cards`
-   has none.
+   has none. A command with `"afterDependsOn": false` does not wait (a project depending on it still waits
+   for it).
 2. **Inside a project:** a task starts after the tasks of its own project it names in `after`
    (`"test:unit": { "after": ["build"], ... }`). Whether a project needs a build before its tests is its own
    business.
@@ -186,7 +188,10 @@ Inputs:
   excludes. It matches the tracked files and the untracked files git does not ignore.
 - a **Go provider**, `{ "go": "<package pattern>", "cwd": "<module folder>", "tests": <bool> }`: the
   files of every package of that module reached by `go list -deps` from the pattern (Go, cgo and embedded
-  files, plus test files and `testdata/` when `tests` is true), with the module's `go.mod` and `go.sum`.
+  files, plus test files and `testdata/` when `tests` is true), with the module's `go.mod` and `go.sum`; and
+  likewise the packages reached in the modules it replaces with a folder inside the root
+  (`replace example.com/lib => ../lib`), with their `go.mod` and `go.sum`. Downloaded modules are not read:
+  go.sum pins them.
 - a **disk pattern**, `{ "disk": "<path pattern>" }`: the files the pattern matches on disk, git-ignored
   ones included, in the syntax of `outputs` (in a project, relative to it or from the root with a leading
   `/`). It is for build artefacts a command runs or serves: a test that runs `bin/app` declares

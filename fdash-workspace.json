@@ -1,6 +1,7 @@
 {
   "projects": [
-    "server",
+    "server/internal/*",
+    "server/cmd/*",
     "web",
     "site",
     "e2e",
@@ -45,7 +46,30 @@
         "lint:actions",
         "lint:secrets",
         "lint:shell",
-        "lint:docker"
+        "lint:docker",
+        "lint:go-modules"
+      ]
+    },
+    "lint:go-modules": {
+      "run": [
+        [
+          "node",
+          "scripts/lint-repo.ts",
+          "go-modules"
+        ]
+      ],
+      "inputs": [
+        "server/**",
+        "!server/CHANGELOG.md",
+        "scripts/lint-repo.ts",
+        "scripts/tools.ts",
+        "tools/fdash/gomod.ts"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
       ]
     },
     "lint:actions": {

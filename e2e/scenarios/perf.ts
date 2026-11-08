@@ -15,7 +15,7 @@ type Size = { width: number; height: number };
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BOTS = Number(process.env.PERF_BOTS ?? 300);
 const SECONDS = Number(process.env.PERF_SECONDS ?? 30);
-const LOADGEN = path.join(root, "bin", process.platform === "win32" ? "loadgen.exe" : "loadgen"); // (cd server && go build -o ../bin/loadgen.exe ./cmd/loadgen) on Windows
+const LOADGEN = path.join(root, "bin", process.platform === "win32" ? "loadgen.exe" : "loadgen"); // node tools/fdash/cli.ts run build --pkg loadgen
 const GPU_ARGS = process.env.PERF_SOFTWARE_GL ? [] : ["--use-gl=angle", "--use-angle=metal", "--ignore-gpu-blocklist", "--enable-gpu-rasterization"];
 
 const WALK_PTS: [number, number][] = [[20, 28], [34, 30], [12, 24], [30, 20], [8, 32], [36, 26]];

@@ -19,7 +19,7 @@ A WebSocket benchmark says **nothing** about video. Media scenarios must use rea
 ## Run scenario A/E (presence, no media)
 
 ```sh
-(cd server && go build -o ../bin/homequarters ./cmd/homequarters && go build -o ../bin/loadgen ./cmd/loadgen)
+node tools/fdash/cli.ts run build --pkg server --pkg loadgen   # bin/homequarters and bin/loadgen
 bench/environment.sh                      # record the machine
 scripts/bench.sh A-300-distributed 300 -region distributed -duration 60s
 scripts/bench.sh A-300-concentrated 300 -region concentrated -duration 60s

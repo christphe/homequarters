@@ -1,11 +1,21 @@
 {
+  "name": "server",
+  "files": [
+    "**",
+    "!**/*_test.go"
+  ],
+  "dependsOn": [
+    {
+      "goMod": "go.mod"
+    }
+  ],
   "tasks": {
     "lint": {
       "run": [
         [
           "go",
           "tool",
-          "-modfile=../tools/go/golangci-lint/go.mod",
+          "-modfile=../../../tools/go/golangci-lint/go.mod",
           "golangci-lint",
           "run",
           "./..."
@@ -16,6 +26,10 @@
         "/tools/go/golangci-lint/go.mod",
         "/tools/go/golangci-lint/go.sum"
       ],
+      "env": {
+        "GOWORK": "off"
+      },
+      "afterDependsOn": false,
       "tools": [
         [
           "go",
@@ -35,7 +49,7 @@
         [
           "go",
           "tool",
-          "-modfile=../tools/go/govulncheck/go.mod",
+          "-modfile=../../../tools/go/govulncheck/go.mod",
           "govulncheck",
           "./..."
         ]
@@ -44,6 +58,10 @@
         "/tools/go/govulncheck/go.mod",
         "/tools/go/govulncheck/go.sum"
       ],
+      "env": {
+        "GOWORK": "off"
+      },
+      "afterDependsOn": false,
       "tools": [
         [
           "go",
@@ -69,10 +87,13 @@
           "go",
           "build",
           "-o",
-          "../bin/",
-          "./cmd/homequarters"
+          "../../../bin/",
+          "."
         ]
       ],
+      "env": {
+        "GOWORK": "off"
+      },
       "outputs": [
         "/bin/homequarters*"
       ],
@@ -100,9 +121,10 @@
           "./..."
         ]
       ],
-      "inputs": [
-        "/web/dev/**"
-      ],
+      "env": {
+        "GOWORK": "off"
+      },
+      "afterDependsOn": false,
       "tools": [
         [
           "go",

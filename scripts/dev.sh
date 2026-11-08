@@ -83,7 +83,7 @@ fi
 
 # into bin/ as `fdash run build --pkg server` does: Go names it (homequarters.exe on Windows, which Git Bash
 # starts as ./bin/homequarters), so no second binary sits beside the one the cache stores
-( cd server && go build -o ../bin/ ./cmd/homequarters )
+( cd server/cmd/homequarters && go build -o ../../../bin/ . )
 # plugins: the repository's plugins/bundled, plus your own in plugins/installed (git-ignored)
 HQ_ENV=dev HQ_ADDR=127.0.0.1:8080 HQ_DB="${HQ_DB:-server/data/dev.db}" \
   HQ_ALLOWED_ORIGINS="$origins" HQ_PLUGINS_DIR="${HQ_PLUGINS_DIR:-plugins}" \
