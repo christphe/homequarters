@@ -85,7 +85,7 @@ func (w *World) doUse(p *Player, x, y int, now time.Time) {
 			return
 		}
 		if pr.T == gamemap.PropWhiteboard {
-			w.openBoard(p, pr, now)
+			w.openBoard(p, pr)
 			return
 		}
 		w.sendJSON(p, map[string]any{"t": "obj", "k": pr.T, "l": pr.Label, "d": pr.Data})

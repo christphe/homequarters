@@ -50,7 +50,7 @@ export async function onMessage(p: HQ.Player, m: { fail?: boolean }) {
 	}
 	h.Message(alice, "p", []byte(`{}`))
 	eventually(t, "code after await ran", func() bool { return sink.find(1, "after", "await") })
-	for i := 0; i < 11; i++ {
+	for range 11 {
 		h.Message(alice, "p", []byte(`{"fail":true}`))
 	}
 	eventually(t, "async errors counted", func() bool { st, _ := state(h, "p"); return st == "crashed" })
@@ -187,7 +187,9 @@ func TestCacheSeesContentChangesWithTheSameSizeAndTime(t *testing.T) {
 	}
 	h.Stop("p")
 	write(t, root, map[string]string{"p/main.ts": `export function load() { hq.kv.set("v", "BBB"); }`})
-	os.Chtimes(main, st.ModTime(), st.ModTime())
+	if err := os.Chtimes(main, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.Start("p"); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +201,7 @@ func TestCacheSeesContentChangesWithTheSameSizeAndTime(t *testing.T) {
 func TestNodeModulesDoNotBreakAPlugin(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{"p/plugin.json": manifest("p", "main.ts", ""), "p/main.ts": "export function load() {}"}
-	for i := 0; i < maxPluginFiles+10; i++ {
+	for i := range maxPluginFiles + 10 {
 		files["p/node_modules/pkg/f"+strconv.Itoa(i)+".js"] = "x"
 	}
 	write(t, root, files)
@@ -247,7 +249,7 @@ func TestJunctionOutOfThePluginIsRefused(t *testing.T) {
 	link, target := filepath.Join(root, "p", "lib"), filepath.Join(root, "outside")
 	var err error
 	if runtime.GOOS == "windows" {
-		err = exec.Command("cmd", "/c", "mklink", "/J", link, target).Run()
+		err = exec.CommandContext(t.Context(), "cmd", "/c", "mklink", "/J", link, target).Run()
 	} else {
 		err = os.Symlink(target, link)
 	}

@@ -11,9 +11,9 @@ func TestPendIndexAgreesWithAMap(t *testing.T) {
 	var idx pendIndex
 	var items []pendItem
 	ref := map[uint32]int32{}
-	for round := 0; round < 200; round++ {
+	for round := range 200 {
 		n := rng.IntN(600)
-		for k := 0; k < n; k++ {
+		for range n {
 			id := uint32(rng.IntN(2000)) + 1
 			got := idx.find(items, id)
 			want, ok := ref[id]

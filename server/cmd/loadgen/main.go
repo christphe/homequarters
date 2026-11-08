@@ -48,15 +48,17 @@ var (
 )
 
 type mapData struct {
-	W, H  int
-	Solid []string
+	W     int      `json:"w"`
+	H     int      `json:"h"`
+	Solid []string `json:"solid"`
 }
 type hello struct {
 	T   string `json:"t"`
 	You uint32 `json:"you"`
 	Cfg struct {
 		Speed float64 `json:"speed"`
-		X, Y  float64
+		X     float64 `json:"x"`
+		Y     float64 `json:"y"`
 	} `json:"cfg"`
 	Map mapData `json:"map"`
 }
@@ -98,15 +100,20 @@ func httpJoin(name string) (string, error) {
 		req["invite"] = *invite
 	}
 	body, _ := json.Marshal(req)
-	for attempt := 0; attempt < 8; attempt++ {
-		resp, err := http.Post(*base+"/api/join", "application/json", bytes.NewReader(body))
+	for range 8 {
+		rq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, *base+"/api/join", bytes.NewReader(body))
+		if err != nil {
+			return "", err
+		}
+		rq.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(rq)
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body) // drained so the connection is reused; the status is what counts
 		resp.Body.Close()
-		if resp.StatusCode == 429 {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
@@ -199,7 +206,10 @@ func (b *bot) run(ctx context.Context, ready chan<- struct{}) {
 				}
 			}
 		case bytes.HasPrefix(data, []byte(`{"t":"a"`)):
-			var a struct{ X, Y float64 }
+			var a struct {
+				X float64 `json:"x"`
+				Y float64 `json:"y"`
+			}
 			if json.Unmarshal(data, &a) == nil && b.dx == 0 && b.dy == 0 {
 				b.x, b.y = a.X, a.Y
 			}
@@ -311,7 +321,7 @@ func (b *bot) behave(ctx context.Context) {
 	for ctx.Err() == nil {
 		// choose a target
 		var target tile
-		for tries := 0; tries < 50; tries++ {
+		for range 50 {
 			t := tile{1 + rand.IntN(b.grid.W-2), 1 + rand.IntN(b.grid.H-2)}
 			if b.walkable(t.x, t.y) && b.inRegion(t.x, t.y) {
 				target = t
@@ -349,10 +359,7 @@ func (b *bot) behave(ctx context.Context) {
 		}
 		b.setDir(ctx, 0, 0)
 		walked := time.Since(walkStart)
-		idle := time.Duration(float64(walked) * (1 - *moving) / math.Max(*moving, 0.01))
-		if idle < 500*time.Millisecond {
-			idle = 500 * time.Millisecond
-		}
+		idle := max(time.Duration(float64(walked)*(1-*moving)/math.Max(*moving, 0.01)), 500*time.Millisecond)
 		select {
 		case <-time.After(time.Duration(float64(idle) * (0.5 + rand.Float64()))):
 		case <-ctx.Done():
@@ -386,7 +393,7 @@ func scrape() map[string]float64 {
 	if mu == "" {
 		mu = *base
 	}
-	rq, _ := http.NewRequest("GET", mu+"/metrics", nil)
+	rq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, mu+"/metrics", nil)
 	tok := *metricsTok
 	if tok == "" {
 		tok = os.Getenv("HQ_METRICS_TOKEN")
@@ -404,24 +411,24 @@ func scrape() map[string]float64 {
 	}
 	b, _ := io.ReadAll(resp.Body)
 	m := map[string]float64{}
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		if line == "" || line[0] == '#' {
 			continue
 		}
-		i := strings.LastIndexByte(line, ' ')
-		if i < 0 {
+		before, after, ok := strings.CutLast(line, " ")
+		if !ok {
 			continue
 		}
-		v, err := strconv.ParseFloat(line[i+1:], 64)
+		v, err := strconv.ParseFloat(after, 64)
 		if err == nil {
-			m[line[:i]] = v
+			m[before] = v
 		}
 	}
 	return m
 }
 
 func psSample(pid int) (cpu, rssMB float64) {
-	o, err := exec.Command("ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
+	o, err := exec.CommandContext(context.Background(), "ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return
 	}
@@ -472,37 +479,67 @@ func histQuantile(before, after map[string]float64, q float64) float64 {
 }
 
 type report struct {
-	Label, Region                         string
-	Bots, Joined, Failed, Disconnects     int64
-	Moving                                float64
-	DurationS                             float64
-	ServerMsgsPerSec, ServerKBPerSec      float64
-	PosPerSec, CoalescedPerSec            float64
-	InputsPerSec                          float64
-	ClientKBInPerBot, ClientMsgsInPerBot  float64
-	TickP50ms, TickP95ms, TickP99ms       float64
-	TickMaxMs, TickMeanMs                 float64
-	LatStartP50, LatStartP95, LatStartP99 float64
-	LatStopP50, LatStopP95, LatStopP99    float64
-	LatSamples                            int
-	CPUAvg, CPUMax, RSSMax                float64
-	HeapMB, GoSysMB                       float64
-	Kicked, Skipped                       float64
-	Groups                                float64
-	StormMs                               float64
-	StormFailed                           int
-	Note                                  string
+	Label              string  `json:"Label"`
+	Region             string  `json:"Region"`
+	Bots               int64   `json:"Bots"`
+	Joined             int64   `json:"Joined"`
+	Failed             int64   `json:"Failed"`
+	Disconnects        int64   `json:"Disconnects"`
+	Moving             float64 `json:"Moving"`
+	DurationS          float64 `json:"DurationS"`
+	ServerMsgsPerSec   float64 `json:"ServerMsgsPerSec"`
+	ServerKBPerSec     float64 `json:"ServerKBPerSec"`
+	PosPerSec          float64 `json:"PosPerSec"`
+	CoalescedPerSec    float64 `json:"CoalescedPerSec"`
+	InputsPerSec       float64 `json:"InputsPerSec"`
+	ClientKBInPerBot   float64 `json:"ClientKBInPerBot"`
+	ClientMsgsInPerBot float64 `json:"ClientMsgsInPerBot"`
+	TickP50ms          float64 `json:"TickP50ms"`
+	TickP95ms          float64 `json:"TickP95ms"`
+	TickP99ms          float64 `json:"TickP99ms"`
+	TickMaxMs          float64 `json:"TickMaxMs"`
+	TickMeanMs         float64 `json:"TickMeanMs"`
+	LatStartP50        float64 `json:"LatStartP50"`
+	LatStartP95        float64 `json:"LatStartP95"`
+	LatStartP99        float64 `json:"LatStartP99"`
+	LatStopP50         float64 `json:"LatStopP50"`
+	LatStopP95         float64 `json:"LatStopP95"`
+	LatStopP99         float64 `json:"LatStopP99"`
+	LatSamples         int     `json:"LatSamples"`
+	CPUAvg             float64 `json:"CPUAvg"`
+	CPUMax             float64 `json:"CPUMax"`
+	RSSMax             float64 `json:"RSSMax"`
+	HeapMB             float64 `json:"HeapMB"`
+	GoSysMB            float64 `json:"GoSysMB"`
+	Kicked             float64 `json:"Kicked"`
+	Skipped            float64 `json:"Skipped"`
+	Groups             float64 `json:"Groups"`
+	StormMs            float64 `json:"StormMs"`
+	StormFailed        int     `json:"StormFailed"`
+	Note               string  `json:"Note"`
 	// Unix seconds of the measurement window, to line up host samples taken elsewhere (bench/vm-sample.sh).
-	WindowStart, WindowEnd float64
-	Series                 []sample
+	WindowStart float64  `json:"WindowStart"`
+	WindowEnd   float64  `json:"WindowEnd"`
+	Series      []sample `json:"Series"`
 }
 
 type sample struct {
-	TSec, HeapMB, Goroutines, RSSMB, CPU, Players, FramesOut float64
+	TSec       float64 `json:"TSec"`
+	HeapMB     float64 `json:"HeapMB"`
+	Goroutines float64 `json:"Goroutines"`
+	RSSMB      float64 `json:"RSSMB"`
+	CPU        float64 `json:"CPU"`
+	Players    float64 `json:"Players"`
+	FramesOut  float64 `json:"FramesOut"`
 }
 
 func main() {
 	flag.Parse()
+	os.Exit(run())
+}
+
+// run drives the bots, prints the report and returns the exit code (deferred cancels run before the exit).
+func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bots := make([]*bot, *nBots)
@@ -512,9 +549,8 @@ func main() {
 	go func() {
 		tk := time.NewTicker(time.Second / time.Duration(*rampRate))
 		defer tk.Stop()
-		for i := 0; i < *nBots; i++ {
+		for i := range *nBots {
 			<-tk.C
-			i := i
 			go func() {
 				cookie, err := httpJoin(fmt.Sprintf("bot%d", i))
 				if err != nil {
@@ -536,7 +572,7 @@ func main() {
 		}
 	}()
 	t0 := time.Now()
-	for i := 0; i < *nBots; i++ {
+	for range *nBots {
 		<-ready
 	}
 	fmt.Fprintf(os.Stderr, "joined %d/%d in %s (failed %d)\n", st.joined.Load(), *nBots, time.Since(t0).Round(time.Millisecond), st.failed.Load())
@@ -649,20 +685,24 @@ func main() {
 	js, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "report:", err)
-		os.Exit(1)
+		return 1
 	}
 	fmt.Println(string(js))
 	if *out != "" {
-		os.WriteFile(*out, js, 0o644)
+		if err := os.WriteFile(*out, js, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "report:", err)
+			return 1
+		}
 	}
+	return 0
 }
 
 // scrubNaN sets NaN/Inf fields to -1 so the report always serialises: -1 means no samples, no metrics,
 // or (tick percentiles) a value above the histogram's largest finite bucket.
 func scrubNaN(r *report) {
 	v := reflect.ValueOf(r).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		if f := v.Field(i); f.Kind() == reflect.Float64 && (math.IsNaN(f.Float()) || math.IsInf(f.Float(), 0)) {
+	for _, f := range v.Fields() {
+		if f.Kind() == reflect.Float64 && (math.IsNaN(f.Float()) || math.IsInf(f.Float(), 0)) {
 			f.SetFloat(-1)
 		}
 	}

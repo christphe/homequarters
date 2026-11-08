@@ -295,7 +295,7 @@ func roomShortcutHarness(t testing.TB, closeFocus bool, doors ...tile) *harness 
 func walkAreas(h *harness, p *Player, x, y int) map[string]bool {
 	seen := map[string]bool{}
 	h.send(p, ev{kind: evGoto, x: x, y: y})
-	for i := 0; i < 15*h.w.cfg.TickHz; i++ {
+	for range 15 * h.w.cfg.TickHz {
 		h.run(time.Second / time.Duration(h.w.cfg.TickHz))
 		if p.area >= 0 {
 			seen[h.w.m.Map.Areas[p.area].ID] = true
@@ -360,7 +360,7 @@ func TestFollowAvoidsForeignRooms(t *testing.T) {
 	h.add(1, "member", 50*16+8, 27*16+8) // in Focus
 	f := h.add(2, "member", 40*16+8, 20*16+8)
 	h.send(f, ev{kind: evFollow, id: 1})
-	for i := 0; i < 15*h.w.cfg.TickHz; i++ {
+	for range 15 * h.w.cfg.TickHz {
 		h.run(time.Second / time.Duration(h.w.cfg.TickHz))
 		if f.area >= 0 && h.w.m.Map.Areas[f.area].ID == "horizon" {
 			t.Fatalf("the follower crossed Horizon at (%.0f,%.0f)", f.X, f.Y)

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -137,10 +138,10 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 	defer func() {
 		if err != nil { // undo what was opened
 			if b.st != nil {
-				b.st.Close()
+				_ = b.st.Close() // undoing a failed start: its error is the one reported
 			}
 			if b.tmp != "" {
-				os.RemoveAll(b.tmp)
+				_ = os.RemoveAll(b.tmp)
 			}
 		}
 	}()
@@ -185,7 +186,7 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 	go func() {
 		select {
 		case <-ctx.Done():
-			b.Close()
+			_ = b.Close() // stopped by its context: whoever wants the error calls Close
 		case <-sctx.Done():
 		}
 	}()
@@ -276,8 +277,9 @@ func fail(w http.ResponseWriter, code int, msg string) {
 // grace after it closed, with Retry-After).
 func (b *Bed) position(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID   int64 `json:"id"`
-		X, Y *int
+		ID int64 `json:"id"`
+		X  *int  `json:"x"`
+		Y  *int  `json:"y"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil || body.ID <= 0 || body.X == nil || body.Y == nil {
 		fail(w, http.StatusBadRequest, `body is {"id":member,"x":tileX,"y":tileY}`)
@@ -424,9 +426,7 @@ func (c *errCounter) snapshot() map[string]int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := make(map[string]int, len(c.n))
-	for k, v := range c.n {
-		out[k] = v
-	}
+	maps.Copy(out, c.n)
 	return out
 }
 
@@ -483,6 +483,13 @@ var blockedPorts = map[int]bool{1719: true, 1720: true, 1723: true, 2049: true, 
 func listen(addr string) (net.Listener, error) { return listenWith(net.Listen, addr) }
 
 func listenWith(netListen func(network, addr string) (net.Listener, error), addr string) (net.Listener, error) {
+	// the refused ones are held until a good one is found, so the OS does not hand the same one back
+	var refused []net.Listener
+	defer func() {
+		for _, ln := range refused {
+			_ = ln.Close() // never served: nothing to lose
+		}
+	}()
 	for range 20 {
 		ln, err := netListen("tcp", addr)
 		if err != nil {
@@ -492,7 +499,7 @@ func listenWith(netListen func(network, addr string) (net.Listener, error), addr
 		if port != "0" || !blockedPorts[ln.Addr().(*net.TCPAddr).Port] {
 			return ln, nil
 		}
-		defer ln.Close() // held until a good one is found, so the OS does not hand the same one back
+		refused = append(refused, ln)
 	}
 	return nil, fmt.Errorf("no free port outside the ports browsers refuse after 20 tries")
 }

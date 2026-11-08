@@ -210,7 +210,7 @@ func (w *World) Run(ctx context.Context) {
 			w.handle(e, time.Now())
 		case now := <-tk.C:
 			// drain a bounded batch of pending events first to keep ordering fair
-			for i := 0; i < 4096; i++ {
+			for range 4096 {
 				select {
 				case e := <-w.inbox:
 					w.handle(e, now)
@@ -436,7 +436,7 @@ func (w *World) doReplaceMap(cm *gamemap.Compiled, layout string) {
 		}
 		// saved by OnLeave as the place to come back to: a free tile around the new spawn
 		p.X, p.Y = float64(sp.X*T+T/2), float64(sp.Y*T+T/2)
-		for i := 0; i < 40; i++ {
+		for range 40 {
 			x := p.X + (rand.Float64()-0.5)*float64(T*6)
 			y := p.Y + (rand.Float64()-0.5)*float64(T*4)
 			if !cm.IsSolidTile(int(x)/T, int(y)/T) {
@@ -636,7 +636,7 @@ func (w *World) handle(e ev, now time.Time) {
 	case evKnockAns:
 		w.doKnockAns(p, e.id, e.b, now)
 	case evBoard:
-		w.doBoard(p, e.wb, now)
+		w.doBoard(p, e.wb)
 	}
 }
 
@@ -1051,10 +1051,8 @@ func AllowedIn(a *gamemap.Area, uid uint32, role string) bool {
 		if role == "admin" {
 			return true
 		}
-		for _, u := range a.Access.Users {
-			if u == int64(uid) {
-				return true
-			}
+		if slices.Contains(a.Access.Users, int64(uid)) {
+			return true
 		}
 	case gamemap.AccessOffice:
 		return role == "admin" || !isOwnedOffice(a) || ownsOffice(a, uid)
@@ -1085,12 +1083,7 @@ func isOwnedOffice(a *gamemap.Area) bool {
 }
 
 func ownsOffice(a *gamemap.Area, uid uint32) bool {
-	for _, u := range a.Access.Users {
-		if u == int64(uid) {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(a.Access.Users, int64(uid))
 }
 
 // isOwnedOfficeID: knocks on an assigned office stay pending even though it has no lock record.
@@ -1152,12 +1145,9 @@ func (w *World) move(p *Player, x, y *float64, dist float64, static bool) {
 		vx *= 0.70710678
 		vy *= 0.70710678
 	}
-	n := int(math.Ceil(dist / subStepPx))
-	if n < 1 {
-		n = 1
-	}
+	n := max(int(math.Ceil(dist/subStepPx)), 1)
 	step := dist / float64(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		if vx != 0 {
 			nx := *x + vx*step
 			if w.stand(p, nx, *y, static) {
@@ -1209,7 +1199,7 @@ func (w *World) spawnFor(p *Player, info UserInfo) (float64, float64) {
 	}
 	sp := w.m.Map.Spawn
 	cx, cy := float64(sp.X*T+T/2), float64(sp.Y*T+T/2)
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		x := cx + (rand.Float64()-0.5)*float64(T*6)
 		y := cy + (rand.Float64()-0.5)*float64(T*4)
 		p.area = w.m.AreaIndexAt(int(x)/T, int(y)/T)
@@ -1410,10 +1400,7 @@ func (w *World) advanceShadow(p *Player, now time.Time) {
 }
 
 func (w *World) rect(p *Player) (x0, y0, x1, y1 int) {
-	r := w.cfg.AOICells
-	if p.aoi > r {
-		r = p.aoi
-	}
+	r := max(p.aoi, w.cfg.AOICells)
 	x0, y0, x1, y1 = p.cx-r, p.cy-r, p.cx+r, p.cy+r
 	if x0 < 0 {
 		x0 = 0

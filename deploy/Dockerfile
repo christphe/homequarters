@@ -13,7 +13,7 @@ COPY web/ web/
 WORKDIR /w/web
 RUN pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS server
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /s

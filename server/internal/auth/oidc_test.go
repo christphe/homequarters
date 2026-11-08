@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,7 +74,11 @@ func TestExchangeSendsPKCEAndNeverEchoesTheBody(t *testing.T) {
 	var form map[string][]string
 	ok := true
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		if err := r.ParseForm(); err != nil {
+			t.Error(err) // Fatal belongs to the test's goroutine
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		form = r.PostForm
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
@@ -119,7 +124,7 @@ func TestPendingIsBoundedAndSingleUse(t *testing.T) {
 	if _, err := p.Put(2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Put(3); err != ErrFull {
+	if _, err := p.Put(3); !errors.Is(err, ErrFull) {
 		t.Fatalf("a full store must refuse, got %v", err)
 	}
 	if v, ok := p.Get(a); !ok || v != 1 {

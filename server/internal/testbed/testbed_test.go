@@ -59,7 +59,7 @@ func (m *member) do(method, path string, body any) (int, []byte) {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
-	req, _ := http.NewRequest(method, m.bed.URL+path, rd)
+	req, _ := http.NewRequestWithContext(m.t.Context(), method, m.bed.URL+path, rd)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -200,7 +200,9 @@ func TestTestbed(t *testing.T) {
 	}
 	code, body = ann.do("GET", "/api/testbed/kv/echo", nil)
 	var kv map[string]string
-	json.Unmarshal(body, &kv)
+	if err := json.Unmarshal(body, &kv); err != nil {
+		t.Fatal(err)
+	}
 	if code != http.StatusOK || len(kv) != 1 || kv["k"] != "seeded" {
 		t.Fatalf("kv after a replace: %d %s", code, body)
 	}
@@ -225,7 +227,9 @@ func TestTestbed(t *testing.T) {
 	}
 	code, body = ann.do("GET", "/api/testbed/errors", nil)
 	var errs map[string]int
-	json.Unmarshal(body, &errs)
+	if err := json.Unmarshal(body, &errs); err != nil {
+		t.Fatal(err)
+	}
 	if code != http.StatusOK || errs["thrower"] != 1 || len(errs) != 1 {
 		t.Fatalf("errors after: %d %s", code, body)
 	}
@@ -234,7 +238,9 @@ func TestTestbed(t *testing.T) {
 	ws.Close(websocket.StatusNormalClosure, "")
 	for deadline := time.Now().Add(5 * time.Second); ; {
 		pb, _ := json.Marshal(map[string]any{"id": ann.ID, "x": tx, "y": ty})
-		resp, err := ann.c.Post(bed.URL+"/api/testbed/position", "application/json", bytes.NewReader(pb))
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, bed.URL+"/api/testbed/position", bytes.NewReader(pb))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := ann.c.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,7 +264,9 @@ func TestTestbed(t *testing.T) {
 	if _, err := os.Stat(dbDir); !os.IsNotExist(err) {
 		t.Fatalf("the temporary database folder is still there: %v", err)
 	}
-	if _, err := http.Get(bed.URL + "/healthz"); err == nil {
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, bed.URL+"/healthz", nil)
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
 		t.Fatal("still listening after Close")
 	}
 }
@@ -352,7 +360,9 @@ func TestTestbedKVReplaceWaitsForQueuedWrites(t *testing.T) {
 		time.Sleep(200 * time.Millisecond) // a write still queued would land meanwhile
 		code, body := ann.do("GET", "/api/testbed/kv/writer", nil)
 		var kv map[string]string
-		json.Unmarshal(body, &kv)
+		if err := json.Unmarshal(body, &kv); err != nil {
+			t.Fatal(err)
+		}
 		if code != http.StatusOK || len(kv) != 1 || kv["seeded"] != "yes" {
 			t.Fatalf("round %d: %d keys after the replace, want only the seeded one (%d)", i, len(kv), code)
 		}

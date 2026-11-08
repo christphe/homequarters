@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -12,9 +13,7 @@ import (
 
 // SeedOwners names the members the places of the starting map belong to. Call before Run.
 func (w *World) SeedOwners(names map[int64]string) {
-	for id, n := range names {
-		w.owners[id] = n
-	}
+	maps.Copy(w.owners, names)
 	w.pruneOwners()
 }
 

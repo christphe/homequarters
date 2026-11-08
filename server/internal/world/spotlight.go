@@ -48,7 +48,7 @@ func (w *World) spotCandidate(p *Player) bool {
 	return p.onSpot && p.eligible() && p.out != nil && w.players[p.ID] == p
 }
 
-func (w *World) reconcileSpot(now time.Time) {
+func (w *World) reconcileSpot() {
 	if w.spot.speaker == nil && len(w.onSpotSet) == 0 {
 		return
 	}

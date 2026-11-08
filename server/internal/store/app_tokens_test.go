@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,7 @@ func TestAppTokens(t *testing.T) {
 	}
 	// a new token replaces the old one
 	tok2, _ := s.CreateAppToken(ctx, o.ID, ana, "pet")
-	if _, err := s.LookupAppToken(ctx, tok); err != ErrAppTokenInvalid {
+	if _, err := s.LookupAppToken(ctx, tok); !errors.Is(err, ErrAppTokenInvalid) {
 		t.Fatalf("replaced token still works: %v", err)
 	}
 	if _, err := s.LookupAppToken(ctx, tok2); err != nil {
@@ -45,18 +46,18 @@ func TestAppTokens(t *testing.T) {
 	if err := s.DeleteAppToken(ctx, o.ID, ana, "pet"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LookupAppToken(ctx, tok2); err != ErrAppTokenInvalid {
+	if _, err := s.LookupAppToken(ctx, tok2); !errors.Is(err, ErrAppTokenInvalid) {
 		t.Fatalf("revoked token: %v", err)
 	}
 	// removing a member removes their tokens
 	if _, err := s.RemoveMember(ctx, o.ID, bia); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LookupAppToken(ctx, bias); err != ErrAppTokenInvalid {
+	if _, err := s.LookupAppToken(ctx, bias); !errors.Is(err, ErrAppTokenInvalid) {
 		t.Fatalf("removed member's token: %v", err)
 	}
 	for _, bad := range []string{"", "hqp_", "nope", strings.Repeat("x", 300)} {
-		if _, err := s.LookupAppToken(ctx, bad); err != ErrAppTokenInvalid {
+		if _, err := s.LookupAppToken(ctx, bad); !errors.Is(err, ErrAppTokenInvalid) {
 			t.Fatalf("lookup %q: %v", bad, err)
 		}
 	}

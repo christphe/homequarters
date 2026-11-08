@@ -45,7 +45,7 @@ func TestDemoJoinNeedsNoInviteAndNeverGrantsAdmin(t *testing.T) {
 func TestDemoJoinsAreRateLimitedPerIP(t *testing.T) {
 	r := demoRig(t)
 	limited := false
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		if _, code := r.join("V", ""); code == http.StatusTooManyRequests {
 			limited = true
 			break
@@ -61,12 +61,18 @@ func TestDemoResetRestoresMapAndWipesChatAndBoards(t *testing.T) {
 	ctx := context.Background()
 	office, _ := r.st.OfficeBySlug(ctx, "default")
 	u, _ := r.join("Visitor", "")
-	r.st.AppendChat(ctx, office.ID, u.ID, "hello", 1)
-	r.st.SaveBoard(ctx, office.ID, "49,15", []byte(`[{"o":1,"i":1,"k":1,"c":0,"w":0,"p":[1,1],"tx":"x"}]`))
+	if err := r.st.AppendChat(ctx, office.ID, u.ID, "hello", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.SaveBoard(ctx, office.ID, "49,15", []byte(`[{"o":1,"i":1,"k":1,"c":0,"w":0,"p":[1,1],"tx":"x"}]`)); err != nil {
+		t.Fatal(err)
+	}
 	m := gamemap.Default()
 	m.Props = m.Props[:3]
 	raw, _ := json.Marshal(m)
-	r.st.SaveMap(ctx, office.ID, string(raw))
+	if _, err := r.st.SaveMap(ctx, office.ID, string(raw)); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := r.srv.demoReset(ctx); err != nil {
 		t.Fatal(err)
@@ -79,7 +85,9 @@ func TestDemoResetRestoresMapAndWipesChatAndBoards(t *testing.T) {
 	}
 	o, _ := r.st.OfficeBySlug(ctx, "default")
 	var back gamemap.Map
-	json.Unmarshal([]byte(o.MapJSON), &back)
+	if err := json.Unmarshal([]byte(o.MapJSON), &back); err != nil {
+		t.Fatal(err)
+	}
 	if len(back.Props) != len(gamemap.Default().Props) {
 		t.Fatalf("the starter office map must be restored: %d props", len(back.Props))
 	}
@@ -104,8 +112,12 @@ func TestDemoResetRestoresTheStarterMapAfterALayoutOfAnotherSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(cm.Map)
-	r.st.SaveMap(ctx, office.ID, string(raw))
-	r.st.AppendChat(ctx, office.ID, u.ID, "hello", 1)
+	if _, err := r.st.SaveMap(ctx, office.ID, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.AppendChat(ctx, office.ID, u.ID, "hello", 1); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := r.srv.demoReset(ctx); err != nil {
 		t.Fatalf("the reset must not wait for a restart: %v", err)
@@ -147,14 +159,18 @@ func TestDemoStartupInstallsAResizedStarterMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(old)
-	r.st.SaveMap(ctx, office.ID, string(raw))
+	if _, err := r.st.SaveMap(ctx, office.ID, string(raw)); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := r.srv.demoStartup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	o, _ := r.st.OfficeBySlug(ctx, "default")
 	var back gamemap.Map
-	json.Unmarshal([]byte(o.MapJSON), &back)
+	if err := json.Unmarshal([]byte(o.MapJSON), &back); err != nil {
+		t.Fatal(err)
+	}
 	if back.H != gamemap.Default().H {
 		t.Fatalf("the demo must start on the current starter map, got height %d", back.H)
 	}

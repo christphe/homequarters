@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -222,23 +223,35 @@ func TestInstalledReadOnly(t *testing.T) {
 	})
 	// read-only like a Kubernetes volume: where the OS honours modes, any write would fail
 	var dirs []string
-	filepath.WalkDir(inst, func(p string, d fs.DirEntry, _ error) error {
+	if err := filepath.WalkDir(inst, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
 		if d.IsDir() {
 			dirs = append(dirs, p)
 			return nil
 		}
 		return os.Chmod(p, 0o444)
-	})
-	for i := len(dirs) - 1; i >= 0; i-- {
-		os.Chmod(dirs[i], 0o555)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range slices.Backward(dirs) {
+		if err := os.Chmod(dir, 0o555); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Cleanup(func() {
-		filepath.WalkDir(inst, func(p string, d fs.DirEntry, _ error) error {
+		if err := filepath.WalkDir(inst, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
 			if d.IsDir() {
 				return os.Chmod(p, 0o755)
 			}
 			return os.Chmod(p, 0o644)
-		})
+		}); err != nil {
+			t.Error(err) // t.TempDir's removal would fail next
+		}
 	})
 	before := snapshot(t, root)
 

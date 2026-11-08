@@ -74,9 +74,14 @@ func TestAdminRenamesTheOfficeForEverybodyOnline(t *testing.T) {
 	_, out := admin.do("GET", "/api/admin/audit", nil)
 	b, _ := json.Marshal(out)
 	var audit struct {
-		Entries []struct{ Action, Detail string }
+		Entries []struct {
+			Action string `json:"action"`
+			Detail string `json:"detail"`
+		} `json:"entries"`
 	}
-	json.Unmarshal(b, &audit)
+	if err := json.Unmarshal(b, &audit); err != nil {
+		t.Fatal(err)
+	}
 	if len(audit.Entries) == 0 || audit.Entries[0].Action != "office.rename" || audit.Entries[0].Detail != "T -> Harbour HQ" {
 		t.Fatalf("the rename is audited with the old and new name: %s", b)
 	}

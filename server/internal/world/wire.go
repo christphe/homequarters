@@ -354,7 +354,7 @@ func (w *World) tick(now time.Time) {
 		w.saveBoards(now)
 		w.nextProx = now.Add(w.cfg.ProxEvery)
 	}
-	w.reconcileSpot(now)
+	w.reconcileSpot()
 	w.flushRoster()
 	w.publishCounts(now)
 	for _, p := range w.list {

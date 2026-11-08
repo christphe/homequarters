@@ -45,18 +45,14 @@ func TestAdminAppliesATemplateAndDesksCarryOver(t *testing.T) {
 	if code, _ := admin.do("POST", "/api/admin/map/template", map[string]string{"template": "castle"}); code != http.StatusBadRequest {
 		t.Fatalf("unknown template: %d", code)
 	}
-	type row struct {
-		ID      string
-		W, H    int
-		Summary gamemap.Summary
-		Carry   gamemap.Carry
-		Current bool
-	}
+	type row = templateRow
 	list := func() map[string]row {
 		_, out := admin.do("GET", "/api/admin/templates", nil)
 		b, _ := json.Marshal(out["templates"])
 		var rows []row
-		json.Unmarshal(b, &rows)
+		if err := json.Unmarshal(b, &rows); err != nil {
+			t.Fatal(err)
+		}
 		byID := map[string]row{}
 		for _, x := range rows {
 			byID[x.ID] = x
@@ -87,8 +83,12 @@ func TestAdminAppliesATemplateAndDesksCarryOver(t *testing.T) {
 		}
 	}()
 	time.Sleep(200 * time.Millisecond) // admitted
-	r.st.SaveBoard(context.Background(), 1, "49,15", []byte(`[{"o":1,"i":1,"k":1,"c":0,"w":0,"p":[1,1],"tx":"x"}]`))
-	r.st.SaveLastPos(context.Background(), 1, bia, 900, 500) // where she stood on the Loft, offline or not
+	if err := r.st.SaveBoard(context.Background(), 1, "49,15", []byte(`[{"o":1,"i":1,"k":1,"c":0,"w":0,"p":[1,1],"tx":"x"}]`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.SaveLastPos(context.Background(), 1, bia, 900, 500); err != nil { // where she stood on the Loft, offline or not
+		t.Fatal(err)
+	}
 
 	if code, out := admin.do("POST", "/api/admin/map/template", map[string]string{"template": "manor"}); code != http.StatusOK {
 		t.Fatalf("apply: %d %v", code, out)
@@ -114,7 +114,9 @@ func TestAdminAppliesATemplateAndDesksCarryOver(t *testing.T) {
 		t.Fatalf("stored whiteboards belong to the old map: %v", boards)
 	}
 	var m gamemap.Map
-	json.Unmarshal([]byte(o.MapJSON), &m)
+	if err := json.Unmarshal([]byte(o.MapJSON), &m); err != nil {
+		t.Fatal(err)
+	}
 	if m.W != 85 || m.H != 51 {
 		t.Fatalf("stored map is %dx%d", m.W, m.H)
 	}

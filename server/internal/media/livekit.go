@@ -17,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync/atomic"
 	"time"
 )
@@ -240,12 +241,7 @@ func hasSource(want []string, raw json.RawMessage) bool {
 	if json.Unmarshal(raw, &name) != nil {
 		name = string(raw) // a number
 	}
-	for _, w := range want {
-		if w == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(want, name)
 }
 
 func (c *Client) removeParticipant(ctx context.Context, room, identity string) error {

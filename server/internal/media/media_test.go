@@ -29,7 +29,9 @@ func claims(t *testing.T, tok string) map[string]any {
 		t.Fatal(err)
 	}
 	var m map[string]any
-	json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
 	return m
 }
 
@@ -92,7 +94,10 @@ func (f *fakeLK) handler(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	f.adminHdr = append(f.adminHdr, r.Header.Get("Authorization"))
 	var body map[string]string
-	json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/ListRooms"):
 		var rs []map[string]string
@@ -168,7 +173,7 @@ func TestRevokeIsAsyncBoundedAndRetried(t *testing.T) {
 		n := calls
 		mu.Unlock()
 		if n < 3 {
-			http.Error(w, "boom", 500)
+			http.Error(w, "boom", http.StatusInternalServerError)
 			return
 		}
 		w.Write([]byte("{}"))
@@ -201,7 +206,10 @@ func (f *fakeTracks) handler(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var body map[string]any
-	json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/GetParticipant"):
 		f.gets = append(f.gets, body["room"].(string)+"/"+body["identity"].(string))
@@ -315,7 +323,7 @@ func TestAFloodOfMutesNeverDelaysARevocation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go c.Run(ctx)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		c.Mute("o1.g1", "7", "mic")
 	}
 	c.Revoke("o1.g1", "5")

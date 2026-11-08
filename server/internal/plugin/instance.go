@@ -135,12 +135,15 @@ func newInstance(h *Host, info Info) (*instance, error) {
 	vm.SetMaxStackSize(stackCap)
 	in.vm = vm
 	if err := in.install(); err != nil {
-		vm.Close()
+		_ = vm.Close() // the install error is the one reported
 		return nil, err
 	}
 	// parsing and the module's top level get a longer budget than a call: a large plugin takes tens of
-	// milliseconds to parse (bench/plugin-runtime)
-	vm.SetEvalTimeout(startBudget)
+	// milliseconds to parse (bench/plugin-runtime); a VM whose budget cannot be set does not run
+	if err := vm.SetEvalTimeout(startBudget); err != nil {
+		_ = vm.Close()
+		return nil, err
+	}
 	in.loading = true
 	err = in.eval(code.server)
 	if err == nil {
@@ -150,9 +153,11 @@ func newInstance(h *Host, info Info) (*instance, error) {
 		err = in.callExport("load")
 	}
 	in.loading = false
-	vm.SetEvalTimeout(callBudget)
+	if err == nil {
+		err = vm.SetEvalTimeout(callBudget)
+	}
 	if err != nil {
-		vm.Close()
+		_ = vm.Close() // the load error is the one reported
 		return nil, err
 	}
 	return in, nil
@@ -234,10 +239,10 @@ func (in *instance) jsError(where string, err error) error {
 		return nil
 	}
 	msg := strings.TrimSpace(strings.SplitN(err.Error(), "\n", 2)[0])
-	switch {
-	case msg == "InternalError: interrupted":
+	switch msg {
+	case "InternalError: interrupted":
 		return &fatal{fmt.Sprintf("%s ran over its %v time budget", where, callBudget)}
-	case msg == "InternalError: out of memory":
+	case "InternalError: out of memory":
 		return &fatal{fmt.Sprintf("%s went over the %d MB memory cap", where, memoryCap>>20)}
 	}
 	return fmt.Errorf("in %s: %s", where, msg)
@@ -299,7 +304,7 @@ func (in *instance) run() {
 	defer close(in.done)
 	defer func() {
 		if in.vm != nil {
-			in.vm.Close()
+			_ = in.vm.Close() // the plugin is stopping: nothing is left to tell
 		}
 	}()
 	tick := time.NewTicker(updateEvery)
@@ -461,7 +466,7 @@ func (in *instance) reply(s string) (RouteResp, error) {
 		B json.RawMessage `json:"b"`
 	}
 	if err := json.Unmarshal([]byte(s), &r); err != nil {
-		return RouteResp{Status: 500}, fmt.Errorf("route reply: %v", err)
+		return RouteResp{Status: 500}, fmt.Errorf("route reply: %w", err)
 	}
 	resp := RouteResp{Status: r.S, ContentType: "application/json"}
 	if resp.Status < 100 || resp.Status > 599 {
@@ -501,7 +506,7 @@ func (in *instance) check(err error) error {
 	in.errs = append(keep, now)
 	in.h.log.Warn("plugin error", "plugin", in.info.Name, "err", err)
 	if len(in.errs) > maxErrors {
-		return fmt.Errorf("more than %d errors in a minute, last: %v", maxErrors, err)
+		return fmt.Errorf("more than %d errors in a minute, last: %w", maxErrors, err)
 	}
 	return nil
 }

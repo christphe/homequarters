@@ -452,7 +452,7 @@ func (i *Info) Asset(rel string) (string, bool) {
 	if rel == "" || strings.Contains(rel, "\\") || !filepath.IsLocal(filepath.FromSlash(rel)) {
 		return "", false
 	}
-	for _, seg := range strings.Split(rel, "/") {
+	for seg := range strings.SplitSeq(rel, "/") {
 		if seg == "" || strings.HasPrefix(seg, ".") {
 			return "", false
 		}

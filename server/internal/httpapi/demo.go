@@ -53,7 +53,10 @@ func (s *Server) demoStartup(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var stored struct{ W, H int }
+	var stored struct {
+		W int `json:"w"`
+		H int `json:"h"`
+	}
 	def := gamemap.Default()
 	if json.Unmarshal([]byte(office.MapJSON), &stored) == nil && stored.W == def.W && stored.H == def.H {
 		return nil

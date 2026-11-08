@@ -11,13 +11,13 @@ import (
 
 func privacyBody(t *testing.T, ts string) string {
 	t.Helper()
-	resp, err := http.Get(ts + "/privacy")
+	resp, err := request(t, http.MethodGet, ts+"/privacy")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 		t.Fatalf("privacy: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
 	return string(b)
@@ -51,13 +51,13 @@ func TestPrivacyPolicyFollowsTheConfiguration(t *testing.T) {
 func TestAboutPageIsPublicAndExplainsTheOffice(t *testing.T) {
 	get := func(ts string) string {
 		t.Helper()
-		resp, err := http.Get(ts + "/about")
+		resp, err := request(t, http.MethodGet, ts+"/about")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 			t.Fatalf("about: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 		}
 		return string(b)
@@ -92,7 +92,7 @@ func TestAboutPageOffersTheSourceUnderTheAGPL(t *testing.T) {
 		c.SourceURL = "https://git.example.com/acme/hq-fork"
 		c.Version = "abc1234"
 	})
-	resp, err := http.Get(r.ts.URL + "/about")
+	resp, err := request(t, http.MethodGet, r.ts.URL+"/about")
 	if err != nil {
 		t.Fatal(err)
 	}

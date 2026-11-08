@@ -102,7 +102,9 @@ func TestClaimDeskThroughTheAPI(t *testing.T) {
 	}
 	office, _ = r.st.OfficeBySlug(context.Background(), "default")
 	m = gamemap.Map{}
-	json.Unmarshal([]byte(office.MapJSON), &m)
+	if err := json.Unmarshal([]byte(office.MapJSON), &m); err != nil {
+		t.Fatal(err)
+	}
 	for _, p := range m.Props {
 		if p.T == "desk" && p.X == 20 && p.Y == 3 && p.Assign != 0 {
 			t.Fatal("the release is saved")

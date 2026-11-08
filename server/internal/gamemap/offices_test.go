@@ -47,7 +47,7 @@ func TestEveryStarterOfficeIsReachable(t *testing.T) {
 
 func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
 	m := Default()
-	at := func(t, x, y int) *Prop {
+	at := func(x, y int) *Prop {
 		for i := range m.Props {
 			if m.Props[i].T == "desk" && m.Props[i].X == x && m.Props[i].Y == y {
 				return &m.Props[i]
@@ -55,9 +55,9 @@ func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
 		}
 		return nil
 	}
-	at(0, 20, 3).Assign, at(0, 20, 3).Label = 7, "Desk of Ana"
-	at(0, 24, 3).Assign = 8
-	at(0, 26, 41).Assign = 9 // the desk of Office 3: its office is already its room
+	at(20, 3).Assign, at(20, 3).Label = 7, "Desk of Ana"
+	at(24, 3).Assign = 8
+	at(26, 41).Assign = 9 // the desk of Office 3: its office is already its room
 	c, err := Compile(m)
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestAssignedDesksGetTheirOwnRoom(t *testing.T) {
 		t.Fatalf("chairs sit in their own desk rooms; aisles and unassigned desks do not: %q %q %q %q %q %q", room(20, 4), room(21, 5), room(24, 4), room(22, 4), room(20, 6), room(28, 4))
 	}
 	// a stored map carrying a stale desk room (desk since unassigned) gets it dropped
-	at(0, 24, 3).Assign = 0
+	at(24, 3).Assign = 0
 	c, err = Compile(c.Map)
 	if err != nil {
 		t.Fatal(err)

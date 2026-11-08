@@ -40,7 +40,7 @@ func BenchmarkTick(b *testing.B) {
 			step := time.Second / time.Duration(h.w.cfg.TickHz)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for i := range b.N {
 				for j := i % 3; j < len(ps); j += 3 {
 					h.send(ps[j], ev{kind: evInput, seq: uint32(i), dx: int8(rng.IntN(3) - 1), dy: int8(rng.IntN(3) - 1)})
 				}
@@ -120,14 +120,14 @@ func zoomedOutTraffic(t *testing.T, moving float64, radius int) (bytesPerSec, re
 	for i := range ps {
 		turn(i)
 	}
-	for i := 0; i < 5*h.w.cfg.TickHz; i++ { // settle: everybody entered the observer's view
+	for range 5 * h.w.cfg.TickHz { // settle: everybody entered the observer's view
 		h.now = h.now.Add(step)
 		h.w.tick(h.now)
 		drainAll()
 	}
 	const secs = 60
 	total, recs := 0, 0
-	for i := 0; i < secs*h.w.cfg.TickHz; i++ {
+	for range secs * h.w.cfg.TickHz {
 		for j := range ps {
 			if rng.Float64() < 1/(1.5*float64(h.w.cfg.TickHz)) {
 				turn(j)

@@ -21,13 +21,17 @@ func TestInMsgDecodesEveryFrameShape(t *testing.T) {
 		}
 	}
 	var m inMsg
-	json.Unmarshal([]byte(`{"t":"mute","id":7,"k":"cam"}`), &m)
+	if err := json.Unmarshal([]byte(`{"t":"mute","id":7,"k":"cam"}`), &m); err != nil {
+		t.Fatal(err)
+	}
 	if muteKind(m.K) != "cam" || m.ID != 7 {
 		t.Fatalf("mute frame: %+v", m)
 	}
 	for _, bad := range []string{`{"t":"mute","id":7,"k":1}`, `{"t":"mute","id":7,"k":"all"}`, `{"t":"mute","id":7}`, `{"t":"mute","id":7,"k":["mic"]}`} {
 		var m inMsg
-		json.Unmarshal([]byte(bad), &m)
+		if err := json.Unmarshal([]byte(bad), &m); err != nil {
+			t.Fatal(err)
+		}
 		if muteKind(m.K) != "" {
 			t.Fatalf("%s must not name a kind", bad)
 		}
