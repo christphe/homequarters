@@ -1,30 +1,12 @@
 // Accessibility: automated axe-core audit (WCAG 2.1 A and AA rules plus axe best practices) of every screen and dialog,
 // and keyboard checks (focus trap and Escape in dialogs, tab semantics). This finds a subset of problems; it is not a
 // substitute for testing with a screen reader (see docs/status.md).
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
 import type { Page } from "puppeteer-core";
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, API, type RunContext } from "../lib.ts";
+import { audit, auditView } from "../axe.ts";
 import type { Prop } from "../../web/src/net/protocol.ts";
-
-/** axe-core, once AXE has been evaluated in a page or a frame. */
-type AxeWindow = { axe: typeof import("axe-core") };
-
-const require = createRequire(import.meta.url);
-const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
-const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
-
-async function audit(page: Page, label: string, context?: string) {
-  await page.evaluate(AXE);
-  const res = await page.evaluate(async (tags: string[], ctx: string | null) => {
-    const r = await (window as unknown as AxeWindow).axe.run(ctx ?? document, { runOnly: { type: "tag", values: tags } });
-    return r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(" ") + " :: " + (n.failureSummary ?? "").split("\n").slice(1, 3).join(" ").slice(0, 200)), count: v.nodes.length }));
-  }, TAGS, context ?? null);
-  for (const v of res) console.log("  axe", v.impact, v.id, "x" + v.count, "-", v.help, "\n     ", v.nodes.join("\n      "));
-  check("axe: no WCAG A/AA or best-practice violations on " + label, res.length === 0, res.map((v) => v.id).join(","));
-}
 
 const click = (page: Page, selector: string, text?: string) => page.evaluate((selector, text) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => (text === undefined ? true : x.textContent.trim() === text));
@@ -193,63 +175,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const chessView = (await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" }))!;
     await waitFor(() => chessView.evaluate(() => !!document.querySelector("canvas[aria-label]")), { what: "chess board view" });
     await audit(p, "the chess window");
-    await chessView.evaluate(AXE);
-    // axe run inside the frame takes it for a whole page: its page-level rules (one main landmark, one h1),
-    // which axe applies to the top document only when it audits a page with its frames, are left out
-    const inView = await chessView.evaluate(async (tags) => (await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
-    check("axe: no WCAG A/AA or best-practice violations inside the chess board view", inView.length === 0, inView.join(","));
+    await auditView(chessView, "the chess board view");
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "chess closed" });
     await chessOn(false);
     await setChessboard(false);
 
-    // the Cards window (bundled hq-cards): a deck in the same place, a free table chosen, the admin seated
-    // and dealt 7 cards; the page and the table view's own document are audited
-    const cardsOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/hq-cards", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
-    const setDeck = async (on: boolean) => {
-      const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
-      m.props = m.props.filter((x: Prop) => x.t !== "hq-cards/deck");
-      if (on) m.props.push({ t: "hq-cards/deck", x: 13, y: 22, w: 1, h: 1 });
-      await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
-    };
-    await cardsOn(true);
-    await setDeck(true);
-    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "hq-cards/deck"), { what: "nearby deck" });
-    const CARDS = '.modal.plugin-modal[aria-label="Cards"]';
-    // the plugin has just been turned on: its page code may still be starting, so X is pressed until the window opens
-    let tries = 0;
-    await waitFor(async () => {
-      if (await p.$(CARDS)) return true;
-      if (tries++ % 20 === 0) await p.keyboard.press("x");
-      return false;
-    }, { what: "cards window" });
-    // a control of the window, or (with a game) of the table view's panel
-    const cardsButton = async (text: string) => {
-      if (await p.evaluate((sel, text) => { const b = [...document.querySelectorAll<HTMLButtonElement>(sel + " button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, CARDS, text)) return true;
-      const f = await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame();
-      return !!f && f.evaluate((text) => { const b = [...document.querySelectorAll<HTMLButtonElement>(".controls button")].find((x) => x.textContent.trim() === text && !x.disabled); b?.click(); return !!b; }, text);
-    };
-    // a table left over by an earlier scenario on the same tile keeps its game: start it afresh
-    await waitFor(async () => (await cardsButton("Free table")) || ((await cardsButton("Reset")) && false), { what: "Free table" });
-    // on a failure, say what the window showed (a CI runner cannot be watched)
-    const cardsWindow = async () => ({
-      window: await p.evaluate((sel) => ({ buttons: [...document.querySelectorAll<HTMLButtonElement>(sel + " button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : "")), stopped: window.__hq.session.plugins?.stopReasons ?? null }), CARDS),
-      panel: await (await (await p.$(CARDS + " iframe.plugin-view"))?.contentFrame())?.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => b.textContent.trim() + (b.disabled ? " (disabled)" : ""))).catch(() => null),
-    });
-    // a press of "Free table" was once lost on CI (2026-11-08: the window still offered "Free table"): pressed
-    // again until the table's "Seat 1" shows, which is then pressed
-    await waitFor(async () => (await cardsButton("Seat 1")) || ((await cardsButton("Free table")) && false), { what: "Seat 1" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
-    await waitFor(() => cardsButton("Deal"), { what: "Deal" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
-    const cardsView = (await waitFor(async () => (await p.$(CARDS + ' iframe.plugin-view[data-view="table"]'))?.contentFrame(), { what: "the table view" }))!;
-    await waitFor(() => cardsView.evaluate(() => (window as unknown as { __drawn?: { cards: { where: string }[] } }).__drawn?.cards.filter((c) => c.where === "hand").length === 7), { what: "7 cards dealt" }).catch(async (e) => { throw new Error(e.message + " " + JSON.stringify(await cardsWindow())); });
-    await audit(p, "the Cards window with a dealt free table");
-    await cardsView.evaluate(AXE);
-    const inCards = await cardsView.evaluate(async (tags) => (await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags }, rules: { "landmark-one-main": { enabled: false }, "page-has-heading-one": { enabled: false } } })).violations.map((v) => v.id + " x" + v.nodes.length), TAGS);
-    check("axe: no WCAG A/AA or best-practice violations inside the card table view", inCards.length === 0, inCards.join(","));
-    await p.keyboard.press("Escape");
-    await waitFor(async () => !(await p.$(".modal")), { what: "cards closed" });
-    await cardsOn(false);
-    await setDeck(false);
+    // (the Cards window's audit, a dealt free table, is the plugin's: plugins/e2e/hq-cards-e2e/cards.ts)
 
     // a free desk: its Take button and the confirmation (Escape leaves the desk free)
     // earlier scenarios may have assigned some desks: take the first free one in the desk area
