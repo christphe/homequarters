@@ -6,7 +6,7 @@ import path from "node:path";
 import type { Page } from "puppeteer-core";
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, APP, API, type RunContext } from "../lib.ts";
 import { audit, auditView } from "../axe.ts";
-import type { Prop } from "../../web/src/net/protocol.ts";
+import type { MapData } from "../../web/src/net/protocol.ts";
 
 const click = (page: Page, selector: string, text?: string) => page.evaluate((selector, text) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => (text === undefined ? true : x.textContent.trim() === text));
@@ -162,8 +162,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // page and the board view's own document are audited
     const chessOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/hq-chess", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
     const setChessboard = async (on: boolean) => {
-      const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then((r) => r.json());
-      m.props = m.props.filter((x: Prop) => x.t !== "hq-chess/chessboard");
+      const m = await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } }).then(async (r) => (await r.json()) as MapData);
+      m.props = m.props.filter((x) => x.t !== "hq-chess/chessboard");
       if (on) m.props.push({ t: "hq-chess/chessboard", x: 13, y: 22, w: 1, h: 1 });
       await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
     };
@@ -172,7 +172,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await walkTo(admin, 13 * 16 + 8, 23 * 16 + 8);
     await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "hq-chess/chessboard"), { what: "nearby chessboard" });
     await p.keyboard.press("x");
-    const chessView = (await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" }))!;
+    const chessView = await waitFor(async () => (await p.$('.modal.plugin-modal[aria-label="Chess"] iframe.plugin-view[data-view="board"]'))?.contentFrame(), { what: "chess window" });
     await waitFor(() => chessView.evaluate(() => !!document.querySelector("canvas[aria-label]")), { what: "chess board view" });
     await audit(p, "the chess window");
     await auditView(chessView, "the chess board view");

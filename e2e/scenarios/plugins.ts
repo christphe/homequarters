@@ -18,11 +18,11 @@ type AdminMap = { props: { t: string; x: number; y: number; w: number; h: number
 
 const PLUGIN = "hq-pets";
 const click = (u: User, selector: string, text: string) => u.page.evaluate((selector, text) => {
-  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent!.trim() === text);
+  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text);
   b?.click();
   return !!b;
 }, selector, text);
-const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg) as Promise<Awaited<R>>;
+const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg);
 /** What the plugin drew on that page, or null when it does not run there. */
 const creatures = (u: User) => read(u, (p: string) => window.__hq.session.plugins?.debug(p) ?? null, PLUGIN);
 const creatureOf = async (u: User, owner: number) => ((await creatures(u)) ?? []).find((c) => c.player === owner);
@@ -100,7 +100,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
     await waitFor(() => click(admin, ".modal [role=tab]", "Plugins"), { what: "Plugins tab" });
     await waitFor(() => admin.page.$('.modal tr[data-plugin="hq-pets"]'), { what: "hq-pets row" });
-    check("the admin dialog lists the bundled pets plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')!.textContent!.includes("Off")));
+    check("the admin dialog lists the bundled pets plugin as off", await admin.page.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')!.textContent.includes("Off")));
     // (where each row says it comes from, and an installed hq- plugin refused without a switch: web/test/AdminPlugins.test.tsx
     // and TestPluginNameRefusalNoRoutes; enabling in the activity log: TestEnablePluginEndToEnd)
     await admin.page.keyboard.press("Escape");
@@ -291,13 +291,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // ---- another plugin's pet through the pets plugin's hooks: critters (e2e/fixtures), called by an app
     // outside the browser with Rem's app token, draws a critter that the pets plugin walks for Rem
     await fetch(API + "/api/admin/plugins/critters", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: true }) });
-    const critterToken = await waitFor(() => read(rem, () => fetch("/api/plugins/critters/token", { method: "POST" }).then((r) => r.ok ? r.json() : null).then((j) => j?.token)), { what: "a critters token" });
+    const critterToken = await waitFor(() => read(rem, () => fetch("/api/plugins/critters/token", { method: "POST" }).then((r) => r.ok ? (r.json() as Promise<{ token?: string }>) : null).then((j) => j?.token)), { what: "a critters token" });
     const petCall = (path: string, body: string) => fetch(`${API}/plugins/critters/api/${path}`, { method: "POST", headers: { Authorization: "Bearer " + critterToken }, body });
-    const put = await (await petCall("pet", "Bramble")).json();
+    const put = (await (await petCall("pet", "Bramble")).json()) as { ok?: boolean };
     await waitFor(async () => (await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g") && c.visible), { what: "the critter on Mia's page" });
     check("another plugin puts a pet of its own drawing with the member whose token it served, and it follows them", put.ok === true, JSON.stringify(put));
     // (that pet is not in the Pets modal and does not count in the limit: hq-pets/test/client.test.ts, pets.ispec.ts)
-    const gone = await (await petCall("unpet", "")).json();
+    const gone = (await (await petCall("unpet", "")).json()) as { removed?: boolean };
     await waitFor(async () => !(await petsOf(mia, rem.id)).some((c) => c.key.startsWith("g")), { what: "the critter gone" });
     check("the plugin that put it takes it away", gone.removed === true);
     await fetch(API + "/api/admin/plugins/critters", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled: false }) });
@@ -308,7 +308,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const drawnPet = (u: User, owner: number) => read(u, (id: string) => (window.__hq.session.plugins?.debug("hq-pets") ?? []).find((c) => c.id.startsWith(id + ":x:drawn-pet:") && c.visible) ?? null, String(owner));
     // left out, not only hidden: no place behind its owner, nobody to go along with
     const leftOut = (u: User, owner: number) => read(u, (id: string) => !(window.__hq.session.plugins?.debug("hq-pets") ?? []).some((c) => c.id.startsWith(id + ":x:drawn-pet:")), String(owner));
-    const dp = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "Rem's drawn pet on Mia's page" }).catch(() => null) as Creature | null;
+    const dp = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "Rem's drawn pet on Mia's page" }).catch(() => null);
     check("a guest pet put by metadata is drawn by its plugin on every page and follows its owner like a pet", dp?.mode === "follow" && dp?.player === rem.id, JSON.stringify(dp));
     const drawnPetOn = (enabled: boolean) => fetch(API + "/api/admin/plugins/drawn-pet", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify({ enabled }) });
     await drawnPetOn(false);
@@ -317,7 +317,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const catStays = (await petsOf(mia, rem.id)).some((c) => c.id === cat.id) && (await petsOf(rem, rem.id)).some((c) => c.id === cat.id);
     check("turning the plugin off takes its drawn pet out of every page at once (no place left behind its owner), and leaves the other pets", goneWithIt && catStays, `gone ${goneWithIt}, cat stays ${catStays}`);
     await drawnPetOn(true);
-    const drawnBack = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "drawn pet back with its plugin" }).catch(() => null) as Creature | null;
+    const drawnBack = await waitFor(async () => (await drawnPet(mia, rem.id)) ?? false, { timeout: 15000, what: "drawn pet back with its plugin" }).catch(() => null);
     check("turning it on again draws the pet again, without reloading the page", drawnBack?.mode === "follow" && drawnBack?.player === rem.id, JSON.stringify(drawnBack));
     await drawnPetOn(false);
     await waitFor(async () => (await leftOut(mia, rem.id)) && (await leftOut(rem, rem.id)), { what: "drawn pet gone again" });
@@ -417,10 +417,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
       return tries;
     }) : null;
     // a request the plugin sends to the office carries no session cookie (no cross-site request forgery)
-    const nameBefore = await read(mia, () => fetch("/api/me").then((r) => r.json()).then((m) => m.name));
+    const nameBefore = await read(mia, () => fetch("/api/me").then((r) => r.json() as Promise<{ name?: string }>).then((m) => m.name));
     await f?.evaluate(() => fetch("/api/profile", { method: "PUT", mode: "no-cors", credentials: "include", body: JSON.stringify({ name: "Forged" }) }).catch(() => null));
     await sleep(500);
-    const nameAfter = await read(mia, () => fetch("/api/me").then((r) => r.json()).then((m) => m.name));
+    const nameAfter = await read(mia, () => fetch("/api/me").then((r) => r.json() as Promise<{ name?: string }>).then((m) => m.name));
     check("a request from plugin code is not signed in (the profile did not change)", !!nameBefore && nameAfter === nameBefore, `${nameBefore} -> ${nameAfter}`);
     check("plugin code cannot read the page, its cookies or storage", !!probe && probe.parentDocument.startsWith("threw") && probe.parentHQ.startsWith("threw") && (probe.cookie.startsWith("threw") || probe.cookie === "") && probe.storage.startsWith("threw") && probe.hq === "object", JSON.stringify(probe));
 
@@ -439,7 +439,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await pluginFrame(mia)!.evaluate(() => { for (let i = 0; i < 600; i++) (window as unknown as PluginWindow).hq.remove("x" + i); });
     await waitFor(() => read(mia, (p) => window.__hq.session.plugins!.stopReasons.get(p) ?? "", PLUGIN), { what: "flooding plugin stopped" });
     const reason = await read(mia, (p) => window.__hq.session.plugins!.stopReasons.get(p), PLUGIN);
-    check("a batch over the limit stops the plugin on that page", /512/.test(reason!) && (await frames(mia)) === 0, reason!);
+    check("a batch over the limit stops the plugin on that page", /512/.test(reason!) && (await frames(mia)) === 0, reason);
     check("the other page keeps it", (await frames(rem)) === 1 && !!(await creatureOf(rem, mia.id))?.visible);
     await walkTo(mia, 9 * 16 + 8, 31 * 16 + 8);
     check("the office keeps working on the page that stopped it", await read(mia, () => window.__hq.state.conn === "open"));
@@ -464,7 +464,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await mia.page.keyboard.press("Escape");
     // what its iframe may fetch: its own folder and the hosts its manifest declares, nothing else
     const drawnFrame = await (await mia.page.$('iframe.plugin-frame[data-plugin="drawn-sheet"]'))!.contentFrame();
-    const blocked = await drawnFrame!.evaluate(() => new Promise<string[]>((resolve) => {
+    const blocked = await drawnFrame.evaluate(() => new Promise<string[]>((resolve) => {
       const seen: string[] = [];
       document.addEventListener("securitypolicyviolation", (e) => seen.push(e.blockedURI));
       fetch("https://undeclared.example.net/sheet.png").catch(() => {});
@@ -506,7 +506,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // (a dynamic object gets onObjectUpdate 10 times a second, and its updates stop once it is removed:
     // web/test/pluginHost.test.ts; that updates reach the plugin, the pulse below)
     const spr = await waitFor(() => orbSprite(mia, ORB), { what: "the orb's sprite" });
-    check("the sprite the plugin spawned for it stands on the object (bottom centre of its tile)", spr!.visible && spr!.x === ORB.x * 16 + 8 && spr!.y === ORB.y * 16 + 16, JSON.stringify(spr));
+    check("the sprite the plugin spawned for it stands on the object (bottom centre of its tile)", spr.visible && spr.x === ORB.x * 16 + 8 && spr.y === ORB.y * 16 + 16, JSON.stringify(spr));
     const anims = await read(mia, (id: string) => new Promise<(string | null)[]>((resolve) => {
       const seen = new Set<string | null>();
       const t0 = performance.now();
@@ -584,7 +584,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const viewAttrs = await viewEl.evaluate((f) => ({ sandbox: f.getAttribute("sandbox"), title: f.title, height: f.getBoundingClientRect().height }));
     check("the view is an iframe with sandbox=allow-scripts only, titled by its label", viewAttrs.sandbox === "allow-scripts" && viewAttrs.title === "Echo view" && viewAttrs.height > 0, JSON.stringify(viewAttrs));
     check("the page is out of the view's reach (parent.document throws inside it)", (await modalText()).includes("View: hello, page blocked"), await modalText());
-    const view = (await viewEl.contentFrame())!;
+    const view = await viewEl.contentFrame();
     await view.evaluate(() => { (window as unknown as { __mark: number }).__mark = 42; });
     await view.evaluate(() => hqView.send({ t: "ping", n: 7 }));
     await waitFor(async () => (await view.evaluate(() => document.getElementById("out")?.textContent)) === "pong 7", { what: "pong in the view" });

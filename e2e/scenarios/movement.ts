@@ -147,7 +147,7 @@ export async function run(): Promise<boolean> {
       console.log("  runner's acks:", JSON.stringify(await read(a, () => (window as unknown as Taps).__tapA.slice(-8))));
       console.log("  runner sent:", JSON.stringify(await read(a, () => (window as unknown as Taps).__sentA.slice(-8))));
     }
-    const seqs = await read(a, () => (window as unknown as Taps).__sentA.map(([, d]): number => JSON.parse(d).s));
+    const seqs = await read(a, () => (window as unknown as Taps).__sentA.map(([, d]) => (JSON.parse(d) as { s: number }).s));
     check("the delayed inputs still left the page in order, as on a WebSocket", seqs.length > 2 && seqs.every((s, i) => i === 0 || s > seqs[i - 1]), seqs.join(","));
     check("...and stops where the server and other people see it", converged && gap < 1, gap.toFixed(2) + " px after " + ((Date.now() - tc0) / 1000).toFixed(1) + " s, trail " + gtrail.join("->") + ", mine " + JSON.stringify(mine) + " theirs " + JSON.stringify(theirs));
     await read(a, () => { WebSocket.prototype.send = (window as unknown as Taps).__origSend; });

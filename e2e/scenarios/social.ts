@@ -82,7 +82,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
 
     // ---- desk assignment shows the owner's label
     // The world map redacts interactive-object content; editors round-trip through the full map.
-    const map: MapData = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
+    const map = (await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json()) as MapData;
     const desk = map.props.find((p) => p.t === "desk")!;
     desk.assign = b.id;
     desk.label = "New desk " + t;

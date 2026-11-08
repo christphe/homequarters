@@ -41,8 +41,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => mia.page.evaluate(() => window.__hq.state.role === "member" && window.__hq.state.conn === "open"), { timeout: 20000, what: "Mia back to member" });
     check("demoting works the same way", true);
     // earlier scenarios may have minted other admins in this shared office: demote them, so that ours is the last one
-    const all = await (await api(ctx.adminCookie, "GET", "/api/admin/members")).json();
-    for (const m of (all as { members: { id: number; role: string }[] }).members) if (m.role === "admin" && m.id !== ctx.adminId) await api(ctx.adminCookie, "PATCH", "/api/admin/members/" + m.id, { role: "member" });
+    const all = (await (await api(ctx.adminCookie, "GET", "/api/admin/members")).json()) as { members: { id: number; role: string }[] };
+    for (const m of all.members) if (m.role === "admin" && m.id !== ctx.adminId) await api(ctx.adminCookie, "PATCH", "/api/admin/members/" + m.id, { role: "member" });
     const selfDemote = await api(ctx.adminCookie, "PATCH", "/api/admin/members/" + ctx.adminId, { role: "member" });
     check("the last admin cannot be demoted (409)", selfDemote.status === 409);
     check("a member cannot call the admin API (403)", (await api(miaCookie, "GET", "/api/admin/members")).status === 403);
@@ -50,7 +50,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // ---- invites tab
     await click(admin, ".modal [role=tab]", "Invites");
     await waitFor(() => click(admin, ".modal .admin-form button", "Create invite link"), { what: "invite form" });
-    const link = (await waitFor(() => admin.page.evaluate(() => document.querySelector<HTMLInputElement>(".modal .composer input")?.value), { what: "invite link" }))!;
+    const link = await waitFor(() => admin.page.evaluate(() => document.querySelector<HTMLInputElement>(".modal .composer input")?.value), { what: "invite link" });
     const token = new URL(link).searchParams.get("invite");
     check("creating an invite shows its link once", link.includes("?invite=") && token!.length > 20);
     await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".modal .admin-table tbody tr")].some((r) => r.textContent.includes("Active"))), { what: "active invite listed" });
@@ -68,7 +68,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const before = await mia.page.evaluate(() => window.__hq.state.office);
     check("the browser tab names the office", (await mia.page.title()) === "Home Quarters - " + before, await mia.page.title());
     await click(admin, ".modal [role=tab]", "Office");
-    const field = (await waitFor(() => admin.page.$("#office-name"), { what: "office name field" }))!;
+    const field = await waitFor(() => admin.page.$("#office-name"), { what: "office name field" });
     await field.click();
     await field.evaluate((el) => (el as HTMLInputElement).select()); // typing replaces the current name
     await field.type("Harbour " + t);
@@ -135,7 +135,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => rem.page.evaluate(() => !!document.querySelector(".join-card")), { timeout: 20000, what: "removed member lands on the join screen" });
     const note = await rem.page.evaluate(() => document.querySelector(".join-card .error")?.textContent ?? "");
     check("a removed member is disconnected at once and told why", note.includes("removed from this office"), note);
-    const me = await (await fetch(API + "/api/me", { headers: { Cookie: "hq_session=" + remCookie } })).json();
+    const me = (await (await fetch(API + "/api/me", { headers: { Cookie: "hq_session=" + remCookie } })).json()) as { authenticated?: boolean };
     check("the removed member's session no longer works", me.authenticated === false);
     await waitFor(() => admin.page.evaluate((n) => ![...window.__hq.state.roster.values()].some((p) => p.n === n && p.s !== "offline"), "Rem" + t), { what: "roster no longer shows Rem online" });
     check("everybody sees the removed member leave", true);
