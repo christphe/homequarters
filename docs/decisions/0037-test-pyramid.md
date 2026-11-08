@@ -101,7 +101,18 @@ that need no browser down to it, `release:*` tasks, and coverage per tier.
 
 ## Measurements
 
-<!-- MEASUREMENTS: filled by the controller -->
+Measured on the Windows 11 desktop (12 logical CPUs, Node 24, Go 1.27.0, Chrome, LiveKit 1.13.7 in Docker Desktop) on 2026-11-08, from the whole gauntlet run without the cache (`FDASH_FORCE=1`, `E2E_PARALLELISM=2`) and the times fdash records with each pass:
+
+| Tier | What ran | Time |
+| --- | --- | --- |
+| `lint`, `build`, `test:unit` (`static`) | 18 lints, 3 builds, 10 unit suites, in parallel | the server's race tests take 29 s, fdash's own tests 14 s, every other task under 5 s |
+| `test:integration` | 6 suites against the testbed, in parallel | hq-pets 31 s, hq-cards 21 s, hq-chess 19 s, sdk 13 s, Old Maid and Last Card about 4 s each |
+| `test:e2e` | the `e2e/` suite (26 scenarios, two shards) and the 4 plugin e2e projects | about 20 min for the suite; hq-chess-e2e 32 s, hq-cards-e2e 30 s alone |
+| whole gauntlet | everything above, nothing cached | 22 min |
+
+Outputs in the cache, per stored pass: the server binary 63 MB (the Windows build, with its debug information), `web/dist` 2.3 MB, `site/dist` 3.7 MB. CI keeps only the records a run used, so its cache grows by about one copy of each per key in use. The size of a CI cache with outputs is not measured yet: records are published by runs on `main` only.
+
+Not measured: these times on CI's runners, and on Linux or macOS.
 
 ## Consequences
 

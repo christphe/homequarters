@@ -34,6 +34,7 @@
       ]
     },
     "browser": {
+      "jobs": 1,
       "tasks": [
         "test:e2e"
       ]

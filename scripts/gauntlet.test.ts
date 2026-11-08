@@ -67,11 +67,11 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     ].map(([p, args]) => [`${p}:test:e2e`, `plugins/e2e/${p}`, `node ../../../e2e/plugin-run.ts ${args}`, false, false, '{"E2E_VIEWPORT":"small"}']),
   ]);
   // the integration and browser suites start once the build is done: default runs its tiers one after the
-  // other; inside a tier the suites run at once (each testbed has its own port and database, the browser
-  // runs wait for an e2e slot)
+  // other; the integration suites run at once (each testbed has its own port and database), the browser suites
+  // one at a time (the suite already shards itself; a plugin suite beside it starved its plugin's 50 ms budget)
   assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", "integration", "browser"], jobs: 1, after: [] });
   assert.deepEqual(config.get("integration"), { kind: "group", name: "integration", tasks: INTEGRATION, after: [] });
-  assert.deepEqual(config.get("browser"), { kind: "group", name: "browser", tasks: [BROWSER, ...PLUGIN_SUITES], after: [] });
+  assert.deepEqual(config.get("browser"), { kind: "group", name: "browser", tasks: [BROWSER, ...PLUGIN_SUITES], jobs: 1, after: [] });
   assert.equal((config.get("static") as { jobs?: number }).jobs, undefined);
 });
 
