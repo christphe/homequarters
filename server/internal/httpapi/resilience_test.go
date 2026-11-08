@@ -59,8 +59,11 @@ func (u *user) placeAt(t *testing.T, x, y float64) {
 }
 
 type helloMsg struct {
-	You  int64 `json:"you"`
-	Cfg  struct{ X, Y float64 }
+	You int64 `json:"you"`
+	Cfg struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+	} `json:"cfg"`
 	Chat []struct {
 		F int64  `json:"f"`
 		N string `json:"n"`

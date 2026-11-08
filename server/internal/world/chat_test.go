@@ -14,10 +14,10 @@ func chatTexts(frames []string) []string {
 		if !strings.HasPrefix(f, `{"t":"c"`) {
 			continue
 		}
-		sc := f[strings.Index(f, `"sc":"`)+6:]
-		sc = sc[:strings.IndexByte(sc, '"')]
-		x := f[strings.Index(f, `"x":"`)+5:]
-		x = x[:strings.Index(x, `","ts"`)]
+		_, sc, _ := strings.Cut(f, `"sc":"`)
+		sc, _, _ = strings.Cut(sc, `"`)
+		_, x, _ := strings.Cut(f, `"x":"`)
+		x, _, _ = strings.Cut(x, `","ts"`)
 		out = append(out, sc+":"+x)
 	}
 	return out
@@ -95,6 +95,7 @@ func TestChatScopesReachTheirAudienceTrimmedAndCut(t *testing.T) {
 		}
 	}
 	if !strings.Contains(hello, `"n":"u","x":"hello office"`) || strings.Contains(hello, "secret") || strings.Contains(hello, "conversation") || strings.Contains(hello, "nobody") {
-		t.Fatalf("a newcomer gets the office chat, never direct or conversation messages: %.300s", hello[strings.Index(hello, `"chat"`):])
+		_, chat, _ := strings.Cut(hello, `"chat"`)
+		t.Fatalf("a newcomer gets the office chat, never direct or conversation messages: %.300s", chat)
 	}
 }

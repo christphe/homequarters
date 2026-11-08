@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -119,7 +120,7 @@ func TestPendingIsBoundedAndSingleUse(t *testing.T) {
 	if _, err := p.Put(2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Put(3); err != ErrFull {
+	if _, err := p.Put(3); !errors.Is(err, ErrFull) {
 		t.Fatalf("a full store must refuse, got %v", err)
 	}
 	if v, ok := p.Get(a); !ok || v != 1 {

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -808,7 +809,7 @@ func (s *Server) changeDesk(w http.ResponseWriter, r *http.Request, release bool
 	if err != nil {
 		if reason, ok := claimReasons[err]; ok {
 			code := http.StatusConflict
-			if err == world.ErrClaimNoDesk {
+			if errors.Is(err, world.ErrClaimNoDesk) {
 				code = http.StatusNotFound
 			}
 			writeJSON(w, code, map[string]string{"error": reason})
@@ -872,7 +873,7 @@ func (s *Server) putProfile(w http.ResponseWriter, r *http.Request) {
 	for _, wd := range running {
 		wd.OwnerRenamed(r.Context(), se.UserID, name)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "avatar": json.RawMessage(av)})
+	writeJSON(w, http.StatusOK, map[string]any{"name": name, "avatar": av})
 }
 
 // reconcileMedia periodically removes from the SFU anyone the world does not consider a member of that room.

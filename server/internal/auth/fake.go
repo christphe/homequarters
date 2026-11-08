@@ -80,7 +80,7 @@ func (f *Fake) who(w http.ResponseWriter, r *http.Request, hint string) (sub, em
 		h := sha256.Sum256([]byte(hint))
 		return "fake-" + hex.EncodeToString(h[:8]), strings.ToLower(hint)
 	}
-	id := ""
+	var id string
 	if c, err := r.Cookie(fakeCookie); err == nil && len(c.Value) == 8 && strings.Trim(c.Value, "0123456789abcdef") == "" {
 		id = c.Value
 	} else {

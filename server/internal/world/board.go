@@ -113,7 +113,7 @@ func (w *World) SeedBoards(data map[string][]byte) {
 
 func boardKey(pr *gamemap.Prop) string { return strconv.Itoa(pr.X) + "," + strconv.Itoa(pr.Y) }
 
-func (w *World) openBoard(p *Player, pr *gamemap.Prop, now time.Time) {
+func (w *World) openBoard(p *Player, pr *gamemap.Prop) {
 	key := boardKey(pr)
 	b := w.board(key)
 	if p.board == key {
@@ -159,15 +159,13 @@ func (w *World) closeBoard(p *Player) {
 	}
 }
 
-func (b *board) broadcast(w *World, msg []byte, except *Player) {
+func (b *board) broadcast(w *World, msg []byte) {
 	for v := range b.viewers {
-		if v != except {
-			w.sendShared(v, msg)
-		}
+		w.sendShared(v, msg)
 	}
 }
 
-func (w *World) doBoard(p *Player, m *BoardMsg, now time.Time) {
+func (w *World) doBoard(p *Player, m *BoardMsg) {
 	if m == nil || p.board == "" || m.B != p.board {
 		return
 	}
@@ -224,7 +222,7 @@ func (w *World) doBoard(p *Player, m *BoardMsg, now time.Time) {
 		}
 		b.dirty = true
 		out := m2json(map[string]any{"op": "draw", "o": p.ID, "i": m.ID, "k": s.K, "c": s.C, "w": s.W, "p": pts, "tx": s.Tx}, head)
-		b.broadcast(w, out, nil) // echo accepted edits so the author never diverges on a rejected edit
+		b.broadcast(w, out) // echo accepted edits so the author never diverges on a rejected edit
 	case "del":
 		s := b.index[skey(m.Owner, m.ID)]
 		if s == nil {
@@ -235,13 +233,13 @@ func (w *World) doBoard(p *Player, m *BoardMsg, now time.Time) {
 		}
 		b.remove(s)
 		b.dirty = true
-		b.broadcast(w, m2json(map[string]any{"op": "del", "o": s.Owner, "i": s.ID}, head), nil)
+		b.broadcast(w, m2json(map[string]any{"op": "del", "o": s.Owner, "i": s.ID}, head))
 	case "undo":
 		for _, s := range slices.Backward(b.strokes) {
 			if s.Owner == p.ID {
 				b.remove(s)
 				b.dirty = true
-				b.broadcast(w, m2json(map[string]any{"op": "del", "o": s.Owner, "i": s.ID}, head), nil)
+				b.broadcast(w, m2json(map[string]any{"op": "del", "o": s.Owner, "i": s.ID}, head))
 				break
 			}
 		}
@@ -253,7 +251,7 @@ func (w *World) doBoard(p *Player, m *BoardMsg, now time.Time) {
 		if w.OnAction != nil {
 			w.OnAction(w.OfficeID, p.ID, "board.clear", b.key)
 		}
-		b.broadcast(w, m2json(map[string]any{"op": "clear"}, head), nil)
+		b.broadcast(w, m2json(map[string]any{"op": "clear"}, head))
 	}
 }
 

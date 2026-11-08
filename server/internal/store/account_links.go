@@ -88,14 +88,14 @@ func (s *Store) MemberByName(ctx context.Context, officeID int64, name string) (
 	defer rows.Close()
 	var found int64
 	var matches int
-	want := strings.ToLower(strings.TrimSpace(name))
+	want := strings.TrimSpace(name)
 	for rows.Next() {
 		var id int64
 		var n string
 		if err := rows.Scan(&id, &n); err != nil {
 			return 0, err
 		}
-		if strings.ToLower(n) == want {
+		if strings.EqualFold(n, want) {
 			found, matches = id, matches+1
 		}
 	}

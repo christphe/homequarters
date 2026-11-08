@@ -408,7 +408,7 @@ func TestSealedValuesCannotBeForgedOrSwapped(t *testing.T) {
 func TestManySignInsInProgressLockNobodyOut(t *testing.T) {
 	r := newAuthRig(t, nil)
 	// an attacker keeps no cookies; with a jar the test would resend thousands of them
-	flood := &user{r: r.rig, c: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	flood := &user{c: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	for range 12000 { // more than the old table held (10,000): nothing is kept on the server
 		resp, err := flood.c.Get(r.ts.URL + "/auth/fake-oidc/start")
 		if err != nil {

@@ -636,7 +636,7 @@ func (w *World) handle(e ev, now time.Time) {
 	case evKnockAns:
 		w.doKnockAns(p, e.id, e.b, now)
 	case evBoard:
-		w.doBoard(p, e.wb, now)
+		w.doBoard(p, e.wb)
 	}
 }
 

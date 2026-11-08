@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -16,7 +17,7 @@ func TestRenamedOfficeKeepsItsNameAcrossRestarts(t *testing.T) {
 	if err != nil || again.ID != o.ID || again.Name != "Harbour HQ" {
 		t.Fatalf("the rename must survive a restart: %+v %v", again, err)
 	}
-	if _, err := s.RenameOffice(ctx, 999, "Nowhere"); err != ErrNotFound {
+	if _, err := s.RenameOffice(ctx, 999, "Nowhere"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("renaming an unknown office: %v", err)
 	}
 }

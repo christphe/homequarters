@@ -277,8 +277,9 @@ func fail(w http.ResponseWriter, code int, msg string) {
 // grace after it closed, with Retry-After).
 func (b *Bed) position(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID   int64 `json:"id"`
-		X, Y *int
+		ID int64 `json:"id"`
+		X  *int  `json:"x"`
+		Y  *int  `json:"y"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil || body.ID <= 0 || body.X == nil || body.Y == nil {
 		fail(w, http.StatusBadRequest, `body is {"id":member,"x":tileX,"y":tileY}`)
