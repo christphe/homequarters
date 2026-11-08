@@ -10,7 +10,7 @@ name: Desktop
 #   gh workflow run desktop.yml -f tag=desktop-v0.3.2 [-f macos=macos-15]
 on:
   pull_request:
-    paths: ["desktop/**", "e2e/desktop/**", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "e2e/desktop/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/desktop.yml"]
   push:
     tags: ["desktop-v*"]
   workflow_dispatch:

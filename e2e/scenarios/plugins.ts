@@ -131,14 +131,45 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // (the modal has no office setting: hq-pets/test/client.test.ts)
     await mia.page.keyboard.press("Escape");
 
-    // (walking, the first pet keeps 20 px behind and the next 36 px, never on top of its owner: the gaps the plugin
-    // asks for in hq-pets/test/client.test.ts, the page keeping them in web/test/petFollow.test.ts.) Rem walks east,
-    // so that the walk-to below runs far enough to judge it
+    // ---- the pets walk behind their owner in a line, recorded on the observer's page: the gaps the plugin asks for
+    // (hq-pets/test/client.test.ts) and how the page keeps one (web/test/petFollow.test.ts) are unit-tested, but
+    // only here does the gap travel from the plugin through pluginLayer to what is drawn (a pet once shipped glued
+    // to its owner). Rem walks east, which also lets the walk-to below run far enough to judge it
+    const rec = read(mia, ({ id, plugin, a, b }: { id: number; plugin: string; a: string; b: string }) => new Promise<number[][]>((resolve) => {
+      const out: number[][] = [];
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const e = window.__hq.view.ents.get(id);
+        const list = window.__hq.session.plugins!.debug(plugin)!;
+        const ca = list.find((x) => x.id === a), cb = list.find((x) => x.id === b);
+        if (e && ca && cb) out.push([now - t0, e.x, e.y, ca.x, ca.y, cb.x, cb.y]);
+        if (now - t0 < 2600) requestAnimationFrame(tick); else resolve(out);
+      };
+      requestAnimationFrame(tick);
+    }), { id: rem.id, plugin: PLUGIN, a: cat.id, b: seedling.id });
     await read(rem, async () => {
       const v = window.__hq.view, wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      await wait(200);
       v.setDirection(1, 0); await wait(1600);
       v.setDirection(0, 0);
     });
+    const S = await rec;
+    const ga: number[] = [], gb: number[] = [];
+    let closest = Infinity;
+    for (let i = 1; i < S.length; i++) {
+      const [tt, ox, oy, ax, ay, bx, by] = S[i];
+      const moving = Math.hypot(ox - S[i - 1][1], oy - S[i - 1][2]) > 0.2;
+      if (moving && tt > 900) {
+        // walking (resting pets sit at the feet on purpose): never on top of the owner
+        closest = Math.min(closest, Math.hypot(ax - ox, ay - oy), Math.hypot(bx - ox, by - oy));
+        ga.push(Math.hypot(ax - ox, ay - oy));
+        gb.push(Math.hypot(bx - ox, by - oy));
+      }
+    }
+    const med = (l: number[]) => l.sort((x, y) => x - y)[Math.floor(l.length / 2)];
+    const [ma, mb] = [med(ga), med(gb)];
+    check("while the owner walks, the first pet keeps about 20 px behind and the next one about 36 px", ga.length > 10 && ma > 14 && ma < 28 && mb > 28 && mb < 44, `medians ${ma?.toFixed(1)} and ${mb?.toFixed(1)} px over ${ga.length} frames`);
+    check("no pet walks on top of its owner", closest > 12, `closest ${closest.toFixed(1)} px`);
 
     // ---- a walk-to (double-click on the map, Cmd+D, joining someone): the server runs the owner there,
     // and the pets run after them on every page: smoothly, every frame, with their walk animation (they

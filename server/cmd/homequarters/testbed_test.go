@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,15 +34,41 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	binPath = filepath.Join(dir, "homequarters")
+	exe := ""
 	if runtime.GOOS == "windows" {
-		binPath += ".exe"
+		exe = ".exe"
 	}
-	if out, err := exec.Command("go", "build", "-o", binPath, ".").CombinedOutput(); err != nil {
+	// Built under a name of its own, then put in place: another run of this package may be executing the fixed
+	// binary (Windows refuses to overwrite it). The same sources build the same bytes, so that run's binary is
+	// reused; when it differs and is busy, this run keeps its own copy.
+	binPath = filepath.Join(dir, "homequarters"+exe)
+	own := filepath.Join(dir, fmt.Sprintf("homequarters-%d%s", os.Getpid(), exe))
+	if out, err := exec.Command("go", "build", "-o", own, ".").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build: %v\n%s", err, out)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	switch {
+	case sameFile(own, binPath):
+		os.Remove(own)
+	case os.Rename(own, binPath) == nil:
+	default:
+		binPath = own
+	}
+	code := m.Run()
+	if binPath == own {
+		os.Remove(own)
+	}
+	os.Exit(code)
+}
+
+// sameFile says whether a and b hold the same bytes.
+func sameFile(a, b string) bool {
+	x, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	y, err := os.ReadFile(b)
+	return err == nil && bytes.Equal(x, y)
 }
 
 var echoPlugin = filepath.Join("..", "..", "internal", "httpapi", "testdata", "plugins", "installed", "echo")

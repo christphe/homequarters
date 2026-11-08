@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     # deploy/README.md is published as the self-hosting page; README.md is checked by site/check.ts
-    paths: ["site/**", "docs/**", "deploy/README.md", "README.md", "pnpm-lock.yaml", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", "deploy/README.md", "README.md", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:

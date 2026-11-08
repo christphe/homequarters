@@ -114,7 +114,7 @@ test("refuses batches the host must not run", () => {
   for (const [why, b] of bad) assert.equal(typeof parseBatch(b), "string", why);
 });
 
-test("the page never sends plugin messages faster than the server accepts them", () => {
+test("the page never sends plugin messages faster than the server accepts them", async () => {
   const b = new SendBudget();
   let sent = 0;
   for (let i = 0; i < 300; i++) if (b.allow(1000)) sent++;
@@ -123,7 +123,12 @@ test("the page never sends plugin messages faster than the server accepts them",
   let later = 0;
   for (let t = 0; t < 10_000; t += 10) if (b.allow(1000 + t)) later++;
   assert.ok(later <= LIMITS.sendRate * 10 + 1 && later >= LIMITS.sendRate * 10 - 1, String(later));
-  assert.ok(LIMITS.sendRate < 10 && LIMITS.sendBurst < 20, "below the server's 10/s, burst 20");
+  // below the server's own bucket for plugin messages (httpapi/ws.go), or each one over it is a strike
+  const { readFileSync } = await import("node:fs");
+  const ws = readFileSync(`${import.meta.dirname}/../../server/internal/httpapi/ws.go`, "utf8");
+  const m = /pluginRL := newConnBucket\((\d+), (\d+)\)/.exec(ws);
+  assert.ok(m, "pluginRL in ws.go");
+  assert.ok(LIMITS.sendRate < Number(m[1]) && LIMITS.sendBurst < Number(m[2]), `below the server's ${m[1]}/s, burst ${m[2]}`);
 });
 
 test("a blank button label is refused (it would have no accessible name)", () => {

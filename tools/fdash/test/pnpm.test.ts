@@ -1,5 +1,5 @@
 // fdash's pnpm input: a member's share of the lockfile in the key, not the whole file. Run: node --test tools/fdash/test/pnpm.test.ts
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -84,8 +84,11 @@ snapshots:
     optional: true
 `;
 
+const temps: string[] = [];
+after(() => { for (const t of temps) fs.rmSync(t, { recursive: true, force: true }); });
 function workspace(lock = LOCK): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-pnpm-"));
+  temps.push(root);
   fs.writeFileSync(path.join(root, "pnpm-lock.yaml"), lock);
   return root;
 }
@@ -115,6 +118,16 @@ test("pnpm input: a transitive package (reached through snapshots) changes the k
   assert.deepEqual(keys((l) => l.replace("sha512-deep", "sha512-deep2")), { a: true, b: false, c: true });
   // a peer-suffixed snapshot key, followed to its package
   assert.deepEqual(keys((l) => l.replace("sha512-peer", "sha512-peer2")), { a: true, b: false, c: true });
+});
+
+test("pnpm input: an npm: alias of an importer is followed to its package, not a fallback", () => {
+  const aliased = LOCK
+    .replace("        version: 1.0.1\n\n  c:", "        version: 1.0.1\n      sw:\n        specifier: npm:string-width@4.2.3\n        version: string-width@4.2.3\n\n  c:")
+    .replace("\nsnapshots:\n", "\n  string-width@4.2.3:\n    resolution: {integrity: sha512-sw}\n\nsnapshots:\n")
+    .replace("  deep@4.0.0:\n    optional: true\n", "  deep@4.0.0:\n    optional: true\n\n  string-width@4.2.3: {}\n");
+  const r = resolveInputs(workspace(aliased), [{ pnpm: "b" }]);
+  assert.deepEqual([r.files, r.warnings], [[], []]);
+  assert.deepEqual(keys((l) => l.replace("sha512-sw", "sha512-sw2"), aliased), { a: false, b: true, c: false });
 });
 
 test("pnpm input: a linked workspace member's external dependency changes the dependent's key", () => {
@@ -165,6 +178,7 @@ test("pnpm input: an unknown lockfileVersion hashes the whole file, with a line 
   assert.deepEqual(resolveInputs(root, [{ pnpm: "a" }]).files, ["pnpm-lock.yaml"]);
   // the log of a run says so
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "fdash-pnpm-log-"));
+  temps.push(logDir);
   fs.writeFileSync(path.join(root, "pnpm-lock.yaml"), lock);
   const config = parseConfig(JSON.stringify({ tasks: { t: { run: [[process.execPath, "-e", ""]], inputs: [{ pnpm: "a" }] } } }));
   const { results } = await run({ root, config, names: ["t"], jobs: 1, logDir, cacheDir: path.join(root, ".cache") });

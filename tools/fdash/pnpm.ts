@@ -209,7 +209,8 @@ export function importerGraph(lock: YMap, importer: string): string {
           if (Object.hasOwn(importers, target)) visit(target);
           continue;
         }
-        snapshot(`${name}@${version}`);
+        // `name@version(peers)`, or an npm: alias whose version is a whole key (`string-width@4.2.3`)
+        snapshot(Object.hasOwn(snapshots, `${name}@${version}`) ? `${name}@${version}` : version);
       }
     }
   };
@@ -276,7 +277,7 @@ export function pnpmPart(root: string, dir: string): PnpmPart {
   const importer = lockDir === "." ? rel : path.posix.relative(lockDir, rel) || ".";
   const name = `pnpm:${importer}`;
   const text = fs.readFileSync(path.join(root, lockfile), "utf8");
-  const memo = crypto.createHash("sha1").update(text).digest("hex") + " " + importer;
+  const memo = crypto.createHash("sha1").update(text).digest("hex") + "\0" + importer;
   const known = parts.get(memo);
   if (known && known.lockfile === lockfile) return known;
   const part = partOf(parseOnce(memo.slice(0, 40), text), { dir, lockDir, lockfile, importer, name });

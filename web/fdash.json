@@ -96,6 +96,7 @@
         "/server/internal/gamemap/map.go",
         "/server/internal/httpapi/avatar.go",
         "/server/internal/world/types.go",
+        "/server/internal/httpapi/ws.go",
         "/package.json",
         "/pnpm-workspace.yaml",
         {
