@@ -15,7 +15,7 @@ it("reports an unnamed button, an li outside a list, an untitled frame and an im
     <div role="dialog" aria-modal="true" aria-label="Defects">
       <button />
       <div><li>stray</li></div>
-      <iframe src="https://example.org/" />
+      <iframe src="https://example.org/" sandbox="" />
       <img src="https://example.org/a.png" />
     </div>,
   );
