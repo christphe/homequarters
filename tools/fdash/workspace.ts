@@ -106,7 +106,10 @@ export function loadWorkspace(root: string): Config {
       for (const r of localRequires(text)) {
         const dir = path.posix.normalize(posix(path.posix.dirname(goMod), r.dir.replaceAll("\\", "/"))).replace(/(.)\/+$/, "$1");
         const q = projects.find((x) => x.dir === dir);
-        if (!q) throw new Error(`${goMod}: ${r.module} is replaced by ${r.dir}, which is no project (list ${dir} in ${WORKSPACE_FILE})`);
+        if (!q) {
+          const why = fs.existsSync(path.join(root, dir)) && !fs.existsSync(path.join(root, dir, CONFIG_FILE)) ? `give ${dir} an ${CONFIG_FILE}, and list it in ${WORKSPACE_FILE} if no pattern there matches it` : `list ${dir} in ${WORKSPACE_FILE}`;
+          throw new Error(`${goMod}: ${r.module} is replaced by ${r.dir}, which is no project (${why})`);
+        }
         if (q !== p && !p.dependsOn.includes(q.name)) p.dependsOn.push(q.name);
       }
     }

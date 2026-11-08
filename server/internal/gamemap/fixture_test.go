@@ -31,7 +31,7 @@ func TestArtPreviewFixturesAreTheTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(bytes.TrimSpace(got), want) {
-			t.Errorf("%s is not the %s template; regenerate it with HQ_UPDATE_FIXTURE=1 go test ./internal/gamemap", path, tp.Name)
+			t.Errorf("%s is not the %s template; regenerate it with HQ_UPDATE_FIXTURE=1 go test . in server/internal/gamemap", path, tp.Name)
 		}
 	}
 }

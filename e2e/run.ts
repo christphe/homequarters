@@ -98,7 +98,7 @@ if (PREBUILT && !process.env.SKIP_BUILD && !EXTERNAL) {
 if (!process.env.SKIP_BUILD && !PREBUILT && !EXTERNAL) {
   console.log("# building web + server");
   execFileSync("pnpm", ["build"], { cwd: path.join(root, "web"), stdio: "inherit", shell: WIN });
-  execFileSync("go", ["build", "-o", BIN, "."], { cwd: path.join(root, "server", "cmd", "homequarters"), stdio: "inherit" });
+  execFileSync("go", ["build", "-o", BIN, "."], { cwd: path.join(root, "server", "cmd", "homequarters"), stdio: "inherit", env: { ...process.env, GOWORK: "off" } });
 }
 
 // The whole local suite in E2E_PARALLELISM shards at once; the build above is the only shared step.

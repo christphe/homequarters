@@ -24,19 +24,25 @@ caches it.
   Module paths without a dot cannot be fetched from a proxy, so `go mod tidy` never resolves a local import by
   downloading something.
 - **No committed go.work.** With a go.work, Go accepts an import of a workspace module that the importer's
-  go.mod does not require, which would hide undeclared dependencies. Without it, such an import fails:
-  `package homequarters/internal/store is not in std` (seen, a planted import in world).
+  go.mod does not require, which would hide undeclared dependencies. Without it, such an import fails the
+  library's own build, lint and tests: `package homequarters/internal/store is not in std` (seen, a planted
+  import in world). A command that already replaces that library still builds; and Go's messages do not say
+  what to do (`go mod tidy` ignores the import, `go get` refuses a path without a dot). So `lint:go-modules`
+  (below) also checks each module's imports, tests included, against its go.mod, and prints the command to run.
 - **Internals.** A library hides what others must not use in its own `internal/`
   (`homequarters/internal/world/internal/x`): another module importing it fails with `use of internal package
   … not allowed` (seen), the library itself may. No library has such a folder today; the mechanism is there
   when one needs it.
-- **One version per third-party module:** `lint:go-versions`, a workspace task in `lint:repo` (so in `static`,
-  cached on `server/**` but the changelog), runs `node scripts/lint-repo.ts go-versions`: `go work init` of
-  every server module in a go.work written to a temporary folder outside the tree (passed by `GOWORK`), then
-  `go work sync`, which raises each module's requirements to what the modules select together. A go.mod it
-  changed held another version than its neighbours: the check prints the line and fails, and puts the files back
-  (`--fix` keeps them). Writing no go.work and no go.mod on a pass keeps fdash's record valid (fdash records
-  nothing when an input changes during the run). Seen red: store's `modernc.org/sqlite` lowered to v1.60.0
+- **`lint:go-modules`**, a workspace task in `lint:repo` (so in `static`, cached on `server/**` but the
+  changelog), runs `node scripts/lint-repo.ts go-modules`. (1) Each module requires and replaces, at `v0.0.0`,
+  every library its packages and tests import, and replaces every library it reaches through those (Go reads
+  only the main module's replaces); a miss prints `(cd <module> && go mod edit -require=… -replace=… && go mod
+  tidy)` (seen: a planted import of store in world; config imported by media and not replaced in world).
+  (2) One version per third-party module: a copy of `server/` in a temporary folder, a go.work there that uses
+  every module (passed by `GOWORK`), then `go work sync`, which raises each module's requirements to what the
+  modules select together. A go.mod it changed held another version than its neighbours: the check prints the
+  line and fails (`--fix` writes the raised files into the tree). The tree is never written otherwise, so a run
+  beside the other static tasks, or one stopped halfway, leaves it as it was. Seen red: store's `modernc.org/sqlite` lowered to v1.60.0
   while httpapi and the command select v1.60.1. The bench and tool modules (`bench/*`, `tools/go/*`) are left
   out: separate programs, with graphs of their own on purpose (decision 0040).
 - **depguard:** its package-graph rules are gone, Go enforces them. The rule that only `internal/media` may
@@ -87,7 +93,7 @@ caches it.
   | Warm Go caches, every task run (`FDASH_FORCE`) | 38.6 s (lint 2.7, build 0.3, tests 35.6) | 51.9 s |
   | Nothing changed | `CACHED` (not measured) | 0.9 s, 24 tasks `CACHED` |
   | `world/world.go` changed | everything again (estimate: the row above) | 43.7 s: world, httpapi, testbed and the command rerun (9 tasks), 15 `CACHED` |
-  | `world/world_test.go` changed | everything again (estimate: the row above) | 10 s: world's lint and tests only, 20 `CACHED` |
+  | `world/world_test.go` changed | everything again (estimate: the row above) | 10 s: world's lint and tests rerun, the 20 other lint and test tasks `CACHED` (build not run) |
 
   Each task alone, warm: golangci-lint 1.6-1.9 s per module; tests: plugin 20.5 s, store 12.8, httpapi 29.5,
   the others 3-6 s. What the split saves depends on where a change lands: every library but loadgen sits under
@@ -97,8 +103,9 @@ caches it.
   others have stored them. CI restores the Go caches (setup-go, keyed on every go.sum), so it rarely starts
   cold. The forced run is slower by the cost of eleven processes and of test binaries linked per module.
 - **Maintenance:** eleven go.mod files instead of one; a new import between libraries is a `require` and a
-  `replace` in the importer's go.mod and a `replace` in each module above it, which `go mod tidy` and the build
-  ask for. Dependabot updates the eleven folders with one pull request per dependency
+  `replace` in the importer's go.mod and a `replace` in each module above it; Go's own messages do not say so,
+  `lint:go-modules` does, with the command to run. A plain `go build` in a command's folder writes the binary
+  there (git-ignored); `cd server && go test ./...` no longer works (`server/` is no module). Dependabot updates the eleven folders with one pull request per dependency
   (`group-by: dependency-name`), so a shared module moves everywhere at once.
 - **Install:** nothing for operators (same binary, same image). Contributors run Go commands inside a module
   folder (`cd server/internal/world && go test ./...`) or through fdash; `cd server && go test ./...` no longer

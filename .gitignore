@@ -24,3 +24,8 @@ desktop/src-tauri/gen
 # a go.work would let the server's modules import what their go.mod does not declare (decision 0041): never committed
 go.work
 go.work.sum
+# a go build inside a command's module folder writes the binary there (decision 0041); bin/ is where builds go
+server/cmd/*/homequarters
+server/cmd/*/homequarters.exe
+server/cmd/*/loadgen
+server/cmd/*/loadgen.exe

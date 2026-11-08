@@ -47,22 +47,23 @@
         "lint:secrets",
         "lint:shell",
         "lint:docker",
-        "lint:go-versions"
+        "lint:go-modules"
       ]
     },
-    "lint:go-versions": {
+    "lint:go-modules": {
       "run": [
         [
           "node",
           "scripts/lint-repo.ts",
-          "go-versions"
+          "go-modules"
         ]
       ],
       "inputs": [
         "server/**",
         "!server/CHANGELOG.md",
         "scripts/lint-repo.ts",
-        "scripts/tools.ts"
+        "scripts/tools.ts",
+        "tools/fdash/gomod.ts"
       ],
       "tools": [
         [

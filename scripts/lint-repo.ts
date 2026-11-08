@@ -1,16 +1,19 @@
 // The repository-wide linters, one subcommand each (the workspace's fdash tasks lint:actions, lint:secrets,
-// lint:shell and lint:docker run them; decision 0040):
+// lint:shell, lint:docker and lint:go-modules run them; decisions 0040, 0041):
 //   actions  actionlint (with shellcheck on the run: scripts) and zizmor on .github/
 //   secrets  gitleaks on the files git would commit (tracked and untracked, not ignored: the inputs fdash caches
 //            it on), copied to a temporary folder; not the history
 //   shell    shellcheck on every tracked *.sh
 //   docker   hadolint on deploy/Dockerfile
+//   go-modules  the server's Go modules: each declares the libraries it imports, one version of each dependency
+//            across them (decision 0041); --fix raises the versions
 // The Go tools are `go tool`s in tools/go/<tool>/go.mod; shellcheck, zizmor and hadolint are pinned downloads
-// (scripts/tools.ts). Run: node scripts/lint-repo.ts <actions|secrets|shell|docker>
+// (scripts/tools.ts). Run: node scripts/lint-repo.ts <actions|secrets|shell|docker|go-modules [--fix]>
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { localRequires } from "../tools/fdash/gomod.ts";
 import { ensure } from "./tools.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -63,39 +66,104 @@ function secrets(): number {
   }
 }
 
-/** One version of each third-party module across the server's Go modules (decision 0041): `go work sync` in a
- * go.work written outside the tree (GOWORK) that uses every module raises each one's requirements to the
- * versions the modules select together. A go.mod it changes held an older version than another module's: the
- * check fails with the change, and puts the files back (with --fix it keeps them). No go.work stays: with one,
- * Go would accept imports a go.mod does not declare. */
-function goVersions(fix: boolean): number {
-  const modules = gitFiles(["server/**/go.mod"]).filter((f) => fs.existsSync(path.join(root, f))).map((f) => path.dirname(f));
-  const files = modules.flatMap((m) => ["go.mod", "go.sum"].map((f) => path.join(root, m, f)));
-  const read = (f: string) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null);
-  const before = new Map(files.map((f) => [f, read(f)]));
+/** The server's Go modules (decision 0041): each folder holding a go.mod, its module path and its go.mod text. */
+function serverModules(): { dir: string; path: string; text: string }[] {
+  return gitFiles(["server/**/go.mod"]).filter((f) => fs.existsSync(path.join(root, f))).map((f) => {
+    const text = fs.readFileSync(path.join(root, f), "utf8");
+    return { dir: path.posix.dirname(f), path: /^module\s+(\S+)/m.exec(text)?.[1] ?? "", text };
+  });
+}
+
+/** Each module declares the libraries it imports (tests included), and replaces every library it reaches through
+ * them: Go reads only the main module's replace directives. The message says what to run, since Go's own (`is
+ * not in std`, `missing dot in first path element`) does not. Local requires are at v0.0.0. */
+function localRequireProblems(modules: { dir: string; path: string; text: string }[]): string[] {
+  const byPath = new Map(modules.map((m) => [m.path, m]));
+  const local = new Map(modules.map((m) => [m.path, new Set(localRequires(m.text).map((r) => r.module))]));
+  const problems: string[] = [];
+  const fix = (m: { dir: string }, lib: { dir: string; path: string }) =>
+    `(cd ${m.dir} && go mod edit -require=${lib.path}@v0.0.0 -replace=${lib.path}=${path.posix.relative(m.dir, lib.dir)} && go mod tidy)`;
+  for (const m of modules) {
+    const listed = spawnSync("go", ["list", "-e", "-f", "{{range .Imports}}{{.}}\n{{end}}{{range .TestImports}}{{.}}\n{{end}}{{range .XTestImports}}{{.}}\n{{end}}", "./..."],
+      { cwd: path.join(root, m.dir), env: { ...process.env, GOWORK: "off", GOFLAGS: "" }, encoding: "utf8" });
+    if (listed.status !== 0) {
+      problems.push(`${m.dir}: go list failed: ${listed.stderr.trim()}`);
+      continue;
+    }
+    const mine = local.get(m.path)!;
+    const owners = new Set(listed.stdout.split(/\r?\n/).flatMap((imp) => {
+      const owner = modules.find((o) => imp === o.path || imp.startsWith(o.path + "/"));
+      return owner && owner !== m ? [owner] : [];
+    }));
+    for (const o of owners) if (!mine.has(o.path)) problems.push(`${m.dir}: imports ${o.path} without requiring and replacing it: ${fix(m, o)}`);
+    // what the libraries it requires require, transitively
+    const reached = new Set<string>();
+    const walk = (p: string) => { for (const d of local.get(p) ?? []) if (!reached.has(d)) { reached.add(d); walk(d); } };
+    walk(m.path);
+    for (const p of reached) {
+      const lib = byPath.get(p);
+      if (lib && !mine.has(p)) problems.push(`${m.dir}: reaches ${p} through a library it requires, but does not replace it: ${fix(m, lib)}`);
+    }
+    for (const r of m.text.matchAll(/^\s*(?:require\s+)?(\S+)\s+(v\S+)/gm)) {
+      if (byPath.has(r[1]) && r[2] !== "v0.0.0") problems.push(`${m.dir}: requires ${r[1]} at ${r[2]}: a library of this repository is required at v0.0.0 (go mod edit -require=${r[1]}@v0.0.0)`);
+    }
+  }
+  return problems;
+}
+
+/** The server's Go modules hold together (decision 0041). First, each declares the libraries it uses (above).
+ * Then one version of each third-party module across them: `go work sync`, in a copy of server/ in a temporary
+ * folder with a go.work that uses every module, raises each one's requirements to the versions the modules
+ * select together. A go.mod it changed held an older version than another module's: the check fails with the
+ * change (--fix writes it into the tree). The tree is never written otherwise, and no go.work is left anywhere:
+ * with one, Go would accept imports a go.mod does not declare. */
+function goModules(fix: boolean): number {
+  const modules = serverModules();
+  const problems = localRequireProblems(modules);
+  for (const p of problems) console.log(p);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hq-gowork-"));
+  const raised: string[] = [];
   try {
+    const copy = path.join(tmp, "tree");
+    for (const f of gitFiles(["server/**"])) {
+      const from = path.join(root, f);
+      if (!fs.existsSync(from) || !fs.statSync(from).isFile()) continue;
+      fs.mkdirSync(path.join(copy, path.dirname(f)), { recursive: true });
+      fs.copyFileSync(from, path.join(copy, f));
+    }
     const env = { ...process.env, GOWORK: path.join(tmp, "go.work"), GOFLAGS: "" };
-    const init = spawnSync("go", ["work", "init", ...modules.map((m) => path.join(root, m))], { cwd: tmp, env, stdio: "inherit" });
-    if (init.status !== 0) return 1;
+    // quiet: Go may say it switches toolchain, which is no finding
+    const go = (args: string[], cwd: string) => {
+      const r = spawnSync("go", args, { cwd, env, encoding: "utf8" });
+      if (r.status !== 0) console.log(`go ${args.join(" ")}: ${r.stderr.trim()}`);
+      return r.status === 0;
+    };
+    if (!go(["work", "init", ...modules.map((m) => path.join(copy, m.dir))], tmp)) return 1;
     // the go.work asks for the newest go line of its modules (init writes the running Go's, which may be older)
-    const go = [...before.values()].flatMap((t) => /^go (\S+)/m.exec(t ?? "")?.[1] ?? []).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).at(-1);
-    if (go && spawnSync("go", ["work", "edit", "-go=" + go], { cwd: tmp, env, stdio: "inherit" }).status !== 0) return 1;
-    const sync = spawnSync("go", ["work", "sync"], { cwd: root, env, stdio: "inherit" });
-    if (sync.status !== 0) return 1;
+    const newest = modules.flatMap((m) => /^go (\S+)/m.exec(m.text)?.[1] ?? []).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).at(-1);
+    if (newest && !go(["work", "edit", "-go=" + newest], tmp)) return 1;
+    if (!go(["work", "sync"], tmp)) return 1;
+    for (const m of modules) {
+      for (const name of ["go.mod", "go.sum"]) {
+        const synced = path.join(copy, m.dir, name);
+        const now = fs.existsSync(synced) ? fs.readFileSync(synced, "utf8") : null;
+        const was = fs.existsSync(path.join(root, m.dir, name)) ? fs.readFileSync(path.join(root, m.dir, name), "utf8") : null;
+        if (now === was) continue;
+        if (name === "go.mod") {
+          const old = new Set((was ?? "").split("\n"));
+          console.log(`${m.dir}/go.mod: ${now!.split("\n").filter((l) => !old.has(l)).map((l) => l.trim()).join("; ")} (other modules select these versions)`);
+          raised.push(m.dir);
+        }
+        if (fix && now !== null) fs.writeFileSync(path.join(root, m.dir, name), now);
+      }
+    }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
-  const changed = files.filter((f) => read(f) !== before.get(f));
-  const mods = changed.filter((f) => f.endsWith("go.mod"));
-  for (const f of mods) {
-    const was = new Set(before.get(f)!.split("\n"));
-    const now = read(f)!.split("\n");
-    console.log(`${path.relative(root, f).split(path.sep).join("/")}: ${now.filter((l) => !was.has(l)).map((l) => l.trim()).join("; ")} (other modules select these versions)`);
-  }
-  if (!fix) for (const f of changed) { const b = before.get(f); if (b === null) fs.rmSync(f); else fs.writeFileSync(f, b!); }
-  if (mods.length) console.log(fix ? "go.mod files raised: commit them" : "one version per module: run `node scripts/lint-repo.ts go-versions --fix` to raise them, then commit");
-  return mods.length ? 1 : 0;
+  if (raised.length) console.log(fix ? "go.mod files raised: commit them" : "one version per module: run `node scripts/lint-repo.ts go-modules --fix` to raise them, then commit");
+  const failed = problems.length > 0 || raised.length > 0;
+  if (!failed) console.log(`${modules.length} Go modules: each declares the libraries it uses, one version of each dependency`);
+  return failed ? 1 : 0;
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -115,12 +183,15 @@ export async function main(argv: string[]): Promise<number> {
       return run(await ensure("shellcheck"), ["--format=gcc", ...gitFiles(["*.sh"])]);
     case "docker":
       return run(await ensure("hadolint"), ["--no-color", "deploy/Dockerfile"]);
-    case "go-versions":
-      return goVersions(argv[1] === "--fix");
+    case "go-modules":
+      if (argv.length > 2 || (argv[1] !== undefined && argv[1] !== "--fix")) break;
+      return goModules(argv[1] === "--fix");
     default:
-      console.log("usage: node scripts/lint-repo.ts <actions|secrets|shell|docker|go-versions [--fix]>");
+      console.log("usage: node scripts/lint-repo.ts <actions|secrets|shell|docker|go-modules [--fix]>");
       return 2;
   }
+  console.log("usage: node scripts/lint-repo.ts <actions|secrets|shell|docker|go-modules [--fix]>");
+  return 2;
 }
 
 if (import.meta.main) {

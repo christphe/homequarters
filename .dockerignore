@@ -18,3 +18,10 @@ plugins/bundled/*/test
 # their package.json and vitest.config.ts only serve their lint and tests (pnpm workspace)
 plugins/bundled/*/package.json
 plugins/bundled/*/vitest.config.ts
+# a contributor's go.work and binaries built in a module folder (decision 0041)
+**/go.work
+**/go.work.sum
+server/cmd/*/homequarters
+server/cmd/*/homequarters.exe
+server/cmd/*/loadgen
+server/cmd/*/loadgen.exe

@@ -23,7 +23,12 @@ const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e
 const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
 /** The projects with integration tests (*.ispec.ts against the testbed), in the workspace's order. */
 /** The server's Go modules, one project each (decision 0041), in the workspace's order: [project, folder]. */
-const GO = [...["auth", "config", "gamemap", "httpapi", "media", "plugin", "store", "testbed", "world"].map((m) => [m, `server/internal/${m}`]), ["server", "server/cmd/homequarters"], ["loadgen", "server/cmd/loadgen"]];
+// Every folder of server/ holding a go.mod, in the workspace's order (server/internal/*, then server/cmd/*): a
+// module without its fdash.json would get no lint, build or test, and the gates would stay green.
+const GO = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "--", "server/**/go.mod"], { cwd: path.resolve(import.meta.dirname, ".."), encoding: "utf8" })
+  .split("\n").filter(Boolean).map((f) => path.posix.dirname(f))
+  .sort((a, b) => Number(a.startsWith("server/cmd/")) - Number(b.startsWith("server/cmd/")) || (a < b ? -1 : 1))
+  .map((dir) => [dir === "server/cmd/homequarters" ? "server" : path.posix.basename(dir), dir]);
 /** The Go tasks ignore any go.work: one would accept imports a go.mod does not declare (decision 0041). */
 const GOWORK_OFF = JSON.stringify({ GOWORK: "off" });
 const INTEGRATION = ["sdk", "hq-card-lastcard", "hq-card-pouilleux", "hq-cards", "hq-chess", "hq-pets"].map((p) => `${p}:test:integration`);
@@ -57,7 +62,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     plugin("hq-pets", ["tsconfig.json", "public/tsconfig.json", "tsconfig.test.json"]),
     ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `${tsc("tsconfig.json")} && ${ox("../../../")}`, false, false, "{}"]),
     // the repository-wide linters (scripts/lint-repo.ts), workspace tasks run from the root
-    ...["actions", "secrets", "shell", "docker", "go-versions"].map((c) => [`lint:${c}`, ".", `node scripts/lint-repo.ts ${c}`, false, false, "{}"]),
+    ...["actions", "secrets", "shell", "docker", "go-modules"].map((c) => [`lint:${c}`, ".", `node scripts/lint-repo.ts ${c}`, false, false, "{}"]),
     ...GO.filter(([, dir]) => dir.startsWith("server/cmd/")).map(([p, dir]) => [`${p}:build`, dir, "go build -o ../../../bin/ .", false, false, GOWORK_OFF]),
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],

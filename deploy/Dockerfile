@@ -16,6 +16,8 @@ RUN pnpm build
 FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS server
 ARG TARGETOS=linux
 ARG TARGETARCH
+# each module builds from its own go.mod only, whatever go.work a build context might carry
+ENV GOWORK=off
 WORKDIR /s
 # one Go module per library (decision 0041): the command's go.mod and go.sum, and the go.mod of each library
 # its go.mod replaces with a folder, so that the download layer stays cached until a dependency changes

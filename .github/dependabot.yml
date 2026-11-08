@@ -9,7 +9,7 @@ version: 2
 updates:
   # one Go module per library and command of the server (decision 0041). group-by: dependency-name gives one
   # pull request per dependency across all these folders, so a dependency several modules share moves in all of
-  # them at once (lint:go-versions fails on a version that differs between modules)
+  # them at once (lint:go-modules fails on a version that differs between modules)
   - package-ecosystem: gomod
     directories: [/server/internal/*, /server/cmd/*]
     schedule: { interval: weekly, day: monday }

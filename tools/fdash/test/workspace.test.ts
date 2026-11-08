@@ -110,6 +110,8 @@ test("dependsOn from a go.mod: the projects its replace directives point at, wit
   const bad: [Record<string, unknown>, RegExp][] = [
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] } }, /a\/fdash\.json: dependsOn reads a\/go\.mod, which does not exist/],
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] }, "a/go.mod": goMod(["b"], "replace b => ../b") }, /a\/go\.mod: b is replaced by \.\.\/b, which is no project \(list b in fdash-workspace\.json\)/],
+    // the folder exists, matched by a pattern, but has no fdash.json: that is what the message says
+    [{ "fdash-workspace.json": { projects: ["*"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] }, "a/go.mod": goMod(["b"], "replace b => ../b"), "b/go.mod": "module b\n" }, /which is no project \(give b an fdash\.json/],
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ go: "." }] } }, /a\/fdash\.json: dependsOn must be/],
   ];
   for (const [files, re] of bad) assert.throws(() => loadWorkspace(tree(files)), re);
