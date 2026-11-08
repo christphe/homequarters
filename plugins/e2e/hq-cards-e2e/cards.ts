@@ -11,10 +11,12 @@
 // plugins/bundled/hq-cards/test/cards.test.ts, Old Maid and Last Card in plugins/bundled/hq-card-pouilleux/test/oldMaid.test.ts and hq-card-lastcard/test/lastCard.test.ts, the server
 // side (who may act, restarts, game hooks such as Old Maid's count, a game turned off and on) in
 // plugins/bundled/hq-cards/test/cards.ispec.ts and hq-card-pouilleux/test/oldMaid.ispec.ts. This scenario keeps what needs the browser: real
-// controls, drags and the keyboard, what each page draws, sync between pages.
+// controls, drags and the keyboard, what each page draws, sync between pages, and the axe audit of the Cards window
+// and its table view once dealt (e2e/axe.ts).
 // It runs against the testbed, without LiveKit (e2e/plugin-run.ts): node tools/fdash/cli.ts run test:e2e --pkg hq-cards-e2e
 // (after "node tools/fdash/cli.ts run build --pkg server --pkg web"). Of its RunContext it uses only adminCookie.
 import { check, summary, resetChecks, launch, joinAs, waitFor, sleep, type RunContext, type User } from "../../../e2e/lib.ts";
+import { audit, auditView } from "../../../e2e/axe.ts";
 import { CARD_H } from "../../bundled/hq-cards/public/art.ts";
 import { NARROW, GRID, CASCADE, cardAt, handSpots } from "../../bundled/hq-cards/public/layout.ts";
 import { FREE } from "../../bundled/hq-cards/public/games.ts";
@@ -92,6 +94,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("UX: at 800x450 the whole table, my hand included, and the buttons under it fit Bo's view without scrolling", fits.canvasTop >= 0 && fits.barBottom <= fits.H + 1, JSON.stringify(fits));
     check("5: Deal 7 each gives every seated player 7 cards, shown face up in their own hand only",
       (await handOf(ann)).every((c) => c.up) && ((await drawn(ann))!.cards.filter((c) => c.where === "loose")).length === 0);
+    // accessibility, the free table dealt through the real controls: axe on the Cards window in Ann's page, and inside
+    // the table view's own document. The window only: the rest of the page is the platform's, audited by e2e's a11y
+    // scenario (with LiveKit; the testbed has none, and its media bar's "unavailable" line is not this plugin's)
+    await audit(ann.page, "the Cards window with a dealt free table", MODAL);
+    await auditView((await viewFrame(ann))!, "the card table view");
     const first = (await handOf(ann))[0];
     const handAfter = async (n: number) => waitFor(async () => (await handOf(ann)).length === n, { what: "Ann's hand of " + n });
     let d = await drag(ann, await handAt(ann, 0), feltAt(60, 120));
