@@ -5,7 +5,7 @@ import { BitmapText, Container, Graphics, Sprite, Text } from "pixi.js";
 import type { AvatarSpec, Person, WorldDelta } from "../net/protocol";
 import { DANCE, EMOTES } from "./emotes";
 import { avatarFramesFor, releaseAvatar, FEET_Y, CELL_H, type AvatarFrames } from "./avatars";
-import { retarget, stepRemote, type Remote } from "./motion";
+import { applyRecord, remoteSpeed, stepRemote, type RemoteState } from "./motion";
 import { TAG_STYLE } from "./mapText";
 import type { Layer, ViewContext } from "./layer";
 import type { LocalPlayer } from "./localPlayer";
@@ -18,8 +18,8 @@ const extraHeight = (f: AvatarFrames) => Math.max(0, f.tall - 22);
 
 const DEFAULT_AV: AvatarSpec = { sk: 1, hs: 0, hc: 1, sh: 4, pa: 1 };
 
-/** A person on the map: where they are (Remote, dead-reckoned when they are not me) and what draws them. */
-export interface Ent extends Remote {
+/** A person on the map: where they are (RemoteState, dead-reckoned when they are not me) and what draws them. */
+export interface Ent extends RemoteState {
   id: number;
   key: string;
   frames: AvatarFrames;
@@ -30,9 +30,6 @@ export interface Ent extends Remote {
   ring: Graphics | null;
   hand: Text | null;
   danceUntil: number;
-  dir: number;
-  moving: boolean;
-  run: boolean;
   speaking: boolean;
   sharing: boolean;
   inConv: boolean;
@@ -119,22 +116,13 @@ export class AvatarLayer implements Layer {
     if (m.m) {
       for (const [id, x, y, d] of m.m) {
         if (id === meId) continue;
-        const dx = ((d >> 2) & 3) - 1;
-        const dy = ((d >> 4) & 3) - 1;
         let e = this.ents.get(id);
+        const first = !e;
         if (!e) {
           e = this.makeEnt(id);
-          e.tx = e.x = x;
-          e.ty = e.y = y;
           this.ents.set(id, e);
-        } else {
-          retarget(e, x, y); // keep the picture continuous: the difference to the new truth fades out
         }
-        e.dir = d & 3;
-        e.dx = dx;
-        e.dy = dy;
-        e.run = ((d >> 6) & 1) === 1;
-        e.moving = dx !== 0 || dy !== 0;
+        applyRecord(e, x, y, d, first); // later records keep the picture continuous: the difference fades out
       }
     }
     if (m.l) for (const id of m.l) if (id !== meId) this.removeEnt(id);
@@ -247,7 +235,7 @@ export class AvatarLayer implements Layer {
       if (isMe) {
         e.x = player.rx; e.y = player.ry; e.dir = player.mdir; e.moving = !!(player.dx || player.dy);
       } else {
-        stepRemote(e, ctx.grid, dt, player.speed * (e.run ? player.runMul : 1));
+        stepRemote(e, ctx.grid, dt, remoteSpeed(e, player.speed, player.runMul));
       }
       const sx = Math.round(e.x * S + cam.x);
       const sy = Math.round(e.y * S + cam.y);

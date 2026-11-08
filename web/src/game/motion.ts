@@ -235,6 +235,37 @@ export interface Remote {
   y: number;
 }
 
+/** A remote person as a state record describes them: which way they face, and whether they walk or run. */
+export interface RemoteState extends Remote {
+  dir: number;
+  run: boolean;
+  moving: boolean;
+}
+
+/**
+ * A state record [id, x, y, d] from the server (world.go, Player.rec): d = facing (2 bits) | (dx+1)<<2 |
+ * (dy+1)<<4 | running<<6. `first`: the person just came into view, placed there; otherwise the new
+ * truth is retargeted so the picture stays continuous.
+ */
+export function applyRecord(e: RemoteState, x: number, y: number, d: number, first: boolean) {
+  if (first) {
+    e.tx = e.x = x;
+    e.ty = e.y = y;
+  } else {
+    retarget(e, x, y);
+  }
+  e.dir = d & 3;
+  e.dx = ((d >> 2) & 3) - 1;
+  e.dy = ((d >> 4) & 3) - 1;
+  e.run = ((d >> 6) & 1) === 1;
+  e.moving = e.dx !== 0 || e.dy !== 0;
+}
+
+/** How fast a remote person goes (px/s): the office's walking speed, times runMul while their record says they run. */
+export function remoteSpeed(e: RemoteState, speed: number, runMul: number) {
+  return e.run ? speed * runMul : speed;
+}
+
 /** A new truth (x, y) from the server: keep the picture continuous, the difference fades out (stepRemote). */
 export function retarget(e: Remote, x: number, y: number) {
   const ox = e.tx + e.ox - x;

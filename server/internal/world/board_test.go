@@ -44,9 +44,14 @@ func TestWhiteboardAuthorityFanoutUndoAndClear(t *testing.T) {
 		t.Fatal("the author can undo")
 	}
 	h.send(a, ev{kind: evBoard, wb: draw})
+	drain(a)
+	drain(b)
 	h.send(a, ev{kind: evBoard, wb: &BoardMsg{Op: "clear", B: a.board}})
 	if len(h.w.boards[a.board].strokes) != 0 {
 		t.Fatal("an admin can clear")
+	}
+	if !strings.Contains(frames(a), `"op":"clear"`) || !strings.Contains(frames(b), `"op":"clear"`) {
+		t.Fatal("a clear reaches everybody at the board")
 	}
 }
 

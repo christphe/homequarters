@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Component test of the people list of SidePanel (web/src/ui/SidePanel.tsx): a person's row and its "More actions"
 // menu, with the session faked. The real controls stay in the browser suite: e2e/scenarios/features.ts opens the
-// menu, requests to lead and follows through it, with the server answering.
+// menu and requests to lead through it, with the server answering (the other page asks first).
 import { canvasCalls, person, renderUI, roster } from "./support"; // first: its canvas is in place before PixiJS loads
 import { mockSession } from "./support/session";
 import { screen, within } from "@testing-library/react";

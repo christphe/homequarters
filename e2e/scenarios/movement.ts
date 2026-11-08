@@ -1,4 +1,24 @@
-// Getting around faster: running, double-click "walk to", walk to a person.
+// Getting around: running under network jitter, seen from another page, and double-click "walk to".
+//
+// Browser checks kept, per feature:
+// - running: the HUD's run button turns always-run on (pressed); with 0-120 ms of input jitter a runner is never
+//   drawn stepping back, the delayed inputs leave in order, and the runner stops where the server and the other
+//   page see it (prediction against the real tick: it caught a heartbeat-ordering bug)
+// - double-click "walk to": double-clicking the map runs there along a server path and stops
+// - no console errors
+//
+// Moved down (decision 0037), where each former check lives now:
+// - walking ~72 px/s, running twice as fast: world TestSpeedIsServerEnforced,
+//   TestRunningDoublesSpeedAndIsCarriedInTheStateRecord, web/test/localPlayer.test.ts (my page predicts both)
+// - others extrapolate a runner at run speed and agree on where it stops: web/test/remoteMotion.test.ts, world
+//   TestShadowMatchesTheServerWhileRunning, TestDeadReckoningSendsStateChangesNotEveryTick
+// - the HUD shows the run toggle state: web/test/SocialControls.movement.test.tsx
+// - Shift held while walking runs: web/test/runKey.test.ts, web/test/layers.test.ts (Shift inverts always-run)
+// - the double-click target is on the map: now a precondition of the double-click check, not a check
+// - Walk to (people panel) runs onto the person's tile around walls: web/test/SidePanel.test.tsx (the button asks the
+//   session), world TestWalkToAPersonEndsOnTheirTile; a locked room keeps the walker at its door and the server
+//   refuses forbidden places: world TestWalkToAPersonInALockedRoomStopsAtTheDoor and
+//   TestWalkToIsCancelledByInputAndRefusesForbiddenPlaces, their toasts web/test/replies.test.ts
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User } from "../lib.ts";
 import type { EvaluateFunc } from "puppeteer-core";
 
@@ -11,24 +31,7 @@ type Taps = {
 };
 
 const read = <Params extends unknown[], Func extends EvaluateFunc<Params>>(u: User, fn: Func, ...args: Params) => u.page.evaluate(fn, ...args);
-const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
-  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
-  b?.click(); return !!b;
-}, text, selector);
 const dist = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
-
-/** Distance covered in ~1.5 s of holding "right", measured in the page (frame-rate independent). */
-const stride = (u: User) => read(u, () => new Promise<number>((resolve) => {
-  const v = window.__hq.view;
-  const p0 = v.position();
-  v.setDirection(1, 0);
-  const t0 = performance.now();
-  setTimeout(() => {
-    const p1 = v.position();
-    v.setDirection(0, 0);
-    resolve((p1.x - p0.x) / ((performance.now() - t0) / 1000));
-  }, 1500);
-}));
 
 /** Every frame the page sends leaves 0-120 ms late, in order, like a bad Wi-Fi; window.__origSend undoes it.
  * Each frame gets its own timer, but a timer sends the oldest frame still queued, not its own: two frames
@@ -57,38 +60,13 @@ export async function run(): Promise<boolean> {
     const b = await joinAs(browser, "Watcher" + (Date.now() % 10000));
 
     // social area, open floor: x 6..18, y 26..30 is clear
-    await Promise.all([walkTo(a, 8 * 16 + 8, 28 * 16 + 8), walkTo(b, 8 * 16 + 8, 31 * 16 + 8)]); // each page walks its own avatar
+    await Promise.all([walkTo(a, 4 * 16 + 8, 28 * 16 + 8), walkTo(b, 8 * 16 + 8, 31 * 16 + 8)]); // each page walks its own avatar
 
-    // ---- running ----
-    await walkTo(a, 3 * 16 + 8, 28 * 16 + 8);
-    const walkV = await stride(a);
-    await walkTo(a, 3 * 16 + 8, 28 * 16 + 8);
-    await read(a, () => window.__hq.view.toggleRun(true));
-    const runV = await stride(a);
-    check("walking speed is ~72 px/s", walkV > 55 && walkV < 85, walkV.toFixed(1));
-    check("running (R / Shift) is about twice as fast", runV / walkV > 1.7 && runV / walkV < 2.3, runV.toFixed(1) + " px/s");
-    await read(a, () => window.__hq.view.setDirection(1, 0));
-    await waitFor(() => read(b, (id) => window.__hq.view.ents.get(id)?.run === true, a.id), { what: "remote sees running" });
-    await sleep(500);
-    await read(a, () => window.__hq.view.setDirection(0, 0));
-    const truth = await pos(a);
-    await sleep(600);
-    const seen = await read(b, (id) => { const e = window.__hq.view.ents.get(id)!; return { x: e.x, y: e.y }; }, a.id);
-    check("others extrapolate a runner at run speed and agree on where it stops", dist(seen, truth) < 6, dist(seen, truth).toFixed(1) + " px");
-    check("the HUD shows the run toggle state", await read(a, () => document.querySelector(".run-toggle")?.getAttribute("aria-pressed") === "true"));
-    await read(a, () => window.__hq.view.toggleRun(false));
-    check("Shift held while walking runs too", await read(a, () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift" }));
-      const on = window.__hq.view.running;
-      window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift" }));
-      return on && !window.__hq.view.running;
-    }));
-
-    // ---- double-click to walk ----
-    // ---- prediction under network jitter, and at walls ----
+    // ---- running, through the HUD button, under network jitter ----
     // Every input leaves the page 0-120 ms late (in order), like a bad Wi-Fi. While "right" is held
     // at run speed, the own avatar must never be drawn stepping back, and it must end where the server says.
-    await walkTo(a, 4 * 16 + 8, 28 * 16 + 8);
+    await a.page.click(".run-toggle"); // a real mouse click at its centre: a covered button would not get it
+    check("the HUD's run button turns always-run on", await read(a, () => window.__hq.view.running && document.querySelector(".run-toggle")?.getAttribute("aria-pressed") === "true"));
     // Recorded for the convergence check below, which failed on CI when this jitter shim sent the stop
     // before the heartbeat queued just ahead of it (the server ran on 215 px): what B receives about A,
     // what the server acknowledges to A, and what A sends. Reported on failure.
@@ -109,8 +87,7 @@ export async function run(): Promise<boolean> {
     await delaySends(a);
     const jitter = await read(a, () => new Promise<number[]>((resolve) => {
       const v = window.__hq.view;
-      v.toggleRun(true);
-      v.setDirection(1, 0);
+      v.setDirection(1, 0); // always-run is on (the HUD button above)
       const xs: number[] = [];
       const t0 = performance.now();
       const tick = (now: number) => {
@@ -163,22 +140,11 @@ export async function run(): Promise<boolean> {
       const x = r.left + v.camX + (t.tx * 16 + 8) * v.S, y = r.top + v.camY + (t.ty * 16 + 8) * v.S;
       return { x, y, onMap: document.elementFromPoint(x, y) === v.app.canvas };
     }, target);
-    check("the double-click target is on the map, not under a panel", box.onMap);
+    if (!box.onMap) throw new Error("setup: the double-click target is under a panel, not on the map");
     await a.page.mouse.click(box.x, box.y, { count: 2 });
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === target.tx && Math.floor(p.y / 16) === target.ty; }, { timeout: 20000, what: "double-click walk arrives" });
     await sleep(400);
     check("double-clicking the map runs there along a server path and stops", await read(a, () => window.__hq.view.dx === 0 && window.__hq.view.dy === 0 && !window.__hq.view.guided));
-
-    // ---- walk to a person, across the wall into the reception ----
-    await walkTo(b, 9 * 16 + 8, 6 * 16 + 8);
-    const t0 = Date.now();
-    await click(a, "Walk to " + b.name, ".people button");
-    const sameTile = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.floor(p.x / 16) === Math.floor(q.x / 16) && Math.floor(p.y / 16) === Math.floor(q.y / 16);
-    await waitFor(async () => sameTile(await pos(a), await pos(b)) && !(await read(a, () => window.__hq.view.guided)), { timeout: 30000, what: "walk to person arrives" });
-    check("Walk to (people panel) runs onto the person's tile around walls", true, ((Date.now() - t0) / 1000).toFixed(1) + " s");
-    // a locked room keeps the walker at its door and says why, and the server refuses to route a member into
-    // an admin-only room: world TestWalkToAPersonInALockedRoomStopsAtTheDoor and
-    // TestWalkToIsCancelledByInputAndRefusesForbiddenPlaces, their toasts web/test/replies.test.ts
 
     check("no console errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | ").slice(0, 300));
   } catch (e) {

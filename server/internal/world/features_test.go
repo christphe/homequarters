@@ -1,6 +1,8 @@
 package world
 
 import (
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -348,6 +350,34 @@ func TestLockingKnockingAndAnswering(t *testing.T) {
 	h.run(2 * time.Second)
 	if late.X < 46*16 {
 		t.Fatalf("after unlocking anybody may enter, x=%.0f", late.X)
+	}
+}
+
+// Whoever is inside when a room is locked may come back: the person who locked it steps out and walks
+// straight back in, and their door list never has the room, so their page offers no Knock or Enter anyway
+// (web/test/doors.test.ts: no door buttons at a door that is not denied). The browser keeps knocking and
+// letting in through the real buttons (e2e/scenarios/offices.ts).
+func TestWhoeverLockedARoomStepsOutAndWalksBackIn(t *testing.T) {
+	h := newHarness(t)
+	locker := h.add(1, "member", 46*16+8, 5*16+8) // inside Aurora (area 3)
+	h.add(2, "member", 47*16+8, 5*16+8)           // stays inside, so the room stays locked
+	h.send(locker, ev{kind: evLock, b: true})
+	h.teleport(locker, 42*16+8, 4*16+8) // outside its west door
+	h.run(300 * time.Millisecond)
+	drain(locker)
+	h.w.sendDeny(locker)
+	var door struct {
+		D  []int `json:"d"`
+		Lk []int `json:"lk"`
+	}
+	got := frames(locker)
+	if err := json.Unmarshal([]byte(got), &door); err != nil || !slices.Equal(door.Lk, []int{3}) || slices.Contains(door.D, 3) {
+		t.Fatalf("the room is still locked, and not denied to whoever locked it: %q", got)
+	}
+	h.send(locker, ev{kind: evInput, seq: 1, dx: 1})
+	h.run(3 * time.Second)
+	if locker.area != 3 || locker.X < 46*16 {
+		t.Fatalf("whoever locked the room walks straight back in, at x=%.0f area %d", locker.X, locker.area)
 	}
 }
 
