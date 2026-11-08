@@ -244,31 +244,47 @@ func flagSet(name string) bool {
 }
 
 type report struct {
-	Label                                                    string
-	Rooms, PerRoom, Participants                             int
-	Video                                                    bool
-	MaxVideos                                                int
-	Screen                                                   bool
-	Connected, ConnectFailed                                 int
-	ConnectMsP50, ConnectMsP95                               float64
-	FirstMediaMsP50, FirstMediaMsP95                         float64
-	SubscribedAudio, SubscribedVideo, SubscribedScr          int
-	AudioKbpsPerTrack, VideoKbpsPerTrack, ScreenKbpsPerTrack float64
-	ReceivedMbpsTotal, ReceivedKbpsPerParticipant            float64
-	LossPct                                                  float64
-	AudioJitterMsP50, AudioJitterMsP95                       float64
-	VideoJitterMsP50, VideoJitterMsP95                       float64
-	Stalls500ms                                              int64
-	WindowS                                                  float64
-	SFUCPUAvgPct, SFUCPUMaxPct, SFUMemMaxMB                  float64
-	SFUNetInMBps, SFUNetOutMBps                              float64
+	Label                      string  `json:"Label"`
+	Rooms                      int     `json:"Rooms"`
+	PerRoom                    int     `json:"PerRoom"`
+	Participants               int     `json:"Participants"`
+	Video                      bool    `json:"Video"`
+	MaxVideos                  int     `json:"MaxVideos"`
+	Screen                     bool    `json:"Screen"`
+	Connected                  int     `json:"Connected"`
+	ConnectFailed              int     `json:"ConnectFailed"`
+	ConnectMsP50               float64 `json:"ConnectMsP50"`
+	ConnectMsP95               float64 `json:"ConnectMsP95"`
+	FirstMediaMsP50            float64 `json:"FirstMediaMsP50"`
+	FirstMediaMsP95            float64 `json:"FirstMediaMsP95"`
+	SubscribedAudio            int     `json:"SubscribedAudio"`
+	SubscribedVideo            int     `json:"SubscribedVideo"`
+	SubscribedScr              int     `json:"SubscribedScr"`
+	AudioKbpsPerTrack          float64 `json:"AudioKbpsPerTrack"`
+	VideoKbpsPerTrack          float64 `json:"VideoKbpsPerTrack"`
+	ScreenKbpsPerTrack         float64 `json:"ScreenKbpsPerTrack"`
+	ReceivedMbpsTotal          float64 `json:"ReceivedMbpsTotal"`
+	ReceivedKbpsPerParticipant float64 `json:"ReceivedKbpsPerParticipant"`
+	LossPct                    float64 `json:"LossPct"`
+	AudioJitterMsP50           float64 `json:"AudioJitterMsP50"`
+	AudioJitterMsP95           float64 `json:"AudioJitterMsP95"`
+	VideoJitterMsP50           float64 `json:"VideoJitterMsP50"`
+	VideoJitterMsP95           float64 `json:"VideoJitterMsP95"`
+	Stalls500ms                int64   `json:"Stalls500ms"`
+	WindowS                    float64 `json:"WindowS"`
+	SFUCPUAvgPct               float64 `json:"SFUCPUAvgPct"`
+	SFUCPUMaxPct               float64 `json:"SFUCPUMaxPct"`
+	SFUMemMaxMB                float64 `json:"SFUMemMaxMB"`
+	SFUNetInMBps               float64 `json:"SFUNetInMBps"`
+	SFUNetOutMBps              float64 `json:"SFUNetOutMBps"`
 	// Unix seconds of the measurement window, to line up host samples taken on a remote SFU (bench/vm-sample.sh).
-	WindowStart, WindowEnd float64
-	Notes                  string
+	WindowStart float64 `json:"WindowStart"`
+	WindowEnd   float64 `json:"WindowEnd"`
+	Notes       string  `json:"Notes"`
 }
 
 func dockerSample(name string) (cpu, memMB, rx, tx float64) {
-	o, err := exec.Command("docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}", name).Output()
+	o, err := exec.CommandContext(context.Background(), "docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}", name).Output()
 	if err != nil {
 		return
 	}
@@ -286,8 +302,8 @@ func dockerSample(name string) (cpu, memMB, rx, tx float64) {
 func parseSize(s string) float64 {
 	mult := map[string]float64{"B": 1e-6, "kB": 1e-3, "MB": 1, "GB": 1e3, "KiB": 1.024e-3, "MiB": 1.048576, "GiB": 1073.7}
 	for suf, m := range mult {
-		if strings.HasSuffix(s, suf) {
-			v, _ := strconv.ParseFloat(strings.TrimSuffix(s, suf), 64)
+		if before, ok := strings.CutSuffix(s, suf); ok {
+			v, _ := strconv.ParseFloat(before, 64)
 			return v * m
 		}
 	}
@@ -309,8 +325,8 @@ func main() {
 	total := *rooms * *perRoom
 	tick := time.NewTicker(time.Second / time.Duration(*ramp))
 	t0 := time.Now()
-	for r := 0; r < *rooms; r++ {
-		for i := 0; i < *perRoom; i++ {
+	for r := range *rooms {
+		for i := range *perRoom {
 			<-tick.C
 			p := &participant{a: a, seen: map[string]bool{}, reqAt: map[string]time.Time{}}
 			go p.run(ctx, fmt.Sprintf("mg-%s-r%d", *label, r), fmt.Sprintf("u%d-%d", r, i), *screen && i == 0)
@@ -438,14 +454,16 @@ func main() {
 	js, _ := json.MarshalIndent(rep, "", "  ")
 	fmt.Println(string(js))
 	if *out != "" {
-		os.WriteFile(*out, js, 0o644)
+		if err := os.WriteFile(*out, js, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "report:", err)
+		}
 	}
 	cancel()
 	time.Sleep(500 * time.Millisecond)
 }
 
 func psSample(pid int) (cpu, rssMB float64) {
-	o, err := exec.Command("ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
+	o, err := exec.CommandContext(context.Background(), "ps", "-o", "%cpu=,rss=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return
 	}
@@ -464,7 +482,7 @@ func promBytes(url string) (in, out float64) {
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(resp, "\n") {
+	for line := range strings.SplitSeq(resp, "\n") {
 		if !strings.HasPrefix(line, "livekit_packet_bytes{") {
 			continue
 		}
@@ -480,8 +498,13 @@ func promBytes(url string) (in, out float64) {
 }
 
 func httpGet(url string) (string, error) {
-	c := http.Client{Timeout: 3 * time.Second}
-	r, err := c.Get(url)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	r, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}

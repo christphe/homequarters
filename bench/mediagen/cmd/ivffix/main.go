@@ -6,7 +6,6 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 )
 
@@ -19,12 +18,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	out, err := os.Create(os.Args[2])
-	if err != nil {
-		panic(err)
-	}
-	defer out.Close()
-	out.Write(in[:32])
+	out := make([]byte, 0, len(in))
+	out = append(out, in[:32]...)
 	off, n := 32, uint64(0)
 	for off+12 <= len(in) {
 		size := int(binary.LittleEndian.Uint32(in[off:]))
@@ -34,11 +29,13 @@ func main() {
 		var h [12]byte
 		binary.LittleEndian.PutUint32(h[:4], uint32(size))
 		binary.LittleEndian.PutUint64(h[4:], n)
-		out.Write(h[:])
-		out.Write(in[off+12 : off+12+size])
+		out = append(out, h[:]...)
+		out = append(out, in[off+12:off+12+size]...)
 		off += 12 + size
 		n++
 	}
+	if err := os.WriteFile(os.Args[2], out, 0o644); err != nil {
+		panic(err)
+	}
 	fmt.Println("frames:", n)
-	_ = io.EOF
 }
