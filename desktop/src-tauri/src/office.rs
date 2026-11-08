@@ -108,7 +108,10 @@ mod tests {
             assert_eq!(sign_in_provider(&Url::parse(url).unwrap()).as_deref(), want, "{url}");
         }
         assert!(same_origin(&Url::parse("https://a.example/x").unwrap(), &Url::parse("https://a.example/").unwrap()));
-        assert!(!same_origin(&Url::parse("https://a.example/").unwrap(), &Url::parse("https://a.example:8443/").unwrap()));
+        assert!(!same_origin(
+            &Url::parse("https://a.example/").unwrap(),
+            &Url::parse("https://a.example:8443/").unwrap()
+        ));
     }
 
     #[test]

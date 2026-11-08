@@ -47,9 +47,15 @@ impl Offices {
 
     /// Learns the name of the office a page belongs to from its title. True when something changed.
     pub fn learn_name(&mut self, page: &Url, title: &str) -> bool {
-        let Some(name) = title.strip_prefix(TITLE_PREFIX).map(str::trim).filter(|n| !n.is_empty()) else { return false };
+        let Some(name) = title.strip_prefix(TITLE_PREFIX).map(str::trim).filter(|n| !n.is_empty()) else {
+            return false;
+        };
         let page = page.as_str();
-        let Some(office) = self.list.iter_mut().filter(|o| page.starts_with(o.url.as_str())).max_by_key(|o| o.url.len()) else { return false };
+        let Some(office) =
+            self.list.iter_mut().filter(|o| page.starts_with(o.url.as_str())).max_by_key(|o| o.url.len())
+        else {
+            return false;
+        };
         if office.name.as_deref() == Some(name) {
             return false;
         }
@@ -80,7 +86,10 @@ mod tests {
         o.open("https://a.example/");
         o.open("https://b.example/");
         o.open("https://a.example/");
-        assert_eq!(o.list.iter().map(|x| x.url.as_str()).collect::<Vec<_>>(), ["https://a.example/", "https://b.example/"]);
+        assert_eq!(
+            o.list.iter().map(|x| x.url.as_str()).collect::<Vec<_>>(),
+            ["https://a.example/", "https://b.example/"]
+        );
         assert_eq!(o.current.as_deref(), Some("https://a.example/"));
     }
 

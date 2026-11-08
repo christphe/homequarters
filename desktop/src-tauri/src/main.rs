@@ -56,7 +56,13 @@ impl Shell {
     /// Whether a page belongs to one of the offices this app opens.
     fn knows(&self, url: &Url) -> bool {
         self.cli_office.as_ref().is_some_and(|o| office::same_origin(o, url))
-            || self.offices.lock().unwrap().list.iter().any(|o| Url::parse(&o.url).is_ok_and(|o| office::same_origin(&o, url)))
+            || self
+                .offices
+                .lock()
+                .unwrap()
+                .list
+                .iter()
+                .any(|o| Url::parse(&o.url).is_ok_and(|o| office::same_origin(&o, url)))
     }
 }
 
@@ -193,7 +199,16 @@ fn office_items<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<CheckMenuIt
         .list
         .iter()
         .enumerate()
-        .map(|(i, o)| CheckMenuItem::with_id(app, format!("go:{i}"), offices::label(o), true, offices.current.as_deref() == Some(&o.url), None::<&str>))
+        .map(|(i, o)| {
+            CheckMenuItem::with_id(
+                app,
+                format!("go:{i}"),
+                offices::label(o),
+                true,
+                offices.current.as_deref() == Some(&o.url),
+                None::<&str>,
+            )
+        })
         .collect()
 }
 
@@ -205,7 +220,8 @@ fn office_menu<R: Runtime>(app: &AppHandle<R>, with_quit: bool) -> tauri::Result
     let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, Some("CmdOrCtrl+Q"))?;
     let update = update_item(app)?;
-    let sep = [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
+    let sep =
+        [PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?];
     let mut items: Vec<&dyn IsMenuItem<R>> = Vec::new();
     if let Some(u) = &update {
         items.extend([u as &dyn IsMenuItem<R>, &sep[2]]);
@@ -264,7 +280,12 @@ fn window_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         app,
         "Window",
         true,
-        &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::fullscreen(app, None)?, &sep()?, &PredefinedMenuItem::close_window(app, None)?],
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::fullscreen(app, None)?,
+            &sep()?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
     )?;
     Menu::with_items(app, &[&app_menu, &edit, &office_menu(app, false)?, &window])
 }
@@ -314,7 +335,9 @@ fn sign_in_in_browser(app: &AppHandle, start: &Url, provider: &str) {
     let mut in_browser = start.clone();
     in_browser.query_pairs_mut().append_pair("handoff", &hash);
     let _ = tauri_plugin_opener::OpenerExt::opener(app).open_url(in_browser.as_str(), None::<&str>);
-    if let (Some(window), Ok(wait)) = (app.get_webview_window(MAIN), start.join(&format!("/auth/{provider}/handoff/{secret}"))) {
+    if let (Some(window), Ok(wait)) =
+        (app.get_webview_window(MAIN), start.join(&format!("/auth/{provider}/handoff/{secret}")))
+    {
         let _ = window.navigate(wait);
     }
 }
@@ -323,14 +346,24 @@ fn sign_in_in_browser(app: &AppHandle, start: &Url, provider: &str) {
 /// texts that speak of a browser tab), and the web APIs this system's web view lacks (src/missing-apis.js;
 /// WebView2 has them all).
 fn page_script() -> String {
-    let os = if cfg!(target_os = "macos") { "macos" } else if cfg!(windows) { "windows" } else { "linux" };
-    let flag = format!("Object.defineProperty(window, '__HQ_DESKTOP__', {{ value: Object.freeze({{ os: '{os}' }}) }});
-");
+    let os = if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    };
+    let flag = format!(
+        "Object.defineProperty(window, '__HQ_DESKTOP__', {{ value: Object.freeze({{ os: '{os}' }}) }});
+"
+    );
     if cfg!(windows) {
         return flag;
     }
     let yes = |b: bool| if b { "true" } else { "false" };
-    flag + &include_str!("missing-apis.js").replace("__HQ_IDLE__", yes(idle::MEASURED)).replace("__HQ_LAYOUT__", yes(layout::MEASURED))
+    flag + &include_str!("missing-apis.js")
+        .replace("__HQ_IDLE__", yes(idle::MEASURED))
+        .replace("__HQ_LAYOUT__", yes(layout::MEASURED))
 }
 
 fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Result<WebviewWindow> {
@@ -375,9 +408,14 @@ fn open_window(app: &AppHandle, start: WebviewUrl, data: PathBuf) -> tauri::Resu
                     (_, false) => PermissionResponse::Deny,
                     // what the office asks for itself, behind its own settings and consent; idle detection is
                     // "other" to WebView2
-                    (PermissionKind::Camera | PermissionKind::Microphone | PermissionKind::DisplayCapture | PermissionKind::Notifications | PermissionKind::Other, true) => {
-                        PermissionResponse::Allow
-                    }
+                    (
+                        PermissionKind::Camera
+                        | PermissionKind::Microphone
+                        | PermissionKind::DisplayCapture
+                        | PermissionKind::Notifications
+                        | PermissionKind::Other,
+                        true,
+                    ) => PermissionResponse::Allow,
                     (_, true) => PermissionResponse::Default,
                 }
             }
@@ -422,14 +460,19 @@ fn show(window: &WebviewWindow) {
 
 #[cfg(not(target_os = "macos"))]
 fn tray(app: &AppHandle) -> tauri::Result<()> {
-    let mut tray = TrayIconBuilder::with_id(TRAY).tooltip("Home Quarters").menu(&tray_menu(app)?).show_menu_on_left_click(false);
+    let mut tray =
+        TrayIconBuilder::with_id(TRAY).tooltip("Home Quarters").menu(&tray_menu(app)?).show_menu_on_left_click(false);
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
     tray.on_tray_icon_event(|tray, event| {
         if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
             if let Some(window) = tray.app_handle().get_webview_window(MAIN) {
-                if window.is_visible().unwrap_or(false) { hide(&window) } else { show(&window) }
+                if window.is_visible().unwrap_or(false) {
+                    hide(&window)
+                } else {
+                    show(&window)
+                }
             }
         }
     })
@@ -527,7 +570,9 @@ fn main() {
                 update::watch(app.handle().clone(), args.update_url.clone(), update_ready);
             }
             let offices = app.state::<Shell>().offices.lock().unwrap().list.clone();
-            for o in offices.iter().filter_map(|o| Url::parse(&o.url).ok()).chain(app.state::<Shell>().cli_office.clone()) {
+            for o in
+                offices.iter().filter_map(|o| Url::parse(&o.url).ok()).chain(app.state::<Shell>().cli_office.clone())
+            {
                 allow_office(app.handle(), &o);
             }
             open_window(app.handle(), start, dir.join("webview"))?;
