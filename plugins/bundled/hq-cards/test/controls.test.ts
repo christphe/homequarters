@@ -1,6 +1,6 @@
 // hq-cards: which controls the table offers (public/controls.ts), checked here instead of in the browser.
-// Run: node --test plugins/bundled/hq-cards/test
-import { test } from "node:test";
+// Run: node tools/fdash/cli.ts run test:unit --pkg hq-cards
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { canPick, pileActions, seatButtons, seatPick, tableActions } from "../public/controls.ts";
 import { FREE, clientGame } from "../public/games.ts";

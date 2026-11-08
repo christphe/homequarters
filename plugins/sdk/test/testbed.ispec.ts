@@ -1,12 +1,12 @@
 // Integration tests of the testbed client (plugins/sdk/testbed.ts) against `homequarters testbed` and
 // the echo fixture plugin of the server's tests: onMessage stores {v} under "k" and answers {echo: v}.
-// Run: node --test "plugins/sdk/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg sdk (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { pathToFileURL } from "node:url";
 import { testbed } from "../testbed.ts";
 import type { Testbed } from "../testbed.ts";
@@ -15,7 +15,7 @@ const echo = path.resolve(import.meta.dirname, "../../../server/internal/httpapi
 type Echo = { echo: string };
 
 const beds: Testbed[] = [];
-after(async () => {
+afterAll(async () => {
   await Promise.all(beds.map((b) => b.close()));
 });
 const open = async (): Promise<Testbed> => {

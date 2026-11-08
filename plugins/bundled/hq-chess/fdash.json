@@ -53,23 +53,35 @@
     "test:unit": {
       "run": [
         [
-          "node",
-          "--test",
-          "test/*.test.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--project",
+          "hq-chess"
         ]
       ],
       "inputs": [
         "/package.json",
         "/pnpm-workspace.yaml",
         "/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ]
     },
     "test:integration": {
       "run": [
         [
-          "node",
-          "--test",
-          "**/*.ispec.ts"
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--project",
+          "hq-chess:integration"
         ]
       ],
       "inputs": [
@@ -79,6 +91,12 @@
         "/package.json",
         "/pnpm-workspace.yaml",
         "/pnpm-lock.yaml"
+      ],
+      "tools": [
+        [
+          "pnpm",
+          "--version"
+        ]
       ],
       "env": {
         "HQ_BIN_REPO_ONLY": "1"

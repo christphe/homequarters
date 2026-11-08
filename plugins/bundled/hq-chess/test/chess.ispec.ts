@@ -1,7 +1,7 @@
 // The bundled chess plugin through the real server: `homequarters testbed` runs the plugin's server code
 // (main.ts, compiled and run by QuickJS as in production) and these tests drive it as members do, over
 // HTTP and WebSocket, with X next to a board (`use`) and the page's messages (`send`).
-// Run: node --test "plugins/bundled/hq-chess/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg hq-chess (needs bin/homequarters[.exe] or HQ_BIN).
 //
 // Waiting: a state predicate is polled on everything a member received (`waitBoard`), not matched with
 // `waitFor`, which consumes frames and would make a later wait depend on an earlier one. Where an action must
@@ -9,7 +9,7 @@
 // always answers (`probe`) proves the earlier message was handled, and nothing changed.
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { testbed } from "../../../sdk/testbed.ts";
 import type { Member, Testbed, Tile } from "../../../sdk/testbed.ts";
 
@@ -25,7 +25,7 @@ type State = { p: string; w: Seat; b: Seat; r: string; u: boolean; m: { from?: n
 type Frame = { t: string; x?: number; y?: number; s?: State; list?: { id: number; side: string }[] };
 
 const beds: Testbed[] = [];
-after(async () => {
+afterAll(async () => {
   await Promise.all(beds.map((b) => b.close()));
 });
 

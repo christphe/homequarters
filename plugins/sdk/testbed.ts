@@ -1,4 +1,4 @@
-// Client for plugin integration tests (`**/*.ispec.ts`, run by `node --test`): starts
+// Client for plugin integration tests (`**/*.ispec.ts`, run by Vitest): starts
 // `homequarters testbed` (the real server, no LiveKit; server/internal/testbed) and drives members over
 // the real HTTP and WebSocket API. Node 24 only: global fetch and WebSocket, no dependency.
 //

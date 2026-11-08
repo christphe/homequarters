@@ -1,5 +1,5 @@
-// hq-cards: game definitions, the table model, the log, the art and the felt layout. Run: node --test plugins/bundled/hq-cards/test
-import { test } from "node:test";
+// hq-cards: game definitions, the table model, the log, the art and the felt layout. Run: node tools/fdash/cli.ts run test:unit --pkg hq-cards
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   STANDARD, FREE, CLIENT_GAME_MAX, validateDefinition, validateCards, deckSize, cardName, allows, clientGame, type Game, type GameDefinition,

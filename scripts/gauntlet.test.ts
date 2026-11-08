@@ -27,6 +27,9 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
   const tsc = (p: string) => `pnpm exec tsc -p ${p}`;
   const plugin = (p: string, configs: string[]) => [`${p}:lint`, `plugins/bundled/${p}`, [...configs.map((c) => tsc(c)), ox("../../../")].join(" && "), false, false, "{}"];
   const unit = (name: string, cwd: string) => [name, cwd, "node --test test/*.test.ts", false, false, "{}"];
+  // a plugin's tests run its own Vitest projects (its vitest.config.ts): <name> for test:unit, <name>:integration
+  const vitest = (p: string, tier: "unit" | "integration") =>
+    [`${p}:test:${tier}`, p === "sdk" ? "plugins/sdk" : `plugins/bundled/${p}`, `pnpm exec vitest run --project ${tier === "unit" ? p : `${p}:integration`}`, false, false, tier === "unit" ? "{}" : '{"HQ_BIN_REPO_ONLY":"1"}'];
   const fixtures = ["critters/tsconfig.json", "drawn-pet/tsconfig.json", "drawn-pet/public/tsconfig.json", "drawn-sheet/public/tsconfig.json", "ui-demo/tsconfig.json", "ui-demo/public/tsconfig.json", "ui-demo/public/views/tsconfig.json"];
   assert.deepEqual(gates.map(row), [
     ["server:lint", "server", "gofmt -l . && go vet ./... && go tool staticcheck ./...", true, false, "{}"],
@@ -53,11 +56,11 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     ["e2e:test:unit", "e2e", "pnpm exec vitest run", false, false, "{}"],
     ["scripts:test:unit", "scripts", "pnpm exec vitest run", false, false, "{}"],
     unit("fdash:test:unit", "tools/fdash"),
-    unit("hq-card-lastcard:test:unit", "plugins/bundled/hq-card-lastcard"),
-    unit("hq-card-pouilleux:test:unit", "plugins/bundled/hq-card-pouilleux"),
-    unit("hq-cards:test:unit", "plugins/bundled/hq-cards"),
-    unit("hq-chess:test:unit", "plugins/bundled/hq-chess"),
-    ...INTEGRATION.map((n) => [n, n.startsWith("sdk:") ? "plugins/sdk" : `plugins/bundled/${n.split(":")[0]}`, "node --test **/*.ispec.ts", false, false, '{"HQ_BIN_REPO_ONLY":"1"}']),
+    vitest("hq-card-lastcard", "unit"),
+    vitest("hq-card-pouilleux", "unit"),
+    vitest("hq-cards", "unit"),
+    vitest("hq-chess", "unit"),
+    ...INTEGRATION.map((n) => vitest(n.split(":")[0]!, "integration")),
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
     ...[
       ["hq-card-lastcard-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-lastcard lastCard.ts"],

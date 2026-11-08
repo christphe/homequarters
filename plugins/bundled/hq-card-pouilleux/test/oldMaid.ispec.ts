@@ -1,12 +1,12 @@
 // The bundled Old Maid game (hq-card-pouilleux) on the card table (hq-cards) through the real server (testbed).
-// Run: node --test "plugins/bundled/hq-card-pouilleux/test/*.ispec.ts" (needs bin/homequarters[.exe] or HQ_BIN).
+// Run: node tools/fdash/cli.ts run test:integration --pkg hq-card-pouilleux (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { CARDS, NAMES, act, cardBed, cardsDir, closeBeds, count, handSizes, lastOf, logVerbs, noErrors, seatAll, stateAfter, tableOf, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
 import type { Frame } from "../../hq-cards/test/harness.ts";
 
-after(closeBeds);
+afterAll(closeBeds);
 
 const OLD_MAID = "hq-card-pouilleux";
 const dirs = [cardsDir, path.resolve(import.meta.dirname, "..")];

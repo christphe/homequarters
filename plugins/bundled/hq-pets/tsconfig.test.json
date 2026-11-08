@@ -1,5 +1,5 @@
 {
-  // The plugin's tests and tools, run by Node as they are (type stripping); Node's types come from its own package.json.
+  // The plugin's tests (run by Vitest) and tools (run by Node as they are, type stripping); Node's types come from its own package.json.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
@@ -18,5 +18,5 @@
     "verbatimModuleSyntax": true,
     "types": ["node"]
   },
-  "include": ["test", "../../sdk/server.d.ts"]
+  "include": ["test", "vitest.config.ts", "../../sdk/server.d.ts"]
 }

@@ -1,5 +1,5 @@
-// hq-chess rules: seats, moves, reset. Run: node --test plugins/bundled/hq-chess/test
-import { test } from "node:test";
+// hq-chess rules: seats, moves, reset. Run: node tools/fdash/cli.ts run test:unit --pkg hq-chess
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   START, newBoard, parseBoard, sideOf, seatOf, take, move, canReset, reset, squareName, place, toReserve, changeBetween, canUndo, undo,

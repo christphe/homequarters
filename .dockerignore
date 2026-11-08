@@ -15,5 +15,6 @@ docs
 deploy/.env
 # plugin tests and their fixture plugins stay out of the image (plugins/bundled/ is copied whole)
 plugins/bundled/*/test
-# their package.json only declares the tools of their lint and tests (pnpm workspace)
+# their package.json and vitest.config.ts only serve their lint and tests (pnpm workspace)
 plugins/bundled/*/package.json
+plugins/bundled/*/vitest.config.ts

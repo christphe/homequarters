@@ -1,16 +1,16 @@
 // The bundled card table (hq-cards) through the real server (testbed): "use" is X next to a deck on the map,
-// a plugin message is what the page's code sends. Run: node --test "plugins/bundled/hq-cards/test/*.ispec.ts"
+// a plugin message is what the page's code sends. Run: node tools/fdash/cli.ts run test:integration --pkg hq-cards
 // (needs bin/homequarters[.exe] or HQ_BIN).
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import {
   CARDS, DECK, NAMES, act, cardBed, cardsDir, closeBeds, count, fixture, frames, freeTable, handSizes, lastOf, logVerbs, noErrors, stateAfter, tableOf, until,
   openDeck, waitTable,
 } from "./harness.ts";
 import type { Frame } from "./harness.ts";
 
-after(closeBeds);
+afterAll(closeBeds);
 
 const games = path.resolve(cardsDir, "..");
 const key = (prefix: string): string => `${prefix}:${DECK.x},${DECK.y}`;

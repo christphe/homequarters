@@ -1,6 +1,6 @@
 // hq-card-lastcard: the 108 cards and their values, the count hook, the definition hq-cards accepts in two
-// parts, and the card sheet. Run: node --test plugins/bundled/hq-card-lastcard/test
-import { test } from "node:test";
+// parts, and the card sheet. Run: node tools/fdash/cli.ts run test:unit --pkg hq-card-lastcard
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
@@ -90,7 +90,7 @@ function decode(buf: Buffer): { w: number; h: number; px: Buffer } {
 }
 
 test("the sheet: 109 cells of 20 x 28, 16 per row, all different", () => {
-  const { w, h, px } = decode(readFileSync(new URL("../public/shared/cards.png", import.meta.url)));
+  const { w, h, px } = decode(readFileSync(`${import.meta.dirname}/../public/shared/cards.png`));
   assert.equal(w, 320);
   assert.equal(h, 196);
   const cells = new Set<string>();
