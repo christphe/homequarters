@@ -1,6 +1,11 @@
-// Accessibility: automated axe-core audit (WCAG 2.1 A and AA rules plus axe best practices) of every screen and dialog,
+// Accessibility: automated axe-core audit (WCAG 2.1 A and AA rules plus axe best practices) of the rendered screens,
 // and keyboard checks (focus trap and Escape in dialogs, tab semantics). This finds a subset of problems; it is not a
 // substitute for testing with a screen reader (see docs/status.md).
+// The browser audits what only a browser can: colour contrast (real styles, fonts and layout), full screens (the
+// world view, the side panel, overlays) and plugin iframes. A dialog, panel or menu whose structure is all axe needs
+// is audited in a component test (web/test/*.test.tsx through web/test/axe.ts, in more states than here): the status
+// menu, the administration dialog's Invites, Activity and Plugins tabs and a plugin's settings, an object's dialog,
+// the whiteboard. Their contrast is covered by the audits kept here, which show the same styles (decision 0037).
 import os from "node:os";
 import path from "node:path";
 import type { Page } from "puppeteer-core";
@@ -66,11 +71,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await p.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".tabs button")][1].click());
     await waitFor(() => p.$(".chat"), { what: "chat panel" });
     await audit(p, "the office (chat panel)");
-    await p.evaluate(() => document.querySelector<HTMLButtonElement>(".status-menu button")!.click());
-    await waitFor(() => p.$(".menu"), { what: "status menu" });
-    await audit(p, "the status menu");
-    await p.keyboard.press("Escape");
-    await p.evaluate(() => document.querySelector<HTMLButtonElement>(".status-menu button[aria-expanded=true]")?.click());
+    // (the status menu's audit is web/test/StatusMenu.test.tsx; the more actions menu above has its styles)
 
     // ---- dialogs
     await p.evaluate(() => [...document.querySelectorAll("button")].find((b) => /settings/i.test(b.getAttribute("aria-label") ?? b.title ?? ""))?.click());
@@ -105,24 +106,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await click(p, ".topbar button", "Admin");
     await waitFor(() => p.$(".modal .admin-table"), { what: "admin dialog" });
     await audit(p, "the administration dialog (members)");
-    await click(p, ".modal [role=tab]", "Invites");
-    await waitFor(() => p.$(".modal .admin-form"), { what: "invites tab" });
-    await click(p, ".modal .admin-form button", "Create invite link");
-    await waitFor(() => p.$(".modal .admin-table"), { what: "invite row" });
-    await audit(p, "the administration dialog (invites)");
-    await click(p, ".modal [role=tab]", "Activity");
-    await waitFor(() => p.$(".modal .audit li"), { what: "activity" });
-    await audit(p, "the administration dialog (activity)");
+    // (the Invites, Activity and Plugins tabs and a plugin's settings: web/test/AdminDialog.test.tsx and
+    // AdminPlugins.test.tsx; the Members tab above has their styles). Pets is turned on through its switch for the
+    // side panel and the plugin's modal below.
     await click(p, ".modal [role=tab]", "Plugins");
     await waitFor(() => p.$('.modal tr[data-plugin="hq-pets"]'), { what: "plugins tab" });
-    await audit(p, "the administration dialog (plugins)");
     await p.evaluate(() => document.querySelector<HTMLButtonElement>('.modal button[aria-label="Turn on Pets"]')?.click());
     await waitFor(() => p.evaluate(() => document.querySelector('.modal tr[data-plugin="hq-pets"]')?.textContent.includes("Running")), { what: "sample plugin running" });
-    await p.evaluate(() => document.querySelector<HTMLButtonElement>('.modal button[aria-label="Settings of Pets"]')?.click());
-    await waitFor(() => p.$(".modal .plugin-setting"), { what: "plugin settings" });
-    await audit(p, "a plugin's settings");
-    await p.keyboard.press("Escape");
-    await waitFor(async () => !(await p.$(".modal .plugin-setting")), { what: "plugin settings closed" });
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "admin closed" });
     await waitFor(() => p.evaluate(() => { const b = document.querySelector<HTMLButtonElement>('.side .tabs button[aria-label="Plugins"]'); b?.click(); return !!b; }), { what: "side panel plugins tab" });
@@ -142,21 +132,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await p.keyboard.press("Escape");
     await waitFor(async () => !(await p.$(".modal")), { what: "media closed" });
 
-    await walkTo(admin, 4 * 16 + 8, 6 * 16 + 8);
-    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "note"), { what: "nearby note" });
-    await p.keyboard.press("x");
-    await waitFor(() => p.$(".object-note"), { what: "note dialog" });
-    await audit(p, "the interactive note dialog");
-    await p.keyboard.press("Escape");
-    await waitFor(async () => !(await p.$(".modal")), { what: "note closed" });
-
-    await walkTo(admin, 49 * 16 + 8, 16 * 16 + 8);
-    await waitFor(() => p.evaluate(() => window.__hq.state.nearby?.t === "whiteboard"), { what: "nearby whiteboard" });
-    await p.keyboard.press("x");
-    await waitFor(() => p.$("canvas.whiteboard"), { what: "whiteboard" });
-    await audit(p, "the shared whiteboard");
-    await p.keyboard.press("Escape");
-    await waitFor(async () => !(await p.$("canvas.whiteboard")), { what: "whiteboard closed" });
+    // (an object's dialog and the whiteboard: web/test/ObjectDialog.test.tsx and WhiteboardDialog.test.tsx; the
+    // settings and administration dialogs above have their styles; opening them with X is the `features` scenario)
 
     // the chess window (bundled hq-chess): a board placed on the social area's table, opened with X; the
     // page and the board view's own document are audited

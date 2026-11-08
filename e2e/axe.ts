@@ -1,5 +1,6 @@
-// The axe-core audits of the browser suites: a11y.ts (the platform's screens and dialogs) and the plugins' e2e projects
-// (plugins/e2e/*, a plugin's own windows and views). WCAG 2.1 A and AA rules plus axe best practices; this finds a
+// The axe-core audits of the browser suites: a11y.ts (the platform's screens, contrast included) and the plugins' e2e
+// projects (plugins/e2e/*, a plugin's own windows and views). Dialogs, panels and menus whose structure is all axe needs
+// are audited on jsdom by the client's component tests, with the same TAGS (web/test/axe.ts; decision 0037). WCAG 2.1 A and AA rules plus axe best practices; this finds a
 // subset of problems, it is not a substitute for testing with a screen reader (see docs/status.md).
 import fs from "node:fs";
 import { createRequire } from "node:module";

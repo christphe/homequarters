@@ -99,6 +99,19 @@ plugin e2e projects together (`e2e/shards.ts`'s `plan`). Records still come only
 Not in this change: a Go integration tier (black-box tests through `internal/testbed`), moving browser checks
 that need no browser down to it, `release:*` tasks, and coverage per tier.
 
+**Accessibility audits by tier** (added 2026-11-08). axe-core runs in two tiers with the same rule set (WCAG 2.1
+A and AA plus best practices). A component test (`web/test/axe.ts`, jsdom) audits a dialog, panel or menu whose
+structure is all axe needs, in every state that matters (loading, empty, filled, error, a confirmation open),
+with two settings jsdom forces: `color-contrast` off (jsdom applies no stylesheet and computes no layout) and
+`iframes: false` (axe cannot reach a frame's window in jsdom; it still checks the frame's title). The browser
+(`e2e/scenarios/a11y.ts`, `e2e/axe.ts`) keeps colour contrast, full screens (the world view, the side panel,
+overlays, the editor) and plugin iframes. A component moves down only when a kept browser audit shows the styles
+it uses, so its contrast stays checked through them; one with a colour of its own (the consent dialog's camera
+placeholder, the composer's button) stays in the browser. A component test renders the component inside the
+landmark it lives in (the status menu in the top bar's `header`), since axe's `region` rule depends on it. axe-core
+is a dev dependency of `web/` and `e2e/` through the pnpm catalog. Measured in `docs/status.md` (the row
+"Accessibility audits in component tests").
+
 ## Measurements
 
 Measured on the Windows 11 desktop (12 logical CPUs, Node 24, Go 1.27.0, Chrome, LiveKit 1.13.7 in Docker Desktop) on 2026-11-08, from the whole gauntlet run without the cache (`FDASH_FORCE=1`, `E2E_PARALLELISM=2`) and the times fdash records with each pass:

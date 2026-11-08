@@ -48,7 +48,7 @@ Development-only addition (2026-10-01): `@types/node` 24.19.0 and its `undici-ty
 | LiveKit server 1.13.7 | Apache-2.0 | run as its own container/process (SFU) |
 | Caddy 2 | Apache-2.0 | optional TLS reverse proxy in `deploy/docker-compose.yml` |
 | Chrome / Puppeteer (tests only) | proprietary browser / Apache-2.0 | used by `e2e/`, not distributed |
-| axe-core (tests only) | MPL-2.0 | injected by the `a11y` scenario in `e2e/` to audit the UI; a dev dependency of `e2e/`, not bundled in the app or distributed |
+| axe-core (tests only) | MPL-2.0 | injected by the `a11y` scenario in `e2e/` to audit the UI, and run on jsdom by the client's component tests (`web/test/axe.ts`); a dev dependency of `e2e/` and `web/` (one version, the pnpm catalog), not bundled in the app or distributed (licence checked in the installed package metadata, 4.13.0, 2026-11-08) |
 
 ## Assets
 
