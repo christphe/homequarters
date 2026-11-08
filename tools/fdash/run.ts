@@ -105,9 +105,9 @@ function readReport(file: string): { said: Map<string, boolean>; nocache: boolea
   }
   for (const line of text.split(/\r?\n/)) {
     try {
-      const r = JSON.parse(line);
+      const r = JSON.parse(line) as { nocache?: unknown; item?: unknown; ok?: unknown } | null;
       if (r?.nocache === true) nocache = true;
-      if (typeof r?.item === "string" && typeof r?.ok === "boolean") seen.set(r.item, (seen.get(r.item) ?? true) && r.ok);
+      if (typeof r?.item === "string" && typeof r.ok === "boolean") seen.set(r.item, (seen.get(r.item) ?? true) && r.ok);
     } catch {
       // a partial line from a command that was stopped
     }

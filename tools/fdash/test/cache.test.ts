@@ -105,7 +105,7 @@ const itemsCmd = node(`
   for (const i of items) if (i !== "silent") fs.appendFileSync(process.env.FDASH_REPORT, JSON.stringify({ item: i, ok: !fail.includes(i) }) + "\\n");
   process.exit(fail.length && fail.some((f) => items.includes(f)) ? 1 : 0);
 `);
-const calls = (root: string) => fs.readFileSync(path.join(root, "calls"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const calls = (root: string) => fs.readFileSync(path.join(root, "calls"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as string[]);
 
 test("items are cached one by one; the command runs with those that have not passed", async () => {
   const root = repo({ "s/x": "1", "s/y": "1", "s/z": "1", ".gitignore": ".fdash/\ncalls\nfail.txt\n" });

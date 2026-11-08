@@ -30,7 +30,7 @@ function main() {
   fs.mkdirSync(".fdash/cache", { recursive: true });
   let runs: Run[] = [];
   try {
-    runs = JSON.parse(gh(["run", "list", "--repo", repo, "--workflow", "ci.yml", "--branch", "main", "--event", "push", "--status", "completed", "--limit", "5", "--json", "databaseId,headSha,headBranch,event"]));
+    runs = JSON.parse(gh(["run", "list", "--repo", repo, "--workflow", "ci.yml", "--branch", "main", "--event", "push", "--status", "completed", "--limit", "5", "--json", "databaseId,headSha,headBranch,event"])) as Run[];
   } catch (e) {
     console.log("no records from main (cannot list its runs: " + String((e as Error).message).split("\n")[0] + "): every check runs");
     return 0;

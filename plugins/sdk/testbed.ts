@@ -66,6 +66,7 @@ export interface Member {
    * of this member and plugin (frames up to a match are consumed, so an old frame never matches twice).
    * Rejects after `timeoutMs` (default: the bed's `timeoutMs`), or when the socket closes, naming the last 5 frames.
    */
+  // oxlint-disable-next-line typescript/no-explicit-any -- public API: a test types its predicate (m: T) => ..., which unknown would refuse
   waitFor<T>(plugin: string, pred: (d: any) => boolean, timeoutMs?: number): Promise<T>;
   /** Resolves after `ms` if no frame of `plugin` arrived meanwhile; rejects as soon as one does. */
   quiet(plugin: string, ms: number): Promise<void>;
@@ -133,12 +134,12 @@ async function startProcess(bin: string, args: string[]): Promise<Proc> {
   // server no chance to remove its --db-temp database; it stops on its own when stdin ends
   const child = spawn(bin, ["testbed", ...args], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform === "win32" });
   const stderr: string[] = [];
-  readline.createInterface({ input: child.stderr! }).on("line", (l) => {
+  readline.createInterface({ input: child.stderr }).on("line", (l) => {
     stderr.push(l);
     if (stderr.length > 40) stderr.shift();
   });
   const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
-  const lines = readline.createInterface({ input: child.stdout! });
+  const lines = readline.createInterface({ input: child.stdout });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const line = await Promise.race([
@@ -279,7 +280,7 @@ export async function testbed(o: { plugins: string[]; static?: string; timeoutMs
       const out = JSON.parse(text) as { id: number; name: string; role?: string };
       const cookie = r.headers
         .getSetCookie()
-        .map((c) => c.split(";")[0]!)
+        .map((c) => c.split(";")[0])
         .join("; ");
       if (!cookie) throw new Error(`join ${name}: no session cookie`);
       // the administrator is the member the server made one (the first created), not the first join to answer:
@@ -304,7 +305,7 @@ export async function testbed(o: { plugins: string[]; static?: string; timeoutMs
         const known = running.flatMap((p) => (p.objects ?? []).map((x) => `${p.name}/${x.kind}`)).join(", ") || "none";
         throw new Error(`placeObject ${kind}: ${owners.length ? "several running plugins have it, write <plugin>/<kind>" : "no running plugin has it"} (objects: ${known})`);
       }
-      const owner = owners[0]!;
+      const owner = owners[0];
       const size = owner.objects!.find((x) => x.kind === k)!.size;
       const map = (await must(200, "GET", "/api/admin/map", undefined, cookie)) as { props?: unknown[] };
       map.props = [...(map.props ?? []), { t: `${owner.name}/${k}`, x: at.x, y: at.y, w: size[0], h: size[1] }];
@@ -460,7 +461,7 @@ class MemberImpl implements Member {
     return [...(this.#frames.get(plugin) ?? [])];
   }
 
-  waitFor<T>(plugin: string, pred: (d: any) => boolean, timeoutMs?: number): Promise<T> {
+  waitFor<T>(plugin: string, pred: Parameters<Member["waitFor"]>[1], timeoutMs?: number): Promise<T> {
     const list = this.#frames.get(plugin) ?? [];
     for (let i = this.#cursor.get(plugin) ?? 0; i < list.length; i++) {
       if (pred(list[i])) {
