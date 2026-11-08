@@ -153,7 +153,6 @@
         "/web/**",
         "!/web/test/**",
         "!/web/dev/**",
-        "/plugins/sdk/**",
         {
           "disk": "/bin/homequarters*"
         },
@@ -167,9 +166,6 @@
         },
         {
           "pnpm": "../web"
-        },
-        {
-          "pnpm": "../plugins/sdk"
         }
       ],
       "envKeys": [

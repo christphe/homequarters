@@ -166,9 +166,12 @@ test("every gate is cached, and every scenario of the suite is an item with its 
   // plugin outside its comments, and nothing of plugins/bundled or of the fixture plugins is an input, so changing a
   // plugin reruns only its own e2e project (plugins/e2e/<plugin>-e2e, or plugin-host-e2e for the fixtures)
   const inputs = [...e2e.inputs!, ...[...e2e.items!.values()].flatMap((i) => i.inputs)].filter((i): i is string => typeof i === "string" && !i.startsWith("!"));
-  for (const probe of ["plugins/bundled/hq-any/main.ts", "plugins/bundled/hq-any/plugin.json"]) {
+  for (const probe of ["plugins/bundled/hq-any/main.ts", "plugins/bundled/hq-any/plugin.json", "plugins/sdk/testbed.ts"]) {
     assert.ok(!inputs.some((i) => path.posix.matchesGlob(probe, i)), probe + " is not an input of the core suite");
   }
+  // nor through a pnpm package or a disk glob
+  const objects = [...e2e.inputs!, ...[...e2e.items!.values()].flatMap((i) => i.inputs)].filter((i) => typeof i === "object").map((i) => JSON.stringify(i));
+  assert.deepEqual(objects.filter((o) => /plugins\/|fixtures/.test(o)), [], "no pnpm or disk input of the core suite reaches a plugin");
   assert.ok(e2e.inputs!.includes("!e2e/fixtures/**"), "the fixture plugins are not an input of the core suite");
   assert.match(fs.readFileSync(path.join(root, "e2e/run.ts"), "utf8"), /HQ_PLUGINS_DIR: "",/);
   for (const s of ALL) {
