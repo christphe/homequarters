@@ -77,6 +77,8 @@ type Server struct {
 	// sign-ins made in a browser for the desktop app (handoff.go), and how long its window waits per ask
 	handoffs    handoffs
 	handoffWait time.Duration
+	// reconnect grace of the worlds started from now on (0: the world's default); tests shorten it
+	grace time.Duration
 }
 
 type chatSave struct {
@@ -218,6 +220,9 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 	wc.TickHz, wc.AOICells, wc.MaxPlayers = s.cfg.TickHz, s.cfg.AOICells, s.cfg.MaxPlayers
 	wc.Version = s.version
 	wc.Prox.MaxGroup = s.cfg.MaxGroup
+	if s.grace > 0 {
+		wc.Grace = s.grace
+	}
 	if s.cfg.AOIMaxCells > 0 {
 		wc.AOIMaxCells = s.cfg.AOIMaxCells
 	}
