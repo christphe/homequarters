@@ -90,18 +90,18 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
   return {
     kind: "command",
     name,
-    cwd: (t.cwd as string | undefined) ?? ".",
-    run: t.run as string[][],
+    cwd: t.cwd ?? ".",
+    run: t.run,
     env: (t.env as Record<string, string> | undefined) ?? {},
     failOnOutput: t.failOnOutput === true,
     args: t.args === true,
     cache: t.cache !== false,
     inputs: t.inputs === undefined ? undefined : parseInputs(name, "inputs", t.inputs),
-    envKeys: (t.envKeys as string[] | undefined) ?? [],
-    tools: (t.tools as string[][] | undefined) ?? [],
+    envKeys: t.envKeys ?? [],
+    tools: t.tools ?? [],
     items,
     after: parseAfter(name, t.after),
-    outputs: (t.outputs as string[] | undefined) ?? [],
+    outputs: t.outputs ?? [],
   };
 }
 
@@ -109,7 +109,7 @@ function parseGroup(name: string, t: Record<string, unknown>): Group {
   if (!isStrings(t.tasks)) throw new Error(`${name}: tasks must be a list of task names`);
   if (t.jobs !== undefined && !(typeof t.jobs === "number" && Number.isInteger(t.jobs) && t.jobs >= 1)) throw new Error(`${name}: jobs must be a positive integer, got ${JSON.stringify(t.jobs)}`);
   const after = parseAfter(name, t.after);
-  return t.jobs === undefined ? { kind: "group", name, tasks: t.tasks, after } : { kind: "group", name, tasks: t.tasks, jobs: t.jobs as number, after };
+  return t.jobs === undefined ? { kind: "group", name, tasks: t.tasks, after } : { kind: "group", name, tasks: t.tasks, jobs: t.jobs, after };
 }
 
 /** Parses JSON, naming the file in the error. */
@@ -117,7 +117,7 @@ export function parseJson(text: string, file: string): unknown {
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new Error(`${file}: invalid JSON (${(e as Error).message})`);
+    throw new Error(`${file}: invalid JSON (${(e as Error).message})`, { cause: e });
   }
 }
 
