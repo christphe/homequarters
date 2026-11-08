@@ -91,7 +91,8 @@ HQ_ENV=dev HQ_ADDR=127.0.0.1:8080 HQ_DB="${HQ_DB:-server/data/dev.db}" \
   ./bin/homequarters > $LOG/server.log 2>&1 &
 pids+=($!)
 
-( cd web && [ -d node_modules ] || pnpm install )
+# one install for the whole repository (pnpm workspace), at the root
+[ -d web/node_modules ] || pnpm install
 ( cd web && pnpm exec vite --host "$vite_host" > ../$LOG/vite.log 2>&1 ) &
 pids+=($!)
 

@@ -34,24 +34,15 @@ jobs:
           cache-dependency-path: |
             server/go.sum
             bench/mediagen/go.sum
+      # the version comes from packageManager in the root package.json
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: |
-            web/pnpm-lock.yaml
-            site/pnpm-lock.yaml
-            e2e/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
+      # one install for the repository (pnpm workspace): every project's tools and dependencies
       - run: pnpm install --frozen-lockfile
-        working-directory: web
-      - run: pnpm install --frozen-lockfile
-        working-directory: site
-      # e2e's lint type-checks the browser suite against puppeteer-core's types
-      - run: pnpm install --frozen-lockfile
-        working-directory: e2e
       - name: Records of the checks that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -106,9 +97,15 @@ jobs:
         with:
           go-version: "1.27"
           cache-dependency-path: server/go.sum
+      # the version comes from packageManager in the root package.json
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      # the integration suites run under the projects' own test runner
+      - run: pnpm install --frozen-lockfile
       - name: Records of the checks that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -156,12 +153,13 @@ jobs:
         with:
           go-version: "1.27"
           cache-dependency-path: server/go.sum
+      # the version comes from packageManager in the root package.json
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: LiveKit server 1.13.7
         run: |
           curl -sSL https://github.com/livekit/livekit/releases/download/v1.13.7/livekit_1.13.7_linux_amd64.tar.gz | tar xz livekit-server
@@ -171,9 +169,6 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         id: chrome
       - run: pnpm install --frozen-lockfile
-        working-directory: web
-      - run: pnpm install
-        working-directory: e2e
       - name: Records of the scenarios that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     # deploy/README.md is published as the self-hosting page; README.md is checked by site/check.ts
-    paths: ["site/**", "docs/**", "deploy/README.md", "README.md", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", "deploy/README.md", "README.md", "pnpm-lock.yaml", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -23,16 +23,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history, for the sitemap's lastmod dates
+      # the version comes from packageManager in the root package.json
       - uses: pnpm/action-setup@v6
-        with:
-          version: 11
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      # at the root (one lockfile for the repository), only what the site needs
+      - run: pnpm install --frozen-lockfile --filter homequarters-site
       - name: Build site
         working-directory: site
         run: |
-          pnpm install --frozen-lockfile
           node build.ts
           node check.ts
       - uses: actions/configure-pages@v6
