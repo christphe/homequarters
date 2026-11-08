@@ -1,15 +1,17 @@
 // Presence through the real controls: Ctrl+wheel zoom and the area of interest it widens, left-drag to look
-// around, a wave, a raised hand, Ctrl+U and the status veil, dancing, the minimap, the shortcuts dialog, an
-// administrator's announcement, the touch pad and the computer's idle state.
+// around, a wave, a raised hand, a status note, Ctrl+U and the status veil, dancing, the minimap, the shortcuts
+// dialog, an administrator's announcement, the touch pad and the computer's idle state.
 //
 // What stays here, per feature (one check through the real controls at least):
 // - zoom: Ctrl+wheel with Chrome's mouse (one notch, out to the limit), the UI keeping its size, and the server
 //   then sending the person the wider view shows
 // - drag: a left-drag moves the view 1:1; moving with the arrow keys brings it back to me
 // - wave: the people panel's Wave at reaches somebody anywhere, the sender is told, the card's Walk to them runs
-//   there (which also brings the two together for what follows); H: a raised hand others see
+//   there (which also brings the two together for what follows); H: a raised hand others see; a note typed in the
+//   status menu shows in the other's people panel
 // - status: Ctrl+U makes me busy for others; the veil's big button makes me available again; Z: a dance others see
-// - minimap: the server's head counts reach it; its picture fills the canvas across pixel-ratio changes (M twice)
+// - minimap: the server's head counts reach it; a click on it runs there; its picture fills the canvas across
+//   pixel-ratio changes (M twice)
 // - shortcuts: ? opens the dialog, Escape closes it; announcement: the admin's Announce form, the banner, dismiss
 // - touch pad on a phone; idle: the real setting ticked with the permission granted, an idle computer sets me
 //   away for others; no console errors
@@ -20,16 +22,18 @@
 //   pan stopping at the west wall): web/test/gesture.test.ts; the camera at map edges and the largest radius:
 //   web/test/camera.test.ts; the server's radius growing and shrinking: world TestViewWidensInterestWithinTheServerCap,
 //   TestAOIEnterLeave
-// - Wave back, dismissing the card and the hand button: web/test/WaveAndHand.test.tsx; H twice lowers: web/test/hand.test.ts,
-//   world TestARaiseAndALowerInOneTickLeaveTheHandDown; a status note: web/test/StatusNote.test.tsx, world
-//   TestRaisedHandAndStatusNoteAreInTheRoster
+// - Wave back, dismissing the card and the hand button: web/test/WaveAndHand.test.tsx; H twice lowers:
+//   web/test/hand.test.ts, world TestARaiseAndALowerInOneTickLeaveTheHandDown; the note trimmed and drawn:
+//   web/test/StatusNote.test.tsx, world TestRaisedHandAndStatusNoteAreInTheRoster
 // - the busy and away veils, Ctrl+U from away: web/test/StatusVeil.test.tsx (busyToggle), web/test/home.test.ts (the key)
-// - minimap counts drawn, click to run, M and Shift+M: web/test/Minimap.test.tsx; AZERTY names in the shortcuts:
+// - minimap counts drawn per area, the tile a click picks, M and Shift+M: web/test/Minimap.test.tsx; AZERTY names in the shortcuts:
 //   web/test/ShortcutsDialog.test.tsx
 // - the announcement reaching everybody: world TestAnnouncementsReachEverybodyConnected
 // - Ctrl+D and desks: where Ctrl+D leads, web/test/home.test.ts, with the real keys in e2e/scenarios/offices.ts;
-//   desk locks, world TestADeskOwnerLocksTheirDeskAndAlwaysWalksIn, TestLockingKnockingAndAnswering, the buttons in
-//   web/test/doors.test.ts, a room's real Lock in e2e/scenarios/features.ts, knock and let in in offices.ts
+//   Ctrl+D with nothing assigned is homeTile's null there (its toast is not tested); desk locks, world
+//   TestADeskOwnerLocksTheirDeskAndAlwaysWalksIn, TestLockingKnockingAndAnswering, the buttons in
+//   web/test/doors.test.ts, the lock on the label in web/test/lockLabels.test.ts, a room's real Lock in
+//   e2e/scenarios/features.ts, knock and let in in offices.ts
 // - idle detection blocked: web/test/SettingsIdle.test.tsx; idle, back and locked: web/test/osIdle.test.ts
 import type { ElementHandle } from "puppeteer-core";
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, APP, type RunContext, type User } from "../lib.ts";
@@ -110,6 +114,12 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await a.page.keyboard.press("h");
     await waitFor(() => read(b, (id) => window.__hq.state.roster.get(id)?.h === 1 && !!window.__hq.view.ents.get(id)?.hand, a.id), { what: "hand raised" });
     check("H raises a hand that others see over the avatar and in the roster", true);
+    await a.page.click(".status-menu > .btn");
+    await a.page.type(".note-form input", "Deep work until 4");
+    await a.page.click(".note-form button[type=submit]");
+    await waitFor(() => read(b, (n) => [...document.querySelectorAll(".people .note")].some((el) => el.textContent === n), "Deep work until 4"), { what: "note in people panel" });
+    check("a status note set in the status menu shows in everyone's people panel", true);
+    await a.page.keyboard.press("Escape");
     // shortcuts follow key positions (AZERTY: "z" on KeyW, "&" on Digit1, the keypad without Num Lock):
     // web/test/input.test.ts; the real keys H and Z here and 1 in features.ts go through the same handler
 
@@ -131,6 +141,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => read(a, () => !!document.querySelector(".minimap canvas") && window.__hq.state.areaCounts.some((n) => n > 0)), { what: "minimap with counts" });
     const counts = await read(a, () => window.__hq.state.areaCounts);
     check("the minimap gets head counts per area from the server", counts.reduce((x, y) => x + y, 0) >= 2, JSON.stringify(counts));
+    const start = await pos(a);
+    const spot = await read(a, () => { const r = document.querySelector(".minimap canvas")!.getBoundingClientRect(); const m = window.__hq.view.currentMap()!; return { x: r.left + (4.5 * 16) * (r.width / (m.w * 16)), y: r.top + (30.5 * 16) * (r.width / (m.w * 16)) }; });
+    await a.page.mouse.click(spot.x, spot.y);
+    await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === 4 && Math.floor(p.y / 16) === 30; }, { timeout: 20000, what: "minimap walk" });
+    check("clicking the minimap runs there", dist(start, await pos(a)) > 16);
     // the browser zoom or a move to another screen changes the pixel ratio: the picture must still fill
     // the canvas (it once stayed at the old size in a corner, and people's dots piled up around it)
     const vp = a.page.viewport();

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // Component test of the status note, with the session faked: typed in the status menu (web/src/ui/StatusMenu.tsx)
 // it goes to the server; in the roster (the server echoes it, world TestRaisedHandAndStatusNoteAreInTheRoster) it
-// shows under the person in the people panel (web/src/ui/SidePanel.tsx). The browser keeps the status menu's real
-// status change through Ctrl+U and its veil (e2e/scenarios/presence.ts) and its contrast (e2e/scenarios/a11y.ts).
+// shows under the person in the people panel (web/src/ui/SidePanel.tsx). The browser keeps one note typed in the real
+// menu and seen in another person's panel (e2e/scenarios/presence.ts), and the menu's contrast (e2e/scenarios/a11y.ts).
 import { person, renderUI, roster } from "./support"; // first: canvas before PixiJS
 import { mockSession } from "./support/session";
 import { screen } from "@testing-library/react";

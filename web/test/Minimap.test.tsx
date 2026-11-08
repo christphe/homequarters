@@ -2,9 +2,10 @@
 // Component test of the minimap (web/src/ui/Minimap.tsx), with the session's world view faked: the head counts the
 // server sends drawn per area (a desk room's counted in the area around it), a click running to that spot, and the
 // M key showing and hiding it (not Shift+M: "?" on AZERTY). The browser keeps the minimap drawn from the real map,
-// shown again with M, across pixel-ratio changes (e2e/scenarios/presence.ts); the counts themselves are the server's
-// (world TestAreaHeadCountsArePublishedOnChangeOnly).
-import { renderUI } from "./support"; // first: canvas before PixiJS
+// a real click on it running there, and M across pixel-ratio changes (e2e/scenarios/presence.ts); the counts
+// themselves are the server's (world TestAreaHeadCountsArePublishedOnChangeOnly). debugEntities and destination are
+// set here, typed by WorldView, rather than in support's VIEW_METHODS: only this test reads them.
+import { onCleanup, renderUI } from "./support"; // first: canvas before PixiJS
 import { mockSession } from "./support/session";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -80,11 +81,13 @@ it("M hides the minimap and shows it again, and the choice is saved", () => {
 it("? typed on the M position (Shift on AZERTY) does not toggle the minimap, nor M in a text field or under a dialog", () => {
   renderUI(<Minimap />);
   press("KeyM", "?", { shiftKey: true });
+  expect(getState().settings.minimap).toBe(true);
   const field = document.body.appendChild(document.createElement("input"));
+  onCleanup(() => field.remove());
   act(() => { field.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyM", key: "m", bubbles: true })); });
-  document.body.appendChild(Object.assign(document.createElement("div"), { className: "scrim" }));
+  expect(getState().settings.minimap).toBe(true);
+  const scrim = document.body.appendChild(Object.assign(document.createElement("div"), { className: "scrim" }));
+  onCleanup(() => scrim.remove());
   press("KeyM", "m");
   expect(getState().settings.minimap).toBe(true);
-  document.querySelector(".scrim")!.remove();
-  field.remove();
 });

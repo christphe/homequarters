@@ -1,9 +1,9 @@
 // Names on the map: area names, desk owners, and the location signboard that slides in from the top when
 // entering an area. Texts sit in the screen-pixel hud and follow the camera every frame.
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { MapData, Prop } from "../net/protocol";
+import type { Area, MapData, Prop } from "../net/protocol";
 import { deskRoom } from "./areas";
-import { areaTitle, deskTitle } from "./places";
+import { areaTitle, deskTitle, type NameOf } from "./places";
 import { BANNER_STYLE, DESK_STYLE, TAG_STYLE } from "./mapText";
 import type { Layer, ViewContext } from "./layer";
 
@@ -24,6 +24,16 @@ export function bannerSlide(t: number) {
  *  which the desk's own label already names. */
 export function labelledAreas(map: MapData): number[] {
   return map.areas.flatMap((a, ai) => (a.auto ? [] : [ai]));
+}
+
+/** An area's name tag: its title, with a lock when the area (index ai) is closed to me (`deny`). */
+export function areaLabelText(a: Area, ai: number, nameOf: NameOf, deny: ReadonlySet<number>) {
+  return areaTitle(a, nameOf) + (deny.has(ai) ? " 🔒" : "");
+}
+
+/** A desk's label: whose desk it is, with a lock when its room (index ai) is locked against me (`deny`). */
+export function deskLabelText(p: Prop, ai: number, nameOf: NameOf, deny: ReadonlySet<number>) {
+  return deskTitle(p, nameOf) + (deny.has(ai) ? " 🔒" : "");
 }
 
 export class LabelLayer implements Layer {
@@ -90,11 +100,11 @@ export class LabelLayer implements Layer {
   }
 
   private areaLabel(ai: number) {
-    return areaTitle(this.ctx.map!.areas[ai], this.ctx.nameOf) + (this.ctx.grid.deny.has(ai) ? " 🔒" : "");
+    return areaLabelText(this.ctx.map!.areas[ai], ai, this.ctx.nameOf, this.ctx.grid.deny);
   }
 
   private deskLabel(p: Prop, ai: number) {
-    return deskTitle(p, this.ctx.nameOf) + (this.ctx.grid.deny.has(ai) ? " 🔒" : ""); // a desk locked against me
+    return deskLabelText(p, ai, this.ctx.nameOf, this.ctx.grid.deny);
   }
 
   /** Location signboard that slides in from the top when entering an area (handheld-RPG style). */
