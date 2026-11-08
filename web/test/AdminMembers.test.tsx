@@ -36,8 +36,8 @@ it("Members lists everybody, marks me, and offers no Remove on my own row", asyn
   const table = await screen.findByRole("table", { name: "Members" });
   const rows = within(table).getAllByRole("row").slice(1);
   expect(rows.map((r) => r.querySelector("td")?.textContent)).toEqual(["Ada (you)", "Bo"]);
-  expect(within(rows[0]!).queryByRole("button")).toBeNull();
-  within(rows[1]!).getByRole("button", { name: "Remove Bo" });
+  expect(within(rows[0]).queryByRole("button")).toBeNull();
+  within(rows[1]).getByRole("button", { name: "Remove Bo" });
 });
 
 it("choosing a role sends it, says so and reloads the list", async () => {
@@ -113,7 +113,7 @@ it("Create invite link sends the role, uses and hours chosen and shows the link 
   expect(link.value).toBe(location.origin + "/?invite=s3cret-token");
   expect(sent(net)).toEqual([["POST /api/invites", { role: "admin", maxUses: 3, hours: 2 }]]);
   const table = await screen.findByRole("table", { name: "Invites" });
-  expect(within(table).getAllByRole("row")[1]!.textContent).toContain("Active");
+  expect(within(table).getAllByRole("row")[1].textContent).toContain("Active");
   expect(table.textContent).not.toContain("s3cret-token");
 });
 

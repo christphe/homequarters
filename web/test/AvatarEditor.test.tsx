@@ -40,7 +40,7 @@ it("hat colours appear once a hat is chosen, and go with it", async () => {
   await user.click(within(group("Hat colour")).getByRole("radio", { name: "Hat colour 3" }));
   expect(last()).toMatchObject({ ht: 7, hk: 2 });
   expect(checked("Hat colour")).toEqual(["Hat colour 3"]);
-  const none = within(group("Hat")).getAllByRole("radio")[0]!;
+  const none = within(group("Hat")).getAllByRole("radio")[0];
   await user.click(none);
   expect(screen.queryByRole("radiogroup", { name: "Hat colour" })).toBeNull();
 });

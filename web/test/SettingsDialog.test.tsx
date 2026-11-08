@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
-// Component test of SettingsDialog (web/src/ui/SettingsDialog.tsx): its profile and sign-in link requests, answered
-// or failing on the network, with the session and the media managers faked. The toast itself is drawn by
-// OfficeScreen; here it is the store's `toast`. The browser suite keeps one real round trip of each: the profile
-// save (e2e/scenarios/social.ts) and the failures through the real page (e2e/scenarios/offline.ts).
+// Component test of SettingsDialog (web/src/ui/SettingsDialog.tsx): its profile (with a look from the appearance
+// dialog) and sign-in link requests, answered or failing on the network, and what it offers with sign-in on or off
+// (Sign out, the personal link), with the session and the media managers faked. The toast itself is drawn by
+// OfficeScreen; here it is the store's `toast`. The browser suite keeps one real round trip of each: the profile save
+// through the settings and appearance dialogs (e2e/scenarios/social.ts), the sign-in round trip
+// (e2e/scenarios/auth.ts), and a request failing on the network through the real page (the map editor's Save,
+// e2e/scenarios/offline.ts).
 import { offlineFetch, renderUI, stubFetch, unhandledRejections, type StubRequest } from "./support"; // first: canvas before PixiJS
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";

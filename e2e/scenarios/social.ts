@@ -1,8 +1,21 @@
-// The chat panel, profile changes, desk labels and the chat panel on small screens. The chat rules are Go tests:
-// scopes, trimming, the 500-character cut and what history keeps in server/internal/world/chat_test.go
-// (TestChatScopesReachTheirAudienceTrimmedAndCut); the rate limit, history for newcomers and across a restart,
-// and profile refusals in server/internal/httpapi/resilience_test.go.
-import { check, summary, resetChecks, launch, joinAs, waitFor, sleep, API, type RunContext } from "../lib.ts";
+// The chat panel, a profile change and the chat panel on small screens, through the real controls: a message sent
+// through the composer with both panels open, a name and look saved through the settings and appearance dialogs
+// reaching another person, labels sharing one bitmap font per look, nothing covering the chat panel's controls at
+// 800x450 and on a phone, and the phone's reactions fitting the screen.
+// The chat rules are Go tests: scopes, trimming, the 500-character cut and what history keeps in
+// server/internal/world/chat_test.go (TestChatScopesReachTheirAudienceTrimmedAndCut); the rate limit, history for
+// newcomers and across a restart, and profile refusals in server/internal/httpapi/resilience_test.go.
+// What moved below the browser (decision 0037), and where it lives now:
+// - the avatar editor's hair, beards, hats, hat colours once a hat is on, any shirt colour: web/test/AvatarEditor.test.tsx;
+//   the appearance dialog's look saved with the profile, and no Sign out without sign-in: web/test/SettingsDialog.test.tsx.
+// - another person seeing the new hair, beard, hat and custom shirt: web/test/avatarLook.test.ts and
+//   TestNormalizeAvatarDropsUnknownFields; a profile change reaching the roster: TestPresenceCarriesNewNames; look
+//   changes leaving the avatar cache the same size: web/test/lookCache.test.ts.
+// - a desk assigned by an admin and its owner's label: server/internal/httpapi/desk_test.go, owners_test.go and
+//   web/test/places.test.ts (the map edit stays here, as the setup of the bitmap font check).
+// - the conversation composer off without a conversation, a phone reaction closing the menu:
+//   web/test/SocialPanel.test.tsx.
+import { check, summary, resetChecks, launch, joinAs, waitFor, API, type RunContext } from "../lib.ts";
 import type { MapData } from "../../web/src/net/protocol.ts";
 
 export async function run(ctx: RunContext): Promise<boolean> {
@@ -34,62 +47,33 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("sending through the chat panel keeps the whole UI alive for sender and receiver", crashes.length === 0 && ui.every((x) => x.composer && x.shown === 3), crashes[0] ?? JSON.stringify(ui));
     for (const u of [b, c]) await u.page.click('.tabs button[title="Chat"]').catch(() => {});
 
-    // ---- profile change through the real settings dialog
+    // ---- a profile change through the real settings dialog and its appearance dialog
     await b.page.evaluate(() => document.querySelector<HTMLButtonElement>(".bar-row .round.ghost")?.click());
     await waitFor(() => b.page.$('.modal input[aria-label]'), { what: "settings dialog" });
-    // no sign-in provider here: the cookie is the account, so there is nothing to sign out of
-    check("without sign-in the settings offer no sign out", !(await b.page.evaluate(() => [...document.querySelectorAll(".modal button")].some((x) => x.textContent.trim() === "Sign out"))));
     await b.page.$eval('.modal input[aria-label]', (el) => el.select());
     await b.page.type('.modal input[aria-label]', "Novo" + t);
-    // the look is edited in its own dialog, opened from the settings
     await b.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal button")].find((x) => x.textContent === "Change appearance")?.click());
     await waitFor(() => b.page.$(".modal.huge"), { what: "appearance dialog" });
-    // hair style, beard and hat through the avatar editor's own radio groups
-    const pick = (group: string, label: string) => b.page.evaluate((g, l) => {
-      const r = [...document.querySelectorAll<HTMLElement>(`.modal [role=radiogroup][aria-labelledby=${g}] [role=radio]`)].find((x) => x.textContent === l);
+    const picked = await b.page.evaluate(() => {
+      const r = [...document.querySelectorAll<HTMLElement>(".modal [role=radiogroup][aria-labelledby=ae-hair] [role=radio]")].find((x) => x.textContent === "Afro");
       r?.click();
       return !!r;
-    }, group, label);
-    const hatColourRow = () => b.page.evaluate(() => !!document.querySelector('.modal [role=radiogroup][aria-label="Hat colour"]'));
-    const noHatColourBefore = !(await hatColourRow());
-    const picked = (await pick("ae-hair", "Afro")) && (await pick("ae-beard", "Full beard")) && (await pick("ae-hat", "Tricorne"));
-    await waitFor(hatColourRow, { what: "hat colour swatches" });
-    await b.page.click('.modal [role=radiogroup][aria-label="Hat colour"] [aria-label="Hat colour 3"]');
-    check("the avatar editor offers hair styles, beards and hats; hat colours appear once a hat is chosen", picked && noHatColourBefore);
-    // any colour through the shirt's own colour picker (React listens to "input")
-    await b.page.$eval('.modal input[type=color][aria-label="Shirt: custom colour"]', (el) => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "#12ab9f");
-      el.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await b.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".modal.huge button")].find((x) => x.textContent === "Save")?.click());
     await waitFor(async () => !(await b.page.$(".modal.huge")), { what: "appearance dialog closes on Save" });
-    await waitFor(() => a.page.evaluate((n, id) => window.__hq.state.roster.get(id)?.n === n, "Novo" + t, b.id), { what: "roster shows the new name" });
-    check("a profile change reaches other people's roster live", true);
-    const seen = await a.page.evaluate((id) => window.__hq.state.roster.get(id)?.av, b.id);
-    check("another person sees the new hair, beard and hat", seen?.hs === 7 && seen?.bd === 4 && seen?.ht === 7 && seen?.hk === 2);
-    check("another person sees the custom shirt colour", seen?.sh === "#12ab9f", JSON.stringify(seen));
-    // someone changing look over and over leaves at most one look per person in other people's memory
-    const looks0 = await a.page.evaluate(() => window.__hq.cachedLooks());
-    const bCookie = (await b.ctx.cookies()).find((k) => k.name === "hq_session")!.value;
-    for (let i = 0; i < 4; i++) { // the profile rate limit allows a burst of 5; one save is already spent
-      await fetch(API + "/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + bCookie }, body: JSON.stringify({ name: "Novo" + t, avatar: { sk: 1, hs: i, hc: 3, sh: "#0000" + (10 + i), pa: 1 } }) });
-      await waitFor(() => a.page.evaluate((id, sh) => window.__hq.state.roster.get(id)?.av.sh === sh, b.id, "#0000" + (10 + i)), { what: "look " + i });
-    }
-    await sleep(300);
-    const looks1 = await a.page.evaluate(() => window.__hq.cachedLooks());
-    const bSeen = await a.page.evaluate((id) => window.__hq.view.debugEntities().some((e) => e.id === id), b.id);
-    check("four look changes leave other people's avatar cache the same size", bSeen && looks1 === looks0, `B in view: ${bSeen}, looks ${looks0} -> ${looks1}`);
+    const reached = await waitFor(() => a.page.evaluate((n, id) => { const p = window.__hq.state.roster.get(id); return p?.n === n && p.av.hs === 7; }, "Novo" + t, b.id), { what: "roster shows the new name and hair" }).then(() => true, () => false);
+    check("a name and look saved through the settings and appearance dialogs reach other people's roster live", picked && reached, JSON.stringify(await a.page.evaluate((id) => window.__hq.state.roster.get(id), b.id)));
+    await b.page.keyboard.press("Escape"); // the settings dialog
 
-    // ---- desk assignment shows the owner's label
+    // ---- a desk assigned to a person: its owner's label, then a map reload
     // The world map redacts interactive-object content; editors round-trip through the full map.
     const map = (await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json()) as MapData;
     const desk = map.props.find((p) => p.t === "desk")!;
     desk.assign = b.id;
     desk.label = "New desk " + t;
     const put = await fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(map) });
-    check("an admin can assign a desk to a person", put.status === 200);
+    if (put.status !== 200) throw new Error("assigning a desk: " + put.status);
     await waitFor(() => c.page.evaluate(() => window.__hq.view.deskLabels.length > 0), { what: "desk label" });
-    check("clients render the desk owner label", true);
     // labels share one bitmap font per look (WorldView has 6): Pixi makes a glyph atlas per font.
     // It makes a font when a text is first measured, and labels out of view are not: measure them all.
     const fontsAfterMeasuring = () => c.page.evaluate(() => {
@@ -115,8 +99,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
         return [...document.querySelectorAll(".chat .chips .chip"), document.querySelector(".msgs")!, document.querySelector(".composer input")!].map(hit).filter(Boolean);
       });
       check("the chat panel's controls are not covered at " + label, blocked.length === 0, blocked.join("; "));
-      await u.page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".chat .chips .chip")].find((c) => c.textContent === "Conversation")?.click());
-      check("without a conversation the conversation composer is disabled at " + label, await u.page.evaluate(() => document.querySelector<HTMLInputElement>(".composer input")?.disabled === true));
       if (vp.hasTouch) {
         await u.page.click(".reaction-toggle");
         const inaccessible = await u.page.evaluate(() => [...document.querySelectorAll(".reaction-row button")].filter((el) => {
@@ -126,11 +108,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
         check("every expanded phone reaction fits the screen and can be tapped", inaccessible.length === 0, inaccessible.join(", "));
         await u.page.screenshot({ path: ctx.dir + "/phone-reactions.png" });
         await u.page.click('.reaction-row button[aria-label^="Dance"]');
-        const usable = await u.page.evaluate(() => document.querySelector(".reaction-toggle")?.getAttribute("aria-expanded") === "false" && [...document.querySelectorAll(".chat .chips .chip")].every((el) => {
+        const usable = await u.page.evaluate(() => [...document.querySelectorAll(".chat .chips .chip")].every((el) => {
           const r = el.getBoundingClientRect();
           return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
         }));
-        check("choosing a phone reaction closes the menu and leaves chat scopes usable", usable);
+        check("after a phone reaction nothing covers the chat scopes", usable);
       }
       await u.ctx.close();
     }

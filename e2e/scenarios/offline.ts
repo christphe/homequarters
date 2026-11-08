@@ -1,5 +1,10 @@
-// Requests that fail on the network (no answer at all, as when the connection drops) through the real controls:
-// each panel shows its error and the page has no unhandled rejection. The requests are aborted in the browser.
+// A request that fails on the network (no answer at all, as when the connection drops), through the real page: the map
+// editor's Save with the request aborted in the browser shows its error and leaves no unhandled rejection. One
+// bundle-level check of the path every panel shares (request() in web/src/net/http.ts never throws).
+// What moved below the browser (decision 0037): each panel's own failure, with fetch rejecting as offline, in component
+// tests: Settings > Save profile and Create a sign-in link in web/test/SettingsDialog.test.tsx; Admin > Members,
+// Invites, Activity, Office > Rename, Announce, Plugins' on/off and the map editor opening in web/test/Offline.test.tsx.
+// "The failed save leaves the server's map as it was" went: the server never got the request.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, type RunContext, type User } from "../lib.ts";
 
 const click = (u: User, selector: string, text: string) => u.page.evaluate((selector, text) => {
@@ -57,43 +62,12 @@ export async function run(ctx: RunContext): Promise<boolean> {
       failing = "";
     };
 
-    // ---- Settings
-    await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[title="Settings"]')?.click());
-    await waitFor(() => page.$('.modal input[aria-label="Your name"]'), { what: "settings open" });
-    await offline("Settings > Save profile", "PUT /api/profile", () => click(admin, ".modal button", "Save profile"), "Could not save the profile");
-    await offline("Settings > Create a sign-in link", "POST /api/account-link", () => click(admin, ".modal button", "Create a sign-in link"), "Could not create a link.");
-    await page.keyboard.press("Escape");
-
-    // ---- Administration: loading a tab, renaming the office, an announcement
-    await offline("Admin > Members", "GET /api/admin/members", () => waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" }), "Something went wrong.");
-    await click(admin, ".modal [role=tab]", "Office");
-    const field = await waitFor(() => page.$("#office-name"), { what: "office name field" });
-    const name = await field.evaluate((el) => (el as HTMLInputElement).value);
-    await field.click({ count: 3 }); // selects the name, so typing replaces it
-    await field.type(name + " 2");
-    await offline("Admin > Office > Rename", "PATCH /api/admin/office", () => click(admin, ".modal button", "Rename"), "Something went wrong.");
-    await click(admin, ".modal [role=tab]", "Announce");
-    await waitFor(() => page.$("#announce-text"), { what: "announce field" });
-    await page.type("#announce-text", "Back in five");
-    await offline("Admin > Announce", "POST /api/admin/announce", () => click(admin, ".modal form button", "Announce"), "Something went wrong.");
-    await click(admin, ".modal [role=tab]", "Plugins");
-    const toggle = await waitFor(() => page.evaluate(() => document.querySelector('.modal button[aria-label^="Turn "]')?.getAttribute("aria-label")), { what: "a plugin's on/off button" });
-    const title = toggle.replace(/^Turn (on|off) /, "");
-    await offline("Admin > Plugins > " + toggle, "PUT /api/admin/plugins/*", () => page.evaluate((l) => { const b = document.querySelector<HTMLButtonElement>(`.modal button[aria-label="${l}"]`); b?.click(); return !!b; }, toggle), `${title} could not start: Something went wrong.`);
-    await page.keyboard.press("Escape");
-
     // ---- map editor: an edit, then Save
     await walkTo(admin, 32 * 16 + 8, 22 * 16 + 8);
-    await offline("Map editor > open", "GET /api/admin/map", () => waitFor(() => click(admin, "button", "Edit office"), { what: "Edit office" }), "Could not load the editable map. Close the editor and try again.");
-    await click(admin, ".editor button", "Close");
-    await waitFor(async () => !(await page.$(".editor")), { what: "editor closed" });
     await waitFor(() => click(admin, "button", "Edit office"), { what: "Edit office" });
     await waitFor(() => page.$(".editor"), { what: "editor open" });
-    const savedMap = () => page.evaluate(() => fetch("/api/admin/map").then((r) => r.text()));
-    const mapBefore = await savedMap();
     await drag(admin, [35, 20], [35, 24]);
     await offline("Map editor > Save", "PUT /api/map", () => click(admin, ".editor button", "Save"), "Could not save");
-    check("the failed save leaves the server's map as it was", (await savedMap()) === mapBefore);
     await page.keyboard.press("Escape");
   } finally {
     await browser.close();
