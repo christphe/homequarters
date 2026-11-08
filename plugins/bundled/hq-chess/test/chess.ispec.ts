@@ -507,9 +507,12 @@ test("undo takes back the last action only, by either seated player who has the 
   move(alice, A, 52, 36);
   s = await waitBoard(carol, A, "e4", (s) => s.p[36] === "P");
   assert.deepEqual(last(s), ["52-36", true], "the state names the last move and an undo");
+  // only the states sent after the undo: a member whose e4 has not come yet still holds the START of before the
+  // move (undone null), which an unbounded wait for START would take
+  const sent = new Map([alice, bob, carol].map((m) => [m, frames(m).length]));
   alice.send(PLUGIN, { t: "undo", ...A });
   for (const m of [alice, bob, carol]) {
-    s = await waitBoard(m, A, "undone for everybody", (s) => s.p === START);
+    s = await waitBoard(m, A, "undone for everybody", (s) => s.p === START, sent.get(m));
     assert.deepEqual(last(s), ["", false], "after an undo: no highlight, no second undo");
     assert.equal(seat(s, "w"), "Alice");
     assert.equal(seat(s, "b"), "Bob");
@@ -523,8 +526,9 @@ test("undo takes back the last action only, by either seated player who has the 
   carol.send(PLUGIN, { t: "undo", ...A }); // a watcher: refused, the state resent to him only
   await until("the watcher gets the state again", () => count(carol, A) > carolN);
   assert.equal(lastBoard(carol, A).r, "p", "a watcher cannot undo");
+  const aliceN = frames(alice).length; // Alice may not have the capture yet: her last state is then the START undone by White
   bob.send(PLUGIN, { t: "undo", ...A });
-  s = await waitBoard(alice, A, "Bob undoes White's capture", (s) => s.p === START);
+  s = await waitBoard(alice, A, "Bob undoes White's capture", (s) => s.p === START, aliceN);
   assert.equal(s.r, "", "the reserve is restored");
   assert.equal(s.undone, "b", "Black is named as the side that undid");
   const bobN = count(bob, A);
