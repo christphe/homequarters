@@ -71,7 +71,12 @@ jobs:
         with:
           toolchain: stable # named: the pinned commit's default is not relied on
           components: clippy, rustfmt
+      # A release (TAG set) is built without the Rust and pnpm caches, neither restored nor saved: what
+      # another run wrote there must not end up in the files published to installed apps. zizmor cannot
+      # evaluate the `if` and the expression, hence the two ignores (cache-poisoning: only pull requests,
+      # which publish nothing, use the caches).
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: env.TAG == '' # zizmor: ignore[cache-poisoning]
         with:
           workspaces: desktop/src-tauri
       # the version comes from packageManager in the root package.json
@@ -79,7 +84,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
+          # "" (a release): no cache
+          cache: ${{ env.TAG == '' && 'pnpm' || '' }} # zizmor: ignore[cache-poisoning]
           cache-dependency-path: pnpm-lock.yaml
       - name: Linux libraries
         if: runner.os == 'Linux'
@@ -101,6 +107,7 @@ jobs:
         shell: bash
         working-directory: desktop
         env:
+          BUNDLES: ${{ matrix.bundles }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
@@ -112,20 +119,23 @@ jobs:
             if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then updater=true; else echo "::warning::no TAURI_SIGNING_PRIVATE_KEY: this release cannot update installed apps"; fi
             config=(--config "{\"version\":\"${TAG#desktop-v}\",\"bundle\":{\"createUpdaterArtifacts\":$updater}}")
           fi
-          pnpm tauri build --bundles ${{ matrix.bundles }} "${config[@]}"
+          pnpm tauri build --bundles "$BUNDLES" "${config[@]}"
       - name: Probe the webview
         shell: bash
         env:
           REQUIRE_WEBRTC: ${{ matrix.webrtc }}
           REQUIRE_APIS: ${{ matrix.apis }}
+          BIN: ${{ matrix.bin }}
         run: |
           run=""; [ "$RUNNER_OS" = Linux ] && run="xvfb-run -a"
-          $run node e2e/desktop/probe.ts "${{ matrix.bin }}" probe-out
+          $run node e2e/desktop/probe.ts "$BIN" probe-out
       - name: Summary
         if: always()
         shell: bash
+        env:
+          OS: ${{ matrix.os }}
         run: |
-          { echo "### ${{ matrix.os }}"; echo '```json'; cat probe-out/probe.json 2>/dev/null || echo "no report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### $OS"; echo '```json'; cat probe-out/probe.json 2>/dev/null || echo "no report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -142,11 +152,13 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_FILES: ${{ matrix.release }}
         run: |
           # the release is published by the release steps (.claude/skills/release), maybe after the tag
-          for i in $(seq 1 60); do gh release view "$TAG" >/dev/null 2>&1 && break; sleep 30; done
+          for _ in $(seq 1 60); do gh release view "$TAG" >/dev/null 2>&1 && break; sleep 30; done
           shopt -s nullglob
-          gh release upload "$TAG" ${{ matrix.release }} --clobber
+          # shellcheck disable=SC2086 # RELEASE_FILES is a list of globs: split and expanded on purpose
+          gh release upload "$TAG" $RELEASE_FILES --clobber
 
   # The update feed: latest.json lists each system's signed update in the release, and goes to the
   # "desktop-latest" release whose address the app reads. Only for the newest desktop release, so rebuilding
