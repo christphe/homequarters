@@ -2,7 +2,7 @@ import { WorldView, bitmapFonts } from "./game/WorldView";
 import { cachedLooks } from "./game/avatars";
 import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
-import { homeTile } from "./game/home";
+import { busyToggle, homeTile } from "./game/home";
 import { nextHand } from "./hand";
 import { goToast, waveToast } from "./replies";
 import { ownerMap } from "./game/places";
@@ -369,8 +369,7 @@ class Session {
   }
   /** Ctrl+U: busy, or back to available from busy or away. A manual choice ends the automatic away. */
   toggleBusy() {
-    const s = getState().status;
-    if (s === "busy" || s === "away") this.backToAvailable();
+    if (busyToggle(getState().status) === "available") this.backToAvailable();
     else { this.autoAway = false; this.setStatus("busy"); }
   }
   /** The big button on the status veil, and Ctrl+U from busy or away. */
