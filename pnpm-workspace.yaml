@@ -22,5 +22,5 @@ catalog:
   oxlint: 1.89.0
   oxlint-tsgolint: 7.0.2005
   typescript: ^7.0.2
-  vite: ^8.3.1
+  vite: ^8.3.3
   vitest: ^5.1.0
