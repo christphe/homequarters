@@ -48,15 +48,17 @@ var (
 )
 
 type mapData struct {
-	W, H  int
-	Solid []string
+	W     int      `json:"w"`
+	H     int      `json:"h"`
+	Solid []string `json:"solid"`
 }
 type hello struct {
 	T   string `json:"t"`
 	You uint32 `json:"you"`
 	Cfg struct {
 		Speed float64 `json:"speed"`
-		X, Y  float64
+		X     float64 `json:"x"`
+		Y     float64 `json:"y"`
 	} `json:"cfg"`
 	Map mapData `json:"map"`
 }
@@ -199,7 +201,10 @@ func (b *bot) run(ctx context.Context, ready chan<- struct{}) {
 				}
 			}
 		case bytes.HasPrefix(data, []byte(`{"t":"a"`)):
-			var a struct{ X, Y float64 }
+			var a struct {
+				X float64 `json:"x"`
+				Y float64 `json:"y"`
+			}
 			if json.Unmarshal(data, &a) == nil && b.dx == 0 && b.dy == 0 {
 				b.x, b.y = a.X, a.Y
 			}
@@ -469,37 +474,67 @@ func histQuantile(before, after map[string]float64, q float64) float64 {
 }
 
 type report struct {
-	Label, Region                         string
-	Bots, Joined, Failed, Disconnects     int64
-	Moving                                float64
-	DurationS                             float64
-	ServerMsgsPerSec, ServerKBPerSec      float64
-	PosPerSec, CoalescedPerSec            float64
-	InputsPerSec                          float64
-	ClientKBInPerBot, ClientMsgsInPerBot  float64
-	TickP50ms, TickP95ms, TickP99ms       float64
-	TickMaxMs, TickMeanMs                 float64
-	LatStartP50, LatStartP95, LatStartP99 float64
-	LatStopP50, LatStopP95, LatStopP99    float64
-	LatSamples                            int
-	CPUAvg, CPUMax, RSSMax                float64
-	HeapMB, GoSysMB                       float64
-	Kicked, Skipped                       float64
-	Groups                                float64
-	StormMs                               float64
-	StormFailed                           int
-	Note                                  string
+	Label              string  `json:"Label"`
+	Region             string  `json:"Region"`
+	Bots               int64   `json:"Bots"`
+	Joined             int64   `json:"Joined"`
+	Failed             int64   `json:"Failed"`
+	Disconnects        int64   `json:"Disconnects"`
+	Moving             float64 `json:"Moving"`
+	DurationS          float64 `json:"DurationS"`
+	ServerMsgsPerSec   float64 `json:"ServerMsgsPerSec"`
+	ServerKBPerSec     float64 `json:"ServerKBPerSec"`
+	PosPerSec          float64 `json:"PosPerSec"`
+	CoalescedPerSec    float64 `json:"CoalescedPerSec"`
+	InputsPerSec       float64 `json:"InputsPerSec"`
+	ClientKBInPerBot   float64 `json:"ClientKBInPerBot"`
+	ClientMsgsInPerBot float64 `json:"ClientMsgsInPerBot"`
+	TickP50ms          float64 `json:"TickP50ms"`
+	TickP95ms          float64 `json:"TickP95ms"`
+	TickP99ms          float64 `json:"TickP99ms"`
+	TickMaxMs          float64 `json:"TickMaxMs"`
+	TickMeanMs         float64 `json:"TickMeanMs"`
+	LatStartP50        float64 `json:"LatStartP50"`
+	LatStartP95        float64 `json:"LatStartP95"`
+	LatStartP99        float64 `json:"LatStartP99"`
+	LatStopP50         float64 `json:"LatStopP50"`
+	LatStopP95         float64 `json:"LatStopP95"`
+	LatStopP99         float64 `json:"LatStopP99"`
+	LatSamples         int     `json:"LatSamples"`
+	CPUAvg             float64 `json:"CPUAvg"`
+	CPUMax             float64 `json:"CPUMax"`
+	RSSMax             float64 `json:"RSSMax"`
+	HeapMB             float64 `json:"HeapMB"`
+	GoSysMB            float64 `json:"GoSysMB"`
+	Kicked             float64 `json:"Kicked"`
+	Skipped            float64 `json:"Skipped"`
+	Groups             float64 `json:"Groups"`
+	StormMs            float64 `json:"StormMs"`
+	StormFailed        int     `json:"StormFailed"`
+	Note               string  `json:"Note"`
 	// Unix seconds of the measurement window, to line up host samples taken elsewhere (bench/vm-sample.sh).
-	WindowStart, WindowEnd float64
-	Series                 []sample
+	WindowStart float64  `json:"WindowStart"`
+	WindowEnd   float64  `json:"WindowEnd"`
+	Series      []sample `json:"Series"`
 }
 
 type sample struct {
-	TSec, HeapMB, Goroutines, RSSMB, CPU, Players, FramesOut float64
+	TSec       float64 `json:"TSec"`
+	HeapMB     float64 `json:"HeapMB"`
+	Goroutines float64 `json:"Goroutines"`
+	RSSMB      float64 `json:"RSSMB"`
+	CPU        float64 `json:"CPU"`
+	Players    float64 `json:"Players"`
+	FramesOut  float64 `json:"FramesOut"`
 }
 
 func main() {
 	flag.Parse()
+	os.Exit(run())
+}
+
+// run drives the bots, prints the report and returns the exit code (deferred cancels run before the exit).
+func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bots := make([]*bot, *nBots)
@@ -645,12 +680,16 @@ func main() {
 	js, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "report:", err)
-		os.Exit(1)
+		return 1
 	}
 	fmt.Println(string(js))
 	if *out != "" {
-		os.WriteFile(*out, js, 0o644)
+		if err := os.WriteFile(*out, js, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "report:", err)
+			return 1
+		}
 	}
+	return 0
 }
 
 // scrubNaN sets NaN/Inf fields to -1 so the report always serialises: -1 means no samples, no metrics,

@@ -52,14 +52,28 @@ func main() {
 	if *backup != "" {
 		os.Exit(runBackup(cfg.DBPath, *backup))
 	}
+	os.Exit(run(log, cfg, cliFlags{inviteRole: *inviteRole, inviteUses: *inviteUses, inviteHours: *inviteHours, accountLink: *accountLink}))
+}
+
+// cliFlags are the one-shot commands that open the store, print and exit instead of serving.
+type cliFlags struct {
+	inviteRole  string
+	inviteUses  int
+	inviteHours int
+	accountLink string
+}
+
+// run opens the store, then serves (or runs a one-shot command of f) and returns the exit code, so that the
+// deferred closes and the final snapshot run on every path, which os.Exit would skip.
+func run(log *slog.Logger, cfg *config.Config, f cliFlags) int {
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o750); err != nil {
 		log.Error("data dir", "err", err)
-		os.Exit(1)
+		return 1
 	}
 	st, err := store.Open(cfg.DBPath)
 	if err != nil {
 		log.Error("open store", "err", err)
-		os.Exit(1)
+		return 1
 	}
 	defer st.Close()
 
@@ -67,41 +81,41 @@ func main() {
 	office, err := st.EnsureOffice(context.Background(), cfg.OfficeSlug, cfg.OfficeName, string(def))
 	if err != nil {
 		log.Error("ensure office", "err", err)
-		os.Exit(1)
+		return 1
 	}
 
-	if *inviteRole != "" {
-		tok, err := st.CreateInvite(context.Background(), office.ID, *inviteRole, *inviteUses, time.Duration(*inviteHours)*time.Hour, 0)
+	if f.inviteRole != "" {
+		tok, err := st.CreateInvite(context.Background(), office.ID, f.inviteRole, f.inviteUses, time.Duration(f.inviteHours)*time.Hour, 0)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "invite:", err)
-			os.Exit(1)
+			return 1
 		}
-		_ = st.Audit(context.Background(), office.ID, 0, "invite.create", 0, "", fmt.Sprintf("cli role=%s uses=%d hours=%d", *inviteRole, *inviteUses, *inviteHours))
+		_ = st.Audit(context.Background(), office.ID, 0, "invite.create", 0, "", fmt.Sprintf("cli role=%s uses=%d hours=%d", f.inviteRole, f.inviteUses, f.inviteHours))
 		fmt.Println("/?invite=" + tok)
-		return
+		return 0
 	}
 
-	if *accountLink != "" {
-		uid, err := st.MemberByName(context.Background(), office.ID, *accountLink)
+	if f.accountLink != "" {
+		uid, err := st.MemberByName(context.Background(), office.ID, f.accountLink)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "account link:", err)
-			os.Exit(1)
+			return 1
 		}
 		if cfg.AuthEnabled() {
 			// the link would bypass the sign-in of somebody who has one
 			if linked, err := st.HasIdentityFor(context.Background(), uid, cfg.AuthProviders); err != nil || linked {
 				fmt.Fprintln(os.Stderr, "account link: this member signs in with a provider; personal links only serve members who have not linked one yet")
-				os.Exit(1)
+				return 1
 			}
 		}
 		tok, err := st.CreateAccountLink(context.Background(), uid, office.ID)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "account link:", err)
-			os.Exit(1)
+			return 1
 		}
-		_ = st.Audit(context.Background(), office.ID, 0, "account.link.create", uid, *accountLink, "cli")
+		_ = st.Audit(context.Background(), office.ID, 0, "account.link.create", uid, f.accountLink, "cli")
 		fmt.Println("/link/" + tok)
-		return
+		return 0
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -129,9 +143,10 @@ func main() {
 		hs.Shutdown(sctx)
 	}()
 	log.Info("listening", "addr", cfg.Addr, "env", cfg.Env, "office", office.Slug, "media", md.Enabled())
+	code := 0
 	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server", "err", err)
-		os.Exit(1)
+		code = 1
 	}
 	stop()
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -139,6 +154,7 @@ func main() {
 	if err := srv.Wait(shutdown); err != nil {
 		log.Error("final snapshot timeout", "err", err)
 	}
+	return code
 }
 
 func probe(addr string) int {
