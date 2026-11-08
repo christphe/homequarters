@@ -1,7 +1,17 @@
 // Desks and their PCs have depth: they are drawn again as sprites over the baked map, sorted with the
 // avatars, so somebody behind a desk is hidden by it. With nobody around the office looks exactly as
-// baked; a saved map without pc props keeps its built-in screens; the editor erases a desk with its PC.
+// baked; a saved map without pc props keeps its built-in screens; the editor's eraser takes a desk with its PC and
+// the picture changes at once. What stays here is pixels: the world compared with and without the depth sprites,
+// the bake of desks with pc props against built-in screens, who a desk hides, the eraser's change drawn.
 // The shared office is put back as it was at the end.
+// Moved down (no longer checked here):
+// - which props get a depth sprite (every desk, every pc on a desk; a map saved without PCs, the three layouts):
+//   web/test/depthSprites.test.ts (depthObjects in web/src/game/art/objects.ts);
+// - the starter maps put a pc on every desk: Go TestTemplatesPutAPCOnEveryDesk (gamemap/templates_test.go);
+// - the editor offers no pc on its own, and one click of the eraser takes a desk with its pc:
+//   web/test/MapEditor.test.tsx, web/test/mapModel.test.ts, web/test/deskPC.test.ts;
+// - the edited map saves: web/test/MapEditor.test.tsx, Go TestPutMapIsAdminOnlyValidatedLiveAndSurvivesARestart
+//   (httpapi/editor_test.go); the editor's save through its real controls is e2e/scenarios/editor.ts.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API, type User, type RunContext } from "../lib.ts";
 import type { MapData, Prop } from "../../web/src/net/protocol.ts";
 
@@ -51,14 +61,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const old = stripPCs(original);
     check("setup: a map without pc props is accepted", await put(old));
     const oldMap = await viewMap(admin);
-    check("a saved map without PCs gets a depth sprite per desk and none for PCs", JSON.stringify(await depth(admin)) === JSON.stringify({ desks: deskCount(oldMap), pcs: 0 }), JSON.stringify(await depth(admin)));
+    await waitFor(async () => (await depth(admin)).desks === deskCount(oldMap), { timeout: 5000, what: "depth sprites" });
     check("with nobody near, a map without PCs looks the same with and without depth sprites", await sameWithAndWithout(oldMap));
 
     // ---- the Loft as a template makes it: one pc per desk, the same picture as the built-in screens
     check("setup: the map with PCs is accepted", await put(original));
     const withMap = await viewMap(admin);
-    check("the starter map has a pc on every desk", withMap.props.filter((p) => p.t === "pc").length === deskCount(withMap) && deskCount(withMap) > 0);
-    check("each desk and each pc gets a depth sprite", JSON.stringify(await depth(admin)) === JSON.stringify({ desks: deskCount(withMap), pcs: deskCount(withMap) }), JSON.stringify(await depth(admin)));
+    await waitFor(async () => (await depth(admin)).pcs > 0, { timeout: 5000, what: "depth sprites of the pcs" });
     check("with nobody near, the map with PCs looks the same with and without depth sprites", await sameWithAndWithout(withMap));
     check("desks with pc props bake exactly like desks with built-in screens", (await bakeHash(admin, withMap)) === (await bakeHash(admin, stripPCs(withMap))));
     const nudged = structuredClone(withMap);
@@ -99,34 +108,25 @@ export async function run(ctx: RunContext): Promise<boolean> {
       check("a person south of a desk (on its chair) is drawn in front of it", s.on !== s.onEmpty);
     } else check("setup: a desk with a free chair south of it", false);
 
-    // ---- the editor: one click erases a desk with its pc, and it shows; a pc is not offered on its own
+    // ---- the editor: one click of the eraser on a desk's pc takes the desk, and the picture changes at once
     const target = withMap.props.find((p) => p.t === "desk" && !p.up && free(withMap, p.x, p.y + 2))!;
     await walkTo(walker, 5 * 16 + 8, 5 * 16 + 8).catch(() => {}); // out of the way
     await walkTo(admin, target.x * 16 + 8, (target.y + 2) * 16 + 8).catch(() => {});
     await admin.page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Edit office")?.click());
     await waitFor(() => admin.page.$(".editor"), { what: "editor open" });
-    await chip(admin, "Objects");
-    const offered = await admin.page.evaluate(() => [...document.querySelectorAll<HTMLOptionElement>(".editor select option")].map((o) => o.value));
-    check("the editor does not offer a pc on its own (a desk without one draws its screen)", offered.includes("desk") && !offered.includes("pc"), offered.join(","));
     const deskArea = { x: target.x * 16, y: target.y * 16 - 12, w: (target.w ?? 2) * 16, h: 28 };
     const before = await pixels(admin, { depth: true, ents: false, rect: deskArea });
     await chip(admin, "Erase object");
     await clickTile(admin, target.x, target.y); // the tile its pc stands on
-    const pcsOn = async (d: Prop) => (await viewMap(admin)).props.filter((p) => p.t === "pc" && p.y === d.y && p.x >= d.x && p.x < d.x + (d.w ?? 2));
-    const gone = await viewMap(admin);
-    check("one click of the eraser on a desk removes the desk and its pc", !gone.props.some((p) => p.t === "desk" && p.x === target.x && p.y === target.y) && (await pcsOn(target)).length === 0);
-    check("and the change shows at once", (await pixels(admin, { depth: true, ents: false, rect: deskArea })) !== before);
-    const saved = await editorButton(admin, "Save") && await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => /saved|error|invalid|refused/i.test(x))), { timeout: 5000, what: "save toast" }).catch(() => "");
-    check("the edited map saves", !!saved && !/error|invalid|refused/i.test(saved), String(saved));
-    await editorButton(admin, "Close");
+    check("the eraser's click on a desk shows at once (desk, pc and depth sprite gone from the picture)", (await pixels(admin, { depth: true, ents: false, rect: deskArea })) !== before);
+    await editorButton(admin, "Close"); // unsaved: the office goes back to the starter map
 
     // ---- switching layout rebuilds the depth sprites; turned desks hide whoever sits behind them
     const sw = await api(ctx.adminCookie, "POST", "/api/admin/map/template", { template: "manor" });
     check("setup: switch to the Manor", sw.ok);
     await waitFor(async () => (await viewMap(admin)).w === 85, { timeout: 20000, what: "the Manor" });
     await waitFor(() => admin.page.evaluate(() => window.__hq.state.conn === "open"), { timeout: 20000, what: "admin back" });
-    await waitFor(async () => (await depth(admin)).desks === 48, { timeout: 5000, what: "depth sprites" }).catch(() => {});
-    check("after a layout switch, the depth sprites are the new map's (48 desks, 48 PCs)", JSON.stringify(await depth(admin)) === JSON.stringify({ desks: 48, pcs: 48 }), JSON.stringify(await depth(admin)));
+    await waitFor(async () => (await depth(admin)).desks === 48, { timeout: 5000, what: "the Manor's depth sprites" });
     const manor = await viewMap(admin);
     check("with nobody near, the Manor looks the same with and without depth sprites", await sameWithAndWithout(manor));
     check("the Manor's desks with PCs bake like desks with built-in screens", (await bakeHash(admin, manor)) === (await bakeHash(admin, stripPCs(manor))));

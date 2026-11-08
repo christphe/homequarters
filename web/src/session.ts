@@ -4,7 +4,7 @@ import { autoStatus, osIdleGranted, watchOsIdle } from "./osIdle";
 import { setKeyLayout } from "./keys";
 import { busyToggle, homeTile } from "./game/home";
 import { nextHand } from "./hand";
-import { goToast, waveToast } from "./replies";
+import { forcedToast, goToast, layoutToast, waveToast } from "./replies";
 import { ownerMap } from "./game/places";
 import { Socket, type ConnState } from "./net/socket";
 import type { BoardCommand, MuteKind, Person, Prop, ServerMsg, Status } from "./net/protocol";
@@ -278,7 +278,7 @@ class Session {
         chime("wave");
         desktopNotify(t("announce.title", { name: m.n }), t("notify.open"));
         break;
-      case "layout": toast(t("layout.moved", { name: m.n })); break; // the reconnection into it follows
+      case "layout": toast(layoutToast(m.n)); break; // the reconnection into it follows
       case "office": setState({ office: m.n }); break;
       case "lreq": setState({ leadRequest: { id: m.from, name: m.n } }); break;
       case "deny": view.setDeny(m.d); setState({ locked: m.lk, denied: m.d }); break;
@@ -288,7 +288,7 @@ class Session {
         if (!m.done) { chime("knock"); desktopNotify(t("door.knock", { area: m.a ?? "" }), t("notify.open")); }
         break;
       case "knr": toast(t(`door.${m.st}`, { area: m.a })); break;
-      case "frc": toast(t("door.forced", { name: m.n, area: m.a })); break;
+      case "frc": toast(forcedToast(m.n, m.a)); break;
       case "wb":
         boardModel.apply(m);
         if (m.op === "state") { view.setDirection(0, 0); setState({ boardKey: m.bk }); }

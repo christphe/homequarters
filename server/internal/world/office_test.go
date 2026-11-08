@@ -107,6 +107,14 @@ func TestAssignedOfficeOwnerKnockAndAdmit(t *testing.T) {
 	if visitor.area != oi {
 		t.Fatal("an admitted visitor walks in")
 	}
+	// with audio allowed, owner and visitor share the office's own call
+	drain(owner)
+	h.consent(owner, true)
+	h.consent(visitor, true)
+	h.run(3 * time.Second)
+	if got := frames(owner); owner.group == nil || owner.group != visitor.group || !owner.group.isRoom || !strings.Contains(got, `"k":"r"`) || !strings.Contains(got, `"name":"Office 1`) {
+		t.Fatalf("owner and admitted visitor share the office's call: %q", got)
+	}
 	// a guest inside is neither asked nor able to let somebody else in
 	h.now = h.now.Add(5 * time.Second)
 	other := h.add(5, "member", officeDoorX, hallY)
