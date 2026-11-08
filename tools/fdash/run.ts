@@ -168,7 +168,7 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
         // a hit puts the outputs of that pass on disk, over what is there; without them it is a miss
         let restored: string;
         try {
-          restored = c.outputs.length ? restoreOutputs(cacheDir, c.name, key, o.root) : "restored";
+          restored = c.outputs.length ? restoreOutputs(cacheDir, c.name, key, o.root, c.outputs) : "restored";
         } catch (e) {
           fs.appendFileSync(log, `fdash: the outputs could not be restored: ${(e as Error).message}\n`);
           restored = "missing";

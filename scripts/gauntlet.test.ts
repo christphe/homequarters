@@ -17,7 +17,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e2e", "hq-chess-e2e"];
 const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
 /** The projects with integration tests (*.ispec.ts against the testbed), in the workspace's order. */
-const INTEGRATION = ["sdk", "hq-card-lastcard", "hq-card-pouilleux", "hq-cards", "hq-pets"].map((p) => `${p}:test:integration`);
+const INTEGRATION = ["sdk", "hq-card-lastcard", "hq-card-pouilleux", "hq-cards", "hq-chess", "hq-pets"].map((p) => `${p}:test:integration`);
 
 test("the workspace holds the gauntlet's gates, as the conventional tasks of each project, with their commands", () => {
   const config = loadWorkspace(root);
@@ -66,8 +66,12 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
       ["hq-chess-e2e", "--plugin ../../bundled/hq-chess chess.ts"],
     ].map(([p, args]) => [`${p}:test:e2e`, `plugins/e2e/${p}`, `node ../../../e2e/plugin-run.ts ${args}`, false, false, '{"E2E_VIEWPORT":"small"}']),
   ]);
-  // the integration and browser suites start once the build is done: default runs its members one after the other
-  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", ...INTEGRATION, BROWSER, ...PLUGIN_SUITES], jobs: 1, after: [] });
+  // the integration and browser suites start once the build is done: default runs its tiers one after the
+  // other; inside a tier the suites run at once (each testbed has its own port and database, the browser
+  // runs wait for an e2e slot)
+  assert.deepEqual(config.get("default"), { kind: "group", name: "default", tasks: ["static", "integration", "browser"], jobs: 1, after: [] });
+  assert.deepEqual(config.get("integration"), { kind: "group", name: "integration", tasks: INTEGRATION, after: [] });
+  assert.deepEqual(config.get("browser"), { kind: "group", name: "browser", tasks: [BROWSER, ...PLUGIN_SUITES], after: [] });
   assert.equal((config.get("static") as { jobs?: number }).jobs, undefined);
 });
 
@@ -94,6 +98,11 @@ test("build tasks declare what they produce; site checks its build after making 
   assert.deepEqual(cmd("site:build").outputs, ["site/dist/**"]);
   assert.deepEqual(cmd("site:test:unit").after, ["site:build"]);
   for (const n of ["server:build", "server:test:unit"]) for (const k of ["GOFLAGS", "CGO_ENABLED"]) assert.ok(cmd(n).envKeys.includes(k), `${n} keys on ${k}`);
+  // a suite run against what a build wrote reads that artefact as an input: a stale binary or client gives
+  // another key, so a pass recorded on it never answers for the rebuilt one
+  const disk = (n: string) => (cmd(n).inputs ?? []).flatMap((i) => (typeof i === "object" && "disk" in i ? [i.disk] : []));
+  for (const n of INTEGRATION) assert.deepEqual(disk(n), ["bin/homequarters*"], n);
+  for (const n of [BROWSER, ...PLUGIN_SUITES]) assert.deepEqual(disk(n), ["bin/homequarters*", "web/dist/**"], n);
 });
 
 test("a plugin depends on the server and the SDK, never on the web client; the server on no plugin", () => {

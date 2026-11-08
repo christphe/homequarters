@@ -112,7 +112,13 @@
         "!/web/test/**",
         "!/web/dev/**",
         "/plugins/bundled/*/plugin.json",
-        "/plugins/sdk/**"
+        "/plugins/sdk/**",
+        {
+          "disk": "/bin/homequarters*"
+        },
+        {
+          "disk": "/web/dist/**"
+        }
       ],
       "envKeys": [
         "E2E_VIEWPORT",

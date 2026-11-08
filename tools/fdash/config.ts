@@ -3,8 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** A path pattern relative to the root (a leading "!" excludes), or the files of Go packages. */
-export type Input = string | { go: string; cwd: string; tests: boolean };
+/** A path pattern relative to the root (a leading "!" excludes), the files of Go packages, or a path pattern
+ * of files read from the disk, git-ignored ones included (build artefacts a command runs or serves). */
+export type Input = string | { go: string; cwd: string; tests: boolean } | { disk: string };
 
 export type Command = {
   kind: "command";
@@ -59,7 +60,8 @@ function parseInputs(name: string, key: string, v: unknown): Input[] {
     if (isObject(x) && typeof x.go === "string" && typeof x.cwd === "string" && Object.keys(x).every((k) => k === "go" || k === "cwd" || k === "tests") && (x.tests === undefined || typeof x.tests === "boolean")) {
       return { go: x.go, cwd: x.cwd, tests: x.tests === true };
     }
-    throw new Error(`${name}: ${key} holds ${JSON.stringify(x)}: a path pattern or { "go": <packages>, "cwd": <module dir>, "tests"?: <bool> }`);
+    if (isObject(x) && typeof x.disk === "string" && x.disk !== "" && !x.disk.startsWith("!") && Object.keys(x).length === 1) return { disk: x.disk };
+    throw new Error(`${name}: ${key} holds ${JSON.stringify(x)}: a path pattern, { "go": <packages>, "cwd": <module dir>, "tests"?: <bool> } or { "disk": <path pattern> }`);
   });
 }
 

@@ -56,7 +56,13 @@
         "/e2e/package.json",
         "/e2e/pnpm-lock.yaml",
         "/plugins/e2e/hq-cards-e2e/lib.ts",
-        "!capture-*.ts"
+        "!capture-*.ts",
+        {
+          "disk": "/bin/homequarters*"
+        },
+        {
+          "disk": "/web/dist/**"
+        }
       ],
       "envKeys": [
         "E2E_VIEWPORT",

@@ -296,3 +296,58 @@ test("outputs: part of the key; a command without them keeps its key; resolved f
   assert.deepEqual(resolveOutputs(root, ["bin/app", "out/*.txt"]), ["bin/app", "out/x.txt"]);
   assert.deepEqual(resolveOutputs(root, ["nothing/**", "bin/none"]), []);
 });
+
+test("outputs: a restored file gets the mode it had when stored, even if the cache lost it (CI artifacts keep 0644)", { skip: process.platform === "win32" && "file modes are not meaningful on Windows (only a read-only flag)" }, async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  const tasks = { build: producing({ run: [node(`const fs=require("fs");fs.appendFileSync("count-build","x");fs.mkdirSync("out",{recursive:true});fs.writeFileSync("out/app","#!/bin/sh\\n");fs.chmodSync("out/app",0o755);fs.writeFileSync("out/a.txt","a")`)] }) };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS build"]);
+  const cacheDir = path.join(root, ".fdash", "cache");
+  const out = path.join(cacheDir, fs.readdirSync(cacheDir).find((f) => f.endsWith(".out"))!);
+  // what actions/upload-artifact and a download give back: every file 0644
+  fs.chmodSync(path.join(out, "out/app"), 0o644);
+  fs.rmSync(path.join(root, "out"), { recursive: true });
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  assert.equal(fs.statSync(path.join(root, "out/app")).mode & 0o777, 0o755);
+  assert.equal(fs.statSync(path.join(root, "out/a.txt")).mode & 0o111, 0, "a file stored without the executable bit stays without it");
+});
+
+test("outputs: a restore removes files the outputs match that the pass did not produce", async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\nkeep/\n" });
+  const tasks = { build: producing({ outputs: ["out/**", "!out/*.keep"] }) };
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS build"]);
+  write(root, "out/stale.txt", "from another branch");
+  write(root, "out/sub/old.txt", "from another branch");
+  write(root, "out/note.keep", "excluded from the outputs");
+  write(root, "keep/x.txt", "not an output");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  for (const f of ["out/stale.txt", "out/sub/old.txt"]) assert.equal(fs.existsSync(path.join(root, f)), false, f);
+  assert.deepEqual([read(root, "out/a.txt"), read(root, "out/sub/b.txt"), read(root, "out/note.keep"), read(root, "keep/x.txt")], ["a1", "b1", "excluded from the outputs", "not an output"]);
+});
+
+test("disk inputs: files read from the disk, git-ignored ones included; a changed artefact reruns, a missing one contributes nothing", async () => {
+  // bin/ is ignored by git, as a build's binary is; the test reads it, so a stale binary must give another key
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nbin/\n" });
+  const tasks = { test: counting("test", { inputs: ["src.txt", { disk: "bin/app*" }] }) };
+  const inputs = (parseConfig(JSON.stringify({ tasks })).get("test") as Parameters<typeof cacheKey>[1]).inputs!;
+  write(root, "bin/app", "v1");
+  assert.deepEqual(resolveInputs(root, inputs), ["bin/app", "src.txt"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED test"]);
+  write(root, "bin/app", "v2");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "a rebuilt binary");
+  write(root, "bin/app.exe", "v1");
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "another file the pattern matches");
+  fs.rmSync(path.join(root, "bin"), { recursive: true });
+  assert.deepEqual(resolveInputs(root, inputs), ["src.txt"]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "no artefact: no crash, another key");
+  assert.equal(runs(root, "test"), 4);
+  if (process.platform !== "win32") {
+    // the mode is not part of the key: a binary whose mode a cache lost, then restored, is the same input
+    const c = parseConfig(JSON.stringify({ tasks })).get("test") as Parameters<typeof cacheKey>[1];
+    write(root, "bin/app", "v2");
+    fs.chmodSync(path.join(root, "bin/app"), 0o755);
+    const k1 = cacheKey(root, c, [], ["bin/app"], {});
+    fs.chmodSync(path.join(root, "bin/app"), 0o644);
+    assert.equal(cacheKey(root, c, [], ["bin/app"], {}), k1);
+  }
+});

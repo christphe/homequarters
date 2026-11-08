@@ -40,7 +40,7 @@ function fromRoot(dir: string, pattern: string): string {
   const rooted = body.startsWith("/") ? body.slice(1) : posix(dir, body);
   return (neg ? "!" : "") + rooted;
 }
-const inputFromRoot = (dir: string, i: Input): Input => (typeof i === "string" ? fromRoot(dir, i) : { ...i, cwd: posix(dir, i.cwd) });
+const inputFromRoot = (dir: string, i: Input): Input => (typeof i === "string" ? fromRoot(dir, i) : "disk" in i ? { disk: fromRoot(dir, i.disk) } : { ...i, cwd: posix(dir, i.cwd) });
 
 function readProject(root: string, dir: string): Project {
   const file = posix(dir, CONFIG_FILE);

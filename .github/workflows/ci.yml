@@ -74,7 +74,7 @@ jobs:
           path: ${{ runner.temp }}/fdash-logs
       - name: Keep only the records this run used
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
-        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete
+        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete && find .fdash/cache -mindepth 1 -type d -empty -delete
       - name: Publish the records (main only)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
         uses: actions/upload-artifact@v4
@@ -127,7 +127,7 @@ jobs:
         run: for f in "$RUNNER_TEMP"/fdash-logs/*/*.log; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
       - name: Keep only the records this run used
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
-        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete
+        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete && find .fdash/cache -mindepth 1 -type d -empty -delete
       - name: Publish the records (main only)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
         uses: actions/upload-artifact@v4
@@ -207,7 +207,7 @@ jobs:
         run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"
       - name: Keep only the records this run used
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.suite.outcome != 'skipped'
-        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete
+        run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete && find .fdash/cache -mindepth 1 -type d -empty -delete
       - name: Publish the records (main only)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.suite.outcome != 'skipped'
         uses: actions/upload-artifact@v4

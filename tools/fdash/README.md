@@ -21,6 +21,9 @@ node tools/fdash/cli.ts list [--pkg server]         # the tasks, in file order
 Several names on the command line run as **stages**, one after the other: the tasks of the first name, then
 those of the second, and so on; a task already run by an earlier stage is not repeated, and a failed stage
 stops the next ones. Inside a stage, tasks run at once as far as `--jobs` and their order (below) allow.
+`--pkg` applies to every stage: `run build test:integration --pkg maps` fails when `maps` has no `build`.
+To build another project first, run it as its own command: `run build --pkg core`, then
+`run test:integration --pkg maps`.
 
 It prints one line per command as it ends: `PASS <name>`, `CACHED <name>`, `FAIL <name> (log: <file>)`
 followed by the last 15 lines of the log, or `FAIL <name> (after <other> failed)` for a command not run
@@ -181,6 +184,13 @@ Inputs:
 - a **Go provider**, `{ "go": "<package pattern>", "cwd": "<module folder>", "tests": <bool> }`: the
   files of every package of that module reached by `go list -deps` from the pattern (Go, cgo and embedded
   files, plus test files and `testdata/` when `tests` is true), with the module's `go.mod` and `go.sum`.
+- a **disk pattern**, `{ "disk": "<path pattern>" }`: the files the pattern matches on disk, git-ignored
+  ones included, in the syntax of `outputs` (in a project, relative to it or from the root with a leading
+  `/`). It is for build artefacts a command runs or serves: a test that runs `bin/app` declares
+  `{ "disk": "/bin/app*" }`, so a pass on a stale binary is recorded under a key that the rebuilt binary does
+  not give, and the test runs again once it is rebuilt. A pattern that matches nothing (not built yet) adds
+  nothing; the command then runs and fails for lack of the artefact, and nothing is recorded. Only the
+  content counts, not the file's mode or time.
 
 When in doubt, declare an input wider: a missing input is a check skipped while what it tests changed.
 
@@ -193,8 +203,11 @@ usually ignored by git.
 - The patterns are part of the key: changing them makes the command run again.
 - On a pass, the files they match are copied next to the record (`<record>.out/`, with a list in
   `<record>.out.json` written last); if they cannot be stored, nothing is recorded.
-- On a hit, they are copied back over what is on disk before the commands that start after it, so what is
-  on disk matches the key. A record whose outputs are not all in the cache is a miss: the command runs,
+- Each file's mode is kept in the list, and given back on a restore: a cache moved by means that lose modes
+  (a CI artifact holds every file as 0644) still restores an executable binary.
+- On a hit, they are copied back over what is on disk before the commands that start after it, and files
+  the patterns match on disk that the pass did not produce are removed (a page removed on this branch, a
+  binary built for another platform), so what is on disk matches the key. A record whose outputs are not all in the cache is a miss: the command runs,
   after the line `WARN cache miss <name>: outputs not in the cache`.
 - A pass recorded before the command declared outputs cannot restore anything: the command runs, after
   `WARN cache miss <name>: a pass recorded before outputs were cached`.

@@ -17,8 +17,8 @@
       "jobs": 1,
       "tasks": [
         "static",
-        "test:integration",
-        "test:e2e"
+        "integration",
+        "browser"
       ]
     },
     "static": {
@@ -26,6 +26,16 @@
         "lint",
         "build",
         "test:unit"
+      ]
+    },
+    "integration": {
+      "tasks": [
+        "test:integration"
+      ]
+    },
+    "browser": {
+      "tasks": [
+        "test:e2e"
       ]
     }
   }

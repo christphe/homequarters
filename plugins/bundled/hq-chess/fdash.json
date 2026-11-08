@@ -48,6 +48,14 @@
           "--test",
           "**/*.ispec.ts"
         ]
+      ],
+      "inputs": [
+        {
+          "disk": "/bin/homequarters*"
+        }
+      ],
+      "envKeys": [
+        "HQ_BIN"
       ]
     }
   }

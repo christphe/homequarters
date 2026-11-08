@@ -24,13 +24,13 @@ test("parseConfig: inputs, envKeys, tools and items", () => {
   const c = parseConfig(cfg({
     e: {
       run: [["node", "run.mjs"]], args: true,
-      inputs: ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server" }, { go: "./...", cwd: "server", tests: true }],
+      inputs: ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server" }, { go: "./...", cwd: "server", tests: true }, { disk: "bin/x*" }],
       envKeys: ["V"], tools: [["go", "version"]],
       items: { one: { inputs: ["s/one.mjs"] }, two: {} },
     },
   }));
   const e = c.get("e") as Command;
-  assert.deepEqual(e.inputs, ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server", tests: false }, { go: "./...", cwd: "server", tests: true }]);
+  assert.deepEqual(e.inputs, ["src/**", "!src/dist/**", { go: "./cmd/x", cwd: "server", tests: false }, { go: "./...", cwd: "server", tests: true }, { disk: "bin/x*" }]);
   assert.deepEqual(e.envKeys, ["V"]);
   assert.deepEqual(e.tools, [["go", "version"]]);
   assert.deepEqual([...e.items!.entries()], [["one", { inputs: ["s/one.mjs"] }], ["two", { inputs: [] }]]);
@@ -57,6 +57,9 @@ test("parseConfig: every refusal names the task", () => {
     [{ t: { run: [["x"]], inputs: [1] } }, /t: inputs/],
     [{ t: { run: [["x"]], inputs: [{ go: "./x" }] } }, /t: inputs/],
     [{ t: { run: [["x"]], inputs: [{ go: "./x", cwd: "s", foo: 1 }] } }, /t: inputs/],
+    [{ t: { run: [["x"]], inputs: [{ disk: "" }] } }, /t: inputs/],
+    [{ t: { run: [["x"]], inputs: [{ disk: "!bin/x" }] } }, /t: inputs/],
+    [{ t: { run: [["x"]], inputs: [{ disk: "bin/x", go: "./x" }] } }, /t: inputs/],
     [{ t: { run: [["x"]], envKeys: [1] } }, /t: envKeys/],
     [{ t: { run: [["x"]], tools: [[]] } }, /t: tools/],
     [{ t: { run: [["x"]], args: true, items: { a: { foo: 1 } } } }, /t: items/],

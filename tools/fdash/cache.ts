@@ -51,8 +51,12 @@ export function resolveInputs(root: string, inputs: Input[]): string[] {
   const patterns = inputs.filter((i): i is string => typeof i === "string");
   const files = new Set(globFiles(root, patterns));
   const excluded = patterns.filter((p) => p.startsWith("!")).map((p) => p.slice(1));
-  // a "!" pattern removes from the whole set, the files of Go packages included
-  for (const i of inputs) if (typeof i !== "string") for (const f of goFiles(root, i)) if (!excluded.some((x) => path.posix.matchesGlob(f, x))) files.add(f);
+  // a "!" pattern removes from the whole set, the files of Go packages and of the disk included; a disk
+  // pattern that matches nothing (an artefact not built yet) adds nothing
+  for (const i of inputs) {
+    if (typeof i === "string") continue;
+    for (const f of "disk" in i ? resolveOutputs(root, [i.disk]) : goFiles(root, i)) if (!excluded.some((x) => path.posix.matchesGlob(f, x))) files.add(f);
+  }
   return [...files].sort();
 }
 
@@ -180,36 +184,46 @@ function touch(file: string): void {
   }
 }
 
-/** Keeps a copy of `files` (relative to the root) with the record of `key`. */
+/** Keeps a copy of `files` (relative to the root) with the record of `key`, and each file's mode in the list:
+ * a cache moved by means that drop modes (CI artifacts are all 0644) still restores an executable. */
 export function storeOutputs(dir: string, name: string, key: string, root: string, files: string[]): void {
   const target = outputsPath(dir, name, key);
   fs.rmSync(target + ".json", { force: true });
   fs.rmSync(target, { recursive: true, force: true });
+  const modes: Record<string, number> = {};
   for (const f of files) {
     fs.mkdirSync(path.dirname(path.join(target, f)), { recursive: true });
     fs.copyFileSync(path.join(root, f), path.join(target, f));
+    modes[f] = fs.statSync(path.join(root, f)).mode & 0o777;
     touch(path.join(target, f));
   }
   fs.mkdirSync(target, { recursive: true });
-  fs.writeFileSync(target + ".json", JSON.stringify({ files }) + "\n");
+  fs.writeFileSync(target + ".json", JSON.stringify({ files, modes }) + "\n");
 }
 
-/** Copies the outputs kept with the record of `key` back under the root, over what is there; "missing" when
- * the cache does not hold all of them (then nothing is copied). */
-export function restoreOutputs(dir: string, name: string, key: string, root: string): "restored" | "missing" {
+/** Copies the outputs kept with the record of `key` back under the root, over what is there, each with the
+ * mode it was stored with, and removes the files the output `patterns` match on disk that the pass did not
+ * produce (a page dropped on this branch, a binary of another platform); "missing" when the cache does not
+ * hold all of them (then nothing is copied or removed). */
+export function restoreOutputs(dir: string, name: string, key: string, root: string, patterns: string[]): "restored" | "missing" {
   const target = outputsPath(dir, name, key);
-  let files: unknown;
+  let files: unknown, modes: unknown;
   try {
-    files = (JSON.parse(fs.readFileSync(target + ".json", "utf8")) as { files?: unknown }).files;
+    ({ files, modes } = JSON.parse(fs.readFileSync(target + ".json", "utf8")) as { files?: unknown; modes?: unknown });
   } catch {
     return "missing";
   }
   // a path leaving the root is never written, whatever the list says
   const safe = (f: unknown) => typeof f === "string" && f !== "" && !path.isAbsolute(f) && !f.split(/[\\/]/).includes("..");
   if (!Array.isArray(files) || !files.every((f) => safe(f) && fs.existsSync(path.join(target, f as string)))) return "missing";
+  const stored = new Set(files as string[]);
+  for (const f of resolveOutputs(root, patterns)) if (!stored.has(f)) fs.rmSync(path.join(root, f), { force: true });
   for (const f of files as string[]) {
     fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
     fs.copyFileSync(path.join(target, f), path.join(root, f));
+    // a list written before modes were kept has none: the copy keeps the stored copy's mode
+    const mode = typeof modes === "object" && modes !== null ? (modes as Record<string, unknown>)[f] : undefined;
+    if (typeof mode === "number") fs.chmodSync(path.join(root, f), mode & 0o777);
     touch(path.join(target, f));
   }
   touch(target + ".json");
