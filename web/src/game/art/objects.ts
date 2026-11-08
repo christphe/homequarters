@@ -14,6 +14,18 @@ export interface DepthPiece {
   z: number;
 }
 
+/** The props that get a depth sprite, each with the desk it sorts by: every desk, and every pc standing on a
+ * desk (a pc on no desk is baked only). In map order. Pure: depthAtlas then keeps what the bake shows of each. */
+export function depthObjects(map: MapData): { p: Prop; desk: Prop }[] {
+  const out: { p: Prop; desk: Prop }[] = [];
+  for (const p of map.props) {
+    if (!DEPTH_OBJECTS.has(p.t)) continue;
+    const desk = p.t === "pc" ? deskOf(map.props, p) : p;
+    if (desk) out.push({ p, desk });
+  }
+  return out;
+}
+
 /** The box a depth object may paint: a desk rises above its tile (its top, a screen), a pc spreads
  * around the point it is centred on (screen, keyboard and mouse). */
 function paintBox(p: Prop) {
@@ -38,10 +50,7 @@ export function depthAtlas(map: MapData, baked: HTMLCanvasElement): { canvas: HT
   const scratch = document.createElement("canvas");
   const sctx = scratch.getContext("2d", { willReadFrequently: true })!;
   const cells: { piece: DepthPiece; data: ImageData }[] = [];
-  for (const p of map.props) {
-    if (!DEPTH_OBJECTS.has(p.t)) continue;
-    const desk = p.t === "pc" ? deskOf(map.props, p) : p;
-    if (!desk) continue;
+  for (const { p, desk } of depthObjects(map)) {
     const b = paintBox(p);
     const x0 = Math.max(0, b.x), y0 = Math.max(0, b.y), x1 = Math.min(W, b.x + b.w), y1 = Math.min(H, b.y + b.h);
     if (x1 <= x0 || y1 <= y0) continue;

@@ -130,7 +130,7 @@ func TestAdminAppliesATemplateAndDesksCarryOver(t *testing.T) {
 	}
 	_, out := admin.do("GET", "/api/admin/audit", nil)
 	b, _ := json.Marshal(out)
-	if !strings.Contains(string(b), `"action":"map.template"`) || !strings.Contains(string(b), "template=manor") || !strings.Contains(string(b), "kept=1 lost=0") {
+	if !strings.Contains(string(b), `"action":"map.template"`) || !strings.Contains(string(b), `"target":"Manor"`) || !strings.Contains(string(b), "template=manor") || !strings.Contains(string(b), "kept=1 lost=0") {
 		t.Fatalf("audit: %s", b)
 	}
 	// back to a smaller one: the world takes any size, Bia keeps Desk 2
