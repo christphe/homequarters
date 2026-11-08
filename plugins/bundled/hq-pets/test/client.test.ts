@@ -42,10 +42,10 @@ async function load() {
   const world = (me: number, avatars: { id: number; x: number; y: number }[] = []) => ({ me, avatars });
   return {
     calls, sent, slots, on,
-    get modal() { return modal as { title: string; content: Node[] } | null; },
+    get modal() { return modal; },
     world,
-    you: (limit: number) => on.message!({ t: "you", limit } as YouMessage),
-    pets: (set: MemberPets[], extra: Partial<PetsMessage> = {}) => on.message!({ t: "pets", set, del: [], go: [], ...extra } as PetsMessage),
+    you: (limit: number) => on.message!({ t: "you", limit } satisfies YouMessage),
+    pets: (set: MemberPets[], extra: Partial<PetsMessage> = {}) => on.message!({ t: "pets", set, del: [], go: [], ...extra } satisfies PetsMessage),
   };
 }
 
@@ -110,14 +110,14 @@ test("let wander, the owner's page sends a goal for each pet within 2 s, all wit
   for (let i = 1; i <= 18_000; i++) {
     const before = c.sent.length;
     c.on.update!(0.1, c.world(me, [{ id: me, ...home }]));
-    for (const m of c.sent.slice(before) as { t: string; g: unknown[] }[]) {
+    for (const m of c.sent.slice(before) as { t: string; g: Goals }[]) {
       expect(m.t).toBe("wander");
       m.g.forEach((g, k) => {
         if (g === null) return;
         firstGoal[k] ??= i * 0.1;
         // a socializing pet goes along with another wandering pet: here its sibling, never itself
         if (typeof g === "string") return expect(g).toBe(["7:b", "7:a"][k]);
-        const [x, y, speed] = g as number[];
+        const [x, y, speed] = g;
         expect(Math.hypot(x - home.x, y - home.y)).toBeLessThanOrEqual(241);
         expect(speed).toBeGreaterThanOrEqual(28);
         expect(speed).toBeLessThanOrEqual(40);
@@ -125,7 +125,7 @@ test("let wander, the owner's page sends a goal for each pet within 2 s, all wit
       // the server relays the goals to every page, this one included, with the member's entry now and then
       const walks = c.calls.length;
       const set = i % 50 === 0 ? [{ id: me, pets: [[0, "", "a", ""], [1, "", "b", ""]], guests: [], mode: "wander" } as MemberPets] : [];
-      c.pets(set, { go: [{ id: me, g: m.g as Goals }] });
+      c.pets(set, { go: [{ id: me, g: m.g }] });
       m.g.forEach((g, k) => {
         if (Array.isArray(g)) expect(c.calls.slice(walks)).toContainEqual(["walkTo", ["7:a", "7:b"][k], g[0], g[1], { speed: g[2] }]);
       });

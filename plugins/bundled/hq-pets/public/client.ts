@@ -271,7 +271,7 @@ hq.onUpdate((dt, world) => {
   if (!m || m.mode !== "wander" || !line.length) return;
   const self = world.avatars.find((a) => a.id === me);
   if (!self) return;
-  if (!wander) wander = { home: [self.x, self.y], pets: new Map() };
+  wander ??= { home: [self.x, self.y], pets: new Map() };
   // my page picks a spot for each pet whose pause is over, by its mood; one message for them all
   let any = false;
   const goals: Goals = line.map(({ sid }): Goal => {

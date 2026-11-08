@@ -15,6 +15,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 type Pet = [kind: number, colour: string, id: string, name: string];
 type Guest = { from: string; id: string; name: string; sheet?: string; cell?: number[]; metadata?: { kind?: number; alt?: boolean } };
 type Entry = { id: number; pets: Pet[]; guests: Guest[]; mode: string };
+/** What the caller fixture relays of a hook call: its result. */
+type HookResult = { ok?: boolean; error?: string; removed?: boolean };
 type Frame = { t?: string; set?: Entry[]; del?: number[]; go?: { id: number; g: unknown[] }[]; limit?: number };
 
 const beds: Testbed[] = [];
@@ -75,7 +77,7 @@ test("it survives a full office arriving", async () => {
   const top = Math.max(...first.map((m) => m.id));
   const seed: Record<string, string> = {};
   for (let id = Math.min(...first.map((m) => m.id)); id <= top + 40; id++) seed[`p:${id}`] = three;
-  const watcher = first[0]!;
+  const watcher = first[0];
   const seen = frames(watcher).length; // what came before the restart does not count
   // the plugin starts again with 40 members online and their pets in the database: all of them arrive at once
   await bed.seedKv(PETS, seed);
@@ -92,7 +94,7 @@ test("it survives a full office arriving", async () => {
   await until("the pets of all 80 members, from the broadcasts", () => crowd.every((m) => announced(m.id) === 3));
   for (const m of crowd) assert.equal(announced(m.id), 3, `member ${m.id}`);
   // a page that starts asks for everybody's pets, which come in pieces
-  const last = later[later.length - 1]!;
+  const last = later[later.length - 1];
   last.send(PETS, { t: "sync" });
   await until("the pets of all 80 members, from a sync", () => crowd.every((m) => petsOf(last, m.id).length === 3));
   for (const m of [last, watcher]) {
@@ -113,13 +115,13 @@ test("it adds pets, colours and removes them", async () => {
     [0, 0, 8],
     "two cats and a seedling, the fourth refused at the default limit of 3",
   );
-  const first = got[0]![2];
+  const first = got[0][2];
   await say(bob, { t: "colour", i: 1, c: "3fa7d6" }, { t: "colour", i: 2, c: "red" }, { t: "remove", i: 0 });
   await until("the removal", () => petsOf(bob, bob.id).length === 2);
   const after = petsOf(bob, bob.id);
-  assert.equal(after[0]![1], "3fa7d6", "the second cat is blue");
-  assert.equal(after[1]![1], "", "a colour that is not hex is refused");
-  assert.notEqual(after[0]![2], first, "the first cat is gone");
+  assert.equal(after[0][1], "3fa7d6", "the second cat is blue");
+  assert.equal(after[1][1], "", "a colour that is not hex is refused");
+  assert.notEqual(after[0][2], first, "the first cat is gone");
   assert.equal(limitOf(bob), 3, "a member is told the limit");
   assert.deepEqual(await bed.errors(), {});
 });
@@ -188,7 +190,7 @@ test("messages stay under the limit in any script", async () => {
   await bed.seedKv(PETS, seed);
   const leavers = crowd.slice(0, 30);
   const stayers = crowd.slice(30);
-  const watcher = stayers[stayers.length - 1]!;
+  const watcher = stayers[stayers.length - 1];
   await until("the pets announced", () => stayers.every((m) => petsOf(watcher, m.id).length === 8));
   await Promise.all(leavers.map((m) => m.leave())); // half the office leaves at once
   for (const m of stayers) {
@@ -200,7 +202,7 @@ test("messages stay under the limit in any script", async () => {
   for (const m of stayers) {
     const pets = petsOf(watcher, m.id);
     assert.equal(pets.length, 8, `member ${m.id}`);
-    assert.equal(pets[0]![3], name, `member ${m.id}`);
+    assert.equal(pets[0][3], name, `member ${m.id}`);
   }
   for (const m of stayers) for (const f of frames(m)) assert.ok(bytes(f) <= 4096, `a ${bytes(f)}-byte message`);
   assert.deepEqual(await bed.errors(), {});
@@ -213,7 +215,7 @@ test("names are never cut inside a character", async () => {
   await until("the name", () => petsOf(bob, bob.id)[0]?.[3]);
   const got = petsOf(bob, bob.id);
   assert.equal(got.length, 1);
-  assert.equal(got[0]![3], "🐈".repeat(24), "24 whole characters");
+  assert.equal(got[0][3], "🐈".repeat(24), "24 whole characters");
 });
 
 test("it ignores malformed messages", async () => {
@@ -268,13 +270,13 @@ test("it survives control spam", async () => {
 test("guest pets come through the hooks", async () => {
   const bed = await open([pluginDir, callerDir]);
   const bob = await bed.join("Bob");
-  const alone = await bob.waitFor<{ r: { ok: boolean } }>("caller", (d) => d.hook === "alone");
+  const alone = await bob.waitFor<{ r: { ok: boolean } }>("caller", (d: { hook?: unknown }) => d.hook === "alone");
   assert.equal(alone.r.ok, false, "a call made on its own (no member's action) gives nobody a pet");
   let n = 0;
-  const call = async (hook: string, args: unknown): Promise<any> => {
+  const call = async (hook: string, args: unknown): Promise<HookResult> => {
     const id = ++n;
     bob.send("caller", { n: id, hook, args });
-    return (await bob.waitFor<{ r: unknown }>("caller", (d) => d.n === id)).r;
+    return (await bob.waitFor<{ r: HookResult }>("caller", (d: { n?: unknown }) => d.n === id)).r;
   };
   assert.equal((await call("setPet", { id: "x", sheet: "../main.ts", cell: [24, 24] })).ok, false, "only a PNG of the caller's shared/ folder");
   for (const args of [
@@ -296,8 +298,8 @@ test("guest pets come through the hooks", async () => {
   await until("three guests", () => entryOf(bob, bob.id)?.guests.length === 3);
   const entry = entryOf(bob, bob.id)!;
   assert.equal(entry.pets.length, 0, "guests are not the member's own pets");
-  assert.equal(entry.guests[0]!.from, "caller");
-  const drawn = entry.guests[2]!;
+  assert.equal(entry.guests[0].from, "caller");
+  const drawn = entry.guests[2];
   assert.deepEqual(
     [drawn.metadata?.kind, drawn.metadata?.alt, drawn.sheet, drawn.cell],
     [25, true, undefined, undefined],
