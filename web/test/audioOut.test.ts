@@ -3,7 +3,7 @@
 // rule (Safari, the macOS app), the one e2e/scenarios/sounds.ts stubs in Chrome: a cue's element plays only
 // once it has been played while a key or pointer press is handled. The browser suite keeps the real reload,
 // key press and wave (refused, then played on the chosen speaker); these are the rules behind them.
-import { afterAll, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 let pressing = false; // true while a key or pointer press is being handled
 let plays = 0; // play() calls on the cues' elements
@@ -12,7 +12,7 @@ const allowed = new WeakSet<HTMLMediaElement>();
 const speakers = new Set(["spk-1"]);
 
 const proto = HTMLMediaElement.prototype as HTMLMediaElement & { sinkId: string; setSinkId(id: string): Promise<void> };
-const saved = { play: proto.play, pause: proto.pause, createObjectURL: URL.createObjectURL };
+// the stubs stay for this file only: each test file gets its own jsdom
 let blobs = 0;
 URL.createObjectURL = () => "blob:cue-" + ++blobs;
 proto.play = function (this: HTMLMediaElement) {
@@ -29,10 +29,6 @@ proto.setSinkId = function (this: { sinkId: string }, id: string) {
   this.sinkId = id;
   return Promise.resolve();
 };
-afterAll(() => {
-  Object.assign(proto, { play: saved.play, pause: saved.pause });
-  URL.createObjectURL = saved.createObjectURL;
-});
 
 let clock = 0;
 vi.spyOn(performance, "now").mockImplementation(() => clock);
