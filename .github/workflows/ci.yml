@@ -160,10 +160,23 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+      # LiveKit's binary is cached by version: GitHub's release downloads fail now and then (a 504 page that
+      # tar cannot read, or minutes of waiting), and each of the four shards would fetch it
+      - name: LiveKit server cache
+        id: livekit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/livekit-bin
+          key: livekit-server-1.13.7-linux-amd64
       - name: LiveKit server 1.13.7
         run: |
-          curl -sSL https://github.com/livekit/livekit/releases/download/v1.13.7/livekit_1.13.7_linux_amd64.tar.gz | tar xz livekit-server
-          sudo mv livekit-server /usr/local/bin/
+          if [ ! -x ~/.cache/livekit-bin/livekit-server ]; then
+            mkdir -p ~/.cache/livekit-bin
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$RUNNER_TEMP/livekit.tar.gz" \
+              https://github.com/livekit/livekit/releases/download/v1.13.7/livekit_1.13.7_linux_amd64.tar.gz
+            tar xzf "$RUNNER_TEMP/livekit.tar.gz" -C ~/.cache/livekit-bin livekit-server
+          fi
+          sudo cp ~/.cache/livekit-bin/livekit-server /usr/local/bin/
           livekit-server --version
       - name: Chrome
         uses: browser-actions/setup-chrome@v1
