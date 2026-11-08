@@ -366,7 +366,10 @@ func TestWhoeverLockedARoomStepsOutAndWalksBackIn(t *testing.T) {
 	h.run(300 * time.Millisecond)
 	drain(locker)
 	h.w.sendDeny(locker)
-	var door struct{ D, Lk []int }
+	var door struct {
+		D  []int `json:"d"`
+		Lk []int `json:"lk"`
+	}
 	got := frames(locker)
 	if err := json.Unmarshal([]byte(got), &door); err != nil || !slices.Equal(door.Lk, []int{3}) || slices.Contains(door.D, 3) {
 		t.Fatalf("the room is still locked, and not denied to whoever locked it: %q", got)

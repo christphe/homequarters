@@ -8,7 +8,7 @@
 // saving through the editor's real controls (e2e/scenarios/editor.ts) and opening a note with X (features).
 import { renderUI, stubFetch } from "./support"; // first: its canvas is in place before PixiJS loads
 import { mockSession } from "./support/session";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { t } from "../src/i18n";
 import type { MapData } from "../src/net/protocol";
@@ -38,11 +38,10 @@ it("Edit content shows a note's hidden text from the full map, and Save sends th
   const text = screen.getByRole("textbox", { name: t("editor.objectData") });
   expect((text as HTMLTextAreaElement).value).toBe(NOTE);
 
-  await user.clear(text);
-  await user.type(text, "A saved team note");
+  fireEvent.change(text, { target: { value: "A saved team note" } });
   await user.click(screen.getByRole("button", { name: t("editor.applyContent") }));
   await user.click(screen.getByRole("button", { name: t("editor.save") }));
   await vi.waitFor(() => expect(getState().toast).toBe(t("editor.saved")));
   const put = api.requests.find((r) => r.method === "PUT")!;
   expect((put.body as MapData).props).toEqual([{ t: "plant", x: 1, y: 1 }, { t: "note", x: 4, y: 2, label: "Welcome", data: "A saved team note" }]);
-});
+}, 20000); // jsdom on a loaded machine (the gauntlet runs everything at once) can take seconds

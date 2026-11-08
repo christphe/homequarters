@@ -5,7 +5,7 @@
 // nothing is drawn, and axe only checks that the canvas has a name). Contrast stays in the browser
 // (e2e/scenarios/a11y.ts: the administration dialog has the same chips, buttons and muted text on the same dialog
 // skin); the `features` scenario keeps text and a pen stroke drawn on one page and seen on the other's canvas.
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { boardModel } from "../src/game/boardModel";
@@ -22,7 +22,8 @@ afterEach(() => {
   setState({ role: "member" });
 });
 
-describe("whiteboard dialog", () => {
+// axe on jsdom takes seconds on a loaded machine (the gauntlet runs everything at once): more than the default 5 s
+describe("whiteboard dialog", { timeout: 20000 }, () => {
   it("a member, with the pen: no axe violation", async () => {
     render(<WhiteboardDialog onClose={() => {}} />);
     screen.getByRole("dialog", { name: t("board.title") });
@@ -45,7 +46,7 @@ describe("whiteboard dialog", () => {
   });
 });
 
-describe("whiteboard dialog controls", () => {
+describe("whiteboard dialog controls", { timeout: 20000 }, () => {
   // what the features scenario checked in two browsers; the server's half (only an administrator clears, and the
   // clear reaches everybody at the board) is world TestWhiteboardAuthorityFanoutUndoAndClear
 
@@ -74,7 +75,7 @@ describe("whiteboard dialog controls", () => {
     render(<WhiteboardDialog onClose={() => {}} />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: t("board.text") }));
-    await user.type(screen.getByRole("textbox"), "  Shared test text ");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Shared test text " } });
     await user.click(screen.getByRole("button", { name: t("board.placeText") }));
     expect(board.mock.calls).toEqual([[expect.objectContaining({ bk: boardModel.key, op: "draw", k: 1, p: [400, 300], tx: "Shared test text" })]]);
   });

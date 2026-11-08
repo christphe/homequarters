@@ -31,10 +31,6 @@ type Taps = {
 };
 
 const read = <Params extends unknown[], Func extends EvaluateFunc<Params>>(u: User, fn: Func, ...args: Params) => u.page.evaluate(fn, ...args);
-const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
-  const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
-  b?.click(); return !!b;
-}, text, selector);
 const dist = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
 
 /** Every frame the page sends leaves 0-120 ms late, in order, like a bad Wi-Fi; window.__origSend undoes it.
@@ -69,7 +65,7 @@ export async function run(): Promise<boolean> {
     // ---- running, through the HUD button, under network jitter ----
     // Every input leaves the page 0-120 ms late (in order), like a bad Wi-Fi. While "right" is held
     // at run speed, the own avatar must never be drawn stepping back, and it must end where the server says.
-    await click(a, "Always run");
+    await a.page.click(".run-toggle"); // a real mouse click at its centre: a covered button would not get it
     check("the HUD's run button turns always-run on", await read(a, () => window.__hq.view.running && document.querySelector(".run-toggle")?.getAttribute("aria-pressed") === "true"));
     // Recorded for the convergence check below, which failed on CI when this jitter shim sent the stop
     // before the heartbeat queued just ahead of it (the server ran on 215 px): what B receives about A,

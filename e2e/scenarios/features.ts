@@ -5,6 +5,7 @@
 // - reactions: a number key sends an emote that the other page renders
 // - interactive objects: X next to the welcome note opens it in a dialog
 // - people panel menu, lead requests: More actions > Request to lead reaches the other page, which asks first
+// - following: More actions > Follow, the server steers my page until Stop following
 // - whiteboard: text and a pen stroke drawn on one page appear on the other's canvas
 // - no browser runtime errors
 //
@@ -13,12 +14,14 @@
 //   web/test/SidePanel.test.tsx
 // - request to lead asks before moving anybody, Not now and Follow them: web/test/SocialControls.movement.test.tsx,
 //   world TestRequestToLeadReachesTheOtherPlayerWithACooldown
-// - Follow walks to the leader at server speed around objects: world TestFollowWalksAroundWallsAndStopsOnInput
+// - Follow walks to the leader at server speed around objects: world TestFollowWalksAroundWallsAndStopsOnInput (the
+//   browser keeps the Follow / Stop following wiring above)
 // - a follower runs with a leader who runs and keeps close: world TestFollowerKeepsTheLeadersPace (gap, run bit, the
 //   follower's own "r"), web/test/localPlayer.test.ts (its own page predicts the run), web/test/remoteMotion.test.ts
 //   (others see the run bit)
 // - a portal teleports once and stops movement: world TestPortalsTeleportOncePerArrivalAndNotIntoLockedRooms,
-//   web/test/localPlayer.test.ts (a teleport stops me)
+//   web/test/localPlayer.test.ts (a teleport stops me). No browser check is left for portals: walking onto one has no
+//   control of its own, and what it draws is an ordinary move
 // - a locked door blocks, Let in admits only the visitor: world TestLockingKnockingAndAnswering; the person who locked
 //   a room steps out with no Knock or Enter anyway and walks back in: world TestWhoeverLockedARoomStepsOutAndWalksBackIn,
 //   web/test/doors.test.ts. Knock and Let in through the real buttons stay in e2e/scenarios/offices.ts
@@ -71,6 +74,14 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const asked = await read(a, () => ({ request: window.__hq.state.leadRequest?.name ?? "", following: !!window.__hq.state.following }));
     await click(a, "Not now");
     check("Request to lead from the people panel reaches the other page, which asks before anybody moves", asked.request.startsWith("Explorer") && !asked.following && await read(a, () => !document.querySelector(".modal")), JSON.stringify(asked));
+    // Follow through the same menu: the server steers the follower (its page is guided) until Stop following
+    await click(b, "More actions for Admin", ".people button");
+    await waitFor(() => b.page.$(".more-menu"), { what: "more actions menu" });
+    await click(b, "Follow Admin", ".more-menu button");
+    await waitFor(() => read(b, () => window.__hq.state.following?.name === "Admin" && window.__hq.view.guided && [...document.querySelectorAll("button")].some((x) => x.textContent === "Stop following")), { what: "following Admin" });
+    await click(b, "Stop following");
+    await waitFor(() => read(b, () => !window.__hq.state.following && !window.__hq.view.guided), { what: "follow stops" });
+    check("Follow from the people panel has the server steer me until Stop following", true);
 
     await Promise.all([runTo(a, 49, 16), runTo(b, 50, 16)]);
     for (const u of [a, b]) {
