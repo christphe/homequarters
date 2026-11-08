@@ -1,4 +1,4 @@
-import type { Area, MapData, Prop } from "../net/protocol";
+import type { Area, MapData, Prop, Status } from "../net/protocol";
 
 // Where "go back to my desk" leads: next to the desk assigned to me, otherwise inside the private
 // office I own. Pure so it can be tested without a browser.
@@ -69,3 +69,5 @@ function isModKey(e: ModKeyEvent, code: string, mac: boolean) {
 export const isHomeKey = (e: ModKeyEvent, mac = isMac()) => isModKey(e, "KeyD", mac);
 /** Ctrl+U / Cmd+U ("unavailable"): busy, or available again. */
 export const isBusyKey = (e: ModKeyEvent, mac = isMac()) => isModKey(e, "KeyU", mac);
+/** What Ctrl+U makes of my status: available again from busy or away, busy otherwise. */
+export const busyToggle = (s: Status): "available" | "busy" => (s === "busy" || s === "away" ? "available" : "busy");

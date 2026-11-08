@@ -1,7 +1,38 @@
-// Presence: waving across the office, raised hands, status notes, dancing, the minimap and the touch pad.
+// Presence through the real controls: Ctrl+wheel zoom and the area of interest it widens, left-drag to look
+// around, a wave, a raised hand, Ctrl+U and the status veil, dancing, the minimap, the shortcuts dialog, an
+// administrator's announcement, the touch pad and the computer's idle state.
+//
+// What stays here, per feature (one check through the real controls at least):
+// - zoom: Ctrl+wheel with Chrome's mouse (one notch, out to the limit), the UI keeping its size, and the server
+//   then sending the person the wider view shows
+// - drag: a left-drag moves the view 1:1; moving with the arrow keys brings it back to me
+// - wave: the people panel's Wave at reaches somebody anywhere, the sender is told, the card's Walk to them runs
+//   there (which also brings the two together for what follows); H: a raised hand others see
+// - status: Ctrl+U makes me busy for others; the veil's big button makes me available again; Z: a dance others see
+// - minimap: the server's head counts reach it; its picture fills the canvas across pixel-ratio changes (M twice)
+// - shortcuts: ? opens the dialog, Escape closes it; announcement: the admin's Announce form, the banner, dismiss
+// - touch pad on a phone; idle: the real setting ticked with the permission granted, an idle computer sets me
+//   away for others; no console errors
+//
+// Where the other checks live now:
+// - wheel and drag rules (plain wheel, any notch size and line mode one step, 120 ms gap, click threshold, a press
+//   released off the map, double-click after a drag, zoom during a drag, cursor and text selection restored, the
+//   pan stopping at the west wall): web/test/gesture.test.ts; the camera at map edges and the largest radius:
+//   web/test/camera.test.ts; the server's radius growing and shrinking: world TestViewWidensInterestWithinTheServerCap,
+//   TestAOIEnterLeave
+// - Wave back, dismissing the card and the hand button: web/test/WaveAndHand.test.tsx; H twice lowers: web/test/hand.test.ts,
+//   world TestARaiseAndALowerInOneTickLeaveTheHandDown; a status note: web/test/StatusNote.test.tsx, world
+//   TestRaisedHandAndStatusNoteAreInTheRoster
+// - the busy and away veils, Ctrl+U from away: web/test/StatusVeil.test.tsx (busyToggle), web/test/home.test.ts (the key)
+// - minimap counts drawn, click to run, M and Shift+M: web/test/Minimap.test.tsx; AZERTY names in the shortcuts:
+//   web/test/ShortcutsDialog.test.tsx
+// - the announcement reaching everybody: world TestAnnouncementsReachEverybodyConnected
+// - Ctrl+D and desks: where Ctrl+D leads, web/test/home.test.ts, with the real keys in e2e/scenarios/offices.ts;
+//   desk locks, world TestADeskOwnerLocksTheirDeskAndAlwaysWalksIn, TestLockingKnockingAndAnswering, the buttons in
+//   web/test/doors.test.ts, a room's real Lock in e2e/scenarios/features.ts, knock and let in in offices.ts
+// - idle detection blocked: web/test/SettingsIdle.test.tsx; idle, back and locked: web/test/osIdle.test.ts
 import type { ElementHandle } from "puppeteer-core";
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, APP, type RunContext, type User } from "../lib.ts";
-import type { MapData } from "../../web/src/net/protocol.ts";
 
 // puppeteer cannot check a generic page function against generic arguments: the cast keeps the caller's types
 const read = <P extends unknown[], R>(u: User, fn: (...args: P) => R, ...args: P) => u.page.evaluate(fn as never, ...args) as Promise<Awaited<R>>;
@@ -22,57 +53,32 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // each page walks its own avatar: a to the social area, b to the reception (behind a wall, out of a's area of interest)
     await Promise.all([walkTo(a, 8 * 16 + 8, 28 * 16 + 8), walkTo(b, 9 * 16 + 8, 6 * 16 + 8)]);
 
-    // ---- the mouse wheel zooms the map (not the UI) and the server widens the area of interest to match ----
+    // ---- Ctrl+wheel zooms the map (not the UI) and the server widens the area of interest to match ----
     const sees = (u: User, id: number) => read(u, (id) => window.__hq.view.debugEntities().some((e) => e.id === id), id);
     const layoutBox = () => read(a, () => [".topbar", ".stage canvas"].map((q) => { const r = document.querySelector(q)!.getBoundingClientRect(); return [r.width, r.height].join("x"); }).join(" "));
     const s0 = await read(a, () => window.__hq.view.scale);
-    const [lo, hi] = await read(a, () => window.__hq.view.scaleRange());
-    await read(a, (hi) => window.__hq.view.zoomBy(hi), hi);
-    await sleep(800);
-    check("zoomed in, someone three cells away is outside the area of interest", !(await sees(a, b.id)));
-    await read(a, (s) => window.__hq.view.zoomBy(s - window.__hq.view.scale), s0);
+    const [lo] = await read(a, () => window.__hq.view.scaleRange());
+    const outside = await waitFor(async () => !(await sees(a, b.id)), { timeout: 5000, what: "far person outside the area of interest" }).then(() => true, () => false);
+    check("at the automatic zoom, somebody in the reception is outside my area of interest", outside);
     const box0 = await layoutBox();
     const canvas = await read(a, () => { const r = document.querySelector(".stage canvas")!.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     await a.page.mouse.move(canvas.x, canvas.y);
-    await a.page.mouse.wheel({ deltaY: -100 });
-    await sleep(300);
-    check("the plain mouse wheel does not zoom the map", (await read(a, () => window.__hq.view.scale)) === s0);
     await a.page.keyboard.down("Control"); // Ctrl+wheel zooms, as in Gather
     await a.page.mouse.wheel({ deltaY: -33 }); // one small notch (a mouse sending 33 px per notch)
-    await waitFor(() => read(a, (s) => window.__hq.view.scale === s + 1, s0), { what: "zoom in one step" });
-    for (let i = 0; i < 12; i++) { await a.page.mouse.wheel({ deltaY: 33 }); await sleep(150); }
+    const stepIn = await waitFor(() => read(a, (s) => window.__hq.view.scale === s + 1, s0), { timeout: 3000, what: "zoom in one step" }).then(() => true, () => false);
+    for (let i = 0; i < 12 && (await read(a, () => window.__hq.view.scale)) > lo; i++) { await sleep(150); await a.page.mouse.wheel({ deltaY: 33 }); }
     await a.page.keyboard.up("Control");
     await waitFor(() => read(a, (lo) => window.__hq.view.scale === lo, lo), { what: "zoomed out to the limit" });
-    check("Ctrl+wheel: one notch, however small, is one whole zoom step; out it stops at the area-of-interest limit", lo < s0, `auto ${s0}, farthest ${lo}`);
+    check("Ctrl+wheel: one small notch is one whole zoom step; out it stops at the area-of-interest limit", stepIn && lo < s0, `auto ${s0}, farthest ${lo}`);
     check("zooming leaves the UI and the canvas size alone", (await layoutBox()) === box0, box0);
     await waitFor(() => sees(a, b.id), { what: "far person visible after zooming out" });
     check("zoomed out, the server sends the people the wider view shows", true);
-    // a stands near the map's west wall: the camera must not show farther than the largest radius reaches
-    const span = await read(a, () => {
-      const v = window.__hq.view, p = v.position(), S = v.scale, r = v.aoiMax * v.cellPx, m = v.currentMap()!;
-      const { width: W, height: H } = v.app.screen;
-      // visible map pixels only: a margin beyond the map's edge holds nobody
-      return { l: p.x - Math.max(0, -v.camX / S), r: Math.min(m.w * 16, (W - v.camX) / S) - p.x, t: p.y - Math.max(0, -v.camY / S), b: Math.min(m.h * 16, (H - v.camY) / S) - p.y, reach: r };
-    });
-    check("zoomed out next to a map edge, no visible part of the map is farther from me than the server's largest radius", Math.max(span.l, span.r, span.t, span.b) <= span.reach + 1, JSON.stringify(span));
-    const lineMode = await read(a, () => {
-      const v = window.__hq.view, c = document.querySelector(".stage canvas")!, s0 = v.scale;
-      c.dispatchEvent(new WheelEvent("wheel", { deltaY: -3, deltaMode: 1, ctrlKey: true, bubbles: true, cancelable: true })); // Firefox: one notch = 3 lines
-      return v.scale - s0;
-    });
-    check("one wheel notch in line mode (Firefox) is one zoom step", lineMode === 1, `${lineMode}`);
-    await read(a, (hi) => window.__hq.view.zoomBy(hi), hi);
-    await waitFor(async () => !(await sees(a, b.id)), { what: "far person dropped after zooming back in" });
-    check("zooming back in shrinks the area of interest again", true);
     await read(a, (s) => window.__hq.view.zoomBy(s - window.__hq.view.scale), s0);
-    check("the zoom returns to the automatic scale", (await read(a, () => window.__hq.view.scale)) === s0);
 
-    // ---- left-drag pans the camera; a drag is not a double-click; moving recentres ----
-    const cam = () => read(a, () => ({ x: window.__hq.view.camX, y: window.__hq.view.camY, pan: window.__hq.view.pan, dest: window.__hq.view.dest }));
+    // ---- left-drag pans the camera; moving recentres ----
+    const cam = () => read(a, () => ({ x: window.__hq.view.camX, y: window.__hq.view.camY, pan: window.__hq.view.pan }));
     await sleep(300); // let the frame after the zoom change place the camera
     const c0 = await cam();
-    const here0 = await read(a, () => { const v = window.__hq.view; return { x: (v.app.screen.width / 2 - v.camX) / v.scale, me: v.position().x }; });
-    check("next to the office's west wall I stay in the middle of the screen", Math.abs(here0.x - here0.me) < 2, JSON.stringify(here0));
     await a.page.mouse.move(canvas.x, canvas.y);
     await a.page.mouse.down();
     await a.page.mouse.move(canvas.x - 150, canvas.y - 80, { steps: 8 });
@@ -80,52 +86,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await sleep(200);
     const c1 = await cam();
     check("dragging the map with the left button moves the view the same way", Math.abs(c1.x - c0.x + 150) <= 2 && Math.abs(c1.y - c0.y + 80) <= 2, `camera ${c0.x},${c0.y} -> ${c1.x},${c1.y}`);
-    await a.page.mouse.click(canvas.x - 150, canvas.y - 80, { count: 2 });
-    await sleep(300);
-    check("a double-click right after a drag does not send me running", !(await cam()).dest && !(await read(a, () => window.__hq.view.guided)));
-    await a.page.mouse.move(canvas.x, canvas.y);
-    await a.page.mouse.down();
-    await a.page.mouse.move(canvas.x + 2, canvas.y + 1);
-    await a.page.mouse.up();
-    check("a press that barely moves is a click, not a drag", (await cam()).x === c1.x);
-    // pressed on the map next to the top bar and released on the bar before it became a drag:
-    // hovering afterwards must not pan
-    const bar = await read(a, () => document.querySelector(".topbar")!.getBoundingClientRect().bottom);
-    await a.page.mouse.move(canvas.x, bar + 1);
-    await a.page.mouse.down();
-    await a.page.mouse.move(canvas.x, bar - 2);
-    await a.page.mouse.up();
-    await a.page.mouse.move(canvas.x - 100, canvas.y, { steps: 5 });
-    await sleep(200);
-    check("a press released off the map before dragging leaves no drag behind", (await cam()).x === c1.x && (await read(a, () => document.querySelector<HTMLCanvasElement>(".stage canvas")!.style.cursor)) !== "grabbing");
-    // a drag ends with the text selection and cursor back to normal
-    await a.page.mouse.move(canvas.x, canvas.y);
-    await a.page.mouse.down();
-    await a.page.mouse.move(canvas.x + 60, canvas.y, { steps: 4 });
-    await a.page.keyboard.down("Control");
-    await a.page.mouse.wheel({ deltaY: -100 }); // zoom in mid-drag, then keep dragging
-    await a.page.keyboard.up("Control");
-    const z = await read(a, () => window.__hq.view.scale);
-    await sleep(200);
-    const mid = await cam();
-    await a.page.mouse.move(canvas.x + 90, canvas.y, { steps: 3 });
-    await sleep(200);
-    const c3 = await cam();
-    await a.page.mouse.up();
-    check("zooming during a drag keeps the drag 1:1 at the new scale", Math.abs(c3.x - mid.x - 30) <= 2, `scale ${z}, camera ${mid.x} -> ${c3.x}`);
-    check("the cursor and text selection are back to normal after a drag", (await read(a, () => document.querySelector<HTMLCanvasElement>(".stage canvas")!.style.cursor + "|" + document.body.style.userSelect)) === "|");
-    await read(a, (s) => window.__hq.view.zoomBy(s - window.__hq.view.scale), s0);
-    // the camera keeps me mid-screen even next to the office's west wall, and a pan stops at the edge
-    await sleep(300);
-    const centre = () => read(a, () => { const v = window.__hq.view; return { x: (v.app.screen.width / 2 - v.camX) / v.scale, me: v.position().x }; });
-    const atWall = await centre();
-    await a.page.mouse.move(canvas.x - 200, canvas.y);
-    await a.page.mouse.down();
-    await a.page.mouse.move(canvas.x + 300, canvas.y, { steps: 8 });
-    await a.page.mouse.up();
-    await sleep(200);
-    const panned = await centre();
-    check("the camera can show the office's west edge in the middle of the screen, never beyond it", panned.x >= -1 && panned.x < 4, JSON.stringify({ atWall, panned }));
     await a.page.keyboard.down("ArrowDown");
     await sleep(150);
     await a.page.keyboard.up("ArrowDown");
@@ -133,57 +93,34 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const c2 = await cam();
     check("moving brings the view back to me", c2.pan.x === 0 && c2.pan.y === 0 && Math.abs(c2.x - c0.x) <= 2, `camera ${c2.x},${c2.y}, pan ${JSON.stringify(c2.pan)}`);
 
-    // ---- wave, answered by walking over ----
+    // ---- wave, from the people panel ----
     await click(a, "Wave at " + b.name, ".people button");
     await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave card" });
     check("a wave reaches somebody anywhere in the office", (await read(b, () => document.querySelector(".wave-card")!.textContent)).includes(a.name));
     await waitFor(async () => (await toast(a)).includes("You waved at"), { what: "wave confirmation" });
     check("the sender is told the wave arrived", true);
+    // b answers by walking over: the checks below need each in the other's area of interest
     await click(b, "Walk to them", ".wave-card button");
     await waitFor(async () => dist(await pos(a), await pos(b)) < 40 && !(await read(b, () => window.__hq.view.guided)), { timeout: 30000, what: "walk back to the waver" });
     check("Walk to them runs to the person who waved", true);
     // waving at a busy person and the 30 s cooldown: world TestWaveReachesThePersonBusyAndAwayIncluded and
     // the refusal's text, web/test/replies.test.ts
 
-    // ---- raised hand (H) and a status note, seen by the other person ----
+    // ---- raised hand (H), seen by the other person ----
     await a.page.keyboard.press("h");
     await waitFor(() => read(b, (id) => window.__hq.state.roster.get(id)?.h === 1 && !!window.__hq.view.ents.get(id)?.hand, a.id), { what: "hand raised" });
     check("H raises a hand that others see over the avatar and in the roster", true);
-    await a.page.keyboard.press("h");
-    await waitFor(() => read(b, (id) => !window.__hq.state.roster.get(id)?.h && !window.__hq.view.ents.get(id)?.hand, a.id), { what: "hand lowered" });
-    check("pressing H again lowers it", true);
-    // two quick presses (before the server's echo) are a raise and a lower: web/test/hand.test.ts and
-    // world TestARaiseAndALowerInOneTickLeaveTheHandDown
-    // the on-screen hand button does the same as H
-    await a.page.click('.reaction-row button[aria-label^="Raise hand"]');
-    await waitFor(() => read(b, (id) => window.__hq.state.roster.get(id)?.h === 1, a.id), { what: "hand raised by the button" });
-    await waitFor(() => a.page.$('.reaction-row button[aria-label^="Lower hand"][aria-pressed="true"]'), { what: "button shows the raised hand" });
-    await a.page.click('.reaction-row button[aria-label^="Lower hand"]');
-    await waitFor(() => read(b, (id) => !window.__hq.state.roster.get(id)?.h, a.id), { what: "hand lowered by the button" });
-    check("the hand button raises and lowers the hand for others", true);
-    await a.page.click(".status-menu > .btn");
-    await a.page.type(".note-form input", "Deep work until 4");
-    await a.page.click(".note-form button[type=submit]");
-    await waitFor(() => read(b, (n) => [...document.querySelectorAll(".people .note")].some((el) => el.textContent === n), "Deep work until 4"), { what: "note in people panel" });
-    check("a status note set in the status menu shows in everyone's people panel", true);
+    // shortcuts follow key positions (AZERTY: "z" on KeyW, "&" on Digit1, the keypad without Num Lock):
+    // web/test/input.test.ts; the real keys H and Z here and 1 in features.ts go through the same handler
 
     // ---- Ctrl+U: busy, the map greyed out under a big button that makes you available again ----
-    await a.page.keyboard.press("Escape");
     await a.page.keyboard.down("Control"); await a.page.keyboard.press("u"); await a.page.keyboard.up("Control");
     await waitFor(() => read(b, (id) => window.__hq.state.roster.get(id)?.s === "busy", a.id), { what: "busy by Ctrl+U" });
     check("Ctrl+U makes you busy, for everybody", true);
-    check("busy greys the map out under a big button", await read(a, () => !!document.querySelector('.status-veil[data-status="busy"] .veil-button')));
+    await waitFor(() => a.page.$(".status-veil .veil-button"), { what: "veil button" });
     await a.page.click(".veil-button");
     await waitFor(() => read(b, (id) => window.__hq.state.roster.get(id)?.s === "available", a.id), { what: "available by the button" });
-    check("the big button makes you available again and the veil goes", !(await a.page.$(".status-veil")));
-    await read(a, () => window.__hq.session.setStatus("away"));
-    await waitFor(() => a.page.$('.status-veil[data-status="away"]'), { what: "away veil" });
-    await a.page.keyboard.down("Control"); await a.page.keyboard.press("u"); await a.page.keyboard.up("Control");
-    await waitFor(() => read(a, () => window.__hq.state.status === "available" && !document.querySelector(".status-veil")), { what: "Ctrl+U from away" });
-    check("away shows the veil too, and Ctrl+U brings you back from it", true);
-
-    // shortcuts follow key positions (AZERTY: "z" on KeyW, "&" on Digit1, the keypad without Num Lock):
-    // web/test/input.test.ts; the real keys H and Z here and 1 in features.ts go through the same handler
+    check("the veil's big button makes you available again and the veil goes", !(await a.page.$(".status-veil")));
 
     // ---- dance (Z) ----
     await a.page.keyboard.press("z");
@@ -193,12 +130,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // ---- minimap ----
     await waitFor(() => read(a, () => !!document.querySelector(".minimap canvas") && window.__hq.state.areaCounts.some((n) => n > 0)), { what: "minimap with counts" });
     const counts = await read(a, () => window.__hq.state.areaCounts);
-    check("the minimap shows head counts per area from the server", counts.reduce((x, y) => x + y, 0) >= 2, JSON.stringify(counts));
-    const start = await pos(a);
-    const box = await read(a, () => { const r = document.querySelector(".minimap canvas")!.getBoundingClientRect(); const m = window.__hq.view.currentMap()!; return { x: r.left + (4.5 * 16) * (r.width / (m.w * 16)), y: r.top + (30.5 * 16) * (r.width / (m.w * 16)) }; });
-    await a.page.mouse.click(box.x, box.y);
-    await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === 4 && Math.floor(p.y / 16) === 30; }, { timeout: 20000, what: "minimap walk" });
-    check("clicking the minimap runs there", dist(start, await pos(a)) > 16);
+    check("the minimap gets head counts per area from the server", counts.reduce((x, y) => x + y, 0) >= 2, JSON.stringify(counts));
     // the browser zoom or a move to another screen changes the pixel ratio: the picture must still fill
     // the canvas (it once stayed at the old size in a corner, and people's dots piled up around it)
     const vp = a.page.viewport();
@@ -219,9 +151,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
       return { holes, size: `${c.width}x${c.height}`, want: `400x${Math.round(Math.round(m.h * 16 * 200 / (m.w * 16)) * 2)}` };
     });
     check("after the pixel ratio changes, the minimap's office picture fills its whole canvas", fill.holes === 0 && fill.size === fill.want, JSON.stringify(fill));
-    // the other way: a minimap opened at ratio 2 (hidden and shown again) going back to 1 must not show
+    // the other way: a minimap opened at ratio 2 (hidden and shown again with M) going back to 1 must not show
     // its larger picture cropped to the top-left quarter
     await a.page.keyboard.press("m");
+    await waitFor(() => read(a, () => !document.querySelector(".minimap")), { what: "M hides the minimap" });
     await a.page.keyboard.press("m");
     await waitFor(() => read(a, () => !!document.querySelector(".minimap canvas")), { what: "minimap shown again" });
     await sleep(800);
@@ -232,79 +165,23 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // a few points may differ where a dot or a head count sits; a picture at the wrong size differs almost everywhere
     const same = before.filter((p, i) => p.every((v, k) => Math.abs(v - back[i][k]) <= 8)).length;
     check("a minimap opened at ratio 2, back at ratio 1, shows the same picture as before", same >= 95, `${same}/100 points unchanged`);
-    await a.page.keyboard.press("m");
 
     // ---- keyboard help and an administrator announcement ----
-    // Chrome reports the layout through navigator.keyboard; pretend it is French AZERTY.
-    await read(a, () => window.__hq.keys.setKeyLayout(new Map([["KeyW", "z"], ["KeyA", "q"], ["KeyS", "s"], ["KeyD", "d"], ["KeyZ", "w"], ["KeyM", ","], ["Digit1", "&"]])));
     await a.page.keyboard.press("?");
     await waitFor(() => a.page.$("table.keys"), { what: "shortcuts dialog" });
-    const help = await read(a, () => [...document.querySelectorAll("table.keys tr")].map((r) => r.textContent));
-    check("the shortcuts list names the keys as printed on the keyboard (ZQSD on AZERTY) but keeps 1-7", help.some((r) => r.startsWith("Z Q S D")) && help.some((r) => r.startsWith("1-7")) && help.some((r) => r.startsWith("W") && r.includes("Dance")) && help.some((r) => r.includes("Ctrl + mouse wheel")), help.join(" | "));
-    await read(a, () => window.__hq.keys.setKeyLayout(null));
     await a.page.keyboard.press("Escape");
     check("? opens the keyboard shortcuts and Escape closes them", await read(a, () => !document.querySelector("table.keys")));
-    // AZERTY types "?" with Shift on the M position: the help opens, the minimap does not toggle
-    const mini0 = await read(a, () => window.__hq.state.settings.minimap);
-    await read(a, () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?", code: "KeyM", shiftKey: true, bubbles: true })));
-    await waitFor(() => a.page.$("table.keys"), { what: "shortcuts dialog from Shift+M position" });
-    check("? typed on the M position (AZERTY) opens the help without toggling the minimap", (await read(a, () => window.__hq.state.settings.minimap)) === mini0);
-    await a.page.keyboard.press("Escape");
     const admin = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
     await waitFor(() => click(admin, "Admin"), { what: "admin button" });
     await waitFor(() => click(admin, "Announce", '[role="tab"]'), { what: "announce tab" });
     await admin.page.type("#announce-text", "Standup in the Horizon room in 5 minutes");
     await click(admin, "Announce", "form button");
     await waitFor(() => read(a, () => document.querySelector(".announce")?.textContent.includes("Standup in the Horizon room")), { what: "banner for a" });
-    await waitFor(() => read(b, () => document.querySelector(".announce")?.textContent.includes("Standup in the Horizon room")), { what: "banner for b" });
-    check("an administrator's announcement shows as a banner to everybody online", true);
+    check("an administrator's announcement shows as a banner", true);
     await click(a, "Dismiss announcement");
     check("the banner can be dismissed", await read(a, () => !document.querySelector(".announce")));
     // the activity log records the announcement without its text: httpapi TestAnnouncementsAreAdminOnlyAuditedWithoutTextAndRateLimited
     await admin.page.keyboard.press("Escape");
-    check("M hides the minimap", await read(a, () => !document.querySelector(".minimap")));
-    await a.page.keyboard.press("m");
-
-    // ---- Ctrl+D: back to my desk ----
-    await a.page.keyboard.down("Control");
-    await a.page.keyboard.press("d");
-    await a.page.keyboard.up("Control");
-    await waitFor(async () => (await toast(a)).includes("no desk"), { what: "no desk message" });
-    check("Ctrl+D with nothing assigned says so", !(await read(a, () => window.__hq.view.guided)));
-    const api = (await read(a, () => location.origin));
-    const full = (await (await fetch(api + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json()) as MapData;
-    const putMap = (m: MapData) => fetch(api + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
-    const withDesk = structuredClone(full);
-    // a free desk of the open-plan area whose right-hand neighbour is free too (other scenarios may have assigned some)
-    const free = (x: number, y: number) => withDesk.props.find((p) => p.t === "desk" && p.x === x && p.y === y && !p.assign);
-    const desk = withDesk.props.find((p) => p.t === "desk" && !p.assign && p.y < 14 && free(p.x + 4, p.y))!;
-    desk.assign = a.id; // the owner's id only: the desk is named after them wherever it shows
-    check("an administrator assigns a desk (API)", (await putMap(withDesk)).ok, `desk at ${desk.x},${desk.y}`);
-    await waitFor(() => read(a, (id) => window.__hq.view.map!.props.some((p) => p.t === "desk" && p.assign === id), a.id), { what: "desk assignment reaches the client" });
-    await a.page.keyboard.down("Control");
-    await a.page.keyboard.press("d");
-    await a.page.keyboard.up("Control");
-    await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === desk.x && Math.floor(p.y / 16) === desk.y + 1; }, { timeout: 30000, what: "back at the desk" });
-    check("Ctrl+D runs to the chair of my assigned desk", true);
-    // an assigned desk is a room (gamemap TestAssignedDesksGetTheirOwnRoom; its name tag and the place shown:
-    // web/test/areas.test.ts); alone there is no call, the neighbour's desk is not in it, a visitor starts its
-    // call and leaving ends it (world TestADeskRoomCallIsTheOwnersAndTheirVisitorsOnly); a locked desk keeps
-    // the visitor out (world TestADeskOwnerLocksTheirDeskAndAlwaysWalksIn)
-    // ---- the owner locks the desk with its real button: the visitor knocks and is let in
-    const btn = (u: User, text: string) => read(u, (text) => { const x = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text)); x?.click(); return !!x; }, text);
-    const has = (u: User, text: string) => read(u, (text) => [...document.querySelectorAll("button")].some((b) => b.textContent.trim().startsWith(text)), text);
-    await waitFor(() => btn(a, "Lock desk"), { what: "lock desk button" });
-    await waitFor(() => read(b, () => window.__hq.state.locked.length > 0), { what: "lock reaches the visitor" });
-    check("the desk shows a lock to others", await read(b, () => window.__hq.view.deskLabels.some((l) => l.text.text.endsWith("🔒"))));
-    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 4) * 16 + 8); // right behind the desk room, at its door
-    await waitFor(() => btn(b, "Knock · " + a.name + "'s desk"), { what: "knock on the desk" });
-    await waitFor(() => btn(a, "Let in"), { what: "owner asked" });
-    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8);
-    check("the owner lets the visitor in", Math.floor((await pos(b)).y / 16) === desk.y + 2);
-    check("a visitor at somebody's desk cannot lock it", !(await has(b, "Lock desk")) && !(await has(b, "Unlock desk")));
-    await btn(a, "Unlock desk");
-    await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8);
-    check("restoring the map", (await putMap(full)).ok);
 
     // ---- touch pad on a phone-sized touch screen ----
     const pctx = await browser.createBrowserContext();
@@ -331,33 +208,16 @@ export async function run(ctx: RunContext): Promise<boolean> {
       const c = await joinAs(browser, "Idler" + sfx);
       const cdp = await c.page.createCDPSession();
       await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
+      await c.ctx.setPermission(APP, { permission: { name: "idle-detection" }, state: "granted" });
       await c.page.evaluate(() => document.querySelector<HTMLButtonElement>(".bar-row .round.ghost")?.click());
       await waitFor(() => c.page.$(".modal"), { what: "settings dialog" });
-      const idleBox = () => c.page.evaluateHandle(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("computer is idle"))?.querySelector("input"));
-      // blocked by the browser: the click must say so (asking would never answer), and the setting stays off
-      await cdp.send("Browser.setPermission", { permission: { name: "idle-detection" }, setting: "denied" });
-      await ((await idleBox()) as ElementHandle<HTMLInputElement>).click();
-      await waitFor(() => c.page.evaluate(() => !!document.querySelector(".modal .setting-note")), { timeout: 5000, what: "blocked note" }).catch(() => {});
-      const blocked = await c.page.evaluate(() => ({ note: document.querySelector(".modal .setting-note")?.textContent ?? "", on: window.__hq.state.settings.osIdle }));
-      check("a browser that blocks idle detection gets an explanation next to the setting, which stays off", blocked.note.includes("blocks idle detection") && !blocked.on, JSON.stringify(blocked));
-      await c.ctx.setPermission(APP, { permission: { name: "idle-detection" }, state: "granted" });
-      const box = (await idleBox()) as ElementHandle<HTMLInputElement>;
+      const box = (await c.page.evaluateHandle(() => [...document.querySelectorAll(".modal label.check")].find((l) => l.textContent.includes("computer is idle"))?.querySelector("input"))) as ElementHandle<HTMLInputElement>;
       await box.click();
       await waitFor(() => c.page.evaluate(() => window.__hq.state.settings.osIdle), { what: "idle setting on" });
       await c.page.keyboard.press("Escape");
-      const status = () => c.page.evaluate(() => window.__hq.state.status);
-      const seenBy = () => a.page.evaluate((id) => window.__hq.state.roster.get(id)?.s, c.id);
       await cdp.send("Emulation.setIdleOverride", { isUserActive: false, isScreenUnlocked: true });
-      await waitFor(async () => (await status()) === "away" && (await seenBy()) === "away", { timeout: 10000, what: "away when the computer is idle" });
-      check("with the setting on, an idle computer sets me away (others see it)", true);
-      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
-      await waitFor(async () => (await status()) === "available", { timeout: 10000, what: "back when the computer is used" });
-      check("...and using the computer again brings me back", true);
-      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: false });
-      await waitFor(async () => (await status()) === "away", { timeout: 10000, what: "away when the screen is locked" });
-      check("a locked screen sets me away too", true);
-      await cdp.send("Emulation.setIdleOverride", { isUserActive: true, isScreenUnlocked: true });
-      await waitFor(async () => (await status()) === "available", { timeout: 10000, what: "back after unlocking" });
+      await waitFor(async () => (await c.page.evaluate(() => window.__hq.state.status)) === "away" && (await a.page.evaluate((id) => window.__hq.state.roster.get(id)?.s, c.id)) === "away", { timeout: 10000, what: "away when the computer is idle" });
+      check("with the setting ticked, an idle computer sets me away (others see it)", true);
       check("no console errors for the idle-detecting player", c.logs.length === 0, c.logs.join(" | ").slice(0, 300));
       await c.ctx.close();
     }

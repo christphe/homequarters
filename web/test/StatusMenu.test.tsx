@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // Component test of the status menu (web/src/ui/StatusMenu.tsx): axe finds no violation with the menu closed, open,
 // and open with a note set (its Clear button), inside the banner landmark that holds it in the office. The browser
-// still audits the open menu once for its contrast (e2e/scenarios/a11y.ts); typing a note through it is the
-// `presence` scenario.
+// still audits the open menu once for its contrast (e2e/scenarios/a11y.ts); typing a note through it is
+// web/test/StatusNote.test.tsx.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, it, vi } from "vitest";
