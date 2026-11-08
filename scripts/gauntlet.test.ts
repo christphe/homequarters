@@ -60,6 +60,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     vitest("hq-card-pouilleux", "unit"),
     vitest("hq-cards", "unit"),
     vitest("hq-chess", "unit"),
+    vitest("hq-pets", "unit"),
     ...INTEGRATION.map((n) => vitest(n.split(":")[0]!, "integration")),
     [BROWSER, "e2e", "node run.ts", false, true, '{"E2E_VIEWPORT":"small","E2E_PREBUILT":"1"}'],
     ...[
@@ -143,7 +144,7 @@ test("each plugin's tests run in its project, and import nothing outside it and 
   for (const p of fs.readdirSync(bundled)) {
     const dir = path.join(bundled, p, "test");
     if (!fs.existsSync(dir)) continue;
-    // a plugin may have only integration tests (hq-pets: test/*.ispec.ts)
+    // a plugin may have only integration tests (test/*.ispec.ts)
     const task = (config.get(`${p}:test:unit`) ?? config.get(`${p}:test:integration`)) as Command | undefined;
     assert.ok(task, `${p} has tests, so a project with a test task`);
     const deps: string[] = JSON.parse(fs.readFileSync(path.join(bundled, p, "fdash.json"), "utf8")).dependsOn ?? [];
@@ -227,7 +228,7 @@ test("closing: green, red, skipped, tree changed, interrupted", () => {
 
 test("no file names a test of web/test, a plugin's test/ or tools/fdash/test that does not exist", () => {
   // docs/status.md and the design notes keep their history; everything else follows the files
-  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\\.test\\.ts", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
+  const out = execFileSync("git", ["grep", "-n", "-o", "-E", "([a-z-]+/)*test/[A-Za-z]+\\.test\\.tsx?", "--", ".", ":!docs/status.md", ":!docs/superpowers", ":!site", ":!tools/fdash/test"], { cwd: root, encoding: "utf8" });
   const missing: string[] = [];
   for (const line of out.split("\n").filter(Boolean)) {
     const [file, , ref] = line.split(":");
