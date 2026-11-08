@@ -15,6 +15,12 @@
         ],
         [
           "node",
+          "../../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.test.json"
+        ],
+        [
+          "node",
           "../../../scripts/oxlint.ts",
           "."
         ]
@@ -24,7 +30,12 @@
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
         "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/web/pnpm-lock.yaml",
+        "/plugins/sdk/testbed.ts",
+        "/plugins/sdk/server.d.ts",
+        "/web/node_modules/@types/node/**",
+        "/plugins/bundled/hq-cards/test/**",
+        "/plugins/bundled/hq-cards/public/**"
       ]
     },
     "test:unit": {

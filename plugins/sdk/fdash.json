@@ -8,6 +8,12 @@
       "run": [
         [
           "node",
+          "../../web/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.test.json"
+        ],
+        [
+          "node",
           "../../scripts/oxlint.ts",
           "."
         ]
@@ -17,7 +23,8 @@
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
         "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/web/pnpm-lock.yaml",
+        "/web/node_modules/@types/node/**"
       ]
     },
     "test:integration": {

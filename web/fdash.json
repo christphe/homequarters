@@ -36,15 +36,13 @@
         ]
       ],
       "inputs": [
-        "/tools/fdash/**",
-        "/scripts/**",
-        "/plugins/**",
-        "/e2e/shards.ts",
         "/scripts/oxlint.ts",
         "/scripts/oxlint-hq.ts",
         "/.oxlintrc.json",
         "/web/package.json",
-        "/web/pnpm-lock.yaml"
+        "/web/pnpm-lock.yaml",
+        "/plugins/sdk/client.d.ts",
+        "/plugins/sdk/view.d.ts"
       ],
       "tools": [
         [
