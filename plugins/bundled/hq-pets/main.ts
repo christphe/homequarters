@@ -57,13 +57,17 @@ function cleanName(n: unknown): string {
 
 const isKind = (k: unknown): k is number => typeof k === "number" && Number.isInteger(k) && k >= 0 && k < KINDS.length;
 
+/** A stored pet: kind, colour, id, and a name that cleanName checks. */
+const isStoredPet = (p: unknown): p is [number, string, string, unknown?] =>
+  Array.isArray(p) && isKind(p[0]) && isColour(p[1]) && typeof p[2] === "string" && /^[a-z0-9]{1,8}$/.test(p[2]);
+
 /** A member's pets as stored; anything that does not parse is dropped. */
 function stored(id: number): Pet[] {
   try {
     const v: unknown = JSON.parse(hq.kv.get("p:" + id) ?? "[]");
     if (!Array.isArray(v)) return [];
-    return v
-      .filter((p) => Array.isArray(p) && isKind(p[0]) && isColour(p[1]) && typeof p[2] === "string" && /^[a-z0-9]{1,8}$/.test(p[2]))
+    return (v as unknown[])
+      .filter(isStoredPet)
       .map((p): Pet => [p[0], p[1], p[2], cleanName(p[3])])
       .slice(0, MAX_PETS);
   } catch {
