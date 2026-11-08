@@ -1,12 +1,10 @@
-module homequarters
+module homequarters/internal/plugin
 
 go 1.27.3
 
 require (
-	github.com/coder/websocket v1.8.15
 	github.com/evanw/esbuild v0.28.2
 	modernc.org/quickjs v0.25.0
-	modernc.org/sqlite v1.60.1
 )
 
 require (

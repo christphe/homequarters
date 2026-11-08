@@ -22,7 +22,7 @@ export HQ_METRICS_TOKEN
 # the token reaches curl on stdin and loadgen through its environment: never as an argument (process list)
 metrics_ok() { printf 'Authorization: Bearer %s\n' "$HQ_METRICS_TOKEN" | curl -sf -o /dev/null -H @- "$1"; }
 image() { ssh_vm "docker inspect -f '{{index .Config.Labels \"org.opencontainers.image.revision\"}} {{.Image}}' homequarters-homequarters-1"; }
-( cd server && go build -o ../bin/loadgen ./cmd/loadgen )
+( cd server/cmd/loadgen && go build -o ../../../bin/loadgen . )
 restore() {
   echo "# restoring the normal stack"
   [ -n "${tun:-}" ] && kill "$tun" 2>/dev/null

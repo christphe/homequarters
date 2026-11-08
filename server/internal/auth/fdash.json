@@ -1,11 +1,16 @@
 {
+  "dependsOn": [
+    {
+      "goMod": "go.mod"
+    }
+  ],
   "tasks": {
     "lint": {
       "run": [
         [
           "go",
           "tool",
-          "-modfile=../tools/go/golangci-lint/go.mod",
+          "-modfile=../../../tools/go/golangci-lint/go.mod",
           "golangci-lint",
           "run",
           "./..."
@@ -35,7 +40,7 @@
         [
           "go",
           "tool",
-          "-modfile=../tools/go/govulncheck/go.mod",
+          "-modfile=../../../tools/go/govulncheck/go.mod",
           "govulncheck",
           "./..."
         ]
@@ -63,33 +68,6 @@
         "GOOS"
       ]
     },
-    "build": {
-      "run": [
-        [
-          "go",
-          "build",
-          "-o",
-          "../bin/",
-          "./cmd/homequarters"
-        ]
-      ],
-      "outputs": [
-        "/bin/homequarters*"
-      ],
-      "tools": [
-        [
-          "go",
-          "version"
-        ]
-      ],
-      "envKeys": [
-        "GOFLAGS",
-        "CGO_ENABLED",
-        "GOEXPERIMENT",
-        "GOARCH",
-        "GOOS"
-      ]
-    },
     "test:unit": {
       "run": [
         [
@@ -99,9 +77,6 @@
           "-count=1",
           "./..."
         ]
-      ],
-      "inputs": [
-        "/web/dev/**"
       ],
       "tools": [
         [

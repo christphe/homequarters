@@ -17,10 +17,23 @@ FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS server
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /s
-COPY server/go.mod server/go.sum ./
+# one Go module per library (decision 0041): the command's go.mod and go.sum, and the go.mod of each library
+# its go.mod replaces with a folder, so that the download layer stays cached until a dependency changes
+# (scripts/gauntlet.test.ts checks this list against server/cmd/homequarters/go.mod)
+COPY server/cmd/homequarters/go.mod server/cmd/homequarters/go.sum cmd/homequarters/
+COPY server/internal/auth/go.mod internal/auth/
+COPY server/internal/config/go.mod internal/config/
+COPY server/internal/gamemap/go.mod internal/gamemap/
+COPY server/internal/httpapi/go.mod internal/httpapi/
+COPY server/internal/media/go.mod internal/media/
+COPY server/internal/plugin/go.mod internal/plugin/
+COPY server/internal/store/go.mod internal/store/
+COPY server/internal/testbed/go.mod internal/testbed/
+COPY server/internal/world/go.mod internal/world/
+WORKDIR /s/cmd/homequarters
 RUN go mod download
-COPY server/ ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/homequarters ./cmd/homequarters \
+COPY server/ /s/
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/homequarters . \
  && mkdir /data
 
 FROM gcr.io/distroless/static-debian13:nonroot

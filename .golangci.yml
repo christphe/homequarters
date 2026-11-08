@@ -1,6 +1,7 @@
-# golangci-lint v2 for every Go module of the repository (server/, bench/mediagen, bench/plugin-runtime),
-# pinned in tools/go/golangci-lint/go.mod and run as `go tool -modfile=../tools/go/golangci-lint/go.mod
-# golangci-lint run ./...` from server/ (its fdash `lint` task). Decision 0040 lists every linter considered,
+# golangci-lint v2 for every Go module of the repository (each library and command of server/, bench/mediagen,
+# bench/plugin-runtime), pinned in tools/go/golangci-lint/go.mod and run as `go tool
+# -modfile=../../../tools/go/golangci-lint/go.mod golangci-lint run ./...` from each server module (its fdash
+# `lint` task; decision 0041). Decision 0040 lists every linter considered,
 # the ones left out and why. Rule of this file: a linter is on when what it finds here is real; a narrow
 # exclusion says why; nothing is lowered to a warning.
 version: "2"
@@ -58,74 +59,12 @@ linters:
         # `if err := f(); err != nil` inside a function that has an err: the idiom, not a bug (50 findings, all of it)
         - shadow
 
-    # The server's package graph as a rule (today's `go list` imports, tests included): each rule denies every
-    # internal package and allows back the ones the package may import (the longer match wins). A new import
-    # across packages is a decision: change the list here in the same change. And AGENTS.md's "keep
-    # internal/media the only package that speaks to LiveKit".
+    # The server's package graph is not here: each library of server/ is a Go module whose go.mod declares the
+    # libraries it may import, and Go refuses any other import (decision 0041). What a go.mod cannot say is
+    # AGENTS.md's "keep internal/media the only package that speaks to LiveKit": `go get` adds any module to
+    # any go.mod, so this rule stays.
     depguard:
       rules:
-        leaves:
-          files:
-            - "**/internal/auth/**"
-            - "**/internal/config/**"
-            - "**/internal/gamemap/**"
-            - "**/internal/media/**"
-            - "**/internal/plugin/**"
-            - "**/internal/store/**"
-            - "**/cmd/loadgen/**"
-          deny:
-            - pkg: homequarters/internal
-              desc: "a leaf package: it imports no other package of the server"
-        world:
-          list-mode: lax
-          files: ["**/internal/world/**"]
-          deny:
-            - pkg: homequarters/internal
-              desc: "the simulation imports only the map format and media rooms"
-          allow:
-            - homequarters/internal/gamemap
-            - homequarters/internal/media
-        httpapi:
-          list-mode: lax
-          files: ["**/internal/httpapi/**"]
-          deny:
-            - pkg: homequarters/internal
-              desc: "httpapi sits above every package but the testbed"
-          allow:
-            - homequarters/internal/auth
-            - homequarters/internal/config
-            - homequarters/internal/gamemap
-            - homequarters/internal/media
-            - homequarters/internal/plugin
-            - homequarters/internal/store
-            - homequarters/internal/world
-        testbed:
-          list-mode: lax
-          files: ["**/internal/testbed/**"]
-          deny:
-            - pkg: homequarters/internal
-              desc: "the testbed builds a server from these packages only"
-          allow:
-            - homequarters/internal/config
-            - homequarters/internal/gamemap
-            - homequarters/internal/httpapi
-            - homequarters/internal/media
-            - homequarters/internal/plugin
-            - homequarters/internal/store
-            - homequarters/internal/world
-        command:
-          list-mode: lax
-          files: ["**/cmd/homequarters/**"]
-          deny:
-            - pkg: homequarters/internal
-              desc: "the command wires these packages only"
-          allow:
-            - homequarters/internal/config
-            - homequarters/internal/gamemap
-            - homequarters/internal/httpapi
-            - homequarters/internal/media
-            - homequarters/internal/store
-            - homequarters/internal/testbed
         livekit:
           # the server only: bench/mediagen is a LiveKit client by design
           files:

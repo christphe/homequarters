@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CONFIG_FILE, finishConfig, loadConfig, localName, parseJson, parseTasks, type Command, type Config, type Input, type Task } from "./config.ts";
+import { localRequires } from "./gomod.ts";
 
 export const WORKSPACE_FILE = "fdash-workspace.json";
 
@@ -13,7 +14,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
 const posix = (...p: string[]) => path.posix.join(...p);
 
-type Project = { name: string; dir: string; files: string[]; dependsOn: string[]; tasks: Config; file: string };
+/** `goMods`: the go.mod files (from the root) whose local requires are added to `dependsOn` once every project is known. */
+type Project = { name: string; dir: string; files: string[]; dependsOn: string[]; goMods: string[]; tasks: Config; file: string };
+const isGoMod = (v: unknown): v is { goMod: string } => isObject(v) && typeof v.goMod === "string" && Object.keys(v).length === 1;
 
 /** The folders a projects entry names: a literal path, or segments of which some are "*" (one level). */
 function folders(root: string, pattern: string): { dir: string; literal: boolean }[] {
@@ -50,7 +53,9 @@ function readProject(root: string, dir: string): Project {
   for (const k of Object.keys(raw)) if (!["name", "files", "dependsOn", "tasks"].includes(k)) throw new Error(`${file}: unknown key ${k}`);
   if (raw.name !== undefined && (typeof raw.name !== "string" || !/^[\w.-]+$/.test(raw.name))) throw new Error(`${file}: name must be letters, digits, ".", "_" or "-"`);
   if (raw.files !== undefined && !isStrings(raw.files)) throw new Error(`${file}: files must be a list of patterns`);
-  if (raw.dependsOn !== undefined && !isStrings(raw.dependsOn)) throw new Error(`${file}: dependsOn must be a list of project names`);
+  if (raw.dependsOn !== undefined && !(Array.isArray(raw.dependsOn) && raw.dependsOn.every((d) => typeof d === "string" || isGoMod(d)))) {
+    throw new Error(`${file}: dependsOn must be a list of project names and { "goMod": <go.mod file> }`);
+  }
   if (raw.tasks !== undefined && !isObject(raw.tasks)) throw new Error(`${file}: tasks must be an object`);
   let tasks: Config;
   try {
@@ -58,7 +63,12 @@ function readProject(root: string, dir: string): Project {
   } catch (e) {
     throw new Error(`${file}: ${(e as Error).message}`, { cause: e });
   }
-  return { name: raw.name ?? path.posix.basename(dir), dir, files: raw.files ?? ["**"], dependsOn: raw.dependsOn ?? [], tasks, file };
+  const deps = (raw.dependsOn ?? []) as (string | { goMod: string })[];
+  return {
+    name: raw.name ?? path.posix.basename(dir), dir, files: raw.files ?? ["**"], tasks, file,
+    dependsOn: deps.filter((d) => typeof d === "string"),
+    goMods: deps.flatMap((d) => (typeof d === "string" ? [] : [fromRoot(dir, d.goMod)])),
+  };
 }
 
 export function loadWorkspace(root: string): Config {
@@ -81,6 +91,24 @@ export function loadWorkspace(root: string): Config {
       if (twin) throw new Error(`two projects named ${p.name}: ${twin.dir} and ${p.dir} (set "name" in one ${CONFIG_FILE})`);
       byName.set(p.name, p);
       projects.push(p);
+    }
+  }
+
+  // a go.mod's local requires: the projects whose folders its replace directives point at
+  for (const p of projects) {
+    for (const goMod of p.goMods) {
+      let text: string;
+      try {
+        text = fs.readFileSync(path.join(root, goMod), "utf8");
+      } catch {
+        throw new Error(`${p.file}: dependsOn reads ${goMod}, which does not exist`);
+      }
+      for (const r of localRequires(text)) {
+        const dir = path.posix.normalize(posix(path.posix.dirname(goMod), r.dir.replaceAll("\\", "/"))).replace(/(.)\/+$/, "$1");
+        const q = projects.find((x) => x.dir === dir);
+        if (!q) throw new Error(`${goMod}: ${r.module} is replaced by ${r.dir}, which is no project (list ${dir} in ${WORKSPACE_FILE})`);
+        if (q !== p && !p.dependsOn.includes(q.name)) p.dependsOn.push(q.name);
+      }
     }
   }
 

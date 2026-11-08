@@ -82,6 +82,31 @@ test("dependsOn is transitive; refusals name the file", () => {
   for (const [files, re] of bad) assert.throws(() => loadWorkspace(tree(files)), re);
 });
 
+test("dependsOn from a go.mod: the projects its replace directives point at, with the names written beside it", () => {
+  const goMod = (requires: string[], replaces: string) => `module m\n\ngo 1.22\n\nrequire (\n${requires.map((r) => `\t${r} v0.0.0\n`).join("")})\n\n${replaces}\n`;
+  const root = tree({
+    "fdash-workspace.json": { projects: ["libs/*", "cmd/app", "site"] },
+    "libs/core/fdash.json": { dependsOn: [{ goMod: "go.mod" }], tasks: { t: { run: [["x"]] } } }, "libs/core/go.mod": "module core\n",
+    "libs/net/fdash.json": { dependsOn: [{ goMod: "go.mod" }], tasks: { t: { run: [["x"]] } } },
+    "libs/net/go.mod": goMod(["core", "example.com/remote"], "replace core => ../core\nreplace example.com/remote => example.com/fork v1.0.0"),
+    "cmd/app/fdash.json": { dependsOn: ["site", { goMod: "go.mod" }], tasks: { t: { run: [["x"]] }, build: { run: [["x"]] } } },
+    "cmd/app/go.mod": goMod(["core", "net"], "replace (\n\tcore => ../../libs/core\n\tnet => ../../libs/net/\n)"),
+    "site/fdash.json": { tasks: { build: { run: [["x"]] } } },
+  });
+  const c = loadWorkspace(root);
+  assert.deepEqual((c.get("net:t") as Command).inputs, ["libs/net/**", "libs/core/**"]);
+  assert.deepEqual((c.get("app:t") as Command).inputs, ["cmd/app/**", "site/**", "libs/core/**", "libs/net/**"]);
+  // order follows them as it follows dependsOn
+  assert.deepEqual(c.get("app:t")!.after, ["core:t", "net:t"]);
+  assert.deepEqual(c.get("app:build")!.after, ["site:build"]);
+  const bad: [Record<string, unknown>, RegExp][] = [
+    [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] } }, /a\/fdash\.json: dependsOn reads a\/go\.mod, which does not exist/],
+    [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] }, "a/go.mod": goMod(["b"], "replace b => ../b") }, /a\/go\.mod: b is replaced by \.\.\/b, which is no project \(list b in fdash-workspace\.json\)/],
+    [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ go: "." }] } }, /a\/fdash\.json: dependsOn must be/],
+  ];
+  for (const [files, re] of bad) assert.throws(() => loadWorkspace(tree(files)), re);
+});
+
 test("what reruns: a project's change reruns its tasks and its dependents', not the others'", async () => {
   const root = tree({
     ".gitignore": ".fdash/\nran-*\n",

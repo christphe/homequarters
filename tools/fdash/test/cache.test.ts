@@ -96,6 +96,18 @@ test("a Go provider follows the packages a pattern reaches, and their tests when
   assert.deepEqual(resolveInputs(root, [{ go: "./...", cwd: "m", tests: true }]).files, ["m/a/a.go", "m/a/a_test.go", "m/a/testdata/x.txt", "m/b/b.go", "m/cmd/main.go", "m/go.mod", "m/go.sum"]);
 });
 
+test("a Go provider follows the modules its module replaces with a folder, not the packages they leave out", { skip: !hasGo && "go is not installed" }, () => {
+  const root = repo({
+    "app/go.mod": "module app\n\ngo 1.22\n\nrequire lib v0.0.0\n\nreplace lib => ../lib\n",
+    "app/main.go": 'package main\n\nimport "lib/used"\n\nfunc main() { used.U() }\n',
+    "lib/go.mod": "module lib\n\ngo 1.22\n",
+    "lib/used/u.go": "package used\n\nfunc U() {}\n",
+    "lib/used/u_test.go": "package used\n",
+    "lib/other/o.go": "package other\n",
+  });
+  assert.deepEqual(resolveInputs(root, [{ go: ".", cwd: "app", tests: false }]).files, ["app/go.mod", "app/go.sum", "app/main.go", "lib/go.mod", "lib/go.sum", "lib/used/u.go"]);
+});
+
 // items: a command that reads its arguments and writes FDASH_REPORT, failing the items named in fail.txt
 const itemsCmd = node(`
   const fs = require("fs");
