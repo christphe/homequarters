@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"homequarters/internal/store"
 )
 
 // runCLI runs the binary with only PATH, a loopback HQ_ADDR and the given environment (nothing else
@@ -75,6 +78,42 @@ func TestCLIMintsABootstrapInvite(t *testing.T) {
 	code, out, stderr := runCLI(t, []string{"HQ_DB=" + filepath.Join(t.TempDir(), "cli-invite.db")}, "-invite", "member")
 	if code != 0 || !strings.HasPrefix(out, "/?invite=") {
 		t.Fatalf("exit %d, stdout %q; stderr: %s", code, out, stderr)
+	}
+}
+
+// -account-link prints the personal link of a member who has not linked a sign-in account, and refuses one who has:
+// the link would bypass their sign-in (the /link/ route refuses it too: TestPersonalLinksStopAtLinkedAccounts).
+func TestCLIAccountLinkStopsAtLinkedAccounts(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "cli-link.db")
+	env := []string{"HQ_DB=" + db, "HQ_AUTH_PROVIDERS=fake-oidc", "HQ_AUTH_DOMAINS=acme.test"}
+	if code, _, stderr := runCLI(t, env, "-invite", "member"); code != 0 { // creates the database and its office
+		t.Fatalf("setup: exit %d; stderr: %s", code, stderr)
+	}
+	st, err := store.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	o, err := st.OfficeBySlug(ctx, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	olga, _, err := st.AddMember(ctx, o.ID, "Olga", json.RawMessage(`{}`), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.AddMember(ctx, o.ID, "Pat", json.RawMessage(`{}`), "member"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.LinkIdentity(ctx, o.ID, olga, store.Identity{Provider: "fake-oidc", Subject: "olga", Email: "olga@acme.test"}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if code, out, stderr := runCLI(t, env, "-account-link", "Pat"); code != 0 || !strings.HasPrefix(out, "/link/") {
+		t.Fatalf("an unlinked member: exit %d, stdout %q; stderr: %s", code, out, stderr)
+	}
+	if code, out, stderr := runCLI(t, env, "-account-link", "Olga"); code != 1 || out != "" || !strings.Contains(stderr, "signs in with a provider") {
+		t.Fatalf("a member who signs in: exit %d, stdout %q; stderr: %s", code, out, stderr)
 	}
 }
 
