@@ -9,14 +9,14 @@ import { launch, joinAs, walkTo, sleep, waitFor, API, type User, type RunContext
 import type { MapData } from "../../web/src/net/protocol.ts";
 
 const api = (cookie: string, method: string, p: string, body?: unknown) => fetch(API + p, { method, headers: { "Content-Type": "application/json", Cookie: "hq_session=" + cookie }, body: body ? JSON.stringify(body) : undefined });
-const viewMap = (u: User) => u.page.evaluate((): MapData => JSON.parse(JSON.stringify(window.__hq.view.map)));
+const viewMap = (u: User) => u.page.evaluate(() => JSON.parse(JSON.stringify(window.__hq.view.map)) as MapData);
 const free = (m: MapData, x: number, y: number) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.solid[y][x] !== "1" && m.walls[y][x] !== "#";
 
 export async function run(ctx: RunContext): Promise<boolean> {
   const base = process.env.HQ_CAPTURE_DIR ?? "/tmp/hq-capture";
   fs.mkdirSync(base, { recursive: true });
   const dir = fs.mkdtempSync(path.join(base, "desk-depth-"));
-  const original = await (await api(ctx.adminCookie, "GET", "/api/admin/map")).json();
+  const original = (await (await api(ctx.adminCookie, "GET", "/api/admin/map")).json()) as MapData;
   const browser = await launch();
   let n = 0;
   try {

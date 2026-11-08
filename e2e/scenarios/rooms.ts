@@ -18,7 +18,9 @@ type MediaRoom = {
   } | null;
 };
 
-const b64json = (tok: string) => JSON.parse(Buffer.from(tok.split(".")[1], "base64url").toString());
+// the claims of a LiveKit access token the checks read
+type Claims = { sub: string; nbf: number; exp: number; video: { room: string; roomJoin?: boolean; roomAdmin?: boolean } };
+const b64json = (tok: string) => JSON.parse(Buffer.from(tok.split(".")[1], "base64url").toString()) as Claims;
 
 export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();

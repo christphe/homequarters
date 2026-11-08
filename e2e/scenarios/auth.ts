@@ -65,7 +65,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const legacy: Record<string, { cookie: string; id: number }> = {};
     for (const name of ["Olga", "Pat"]) {
       const r = await fetch(BASE + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-      legacy[name] = { cookie: r.headers.get("set-cookie")!.split(";")[0].split("=")[1], id: (await r.json()).id };
+      legacy[name] = { cookie: r.headers.get("set-cookie")!.split(";")[0].split("=")[1], id: ((await r.json()) as { id: number }).id };
     }
     await stop();
 
@@ -125,7 +125,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await Promise.all([ana.waitForNavigation(), click(ana, ".modal button", "Sign out")]);
     await ana.waitForSelector(".signin a");
     check("signing out leads to the sign-in screen", (await text(ana)).includes("Sign in to enter the office"));
-    const copy = await (await fetch(BASE + "/api/me", { headers: { Cookie: "hq_session=" + anaCookie } })).json();
+    const copy = (await (await fetch(BASE + "/api/me", { headers: { Cookie: "hq_session=" + anaCookie } })).json()) as { authenticated?: boolean; link?: unknown };
     check("the old session no longer opens the office, even from a copy of its cookie", copy.authenticated === false && !copy.link, JSON.stringify(copy));
     await Promise.all([ana.waitForNavigation(), click(ana, ".signin a", "Continue with fake sign-in (development)")]);
     await Promise.all([ana.waitForNavigation(), click(ana, "button", "Authorize")]);
@@ -160,7 +160,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("linking ends on a confirmation and a clean address", (await text(olga)).includes("Your account is connected") && !olga.url().includes("auth="), olga.url());
 
     // Olga invites Bob; Bob signs in with the invite through the real screen.
-    const inv = await olga.evaluate(async () => (await (await fetch("/api/invites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "member", maxUses: 1, hours: 1 }) })).json()).token);
+    const inv = await olga.evaluate(async () => (await (await fetch("/api/invites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "member", maxUses: 1, hours: 1 }) })).json() as { token: string }).token);
     await bob.goto(BASE + "/?invite=" + inv + "&login_hint=bob@gmail.com", { waitUntil: "domcontentloaded" });
     await bob.waitForSelector(".signin a");
     check("the invite is announced on the sign-in screen", (await text(bob)).includes("You have an invite"));
@@ -174,7 +174,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await Promise.all([bob.waitForNavigation(), click(bob, "button", "Authorize")]);
     await bob.waitForSelector(".join-card input");
     // a sign-in that expired before the name was sent goes back to the buttons, saying why
-    await bob.deleteCookie({ name: "hq_signup", url: BASE });
+    await bob.browserContext().deleteMatchingCookies({ name: "hq_signup", url: BASE });
     await bob.type(".join-card input", "Bob");
     await click(bob, "button.primary", "Enter");
     await bob.waitForSelector(".signin a");
@@ -217,7 +217,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // somebody else on Pat's browser: "Not Pat?" forgets the session instead of linking their account to Pat
     await click(pat, ".join-card button", "Not Pat? Use this browser as someone else");
     await waitFor(async () => !(await text(pat)).includes("Welcome back"), { what: "signed out" });
-    const after = await pat.evaluate(async () => (await (await fetch("/api/me")).json()));
+    const after = await pat.evaluate(async () => (await (await fetch("/api/me")).json()) as { authenticated?: boolean; link?: unknown });
     check("'Not Pat?' signs the browser out without linking", !after.link && !after.authenticated && (await text(pat)).includes("Sign in to enter the office"), JSON.stringify(after));
     const fresh = await pat.evaluate(() => ({ error: !!document.querySelector(".join-card .error"), href: document.querySelector(".signin a")!.getAttribute("href") }));
     check("a fresh start shows no earlier error and no earlier account hint", !fresh.error && !fresh.href!.includes("login_hint"), JSON.stringify(fresh));

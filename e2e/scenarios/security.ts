@@ -50,7 +50,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
       let token = s.token;
       if (tweak === "room") {
         const [h, p, sg] = token.split(".");
-        const payload = JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/")));
+        const payload = JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/"))) as { video: { room: string } };
         payload.video.room = w.__privateRoom;
         token = h + "." + btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") + "." + sg;
       }

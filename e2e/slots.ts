@@ -32,8 +32,9 @@ export type Owner = { pid: number; started?: string; cwd?: string; token?: strin
 
 export function parseOwner(text: string): Owner | null {
   try {
-    const o = JSON.parse(text);
-    return Number.isInteger(o?.pid) && o.pid > 0 ? o : null;
+    const o = JSON.parse(text) as { pid?: unknown } | null;
+    const pid = o?.pid;
+    return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? (o as Owner) : null;
   } catch { return null; }
 }
 

@@ -11,8 +11,9 @@ const candidate = (u: User) => u.page.evaluate(async () => {
   let pair = null as RTCIceCandidatePairStats | null;
   stats.forEach((s: RTCIceCandidatePairStats) => { if (s.type === "candidate-pair" && s.nominated && s.state === "succeeded") pair = s; });
   if (!pair) return null;
-  const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
-  return { protocol: remote?.protocol as string | undefined, remoteType: remote?.candidateType, localType: local?.candidateType, rttMs: Math.round((pair.currentRoundTripTime ?? 0) * 1000) };
+  type Candidate = { protocol?: string; candidateType?: string } | undefined;
+  const local = stats.get(pair.localCandidateId) as Candidate, remote = stats.get(pair.remoteCandidateId) as Candidate;
+  return { protocol: remote?.protocol, remoteType: remote?.candidateType, localType: local?.candidateType, rttMs: Math.round((pair.currentRoundTripTime ?? 0) * 1000) };
 });
 
 resetChecks();

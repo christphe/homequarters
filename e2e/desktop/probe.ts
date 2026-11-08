@@ -22,7 +22,7 @@ const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/report") {
     let body = "";
     req.on("data", (c) => { body += c; });
-    req.on("end", () => { report = JSON.parse(body); res.writeHead(204).end(); });
+    req.on("end", () => { report = JSON.parse(body) as Report; res.writeHead(204).end(); });
     return;
   }
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(page);

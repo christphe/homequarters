@@ -108,7 +108,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => a.page.$(".editor"), { what: "editor open" });
     await click(a, "Edit content", ".editor button");
     // Pick the note from the object list (works at any viewport; on small screens the panel covers the map corner).
-    const noteOption = (await waitFor(() => read(a, () => [...document.querySelectorAll<HTMLOptionElement>('.editor select[aria-label="Interactive object to edit"] option')].find((o) => o.textContent.endsWith("(4, 5)"))?.value), { timeout: 20000, what: "object list with the note" }))!;
+    const noteOption = await waitFor(() => read(a, () => [...document.querySelectorAll<HTMLOptionElement>('.editor select[aria-label="Interactive object to edit"] option')].find((o) => o.textContent.endsWith("(4, 5)"))?.value), { timeout: 20000, what: "object list with the note" });
     await a.page.select('.editor select[aria-label="Interactive object to edit"]', noteOption);
     await waitFor(() => a.page.$(".editor textarea"), { what: "note content editor" });
     check("editor restores hidden content before editing", await read(a, () => document.querySelector<HTMLTextAreaElement>(".editor textarea")!.value.includes("Welcome to Home Quarters!")));

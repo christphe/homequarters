@@ -168,7 +168,7 @@ console.log("# server logs:", path.join(dir, "server.log"));
 
 let ok = true;
 // each scenario's result, written to FDASH_REPORT when fdash runs the suite (it caches scenarios one by one)
-const outcome = new Map();
+const outcome = new Map<string, boolean>();
 try {
   // Bootstrap the office admin (the first member of an office becomes admin).
   const r = await fetch(process.env.HQ_API + "/api/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Admin", avatar: { sk: 2, hs: 2, hc: 0, sh: 6, pa: 0 } }) });
@@ -199,7 +199,7 @@ try {
     resetChecks();
     await d.fn().catch((e: unknown) => check("deferred check ran", false, String(e)));
     const passed = summary();
-    if (!passed && outcome.has(d.scenario)) outcome.set(d.scenario, false);
+    if (!passed && d.scenario !== null && outcome.has(d.scenario)) outcome.set(d.scenario, false);
     ok = passed && ok;
   }
   stopLiveKit(lk);

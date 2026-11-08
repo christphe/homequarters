@@ -95,7 +95,7 @@ try {
   check("moving away ends the conversation for both", true);
   // revocation runs in the background with retries: give it a few seconds on a loaded machine
   const after = await waitFor(async () => { const m = await metrics(); return m.hq_media_revocations_total - before.hq_media_revocations_total >= 2 ? m : null; }, { timeout: 8000, what: "revocations" }).catch(() => metrics());
-  check("server revoked SFU access for both", after!.hq_media_revocations_total - before.hq_media_revocations_total >= 2, `revocations +${after!.hq_media_revocations_total - before.hq_media_revocations_total}`);
+  check("server revoked SFU access for both", after.hq_media_revocations_total - before.hq_media_revocations_total >= 2, `revocations +${after.hq_media_revocations_total - before.hq_media_revocations_total}`);
   check("SFU room is empty after leaving", (await lkParticipants(room)).length === 0);
   check("media capture stopped after leaving (mic/cam off)", (await st(ana)).mic === false && (await st(bruno)).cam === false);
 

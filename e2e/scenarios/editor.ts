@@ -4,6 +4,7 @@
 // the new room, the edit kept across a restart) is tested in Go: httpapi/editor_test.go and
 // world/editor_test.go.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API, type RunContext, type User } from "../lib.ts";
+import type { MapData } from "../../web/src/net/protocol.ts";
 
 const tileToClient = (u: User, tx: number, ty: number) =>
   u.page.evaluate((tx, ty) => {
@@ -29,10 +30,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const t = String(Date.now() % 10000);
     const [admin, mem] = await Promise.all([joinAs(browser, "Admin", { cookie: ctx.adminCookie }), joinAs(browser, "Ed" + t)]);
     const areas0 = await mem.page.evaluate(() => window.__hq.view.map!.areas.length);
-    const map = await admin.page.evaluate(() => JSON.parse(JSON.stringify(window.__hq.view.map)));
+    const map = await admin.page.evaluate(() => JSON.parse(JSON.stringify(window.__hq.view.map)) as MapData);
     // The world map redacts interactive-object content; round-trip the full map so later
     // scenarios (and real offices) do not lose note text, embed URLs or portal destinations.
-    const full = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
+    const full = (await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json()) as MapData;
     Object.assign(map, { props: full.props });
     const put = (cookie: string, body: object) => fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + cookie }, body: JSON.stringify(body) });
 
