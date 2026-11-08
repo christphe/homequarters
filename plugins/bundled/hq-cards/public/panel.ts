@@ -135,8 +135,8 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
         const stock = t.piles[0];
         const has = new Set(tableActions(game, !!stock));
         const acts: HTMLElement[] = [];
-        if (has.has("shuffle")) acts.push(button(labels.shuffle(stock!.name), () => send({ t: "shuffle", pile: stock!.id })));
-        if (has.has("dealAll")) acts.push(button("Deal all", () => send({ t: "dealAll", pile: stock!.id })));
+        if (has.has("shuffle")) acts.push(button(labels.shuffle(stock.name), () => send({ t: "shuffle", pile: stock.id })));
+        if (has.has("dealAll")) acts.push(button("Deal all", () => send({ t: "dealAll", pile: stock.id })));
         if (has.has("gather")) acts.push(button("Gather all", () => send({ t: "gather" })));
         if (has.has("count")) acts.push(button("Count", () => send({ t: "count" })));
         if (acts.length) kids.push(row(...acts));
@@ -150,7 +150,7 @@ export function createPanel(send: (m: Act) => void, newPileAt: () => [number, nu
             const v = Math.round(Number((e.currentTarget as HTMLInputElement).value)); // the input on the page (a rebuild patches it)
             if (v >= 1 && v <= DEAL_MAX) dealN = v;
           };
-          kids.push(row(field("Cards each", n), button("Deal", () => send({ t: "deal", pile: stock!.id, n: dealN }))));
+          kids.push(row(field("Cards each", n), button("Deal", () => send({ t: "deal", pile: stock.id, n: dealN }))));
         }
         if (has.has("createPile")) {
           const f = document.createElement("input");
