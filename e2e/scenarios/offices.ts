@@ -2,7 +2,7 @@
 // office in the editor and everybody sees it labelled with its owner; a visitor knocks with the Knock button, the
 // owner is asked and lets them in, and the visitor walks in; Ctrl+D runs the owner back into their office from the
 // hall; a member with no place (the administrator) takes a free desk with Take this desk and its confirmation, sees
-// Release desk next to Lock desk without moving, and frees it again with Release desk; an administrator at the closed
+// Release desk next to Lock desk without moving, locks and unlocks it, and frees it again with Release desk; an administrator at the closed
 // door forces it with Enter anyway and the owner inside is told. The walks run at once where the story allows: they
 // are most of the scenario's time.
 // Moved down (no longer checked here):
@@ -63,6 +63,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // ---- standing in their new desk room, they free it with Release desk, next to Lock desk
     await waitFor(() => hasButton(boss, /^Release desk$/), { what: "Release desk button" });
     check("without moving, the new owner sees Release desk next to Lock desk", await hasButton(boss, /^Lock desk$/));
+    // the only browser click on a real Lock button (presence and features moved theirs down): the server's lock
+    // comes back as Unlock desk, and Unlock desk gives Lock desk back
+    await button(boss, /^Lock desk$/);
+    const locked = await waitFor(() => hasButton(boss, /^Unlock desk$/), { what: "Unlock desk button" }).then(() => true, () => false);
+    await button(boss, /^Unlock desk$/);
+    const unlocked = await waitFor(() => hasButton(boss, /^Lock desk$/), { what: "Lock desk button again" }).then(() => true, () => false);
+    check("Lock desk locks the desk through the server, and Unlock desk opens it again", locked && unlocked);
     await button(boss, /^Release desk$/);
     await waitFor(() => boss.page.$("[role=dialog]"), { what: "release confirmation" });
     await button(boss, /^Release it$/);
