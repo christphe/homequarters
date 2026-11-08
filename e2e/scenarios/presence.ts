@@ -1,6 +1,4 @@
 // Presence: waving across the office, raised hands, status notes, dancing, the minimap and the touch pad.
-import os from "node:os";
-import path from "node:path";
 import type { ElementHandle } from "puppeteer-core";
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, APP, type RunContext, type User } from "../lib.ts";
 import type { MapData } from "../../web/src/net/protocol.ts";
@@ -144,17 +142,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await click(b, "Walk to them", ".wave-card button");
     await waitFor(async () => dist(await pos(a), await pos(b)) < 40 && !(await read(b, () => window.__hq.view.guided)), { timeout: 30000, what: "walk back to the waver" });
     check("Walk to them runs to the person who waved", true);
-    await read(b, () => window.__hq.session.setStatus("busy"));
-    await sleep(2200); // wave cooldown
-    await click(a, "Wave at " + b.name, ".people button");
-    await waitFor(() => read(b, () => !!document.querySelector(".wave-card")), { what: "wave at a busy person" });
-    check("a busy person can still be waved at (everybody sees the status)", true);
-    await read(b, () => document.querySelector<HTMLButtonElement>('.wave-card button[aria-label="Dismiss"]')?.click());
-    await sleep(2200);
-    await click(a, "Wave at " + b.name, ".people button");
-    await waitFor(async () => (await toast(a)).includes("30 seconds"), { what: "second wave refused" });
-    check("one wave every 30 s at a busy or away person", !(await read(b, () => !!document.querySelector(".wave-card"))));
-    await read(b, () => window.__hq.session.setStatus("available"));
+    // waving at a busy person and the 30 s cooldown: world TestWaveReachesThePersonBusyAndAwayIncluded and
+    // the refusal's text, web/test/replies.test.ts
 
     // ---- raised hand (H) and a status note, seen by the other person ----
     await a.page.keyboard.press("h");
@@ -163,11 +152,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await a.page.keyboard.press("h");
     await waitFor(() => read(b, (id) => !window.__hq.state.roster.get(id)?.h && !window.__hq.view.ents.get(id)?.hand, a.id), { what: "hand lowered" });
     check("pressing H again lowers it", true);
-    // two quick presses (before the server's echo) are a raise and a lower, not two raises
-    await a.page.keyboard.press("h");
-    await a.page.keyboard.press("h");
-    await sleep(1500);
-    check("H pressed twice quickly leaves the hand down", await read(b, (id) => !window.__hq.state.roster.get(id)?.h, a.id) && await read(a, () => !window.__hq.state.roster.get(window.__hq.state.meId)?.h));
+    // two quick presses (before the server's echo) are a raise and a lower: web/test/hand.test.ts and
+    // world TestARaiseAndALowerInOneTickLeaveTheHandDown
     // the on-screen hand button does the same as H
     await a.page.click('.reaction-row button[aria-label^="Raise hand"]');
     await waitFor(() => read(b, (id) => window.__hq.state.roster.get(id)?.h === 1, a.id), { what: "hand raised by the button" });
@@ -196,24 +182,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => read(a, () => window.__hq.state.status === "available" && !document.querySelector(".status-veil")), { what: "Ctrl+U from away" });
     check("away shows the veil too, and Ctrl+U brings you back from it", true);
 
-    // ---- shortcuts follow key positions: an AZERTY keyboard types "z" on KeyW and "&" on Digit1 ----
-    const key = (type: string, key: string, code: string) => read(a, (type, key, code) => window.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true })), type, key, code);
-    await sleep(800); // emote cooldown
-    await key("keydown", "&", "Digit1");
-    await key("keyup", "&", "Digit1");
-    await waitFor(() => read(b, (id) => window.__hq.view.emotes.has(id), a.id), { what: "emote from the digit row without Shift" });
-    check("the digit row sends reactions whatever character the layout types there", true);
-    await sleep(800);
-    await key("keydown", "z", "KeyW");
-    const up = await read(a, () => window.__hq.view.dy);
-    await key("keyup", "z", "KeyW");
-    const after = await read(a, () => window.__hq.view.dy);
-    await key("keydown", "ArrowUp", "Numpad8"); // keypad with Num Lock off
-    const keypad = await read(a, () => window.__hq.view.dy);
-    await key("keyup", "ArrowUp", "Numpad8");
-    check("the keypad without Num Lock still walks", keypad === -1, `dy ${keypad}`);
-    await sleep(800);
-    check("the key at the W position (Z on AZERTY) walks up and does not dance", up === -1 && after === 0 && !(await read(b, (id) => (window.__hq.view.ents.get(id)?.danceUntil ?? 0) > performance.now(), a.id)), `dy ${up} then ${after}`);
+    // shortcuts follow key positions (AZERTY: "z" on KeyW, "&" on Digit1, the keypad without Num Lock):
+    // web/test/input.test.ts; the real keys H and Z here and 1 in features.ts go through the same handler
 
     // ---- dance (Z) ----
     await a.page.keyboard.press("z");
@@ -290,8 +260,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("an administrator's announcement shows as a banner to everybody online", true);
     await click(a, "Dismiss announcement");
     check("the banner can be dismissed", await read(a, () => !document.querySelector(".announce")));
-    const log = await read(admin, () => fetch("/api/admin/audit").then((r) => r.text()));
-    check("the activity log records the announcement without its text", log.includes('"announce"') && !log.includes("Standup"));
+    // the activity log records the announcement without its text: httpapi TestAnnouncementsAreAdminOnlyAuditedWithoutTextAndRateLimited
     await admin.page.keyboard.press("Escape");
     check("M hides the minimap", await read(a, () => !document.querySelector(".minimap")));
     await a.page.keyboard.press("m");
@@ -317,36 +286,17 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await a.page.keyboard.up("Control");
     await waitFor(async () => { const p = await pos(a); return Math.floor(p.x / 16) === desk.x && Math.floor(p.y / 16) === desk.y + 1; }, { timeout: 30000, what: "back at the desk" });
     check("Ctrl+D runs to the chair of my assigned desk", true);
-    // ---- an assigned desk is a room: alone there is no call; the neighbour's desk is not in it; a visitor is
-    const conv = (u: User) => read(u, () => window.__hq.state.conv);
-    await Promise.all([a, b].map((u) => read(u, () => window.__hq.session.setConsent(true))));
-    await sleep(2000);
-    check("alone at my desk with audio allowed, there is no call", !(await conv(a)));
-    const deskRoom = await read(a, (id) => { const v = window.__hq.view, i = v.map!.areas.findIndex((r) => r.id === id); return { i, auto: v.map!.areas[i]?.auto === true, floor: v.map!.areas[i]?.floor, labelled: v.areaLabels.some((l) => l.ai === i) }; }, `desk-${desk.x}-${desk.y}`);
-    check("my desk has its own room, drawn with the desk floor and no label of its own", deskRoom.i >= 0 && deskRoom.auto && deskRoom.floor === "desk_mat" && !deskRoom.labelled, JSON.stringify(deskRoom));
-    check("the place shown at my desk is still the desks area", (await read(a, () => window.__hq.state.currentArea)) === "Individual desks");
-    await walkTo(b, (desk.x + 4) * 16 + 8, (desk.y + 1) * 16 + 8); // the neighbouring desk's chair, 4 tiles away
-    await sleep(2500);
-    check("sitting at the neighbouring desk does not join my desk's call", !(await conv(a)) && !(await conv(b)));
-    await a.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-desk-room.png") });
-    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8); // just behind my chair, inside my desk's room
-    await waitFor(async () => (await conv(a))?.kind === "r" && (await conv(b))?.kind === "r", { timeout: 20000, what: "desk call" });
-    check("coming over to my desk starts its call, named after me, for both of us", (await conv(a))!.name === a.name + "'s desk", (await conv(a))!.name);
-    await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8); // back out into the aisle
-    await waitFor(async () => !(await conv(a)) && !(await conv(b)), { timeout: 20000, what: "desk call ends" });
-    check("when the visitor leaves, the call ends and I stay at my desk alone", true);
+    // an assigned desk is a room (gamemap TestAssignedDesksGetTheirOwnRoom; its name tag and the place shown:
+    // web/test/areas.test.ts); alone there is no call, the neighbour's desk is not in it, a visitor starts its
+    // call and leaving ends it (world TestADeskRoomCallIsTheOwnersAndTheirVisitorsOnly); a locked desk keeps
+    // the visitor out (world TestADeskOwnerLocksTheirDeskAndAlwaysWalksIn)
     // ---- the owner locks the desk with its real button: the visitor knocks and is let in
     const btn = (u: User, text: string) => read(u, (text) => { const x = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text)); x?.click(); return !!x; }, text);
     const has = (u: User, text: string) => read(u, (text) => [...document.querySelectorAll("button")].some((b) => b.textContent.trim().startsWith(text)), text);
     await waitFor(() => btn(a, "Lock desk"), { what: "lock desk button" });
     await waitFor(() => read(b, () => window.__hq.state.locked.length > 0), { what: "lock reaches the visitor" });
     check("the desk shows a lock to others", await read(b, () => window.__hq.view.deskLabels.some((l) => l.text.text.endsWith("🔒"))));
-    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 4) * 16 + 8); // right behind the desk room, then try to walk in
-    await b.page.evaluate(() => window.__hq.view.setDirection(0, -1));
-    await sleep(1200);
-    await b.page.evaluate(() => window.__hq.view.setDirection(0, 0));
-    const bTile = await pos(b);
-    check("a locked desk keeps the visitor out", Math.floor(bTile.y / 16) > desk.y + 2, `y tile ${Math.floor(bTile.y / 16)}`);
+    await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 4) * 16 + 8); // right behind the desk room, at its door
     await waitFor(() => btn(b, "Knock · " + a.name + "'s desk"), { what: "knock on the desk" });
     await waitFor(() => btn(a, "Let in"), { what: "owner asked" });
     await walkTo(b, (desk.x + 1) * 16 + 8, (desk.y + 2) * 16 + 8);
@@ -354,7 +304,6 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("a visitor at somebody's desk cannot lock it", !(await has(b, "Lock desk")) && !(await has(b, "Unlock desk")));
     await btn(a, "Unlock desk");
     await walkTo(b, (desk.x + 2) * 16 + 8, (desk.y + 4) * 16 + 8);
-    await Promise.all([a, b].map((u) => read(u, () => window.__hq.session.setConsent(false))));
     check("restoring the map", (await putMap(full)).ok);
 
     // ---- touch pad on a phone-sized touch screen ----

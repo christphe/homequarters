@@ -152,41 +152,9 @@ export async function run(): Promise<boolean> {
     check("the delayed inputs still left the page in order, as on a WebSocket", seqs.length > 2 && seqs.every((s, i) => i === 0 || s > seqs[i - 1]), seqs.join(","));
     check("...and stops where the server and other people see it", converged && gap < 1, gap.toFixed(2) + " px after " + ((Date.now() - tc0) / 1000).toFixed(1) + " s, trail " + gtrail.join("->") + ", mine " + JSON.stringify(mine) + " theirs " + JSON.stringify(theirs));
     await read(a, () => { WebSocket.prototype.send = (window as unknown as Taps).__origSend; });
-    // the same on a diagonal at walking speed, where each axis moves slowest (51 px/s): both axes monotonic
-    await walkTo(a, 6 * 16 + 8, 30 * 16 + 8);
-    await delaySends(a);
-    const diag = await read(a, () => new Promise<[number, number][]>((resolve) => {
-      const v = window.__hq.view;
-      v.setDirection(1, -1);
-      const pts: [number, number][] = [];
-      const t0 = performance.now();
-      const tick = (now: number) => {
-        const e = v.ents.get(v.meId)!;
-        pts.push([e.x, e.y]);
-        if (now - t0 < 1300) requestAnimationFrame(tick); else { v.setDirection(0, 0); resolve(pts); }
-      };
-      requestAnimationFrame(tick);
-    }));
-    let backX = 0, backY = 0;
-    for (let i = 1; i < diag.length; i++) { backX = Math.max(backX, diag[i - 1][0] - diag[i][0]); backY = Math.max(backY, diag[i][1] - diag[i - 1][1]); }
-    check("...and walking diagonally neither axis is drawn stepping back", backX <= 0.1 && backY <= 0.1 && diag.at(-1)![0] - diag[0][0] > 40, "max back x " + backX.toFixed(2) + " y " + backY.toFixed(2) + " px");
-    await read(a, () => { WebSocket.prototype.send = (window as unknown as Taps).__origSend; });
-    // A 1-tile wall above (5, 15): run into it, then nothing may pull the avatar away from it.
-    await walkTo(a, 5 * 16 + 8, 16 * 16 + 8);
-    const wall = await read(a, async () => {
-      const v = window.__hq.view, wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-      v.toggleRun(true);
-      v.setDirection(0, -1);
-      await wait(700);
-      v.setDirection(0, 0);
-      v.toggleRun(false);
-      const e = v.ents.get(v.meId)!, at = e.y;
-      await wait(900);
-      return { at, after: e.y, x: e.x };
-    });
-    const seenAtWall = await read(b, (id) => window.__hq.view.ents.get(id)!.y, a.id);
-    check("running into a wall stops touching it, with no pull-back afterwards", wall.at === 15 * 16 + 3 && wall.after === wall.at, "y " + wall.at + " -> " + wall.after);
-    check("...and others see it touching the wall too", Math.abs(seenAtWall - wall.after) < 0.5, "observer y " + seenAtWall.toFixed(2));
+    // the same on a diagonal (web/test/motion.test.ts "walking diagonally with corrections arriving 0-120 ms
+    // late") and against a wall (motion.test.ts "running into a wall stops touching it where the server
+    // stops", world TestRunningIntoAWallStopsTouchingIt)
 
     await walkTo(a, 4 * 16 + 8, 27 * 16 + 8);
     // a free tile a few steps away that is on the map itself, not under a panel (the camera keeps me mid-screen)
@@ -209,22 +177,9 @@ export async function run(): Promise<boolean> {
     const sameTile = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.floor(p.x / 16) === Math.floor(q.x / 16) && Math.floor(p.y / 16) === Math.floor(q.y / 16);
     await waitFor(async () => sameTile(await pos(a), await pos(b)) && !(await read(a, () => window.__hq.view.guided)), { timeout: 30000, what: "walk to person arrives" });
     check("Walk to (people panel) runs onto the person's tile around walls", true, ((Date.now() - t0) / 1000).toFixed(1) + " s");
-
-    // ---- ...but a locked room keeps the walker at its door, and says why
-    await walkTo(b, 50 * 16 + 8, 4 * 16 + 8); // Aurora, an open meeting room
-    await waitFor(() => click(b, "Lock room"), { what: "lock control" });
-    await waitFor(() => read(a, (_id) => window.__hq.state.locked.length > 0, b.id), { what: "lock reaches the walker" });
-    await click(a, "Walk to " + b.name, ".people button");
-    await waitFor(() => read(a, () => document.querySelector(".toast")?.textContent.includes("stop at the door")), { what: "closed-door toast" });
-    await waitFor(async () => !(await read(a, () => window.__hq.view.guided)), { timeout: 30000, what: "walk to the door ends" });
-    const atDoor = await pos(a);
-    check("Walk to a person in a locked room stops outside, at the door", atDoor.x < 45 * 16 && dist(atDoor, await pos(b)) < 8 * 16, JSON.stringify(atDoor));
-    await click(b, "Unlock room");
-
-    // ---- refused targets ----
-    await read(a, () => window.__hq.view.goTo(50, 10)); // admin-only boardroom
-    await waitFor(() => read(a, () => document.querySelector(".toast")?.textContent.includes("no way")), { what: "unreachable toast" });
-    check("the server refuses to route a member into an admin-only room", true);
+    // a locked room keeps the walker at its door and says why, and the server refuses to route a member into
+    // an admin-only room: world TestWalkToAPersonInALockedRoomStopsAtTheDoor and
+    // TestWalkToIsCancelledByInputAndRefusesForbiddenPlaces, their toasts web/test/replies.test.ts
 
     check("no console errors", a.logs.length + b.logs.length === 0, [...a.logs, ...b.logs].join(" | ").slice(0, 300));
   } catch (e) {
