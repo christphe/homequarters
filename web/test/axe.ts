@@ -3,7 +3,10 @@
 // What jsdom cannot evaluate stays in the browser (e2e/scenarios/a11y.ts): colour contrast needs the page's real
 // colours, fonts and layout, which jsdom does not compute. Page-level rules (one main landmark, one h1, the
 // document's language and title) do not run here: axe applies them only when it audits a whole document, which the
-// browser does on full screens.
+// browser does on full screens. Rules that need layout or computed colours find nothing to check on jsdom (every size
+// is 0) and pass as "inapplicable": scrollable-region-focusable (a scrolling region reachable by keyboard) and
+// link-in-text-block (a link told apart from its text by more than colour); a test asserts what they would (the
+// activity list's tabindex in AdminDialog.test.tsx), or the browser keeps the audit.
 import axe from "axe-core";
 import { expect } from "vitest";
 

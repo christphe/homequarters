@@ -7,7 +7,7 @@
 // AdminPlugins.test.tsx.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { t } from "../src/i18n";
 import { setState } from "../src/store";
 import { AdminDialog } from "../src/ui/AdminDialog";
@@ -116,7 +116,9 @@ describe("administration dialog", () => {
   it("Activity, listed: no axe violation", async () => {
     server({ "/api/admin/audit": AUDIT });
     await open("activity");
-    await screen.findByRole("list", { name: t("admin.tab.activity") });
+    const list = await screen.findByRole("list", { name: t("admin.tab.activity") });
+    // it scrolls (max-height, overflow: auto): reachable by keyboard, which axe cannot check without layout
+    expect(list.tabIndex).toBe(0);
     await expectNoAxeViolations();
   });
 });

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Component test of an interactive object's dialog (web/src/ui/ObjectDialog.tsx): axe finds no violation for a note,
 // a website or an image before its content is loaded, once loaded, an image that failed, and a link the dialog refuses.
-// Contrast stays in the browser (e2e/scenarios/a11y.ts: the settings dialog has the same text, links and buttons on the
-// same dialog skin); opening a note with X next to it is the `features` scenario.
+// Contrast stays in the browser (e2e/scenarios/a11y.ts: the settings dialog has the same text and buttons on the same
+// dialog skin; the "Open in a new tab" link, in the browser's default link colour, is on no audited screen);
+// opening a note with X next to it is the `features` scenario.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 // Component test of the status menu (web/src/ui/StatusMenu.tsx): axe finds no violation with the menu closed, open,
-// and open with a note set (its Clear button), inside the banner landmark that holds it in the office. Contrast and
-// the menu over the office stay in the browser (e2e/scenarios/a11y.ts; the more actions menu audited there shares
-// its .menu styles); typing a note through it is the `presence` scenario.
+// and open with a note set (its Clear button), inside the banner landmark that holds it in the office. The browser
+// still audits the open menu once for its contrast (e2e/scenarios/a11y.ts); typing a note through it is the
+// `presence` scenario.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, it, vi } from "vitest";
+import { t } from "../src/i18n";
 import type { Person } from "../src/net/protocol";
 import { setState } from "../src/store";
 import { StatusMenu } from "../src/ui/StatusMenu";
@@ -19,7 +20,7 @@ afterEach(cleanup);
 function show(note: string) {
   setState({ meId: 1, status: "busy", roster: new Map([[1, { id: 1, n: "Ada", m: note } as unknown as Person]]) });
   render(<header className="topbar"><StatusMenu /></header>);
-  return () => userEvent.setup().click(screen.getByRole("button", { name: "Busy" }));
+  return () => userEvent.setup().click(screen.getByRole("button", { name: t("status.busy") }));
 }
 
 describe("status menu", () => {
@@ -30,13 +31,13 @@ describe("status menu", () => {
 
   it("open, without a note: no axe violation", async () => {
     await show("")();
-    screen.getByRole("textbox", { name: "Status note" });
+    screen.getByRole("textbox", { name: t("note.label") });
     await expectNoAxeViolations();
   });
 
   it("open, with a note (its Clear button): no axe violation", async () => {
     await show("At lunch")();
-    screen.getByRole("button", { name: "Clear" });
+    screen.getByRole("button", { name: t("note.clear") });
     await expectNoAxeViolations();
   });
 });

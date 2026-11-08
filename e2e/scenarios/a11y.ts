@@ -3,9 +3,9 @@
 // substitute for testing with a screen reader (see docs/status.md).
 // The browser audits what only a browser can: colour contrast (real styles, fonts and layout), full screens (the
 // world view, the side panel, overlays) and plugin iframes. A dialog, panel or menu whose structure is all axe needs
-// is audited in a component test (web/test/*.test.tsx through web/test/axe.ts, in more states than here): the status
-// menu, the administration dialog's Invites, Activity and Plugins tabs and a plugin's settings, an object's dialog,
-// the whiteboard. Their contrast is covered by the audits kept here, which show the same styles (decision 0037).
+// is audited in a component test (web/test/*.test.tsx through web/test/axe.ts, in more states than here): the
+// administration dialog's Invites, Activity and Plugins tabs and a plugin's settings, an object's dialog, the
+// whiteboard. Their contrast is covered by the audits kept here, which show the same styles (decision 0037).
 import os from "node:os";
 import path from "node:path";
 import type { Page } from "puppeteer-core";
@@ -71,7 +71,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await p.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".tabs button")][1].click());
     await waitFor(() => p.$(".chat"), { what: "chat panel" });
     await audit(p, "the office (chat panel)");
-    // (the status menu's audit is web/test/StatusMenu.test.tsx; the more actions menu above has its styles)
+    // kept for its contrast: the pressed row and the note form's button and placeholder are styles of its own (its
+    // states are audited in web/test/StatusMenu.test.tsx)
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>(".status-menu button")!.click());
+    await waitFor(() => p.$(".menu"), { what: "status menu" });
+    await audit(p, "the status menu");
+    await p.keyboard.press("Escape");
+    await p.evaluate(() => document.querySelector<HTMLButtonElement>(".status-menu button[aria-expanded=true]")?.click());
 
     // ---- dialogs
     await p.evaluate(() => [...document.querySelectorAll("button")].find((b) => /settings/i.test(b.getAttribute("aria-label") ?? b.title ?? ""))?.click());
@@ -133,7 +139,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(async () => !(await p.$(".modal")), { what: "media closed" });
 
     // (an object's dialog and the whiteboard: web/test/ObjectDialog.test.tsx and WhiteboardDialog.test.tsx; the
-    // settings and administration dialogs above have their styles; opening them with X is the `features` scenario)
+    // settings and administration dialogs above have their text, chips and buttons, but not the object dialog's link,
+    // which has the browser's default colour; opening them with X is the `features` scenario)
 
     // the chess window (bundled hq-chess): a board placed on the social area's table, opened with X; the
     // page and the board view's own document are audited

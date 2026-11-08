@@ -107,7 +107,10 @@ with two settings jsdom forces: `color-contrast` off (jsdom applies no styleshee
 (`e2e/scenarios/a11y.ts`, `e2e/axe.ts`) keeps colour contrast, full screens (the world view, the side panel,
 overlays, the editor) and plugin iframes. A component moves down only when a kept browser audit shows the styles
 it uses, so its contrast stays checked through them; one with a colour of its own (the consent dialog's camera
-placeholder, the composer's button) stays in the browser. A component test renders the component inside the
+placeholder, the composer's button, the status menu's pressed row and note form) stays in the browser. Rules that
+need layout (`scrollable-region-focusable`, `link-in-text-block`) pass as inapplicable on jsdom: a component test
+asserts what they would check, or the browser keeps the audit. `web/test/axe.test.tsx` checks that the helper
+reports known defects and runs the browser's tags. A component test renders the component inside the
 landmark it lives in (the status menu in the top bar's `header`), since axe's `region` rule depends on it. axe-core
 is a dev dependency of `web/` and `e2e/` through the pnpm catalog. Measured in `docs/status.md` (the row
 "Accessibility audits in component tests").
