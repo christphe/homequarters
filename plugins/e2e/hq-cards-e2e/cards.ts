@@ -4,7 +4,7 @@
 // view's canvas and the keyboard. What a page's view shows is read from what it drew (window.__drawn in the view:
 // each card with its face, in canvas pixels) and from its live region.
 // Each check names the criterion of docs/superpowers/specs/2026-10-25-plugin-cards-design.md it proves. The games
-// have their own scenarios: Old Maid in plugins/e2e/hq-card-pouilleux-e2e/oldMaid.ts (a game turned on and off in
+// have their own scenarios: Old Maid in plugins/e2e/hq-card-pouilleux-e2e/oldMaid.ts (a game turned on in
 // the choice, Old Maid's table), Last Card in plugins/e2e/hq-card-lastcard-e2e/lastCard.ts (criteria 10 and 10b);
 // the helpers the three share are in lib.ts.
 // Rules and logic are unit-tested, not here: the table, the log, snapping and the layout in

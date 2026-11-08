@@ -63,7 +63,6 @@ async function viewFrame(u: User): Promise<Frame | null> {
   const el = await u.page.$(MODAL + ' iframe.plugin-view[data-view="board"]');
   return el ? el.contentFrame() : null;
 }
-const chessFrame = async (u: User) => (await u.page.$(`iframe.plugin-frame[data-plugin="${PLUGIN}"]`))?.contentFrame();
 
 /** The board a page's view draws: p (64 letters, a8..h1, "." empty, "?" unknown), the reserve of each side, and the live region. */
 async function board(u: Player) {
@@ -297,9 +296,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
       return !!(seats.compareDocumentPosition(m.querySelector("iframe.plugin-view")!) & Node.DOCUMENT_POSITION_FOLLOWING);
     }, MODAL);
     check("the seat buttons come before the board in reading order (a small screen scrolls to the board)", order);
-    // the plugin's two frames declare their language and have a title (the host's srcdoc)
-    const docs = { view: await (await viewFrame(ann))!.evaluate(() => [document.documentElement.lang, document.title]), hidden: await (await chessFrame(ann))!.evaluate(() => [document.documentElement.lang, document.title]) };
-    check("the view's document and the plugin's hidden frame have lang=en and a title (Chessboard, Chess)", JSON.stringify(docs) === JSON.stringify({ view: ["en", "Chessboard"], hidden: ["en", "Chess"] }), JSON.stringify(docs));
+    // (the plugin's two frames declare their language and have a title, the plugin's and the view's label: the host's
+    // documents in web/test/pluginHost.test.ts and pluginFrameDoc.test.ts)
 
     // ---- criterion 5: seats
     await press(ann, "White");

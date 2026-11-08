@@ -59,8 +59,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
     // turned off and on with the window open: the page learns of the plugin after the game is back, and the
     // view must still end up drawing the game's own sheet
     await setPlugin(ctx, GAME, false);
-    const off = await within(async () => { const m = (await modal(ann))!; return m.texts.some((x) => x.startsWith("This game is not available")) && m.buttons.filter((b) => b.text !== "Close").every((b) => b.text === "Reset"); }, 5000);
-    check("10: a game turned off: its table offers only Reset", off >= 0, JSON.stringify(await modal(ann)));
+    // (a game turned off: its table offers only Reset, hq-cards/test/client.test.ts; the server marking it unavailable, cards.ispec.ts)
+    await waitFor(async () => (await modal(ann))!.texts.some((x) => x.startsWith("This game is not available")), { timeout: 5000, what: "the game off in Ann's window" });
     // the window opened again while the game is off: its view starts without the game's images allowed
     await press(ann, "Close");
     await openWithX(ann);
