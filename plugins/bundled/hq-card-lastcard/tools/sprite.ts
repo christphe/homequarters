@@ -174,7 +174,7 @@ const SKIP_BIG = (() => {
 // Reverse: two arrows heading opposite ways, each tail bent toward the other, 9 x 9; the lower one is the
 // upper one turned half a turn.
 const REVERSE_BIG = (() => {
-  const g = Array.from({ length: 9 }, () => Array(9).fill("."));
+  const g = Array.from({ length: 9 }, () => Array<string>(9).fill("."));
   const upper: [number, number][] = [];
   for (let x = 1; x <= 7; x++) upper.push([x, 2]); // the shaft, heading right
   upper.push([1, 3]); // the tail, bent down

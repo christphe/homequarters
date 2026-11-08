@@ -42,19 +42,19 @@ export async function run(ctx: RunContext): Promise<boolean> {
     }, { timeout: 8000, what: "Ann seated at Last Card" }).catch(() => false);
     check("10b: Ann takes seat 1 at Last Card through its button", annSeated === true, `${annPresses} press(es)`);
     const nAnn = ann.sent.length;
-    await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" }).catch(async (e) => {
+    await waitFor(async () => (await modal(bo))?.buttons.some((x) => x.text === `Seat 1: ${ann.name}`) && hasButton(bo, "Seat 2"), { what: "seat 2 for Bo" }).catch(async (e: Error) => {
       throw new Error(e.message + " " + JSON.stringify({ annSent: ann.sent.slice(nAnn - 2), ann: (await modal(ann))?.buttons.slice(0, 4), bo: (await modal(bo))?.buttons.slice(0, 4), log: (await logOf(bo)).slice(-2) }));
     });
     const nSeat = bo.sent.length;
     await press(bo, "Seat 2");
-    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e) => {
+    await waitFor(async () => (await drawn(bo))?.seat === 1, { what: "Bo seated at Last Card" }).catch(async (e: Error) => {
       throw new Error(e.message + " " + JSON.stringify({ sent: bo.sent.slice(nSeat), frames: (await bo.page.$$("iframe.plugin-view")).length, log: (await logOf(bo)).slice(-3), seat: (await drawn(bo))?.seat }));
     });
     await press(ann, "Deal");
     await waitFor(async () => (await handOf(ann)).length === 7 && (await handOf(bo)).length === 7, { what: "Last Card dealt" });
     await drag(ann, await handAt(ann, 0), pileAt([190, 90]));
     const lcLog = await waitFor(async () => (await logOf(bo)).find((l) => l.startsWith(`${ann.name} put the`) && l.endsWith("on Discard")) ?? null, { timeout: 3000, what: "a Last Card play" });
-    check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog!), lcLog!);
+    check("10b: a card played on Discard is named in the log with its own name", /put the (Red|Yellow|Green|Blue|Wild)/.test(lcLog), lcLog);
     // (Last Card's count, through the real server: lastCard.ispec.ts; the Count button and its text: the Old Maid and table scenarios)
     // turned off and on with the window open: the page learns of the plugin after the game is back, and the
     // view must still end up drawing the game's own sheet
