@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"time"
 
@@ -147,10 +148,8 @@ func (w *World) doClaimDesk(uid uint32, x, y int, now time.Time) (*gamemap.Map, 
 	}
 	for _, a := range cur.Areas {
 		if a.Kind == gamemap.KindRoom && a.Access.Mode == gamemap.AccessOffice && !a.Auto {
-			for _, u := range a.Access.Users {
-				if u == me {
-					return nil, ErrClaimHasPlace
-				}
+			if slices.Contains(a.Access.Users, me) {
+				return nil, ErrClaimHasPlace
 			}
 		}
 	}

@@ -1,6 +1,8 @@
 // Real UI and authoritative world: reactions, interactive notes, guided walking, portals, doors and boards.
 import { check, resetChecks, summary, launch, joinAs, waitFor, walkTo, pos, sleep, type User, type RunContext } from "../lib.ts";
 import type { EvaluateFunc } from "puppeteer-core";
+import os from "node:os";
+import path from "node:path";
 
 const click = (u: User, text: string, selector = "button") => u.page.evaluate((text, selector) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
@@ -108,7 +110,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => a.page.$(".editor"), { what: "editor open" });
     await click(a, "Edit content", ".editor button");
     // Pick the note from the object list (works at any viewport; on small screens the panel covers the map corner).
-    const noteOption = (await waitFor(() => read(a, () => [...document.querySelectorAll<HTMLOptionElement>('.editor select[aria-label="Interactive object to edit"] option')].find((o) => o.textContent.endsWith("(4, 5)"))?.value), { timeout: 20000, what: "object list with the note" }))!;
+    const noteOption = await waitFor(() => read(a, () => [...document.querySelectorAll<HTMLOptionElement>('.editor select[aria-label="Interactive object to edit"] option')].find((o) => o.textContent.endsWith("(4, 5)"))?.value), { timeout: 20000, what: "object list with the note" });
     await a.page.select('.editor select[aria-label="Interactive object to edit"]', noteOption);
     await waitFor(() => a.page.$(".editor textarea"), { what: "note content editor" });
     check("editor restores hidden content before editing", await read(a, () => document.querySelector<HTMLTextAreaElement>(".editor textarea")!.value.includes("Welcome to Home Quarters!")));
@@ -134,7 +136,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await click(a, "Place text in centre");
     await waitFor(() => b.page.evaluate(() => document.querySelector<HTMLCanvasElement>("canvas.whiteboard")!.getContext("2d")!.getImageData(400, 270, 220, 40).data.some((v) => v < 200)), { what: "text appears on collaborator canvas" });
     check("whiteboard text appears on the other person's canvas", true);
-    await a.page.screenshot({ path: "/tmp/homequarters-whiteboard-qa.png" });
+    await a.page.screenshot({ path: path.join(os.tmpdir(), "homequarters-whiteboard-qa.png") });
     await click(a, "Pen", ".board-tools button");
     const rect = await read(a, () => { const r = document.querySelector("canvas.whiteboard")!.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     await a.page.mouse.move(rect.x + 50, rect.y + 50); await a.page.mouse.down();

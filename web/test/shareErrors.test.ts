@@ -32,14 +32,14 @@ test("a policy or a sandbox that forbids capture, and an engine without it, say 
 test("outside a call, Share screen says to walk up to someone", () => {
   const k = shareRefusal({ canShare: true, live: false });
   assert.equal(k, "share.needCall");
-  assert.match(t(k!), /Walk up to someone/);
+  assert.match(t(k), /Walk up to someone/);
 });
 
 test("a browser without screen capture says so, in a call or not", () => {
   for (const live of [false, true]) {
     const k = shareRefusal({ canShare: false, live });
     assert.equal(k, "share.unsupported");
-    assert.match(t(k!), /cannot share a screen/);
+    assert.match(t(k), /cannot share a screen/);
   }
 });
 

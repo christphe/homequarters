@@ -30,7 +30,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   const cookie = ctx.adminCookie;
-  const full: MapData = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json();
+  const full = (await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + cookie } })).json()) as MapData;
   try {
     const t = String(Date.now() % 10000);
     const [boss, owner, guest] = await Promise.all([joinAs(browser, "Admin", { cookie }), joinAs(browser, "Owner" + t), joinAs(browser, "Guest" + t)]);

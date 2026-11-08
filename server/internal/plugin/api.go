@@ -181,7 +181,7 @@ func (in *instance) jsSend(a []any) (any, error) {
 	d, _ := argString(a, 1)
 	f, err := in.frame(d)
 	if err != nil {
-		return nil, fmt.Errorf("hq.send: %v", err)
+		return nil, fmt.Errorf("hq.send: %w", err)
 	}
 	if !in.online(id) {
 		return false, nil
@@ -200,7 +200,7 @@ func (in *instance) jsBroadcast(a []any) (any, error) {
 	d, _ := argString(a, 0)
 	f, err := in.frame(d)
 	if err != nil {
-		return nil, fmt.Errorf("hq.broadcast: %v", err)
+		return nil, fmt.Errorf("hq.broadcast: %w", err)
 	}
 	ids := make([]uint32, len(in.players))
 	for i, p := range in.players {
@@ -288,7 +288,7 @@ func (in *instance) jsKVSet(a []any) (any, error) {
 		return nil, fmt.Errorf("hq.kv.set: at most %d keys per plugin", maxKeys)
 	}
 	if err := in.h.kv.Set(in.info.Name, k, v); err != nil {
-		return nil, fmt.Errorf("hq.kv.set: %v", err)
+		return nil, fmt.Errorf("hq.kv.set: %w", err)
 	}
 	in.kv[k] = v
 	return nil, nil
@@ -300,7 +300,7 @@ func (in *instance) jsKVDelete(a []any) (any, error) {
 		return nil, nil
 	}
 	if err := in.h.kv.Delete(in.info.Name, k); err != nil {
-		return nil, fmt.Errorf("hq.kv.delete: %v", err)
+		return nil, fmt.Errorf("hq.kv.delete: %w", err)
 	}
 	delete(in.kv, k)
 	return nil, nil

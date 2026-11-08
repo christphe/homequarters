@@ -111,7 +111,7 @@ func (c *Config) loadAuth() error {
 	raw := strings.TrimSpace(env("HQ_AUTH_PROVIDERS", "none"))
 	if raw != "none" {
 		seen := map[string]bool{}
-		for _, p := range strings.Split(raw, ",") {
+		for p := range strings.SplitSeq(raw, ",") {
 			p = strings.ToLower(strings.TrimSpace(p))
 			switch {
 			case p == "":
@@ -128,7 +128,7 @@ func (c *Config) loadAuth() error {
 		}
 	}
 	if d := env("HQ_AUTH_DOMAINS", ""); d != "" {
-		for _, x := range strings.Split(d, ",") {
+		for x := range strings.SplitSeq(d, ",") {
 			x = strings.ToLower(strings.TrimSpace(x))
 			if x == "" || strings.ContainsAny(x, "@/: ") || !strings.Contains(x, ".") {
 				return fmt.Errorf("HQ_AUTH_DOMAINS: %q is not a domain (write acme.com)", x)

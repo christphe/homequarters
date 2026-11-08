@@ -19,7 +19,7 @@ test("108 cards: 25 per colour, four Wild and four Wild Draw Four", () => {
     for (let d = 1; d <= 9; d++) assert.equal(n(String(d)), 2, `${c} ${d}`);
     for (const a of ["Skip", "Reverse", "Draw Two"]) assert.equal(n(a), 2, `${c} ${a}`);
   });
-  assert.deepEqual(CARDS.slice(100).map((c) => c.name), [...Array(4).fill("Wild"), ...Array(4).fill("Wild Draw Four")]);
+  assert.deepEqual(CARDS.slice(100).map((c) => c.name), [...Array<string>(4).fill("Wild"), ...Array<string>(4).fill("Wild Draw Four")]);
 });
 
 test("values: digits their face, Skip, Reverse and Draw Two 20, both wilds 50", () => {

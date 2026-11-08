@@ -51,9 +51,9 @@ export async function runParallel({ n, scenarios, slots, mode }: { n: number; sc
     process.exit(130);
   };
   // a signal handler's result is dropped: interrupt() ends in process.exit
-  process.on("SIGINT", interrupt as () => void);
-  process.on("SIGTERM", interrupt as () => void);
-  process.on("SIGBREAK", interrupt as () => void); // Ctrl+Break on Windows
+  process.on("SIGINT", () => void interrupt());
+  process.on("SIGTERM", () => void interrupt());
+  process.on("SIGBREAK", () => void interrupt()); // Ctrl+Break on Windows
   process.on("exit", cleanup);
 
   try {

@@ -27,16 +27,19 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          go-version: "1.27"
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.27.3"
           cache-dependency-path: |
             server/go.sum
             bench/mediagen/go.sum
+            tools/go/*/go.sum
       # the version comes from packageManager in the root package.json
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -47,11 +50,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-fdash-records.ts fdash-unit
-      - name: Lint, build and unit tests (fdash run lint build test:unit)
+      # lint:repo: actionlint and zizmor, gitleaks, shellcheck, hadolint (scripts/lint-repo.ts); lint:vuln:
+      # govulncheck on the server, keyed on the day as well, since its database changes without the code
+      - name: Lint, build and unit tests (fdash run lint lint:repo lint:vuln build test:unit)
         id: gates
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
-          node tools/fdash/cli.ts run lint build test:unit
+          node tools/fdash/cli.ts run lint lint:repo lint:vuln build test:unit
         env:
           FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
       - name: Logs of the checks
@@ -59,7 +64,7 @@ jobs:
         run: for f in "$RUNNER_TEMP"/fdash-logs/*/*.log; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
       - name: Logs of the checks (artifact)
         if: failure() && steps.gates.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unit-logs
           path: ${{ runner.temp }}/fdash-logs
@@ -68,7 +73,7 @@ jobs:
         run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete && find .fdash/cache -mindepth 1 -type d -empty -delete
       - name: Publish the records (main only)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fdash-unit
           path: .fdash/cache
@@ -79,9 +84,13 @@ jobs:
       - name: Build the load generator
         working-directory: server
         run: go build ./cmd/loadgen
-      - name: Build the media benchmark tool
+      # the same golangci-lint and govulncheck as the server's, pinned in tools/go/
+      - name: Lint and build the media benchmark tool
         working-directory: bench/mediagen
-        run: go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@$(cd ../../server && go list -m -f '{{.Version}}' honnef.co/go/tools) ./... && go build -o /dev/null .
+        run: |
+          go tool -modfile=../../tools/go/golangci-lint/go.mod golangci-lint run ./...
+          go tool -modfile=../../tools/go/govulncheck/go.mod govulncheck ./...
+          go build -o /dev/null .
 
   # Tests against a real server without a browser: each test:integration starts the testbed (homequarters
   # testbed), built here with the race detector.
@@ -92,14 +101,16 @@ jobs:
       GOFLAGS: -race
       CGO_ENABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          go-version: "1.27"
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.27.3"
           cache-dependency-path: server/go.sum
       # the version comes from packageManager in the root package.json
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -127,7 +138,7 @@ jobs:
         run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete && find .fdash/cache -mindepth 1 -type d -empty -delete
       - name: Publish the records (main only)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.gates.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fdash-integration
           path: .fdash/cache
@@ -148,14 +159,16 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          go-version: "1.27"
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.27.3"
           cache-dependency-path: server/go.sum
       # the version comes from packageManager in the root package.json
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -164,7 +177,7 @@ jobs:
       # tar cannot read, or minutes of waiting), and each of the four shards would fetch it
       - name: LiveKit server cache
         id: livekit
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/livekit-bin
           key: livekit-server-1.13.7-linux-amd64
@@ -179,13 +192,14 @@ jobs:
           sudo cp ~/.cache/livekit-bin/livekit-server /usr/local/bin/
           livekit-server --version
       - name: Chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1.7.3
         id: chrome
       - run: pnpm install --frozen-lockfile
       - name: Records of the scenarios that passed on main (its latest run's artifact)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci-fdash-records.ts fdash-e2e-${{ matrix.shard }}
+          SHARD: ${{ matrix.shard }}
+        run: node scripts/ci-fdash-records.ts "fdash-e2e-$SHARD"
       # the build first, in a run of its own: test:e2e uses bin/ and web/dist as they are (E2E_PREBUILT)
       # A shard holds scenarios of e2e/run.ts (the e2e project's items) and plugin e2e projects
       # (plugins/e2e/*, run by e2e/plugin-run.ts against the testbed, without LiveKit), balanced together
@@ -196,20 +210,26 @@ jobs:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
           E2E_VIEWPORT: small
           FDASH_LOG_DIR: ${{ runner.temp }}/fdash-logs
+          SHARD: ${{ matrix.shard }}
         run: |
           date +%s > "$RUNNER_TEMP/fdash-start"
-          export CHROME_VERSION="$("$CHROME" --version)"
-          plan=$(node -e "import('./e2e/shards.ts').then((m) => { const p = m.plan(${{ matrix.shard }}, 4); console.log(p.scenarios.join(' ') + '|' + p.projects.join(' ')); })")
-          scenarios=${plan%%|*}
-          projects=${plan#*|}
-          echo "shard ${{ matrix.shard }}/4: scenarios: ${scenarios:-none}; e2e projects: ${projects:-none}"
-          if [ -z "$scenarios$projects" ]; then exit 0; fi
+          CHROME_VERSION="$("$CHROME" --version)"
+          export CHROME_VERSION
+          plan=$(node -e "import('./e2e/shards.ts').then((m) => { const p = m.plan(Number(process.env.SHARD), 4); console.log(p.scenarios.join(' ') + '|' + p.projects.join(' ')); })")
+          read -ra scenarios <<< "${plan%%|*}"
+          read -ra projects <<< "${plan#*|}"
+          echo "shard $SHARD/4: scenarios: ${scenarios[*]:-none}; e2e projects: ${projects[*]:-none}"
+          if [ ${#scenarios[@]} -eq 0 ] && [ ${#projects[@]} -eq 0 ]; then exit 0; fi
           node tools/fdash/cli.ts run build --pkg server --pkg web
           status=0
           # no item would mean every scenario: run the e2e project only when the shard has some
-          if [ -n "$scenarios" ]; then node tools/fdash/cli.ts run test:e2e --pkg e2e -- $scenarios || status=1; fi
-          if [ -n "$projects" ]; then node tools/fdash/cli.ts run test:e2e $(printf -- '--pkg %s ' $projects) || status=1; fi
-          exit $status
+          if [ ${#scenarios[@]} -gt 0 ]; then node tools/fdash/cli.ts run test:e2e --pkg e2e -- "${scenarios[@]}" || status=1; fi
+          if [ ${#projects[@]} -gt 0 ]; then
+            pkgs=()
+            for p in "${projects[@]}"; do pkgs+=(--pkg "$p"); done
+            node tools/fdash/cli.ts run test:e2e "${pkgs[@]}" || status=1
+          fi
+          exit "$status"
       - name: Log of the suite
         if: always() && steps.suite.outcome != 'skipped'
         run: cat "$RUNNER_TEMP"/fdash-logs/*/*.log 2>/dev/null || echo "every scenario of this shard passed on main with the same inputs"
@@ -218,7 +238,7 @@ jobs:
         run: mkdir -p .fdash/cache && find .fdash/cache -type f ! -newermt "@$(cat "$RUNNER_TEMP/fdash-start")" -delete && find .fdash/cache -mindepth 1 -type d -empty -delete
       - name: Publish the records (main only)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.suite.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fdash-e2e-${{ matrix.shard }}
           path: .fdash/cache

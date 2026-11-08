@@ -10,9 +10,10 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY web/package.json web/
 RUN pnpm install --frozen-lockfile --filter homequarters-web
 COPY web/ web/
-RUN cd web && pnpm build
+WORKDIR /w/web
+RUN pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS server
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /s
@@ -35,5 +36,6 @@ COPY --from=server --chown=65532:65532 /data /data
 ENV HQ_STATIC_DIR=/app/web HQ_PLUGINS_DIR=/app/plugins HQ_DB=/data/homequarters.db HQ_ADDR=:8080 HQ_VERSION=$HQ_VERSION
 VOLUME /data
 EXPOSE 8080
-USER nonroot
+# the distroless image's nonroot user, by number so that the host (and Kubernetes' runAsNonRoot) can check it
+USER 65532:65532
 ENTRYPOINT ["/app/homequarters"]

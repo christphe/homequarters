@@ -28,8 +28,8 @@ async function keepsLegacyStorage(browser: Browser, t: string) {
     const got = await page.evaluate(() => ({
       field: document.querySelector("input")?.value ?? "",
       keys: Object.keys(localStorage).sort(),
-      avatar: JSON.parse(localStorage.getItem("hq.avatar") ?? "null"),
-      settings: JSON.parse(localStorage.getItem("hq.settings") ?? "null"),
+      avatar: JSON.parse(localStorage.getItem("hq.avatar") ?? "null") as { sk?: number } | null,
+      settings: JSON.parse(localStorage.getItem("hq.settings") ?? "null") as { minimap?: boolean } | null,
       consent: localStorage.getItem("hq.consent"),
     }));
     check("an upgraded browser keeps its name in the join screen's field", got.field === "Legacy" + t, got.field);
@@ -47,10 +47,10 @@ async function installable(browser: Browser) {
   try {
     await page.goto(APP + "/", { waitUntil: "load" });
     const cdp = await page.createCDPSession();
-    const { manifest } = (await waitFor(async () => {
+    const { manifest } = await waitFor(async () => {
       const r = await cdp.send("Page.getAppManifest");
-      return r.url && r.data ? { manifest: { url: r.url as string, data: JSON.parse(r.data) as Manifest } } : null;
-    }, { timeout: 10000, what: "manifest" }))!;
+      return r.url && r.data ? { manifest: { url: r.url, data: JSON.parse(r.data) as Manifest } } : null;
+    }, { timeout: 10000, what: "manifest" });
     const m = manifest.data;
     const icons = (m.icons ?? []).map((i) => i.sizes + "/" + (i.purpose ?? "any"));
     check("the page links a manifest for Home Quarters, standalone, from /",

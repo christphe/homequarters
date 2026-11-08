@@ -30,7 +30,7 @@ test("a member's message reaches the plugin and its answer comes back", async ()
   assert.ok(ann.id > 0);
   assert.equal(ann.name, "Ann");
   ann.send("echo", { v: "hi" });
-  const d = await ann.waitFor<Echo>("echo", (m) => m.echo === "hi");
+  const d = await ann.waitFor<Echo>("echo", (m: Echo) => m.echo === "hi");
   assert.deepEqual(d, { echo: "hi" });
   assert.deepEqual(ann.received("echo"), [{ echo: "hi" }]);
   // the plugin stored it (written a few milliseconds after the answer)
@@ -42,10 +42,10 @@ test("waitFor consumes: a frame already matched never matches again", async () =
   const bed = await open();
   const ann = await bed.join("Ann");
   ann.send("echo", { v: "same" });
-  await ann.waitFor("echo", (m) => m.echo === "same");
-  await assert.rejects(ann.waitFor("echo", (m) => m.echo === "same", 300));
+  await ann.waitFor("echo", (m: Echo) => m.echo === "same");
+  await assert.rejects(ann.waitFor("echo", (m: Echo) => m.echo === "same", 300));
   ann.send("echo", { v: "same" });
-  await ann.waitFor("echo", (m) => m.echo === "same");
+  await ann.waitFor("echo", (m: Echo) => m.echo === "same");
   assert.equal(ann.received("echo").length, 2);
 });
 
@@ -54,10 +54,10 @@ test("waitFor on a frame that never comes rejects within its timeout and names t
   const ann = await bed.join("Ann");
   for (const v of ["a", "b", "c", "d", "e", "f"]) {
     ann.send("echo", { v });
-    await ann.waitFor("echo", (m) => m.echo === v);
+    await ann.waitFor("echo", (m: Echo) => m.echo === v);
   }
   const t0 = Date.now();
-  await assert.rejects(ann.waitFor("echo", (m) => m.echo === "never", 400), (e: Error) => {
+  await assert.rejects(ann.waitFor("echo", (m: Echo) => m.echo === "never", 400), (e: Error) => {
     assert.match(e.message, /within 400 ms/);
     assert.match(e.message, /last 5 of 6/);
     assert.match(e.message, /\{"echo":"f"\}/);
@@ -85,8 +85,8 @@ test("two beds at once run on their own port and database", async () => {
   const [a, b] = await Promise.all([one.join("Ann"), two.join("Bob")]);
   a.send("echo", { v: "one" });
   b.send("echo", { v: "two" });
-  await a.waitFor("echo", (m) => m.echo === "one");
-  await b.waitFor("echo", (m) => m.echo === "two");
+  await a.waitFor("echo", (m: Echo) => m.echo === "one");
+  await b.waitFor("echo", (m: Echo) => m.echo === "two");
   assert.equal((await one.waitKv("echo", (kv) => kv.k === "one")).k, "one");
   assert.equal((await two.waitKv("echo", (kv) => kv.k === "two")).k, "two");
 });
@@ -101,7 +101,7 @@ test("restart keeps the database; members come back with reconnect", async () =>
   assert.throws(() => ann.send("echo", { v: "x" }), /not connected/);
   await ann.reconnect();
   ann.send("echo", { v: "again" });
-  await ann.waitFor("echo", (m) => m.echo === "again");
+  await ann.waitFor("echo", (m: Echo) => m.echo === "again");
   // the session survived: still the administrator
   await bed.setPlugin("echo", true);
 });
@@ -137,7 +137,7 @@ test("seedKv replaces a plugin's data; setPlugin and placeObject need the admini
   assert.deepEqual(await bed.kv("echo"), { k: "again" });
   // the plugin runs again after the seed
   bob.send("echo", { v: "after" });
-  await bob.waitFor("echo", (m) => m.echo === "after");
+  await bob.waitFor("echo", (m: Echo) => m.echo === "after");
   await bed.placeObject("box", { x: 12, y: 7 });
   await bed.placeObject("echo/orb", { x: 14, y: 7 });
   await assert.rejects(bed.placeObject("nosuch", { x: 12, y: 9 }), /no running plugin has it/);
@@ -151,7 +151,7 @@ test("join at a tile, and reconnect at another once the reconnect grace is over"
   await ann.leave();
   await ann.reconnect({ at: { x: 13, y: 7 } }); // waits out the server's grace (about 11 s)
   ann.send("echo", { v: "back" });
-  await ann.waitFor("echo", (m) => m.echo === "back");
+  await ann.waitFor("echo", (m: Echo) => m.echo === "back");
 });
 
 /** Runs `fn` with HQ_BIN and HQ_BIN_REPO_ONLY set as given (undefined: unset), then puts them back. */

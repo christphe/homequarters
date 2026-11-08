@@ -45,11 +45,11 @@ test("saving a setting keeps the others, writes storage and tells every subscrib
   assert.notEqual(store.getState(), before, "a new state object: React sees the change");
   assert.equal(store.getState().settings.eco, true);
   assert.equal(store.getState().settings.sounds, false);
-  const saved = JSON.parse(storage.getItem("hq.settings")!);
+  const saved = JSON.parse(storage.getItem("hq.settings")!) as { eco: boolean; sounds: boolean };
   assert.equal(saved.eco, true);
   assert.equal(saved.sounds, false);
   store.savePrefs({ micOn: false });
-  assert.equal(JSON.parse(storage.getItem("hq.prefs")!).micOn, false);
+  assert.equal((JSON.parse(storage.getItem("hq.prefs")!) as { micOn: boolean }).micOn, false);
   assert.equal(calls, 2);
   off();
   store.setState({ unread: 3 });

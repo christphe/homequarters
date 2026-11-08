@@ -43,8 +43,8 @@ function parseLast(v: unknown): Last | null {
   const out: Last = {};
   for (const k of ["from", "to"] as const) {
     if (o[k] === undefined) continue;
-    if (typeof o[k] !== "number" || !isSquare(o[k] as number)) return null;
-    out[k] = o[k] as number;
+    if (typeof o[k] !== "number" || !isSquare(o[k])) return null;
+    out[k] = o[k];
   }
   return out.from === undefined && out.to === undefined ? null : out;
 }

@@ -80,8 +80,8 @@ for (const f of html) {
   for (const m of src.matchAll(/href="#([^"]+)"/g)) if (!src.includes("id=\"" + decode(m[1]) + "\"")) fail(f, "broken same-page anchor: #" + m[1]);
   if (/&amp;(quot|amp|lt|gt|#\d+|#x[0-9a-f]+);/i.test(src)) fail(f, "double-escaped entity (shows as &quot; etc.)");
   if (is404 && src.includes("aria-current")) fail(f, "404 page marks a nav item as current");
-  const blocks: LdBlock[] = [...src.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => {
-    try { const v = JSON.parse(m[1]); return Array.isArray(v) ? v : [v]; } catch (e) { fail(f, "JSON-LD does not parse: " + (e as Error).message); return []; }
+  const blocks = [...src.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m): LdBlock[] => {
+    try { const v = JSON.parse(m[1]) as LdBlock | LdBlock[]; return Array.isArray(v) ? v : [v]; } catch (e) { fail(f, "JSON-LD does not parse: " + (e as Error).message); return []; }
   });
   ld.set(f, { src, blocks, types: new Set(blocks.map((b) => b["@type"])) });
   for (const u of JSON.stringify(blocks).match(/https:\/\/[^"]+/g) ?? []) if (u.startsWith(SITE)) { const err = resolveLocal(f, u); if (err) fail(f, "JSON-LD " + err); }

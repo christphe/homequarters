@@ -6,7 +6,7 @@
 #   HQ_VM=ubuntu@1.2.3.4 HQ_URL=https://office.example.com HQ_SSH_KEY=~/.ssh/key bench/run-vm.sh 50 100 200
 # Needs on the VM: the Compose stack in ~/homequarters/deploy with METRICS_TOKEN set in .env.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 VM=${HQ_VM:?ssh target, e.g. ubuntu@1.2.3.4}
 URL=${HQ_URL:?public URL of the office}
 KEY=${HQ_SSH_KEY:-$HOME/.ssh/id_ed25519}
@@ -37,14 +37,14 @@ for n in "$@"; do
   label="vm-A-$n-$REGION"
   echo "# $label"
   ssh_vm "$DC stop homequarters >/dev/null 2>&1; $WIPE; $DC up -d homequarters >/dev/null 2>&1"
-  for i in $(seq 1 30); do curl -sf -o /dev/null "$URL/healthz" && break; sleep 1; done
+  for _ in $(seq 1 30); do curl -sf -o /dev/null "$URL/healthz" && break; sleep 1; done
   # Caddy hides /metrics from the internet: reach the container through an SSH tunnel, on a fresh local
   # port per run (a just-closed tunnel can still hold the previous one), and refuse to measure without it
   ip=$(ssh_vm "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' homequarters-homequarters-1")
   [ -n "${tun:-}" ] && { kill "$tun" 2>/dev/null; wait "$tun" 2>/dev/null; }
   port=$((18100 + RANDOM % 800))
   ssh -i "$KEY" -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L "$port:$ip:8080" "$VM" & tun=$!
-  for i in $(seq 1 20); do metrics_ok "http://127.0.0.1:$port/metrics" && break; sleep 0.5; done
+  for _ in $(seq 1 20); do metrics_ok "http://127.0.0.1:$port/metrics" && break; sleep 0.5; done
   metrics_ok "http://127.0.0.1:$port/metrics" || { echo "metrics tunnel down"; exit 1; }
   inv=$(ssh_vm "$DC exec -T homequarters /app/homequarters -invite member -invite-uses 1000 -invite-hours 2" | grep -o 'invite=[A-Za-z0-9_-]*' | cut -d= -f2)
   [ -n "$inv" ] || { echo "no invite"; exit 1; }

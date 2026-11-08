@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -205,10 +206,8 @@ func audHas(raw json.RawMessage, clientID string) bool {
 	}
 	var many []string
 	if json.Unmarshal(raw, &many) == nil {
-		for _, a := range many {
-			if a == clientID {
-				return true
-			}
+		if slices.Contains(many, clientID) {
+			return true
 		}
 	}
 	return false

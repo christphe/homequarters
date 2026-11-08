@@ -58,11 +58,12 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4)
-	if err := db.Ping(); err != nil {
+	ctx := context.Background() // opening runs before anything could cancel it
+	if err := db.PingContext(ctx); err != nil {
 		return nil, err
 	}
 	s := &Store{DB: db}
-	if err := s.migrate(); err != nil {
+	if err := s.migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return s, nil
@@ -70,8 +71,8 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.DB.Close() }
 
-func (s *Store) migrate() error {
-	if _, err := s.DB.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
+func (s *Store) migrate(ctx context.Context) error {
+	if _, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
 		return err
 	}
 	ents, err := migrationsFS.ReadDir("migrations")
@@ -89,7 +90,7 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("bad migration name %q", n)
 		}
 		var one int
-		err := s.DB.QueryRow(`SELECT 1 FROM schema_migrations WHERE version=?`, ver).Scan(&one)
+		err := s.DB.QueryRowContext(ctx, `SELECT 1 FROM schema_migrations WHERE version=?`, ver).Scan(&one)
 		if err == nil {
 			continue
 		}
@@ -97,15 +98,15 @@ func (s *Store) migrate() error {
 			return err
 		}
 		body, _ := migrationsFS.ReadFile("migrations/" + n)
-		tx, err := s.DB.Begin()
+		tx, err := s.DB.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(string(body)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("%s: %w", n, err)
 		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)`, ver, time.Now().Unix()); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)`, ver, time.Now().Unix()); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -278,7 +279,7 @@ func (s *Store) SaveLastPositions(ctx context.Context, officeID int64, ps []Last
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }() // a statement of this transaction: Commit's error is the one that counts
 	for _, p := range ps {
 		if _, err := st.ExecContext(ctx, p.X, p.Y, officeID, p.UserID); err != nil {
 			return err

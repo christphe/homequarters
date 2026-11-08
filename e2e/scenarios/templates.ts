@@ -4,6 +4,7 @@
 import os from "node:os";
 import path from "node:path";
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API, type RunContext, type User } from "../lib.ts";
+import type { MapData } from "../../web/src/net/protocol.ts";
 
 const click = (u: User, selector: string, text: string) => u.page.evaluate((selector, text) => {
   const b = [...document.querySelectorAll<HTMLElement>(selector)].find((x) => x.textContent.trim() === text || x.getAttribute("aria-label") === text);
@@ -15,13 +16,13 @@ const mapOf = (u: User) => u.page.evaluate(() => { const m = window.__hq.view.ma
 
 export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
-  const original = await (await api(ctx.adminCookie, "GET", "/api/admin/map")).json();
+  const original = (await (await api(ctx.adminCookie, "GET", "/api/admin/map")).json()) as MapData;
   const browser = await launch();
   try {
     const t = String(Date.now() % 10000);
     const admin = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
     const mia = await joinAs(browser, "Mia" + t);
-    const miaId = (await (await api(ctx.adminCookie, "GET", "/api/admin/members")).json()).members.find((m: { name: string; id: number }) => m.name === "Mia" + t).id;
+    const miaId = ((await (await api(ctx.adminCookie, "GET", "/api/admin/members")).json()) as { members: { name: string; id: number }[] }).members.find((m) => m.name === "Mia" + t)!.id;
     // Mia owns the Loft's Desk 2
     const assigned = structuredClone(original);
     for (const p of assigned.props) if (p.t === "desk") p.assign = p.label === "Desk 2" ? miaId : undefined;
@@ -35,8 +36,8 @@ export async function run(ctx: RunContext): Promise<boolean> {
       const r = await admin.page.evaluate(() => [...document.querySelectorAll(".modal .layout")].map((li) => li.textContent));
       return r.length ? r : null;
     }, { what: "layout list" });
-    check("the three layouts are listed with what they offer", rows!.length === 3 && rows!.some((r) => r.startsWith("Loft") && r.includes("in use")) &&
-      rows!.some((r) => r.startsWith("Manor") && r.includes("48 desks") && r.includes("10 rooms") && r.includes("12 corners")) && rows!.some((r) => r.startsWith("Lodge") && r.includes("36 desks")), rows!.join(" | "));
+    check("the three layouts are listed with what they offer", rows.length === 3 && rows.some((r) => r.startsWith("Loft") && r.includes("in use")) &&
+      rows.some((r) => r.startsWith("Manor") && r.includes("48 desks") && r.includes("10 rooms") && r.includes("12 corners")) && rows.some((r) => r.startsWith("Lodge") && r.includes("36 desks")), rows.join(" | "));
 
     // ---- switching asks first, saying what is overwritten and what carries over
     await click(admin, ".modal .layout button", "Use the Manor layout");
@@ -44,16 +45,16 @@ export async function run(ctx: RunContext): Promise<boolean> {
       const d = [...document.querySelectorAll(".modal")].find((m) => m.textContent.includes("Switch to Manor?"));
       return d ? d.textContent : null;
     }), { what: "confirmation" });
-    check("the confirmation says the whole map is replaced and how many desks carry over", dialog!.includes("whole map is replaced") && dialog!.includes("1 kept"), dialog!);
+    check("the confirmation says the whole map is replaced and how many desks carry over", dialog.includes("whole map is replaced") && dialog.includes("1 kept"), dialog);
     const before = await mapOf(mia);
     await click(admin, ".modal button", "Switch to Manor");
     const toast = await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => x.includes("layout"))), { what: "toast" }).catch(() => "");
-    check("the admin is told the layout changed", toast!.includes("Manor"), toast);
+    check("the admin is told the layout changed", toast.includes("Manor"), toast);
 
     // ---- Mia is online: she reconnects into the new map, at its entrance
     await waitFor(async () => (await mapOf(mia)).w === 85, { timeout: 20000, what: "Mia gets the Manor" });
     const told = await waitFor(() => mia.page.evaluate(() => [...document.querySelectorAll(".toast")].map((x) => x.textContent).find((x) => x.includes("moved to"))), { timeout: 3000, what: "Mia is told" }).catch(() => "");
-    check("an online member is told the office moved to the new layout, not left guessing", told!.includes("Manor"), told);
+    check("an online member is told the office moved to the new layout, not left guessing", told.includes("Manor"), told);
     const after = await mapOf(mia);
     check("an online member gets the new map without a reload", before.w === 60 && after.w === 85 && after.h === 51, `${before.w} -> ${after.w}x${after.h}`);
     await waitFor(() => mia.page.evaluate(() => window.__hq.state.conn === "open"), { timeout: 20000, what: "Mia connected" });
@@ -73,7 +74,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     if (!(await admin.page.$(".modal [role=tab]"))) await waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" });
     await waitFor(() => click(admin, ".modal [role=tab]", "Activity"), { what: "Activity tab" });
     const log = await waitFor(() => admin.page.evaluate(() => [...document.querySelectorAll(".modal li, .modal tr")].map((x) => x.textContent).find((x) => x.includes("Manor layout"))), { what: "audit row" });
-    check("the activity log shows the switch", log!.includes("switched the office to the Manor layout"), log);
+    check("the activity log shows the switch", log.includes("switched the office to the Manor layout"), log);
   } finally {
     await browser.close();
     // put the shared office back: the Loft (same size as the original), then the original map itself

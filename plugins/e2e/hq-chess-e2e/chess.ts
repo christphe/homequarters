@@ -35,7 +35,7 @@ function masks(small: boolean) {
   const out: Record<string, string> = {};
   const [w, h] = small ? [SMALL_W, SMALL_H] : [PIECE_W, PIECE_H];
   for (const piece of "KQRBNPkqrbnp") {
-    const grid = Array.from({ length: h }, () => Array(w).fill("."));
+    const grid = Array.from({ length: h }, () => Array<string>(w).fill("."));
     paintPiece(piece, 0, 0, (x, y, c) => { grid[y][x] = COLOURS[c] ?? "?"; }, small);
     out[grid.map((r) => r.join("")).join("")] = piece;
   }
@@ -56,7 +56,7 @@ async function setBoards(ctx: RunContext, at: { x: number; y: number }[]) {
   return (await putMap(ctx, m)).ok;
 }
 
-const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg) as Promise<Awaited<R>>;
+const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg);
 const MODAL = '.modal.plugin-modal[aria-label="Chess"]';
 const modalOpen = async (u: User) => !!(await u.page.$(MODAL));
 async function viewFrame(u: User): Promise<Frame | null> {
@@ -160,7 +160,7 @@ const modalState = (u: User) => read(u, (sel: string) => {
   const m = document.querySelector(sel);
   if (!m) return null;
   return {
-    buttons: [...m.querySelectorAll<HTMLButtonElement>(".plugin-body button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+    buttons: [...m.querySelectorAll<HTMLButtonElement>(".plugin-body button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
     holders: m.querySelector(".plugin-body p.muted")?.textContent ?? "",
   };
 }, MODAL);
@@ -168,7 +168,7 @@ const button = async (u: User, text: string) => (await modalState(u))?.buttons.f
 /** Clicks a modal button with the real mouse. */
 async function press(u: User, text: string) {
   const handles = await u.page.$$(MODAL + " button");
-  for (const h of handles) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return h.click();
+  for (const h of handles) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
   throw new Error("no button " + text + " for " + u.name);
 }
 /** Opens the board within reach with the X key, as a player does. */
@@ -200,7 +200,7 @@ async function countFrames(u: Player) {
   await s.send("Network.enable");
   s.on("Network.webSocketFrameSent", (e) => {
     try {
-      const m = JSON.parse(e.response.payloadData);
+      const m = JSON.parse(e.response.payloadData) as { t?: string; pl?: string; d: ToServer };
       if (m.t === "plg" && m.pl === PLUGIN) { u.sent.push(m.d); u.sentAt.push(Date.now()); }
       if (m.t === "use") u.usedAt = Date.now(); // X on an object
     } catch { /* not JSON */ }
@@ -250,7 +250,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
       const s = await read(ann, () => window.__hq.view.objSprites.filter((x) => !x.destroyed).map((x) => ({ x: x.x, y: x.y, w: x.texture.width, h: x.texture.height, z: x.zIndex, on: x.visible })));
       return s.some((x) => x.w === 16) ? s : null;
     }, { what: "the chessboard sprite" });
-    const sprite = sprites!.find((s) => s.x === BOARD.x * T);
+    const sprite = sprites.find((s) => s.x === BOARD.x * T);
     check("4: the board's sprite is drawn on its tile of the table (16x16, bottom on the table's bottom edge)", !!sprite && sprite.w === 16 && sprite.h === 16 && sprite.y === (BOARD.y + 1) * T && sprite.on, JSON.stringify(sprites));
     const hint = await waitFor(() => read(ann, () => document.querySelector(".interaction-hint")?.textContent ?? ""), { what: "the X hint" });
     check("4: standing beside it, the X hint names it", hint.includes("Chessboard") && hint.includes("X"), JSON.stringify(hint));
@@ -275,7 +275,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
       return read(ann, ({ sel, inner }: { sel: string; inner: { top: number; bottom: number; width: number; scroll: boolean } }) => {
         const m = document.querySelector(sel)!, H = innerHeight;
         const rect = (el: Element) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
-        const btn = (text: string) => [...m.querySelectorAll("button")].find((b) => b.textContent!.trim() === text);
+        const btn = (text: string) => [...m.querySelectorAll("button")].find((b) => b.textContent.trim() === text);
         const frame = m.querySelector("iframe.plugin-view")!.getBoundingClientRect();
         const parts = { title: rect(m.querySelector("h2") ?? m), seats: rect(btn("White")!.parentElement!), holders: rect(m.querySelector(".plugin-body p.muted")!), undo: rect(btn("Undo") ?? m), reset: rect(btn("Reset")!), boardTop: Math.round(frame.top + inner.top), stripBottom: Math.round(frame.top + inner.bottom), close: rect(btn("Close")!) };
         const inside = (r: { top: number; bottom: number }) => r.top >= 0 && r.bottom <= H;
@@ -292,7 +292,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await sleep(500);
     const order = await read(ann, (sel: string) => {
       const m = document.querySelector(sel)!;
-      const seats = [...m.querySelectorAll("button")].find((b) => b.textContent!.trim() === "White")!;
+      const seats = [...m.querySelectorAll("button")].find((b) => b.textContent.trim() === "White")!;
       return !!(seats.compareDocumentPosition(m.querySelector("iframe.plugin-view")!) & Node.DOCUMENT_POSITION_FOLLOWING);
     }, MODAL);
     check("the seat buttons come before the board in reading order (a small screen scrolls to the board)", order);

@@ -26,6 +26,6 @@ test("packCells fills rows of the atlas and leaves out what does not fit under i
   const many = packCells(Array.from({ length: 1000 }, () => ({ w: 512, h: 32 })));
   const kept = many.filter((p) => p !== null);
   assert.ok(kept.length < 1000 && kept.length > 0);
-  assert.ok(kept.every((p) => p!.sx + 512 <= ATLAS_W && p!.sy + 32 <= ATLAS_MAX_H));
+  assert.ok(kept.every((p) => p.sx + 512 <= ATLAS_W && p.sy + 32 <= ATLAS_MAX_H));
   assert.equal(packCells([{ w: ATLAS_W + 1, h: 4 }])[0], null);
 });

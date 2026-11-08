@@ -272,9 +272,9 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(async () => (await toast(a)).includes("no desk"), { what: "no desk message" });
     check("Ctrl+D with nothing assigned says so", !(await read(a, () => window.__hq.view.guided)));
     const api = (await read(a, () => location.origin));
-    const full = await (await fetch(api + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
+    const full = (await (await fetch(api + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json()) as MapData;
     const putMap = (m: MapData) => fetch(api + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + ctx.adminCookie }, body: JSON.stringify(m) });
-    const withDesk: MapData = JSON.parse(JSON.stringify(full));
+    const withDesk = structuredClone(full);
     // a free desk of the open-plan area whose right-hand neighbour is free too (other scenarios may have assigned some)
     const free = (x: number, y: number) => withDesk.props.find((p) => p.t === "desk" && p.x === x && p.y === y && !p.assign);
     const desk = withDesk.props.find((p) => p.t === "desk" && !p.assign && p.y < 14 && free(p.x + 4, p.y))!;
@@ -317,7 +317,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await waitFor(() => phone.evaluate(() => window.__hq?.state?.conn === "open"), { timeout: 30000, what: "phone connected" });
     const pad = await waitFor(() => phone.$(".touchpad .tp-right"), { what: "touch pad" });
     const p0 = await phone.evaluate(() => window.__hq.view.position());
-    const r = (await pad!.boundingBox())!;
+    const r = (await pad.boundingBox())!;
     await phone.touchscreen.touchStart(r.x + r.width / 2, r.y + r.height / 2);
     await sleep(700);
     await phone.touchscreen.touchEnd();
@@ -340,7 +340,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
       await waitFor(() => c.page.evaluate(() => !!document.querySelector(".modal .setting-note")), { timeout: 5000, what: "blocked note" }).catch(() => {});
       const blocked = await c.page.evaluate(() => ({ note: document.querySelector(".modal .setting-note")?.textContent ?? "", on: window.__hq.state.settings.osIdle }));
       check("a browser that blocks idle detection gets an explanation next to the setting, which stays off", blocked.note.includes("blocks idle detection") && !blocked.on, JSON.stringify(blocked));
-      await c.ctx.overridePermissions(APP, ["idle-detection"]);
+      await c.ctx.setPermission(APP, { permission: { name: "idle-detection" }, state: "granted" });
       const box = (await idleBox()) as ElementHandle<HTMLInputElement>;
       await box.click();
       await waitFor(() => c.page.evaluate(() => window.__hq.state.settings.osIdle), { what: "idle setting on" });

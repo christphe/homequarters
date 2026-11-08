@@ -17,7 +17,7 @@ const tileToClient = (u: User, tx: number, ty: number) =>
 const clickTile = async (u: User, tx: number, ty: number) => { const p = await tileToClient(u, tx, ty); await u.page.mouse.click(p.x, p.y); };
 const chip = (u: User, text: string) => u.page.evaluate((text) => { const b = [...document.querySelectorAll<HTMLElement>(".editor .chip")].find((x) => x.textContent === text); b?.click(); return !!b; }, text);
 const editorButton = (u: User, text: string) => u.page.evaluate((text) => { const b = [...document.querySelectorAll<HTMLButtonElement>(".editor button")].find((x) => x.textContent === text); b?.click(); return !!b; }, text);
-const viewMap = (u: User) => u.page.evaluate((): MapData => JSON.parse(JSON.stringify(window.__hq.view.map)));
+const viewMap = (u: User) => u.page.evaluate(() => JSON.parse(JSON.stringify(window.__hq.view.map)) as MapData);
 const depth = (u: User) => u.page.evaluate(() => window.__hq.view.debugDepth());
 // a hash of the world's pixels (1 world px each) over rect, with or without the depth sprites and the people
 const pixels = (u: User, opts: { depth: boolean; ents: boolean; rect: Rect }) => u.page.evaluate((opts) => window.__hq.view.debugWorldPixels(opts), opts);
@@ -28,7 +28,7 @@ const solidAt = (m: MapData, x: number, y: number) => m.solid?.[y]?.[x] === "1" 
 
 export async function run(ctx: RunContext): Promise<boolean> {
   resetChecks();
-  const original: MapData = await (await api(ctx.adminCookie, "GET", "/api/admin/map")).json();
+  const original = (await (await api(ctx.adminCookie, "GET", "/api/admin/map")).json()) as MapData;
   const browser = await launch();
   try {
     const t = String(Date.now() % 10000);

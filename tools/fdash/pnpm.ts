@@ -298,7 +298,7 @@ function partOf(lock: YMap | Error, o: { dir: string; lockDir: string; lockfile:
     graph = importerGraph(lock, importer);
   } catch (e) {
     // a missing importer is the config's mistake: refused; a graph that does not hold together is the file's
-    if (!Object.hasOwn(asMap(lock.importers), importer)) throw new Error(`pnpm input ${dir}: ${(e as Error).message}`);
+    if (!Object.hasOwn(asMap(lock.importers), importer)) throw new Error(`pnpm input ${dir}: ${(e as Error).message}`, { cause: e });
     return { lockfile, name, patches: [], warning: `${(e as Error).message}: the whole lockfile is hashed` };
   }
   const patches = patchFiles(lock).map((p) => path.posix.normalize(path.posix.join(lockDir, p)));

@@ -289,7 +289,7 @@ func TestEditorSaveRacingARemovalLeavesNoGhost(t *testing.T) {
 	r.srv.mapLim = newLimiter(1000, 1000)
 	ana, _ := r.join("Ana", "")
 	ana.listen(t) // the world runs, as when an administrator edits the map
-	for round := 0; round < 15; round++ {
+	for round := range 15 {
 		bia, _ := r.join("Bia"+strconv.Itoa(round), "")
 		draft := withPlaces(r.savedMap(t), bia.ID, 0)
 		done := make(chan struct{})

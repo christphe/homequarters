@@ -68,9 +68,9 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await offline("Admin > Members", "GET /api/admin/members", () => waitFor(() => click(admin, ".topbar button", "Admin"), { what: "Admin button" }), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Office");
     const field = await waitFor(() => page.$("#office-name"), { what: "office name field" });
-    const name = await field!.evaluate((el) => (el as HTMLInputElement).value);
-    await field!.click({ count: 3 }); // selects the name, so typing replaces it
-    await field!.type(name + " 2");
+    const name = await field.evaluate((el) => (el as HTMLInputElement).value);
+    await field.click({ count: 3 }); // selects the name, so typing replaces it
+    await field.type(name + " 2");
     await offline("Admin > Office > Rename", "PATCH /api/admin/office", () => click(admin, ".modal button", "Rename"), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Announce");
     await waitFor(() => page.$("#announce-text"), { what: "announce field" });
@@ -78,7 +78,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await offline("Admin > Announce", "POST /api/admin/announce", () => click(admin, ".modal form button", "Announce"), "Something went wrong.");
     await click(admin, ".modal [role=tab]", "Plugins");
     const toggle = await waitFor(() => page.evaluate(() => document.querySelector('.modal button[aria-label^="Turn "]')?.getAttribute("aria-label")), { what: "a plugin's on/off button" });
-    const title = toggle!.replace(/^Turn (on|off) /, "");
+    const title = toggle.replace(/^Turn (on|off) /, "");
     await offline("Admin > Plugins > " + toggle, "PUT /api/admin/plugins/*", () => page.evaluate((l) => { const b = document.querySelector<HTMLButtonElement>(`.modal button[aria-label="${l}"]`); b?.click(); return !!b; }, toggle), `${title} could not start: Something went wrong.`);
     await page.keyboard.press("Escape");
 

@@ -24,6 +24,7 @@
     "static": {
       "tasks": [
         "lint",
+        "lint:repo",
         "build",
         "test:unit"
       ]
@@ -37,6 +38,88 @@
       "jobs": 1,
       "tasks": [
         "test:e2e"
+      ]
+    },
+    "lint:repo": {
+      "tasks": [
+        "lint:actions",
+        "lint:secrets",
+        "lint:shell",
+        "lint:docker"
+      ]
+    },
+    "lint:actions": {
+      "run": [
+        [
+          "node",
+          "scripts/lint-repo.ts",
+          "actions"
+        ]
+      ],
+      "inputs": [
+        ".github/**",
+        "scripts/lint-repo.ts",
+        "scripts/tools.ts",
+        "tools/go/actionlint/go.mod",
+        "tools/go/actionlint/go.sum"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ],
+      "envKeys": [
+        "SHELLCHECK_OPTS"
+      ]
+    },
+    "lint:secrets": {
+      "run": [
+        [
+          "node",
+          "scripts/lint-repo.ts",
+          "secrets"
+        ]
+      ],
+      "inputs": [
+        "**"
+      ],
+      "tools": [
+        [
+          "go",
+          "version"
+        ]
+      ]
+    },
+    "lint:shell": {
+      "run": [
+        [
+          "node",
+          "scripts/lint-repo.ts",
+          "shell"
+        ]
+      ],
+      "inputs": [
+        "**/*.sh",
+        "scripts/lint-repo.ts",
+        "scripts/tools.ts"
+      ],
+      "envKeys": [
+        "SHELLCHECK_OPTS"
+      ]
+    },
+    "lint:docker": {
+      "run": [
+        [
+          "node",
+          "scripts/lint-repo.ts",
+          "docker"
+        ]
+      ],
+      "inputs": [
+        "deploy/Dockerfile",
+        "scripts/lint-repo.ts",
+        "scripts/tools.ts"
       ]
     }
   }

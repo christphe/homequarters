@@ -37,7 +37,7 @@ export function AdminDialog({ onClose }: { onClose: () => void }) {
 /** A one-line banner for everybody online now. Not stored; the activity log records that it was sent. */
 function Announce() {
   const [text, setText] = useState("");
-  const send = async (e: React.FormEvent) => {
+  const send = async (e: React.SubmitEvent) => {
     e.preventDefault();
     const r = await api("POST", "/api/admin/announce", { text: text.trim() });
     if (r.ok) { setText(""); toast(t("announce.sent")); } else toast(r.status === 429 ? t("announce.wait") : r.json.error ?? t("admin.error"));
@@ -56,7 +56,7 @@ function Announce() {
 function OfficeName() {
   const current = useStore((s) => s.office);
   const [name, setName] = useState(current);
-  const save = async (e: React.FormEvent) => {
+  const save = async (e: React.SubmitEvent) => {
     e.preventDefault();
     const r = await api<{ name: string }>("PATCH", "/api/admin/office", { name: name.trim() });
     if (r.ok) { setName(r.json.name ?? name.trim()); toast(t("office.renamed")); } else toast(t(r.status === 429 ? "office.wait" : r.status === 400 ? "office.invalid" : "admin.error"));
@@ -277,7 +277,7 @@ function PluginSettings({ plugin, onClose, onSaved }: { plugin: PluginRow; onClo
   const [busy, setBusy] = useState(false);
   const changed = settings.filter((s) => text[s.key] !== String(s.value));
   // Save sends each changed setting (the server checks it against the plugin's manifest), then closes
-  const save = async (e: React.FormEvent) => {
+  const save = async (e: React.SubmitEvent) => {
     e.preventDefault();
     setBusy(true);
     for (const s of changed) {

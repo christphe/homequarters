@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { testbed } from "../../../sdk/testbed.ts";
 import type { Member, Testbed, Tile } from "../../../sdk/testbed.ts";
+import type { Table, TableState, ToClient } from "../public/messages.ts";
 
 export const CARDS = "hq-cards";
 export const cardsDir = path.resolve(import.meta.dirname, "..");
@@ -21,8 +22,14 @@ const ROUND: Tile[] = [
 /** The members of most tests, in the order of the seats they take. */
 export const NAMES = ["Alice", "Bob", "Carol"];
 
-/** A message of the table, as JSON. */
-export type Frame = Record<string, any>;
+/** A message of the table to a member. */
+export type Frame = ToClient;
+/** The message of type `T`. */
+export type FrameOf<T extends Frame["t"]> = Extract<Frame, { t: T }>;
+/** What a test sends to the table: an action of the page, or a malformed one the table must refuse. */
+export type Sent = { t: string; [k: string]: unknown };
+/** A test plugin's answer (fixtures/): its type, and the result of the call it made. */
+export type Reply = { t: string; r?: { ok?: unknown } };
 
 const open: Testbed[] = [];
 /** Closes every bed opened by `cardBed`: `after(closeBeds)` in each suite. */
@@ -34,9 +41,9 @@ export const closeBeds = async (): Promise<void> => {
 export async function cardBed(plugins: string[], names: string[]): Promise<{ bed: Testbed; members: Member[] }> {
   const bed = await testbed({ plugins, timeoutMs: 8000 });
   open.push(bed);
-  const members = [await bed.join(names[0]!, { at: ROUND[0]! })];
+  const members = [await bed.join(names[0], { at: ROUND[0] })];
   await bed.placeObject("hq-cards/deck", DECK);
-  for (const [i, name] of names.slice(1).entries()) members.push(await bed.join(name, { at: ROUND[i + 1]! }));
+  for (const [i, name] of names.slice(1).entries()) members.push(await bed.join(name, { at: ROUND[i + 1] }));
   return { bed, members };
 }
 
@@ -45,13 +52,14 @@ export const frames = (m: Member, from = 0): Frame[] => (m.received(CARDS) as Fr
 export const count = (m: Member): number => m.received(CARDS).length;
 
 /** Sends an action to the deck's table. */
-export const act = (m: Member, a: Frame): void => m.send(CARDS, { x: DECK.x, y: DECK.y, ...a });
+export const act = (m: Member, a: Sent): void => m.send(CARDS, { x: DECK.x, y: DECK.y, ...a });
 
 /** The last message of type `t` the member got (after their `from`-th message). */
-export const lastOf = (m: Member, t: string, from = 0): Frame | undefined => frames(m, from).findLast((d) => d.t === t);
+export const lastOf = <T extends Frame["t"]>(m: Member, t: T, from = 0): FrameOf<T> | undefined =>
+  frames(m, from).findLast((d): d is FrameOf<T> => d.t === t);
 
 /** The table and the whole state of the last open or state message (after the `from`-th message). */
-export function tableOf(m: Member, from = 0): { tb: Frame; s: Frame } | undefined {
+export function tableOf(m: Member, from = 0): { tb: Table; s: TableState } | undefined {
   const d = frames(m, from).findLast((x) => x.t === "open" || x.t === "state");
   return d ? { tb: d.s.t, s: d.s } : undefined;
 }
@@ -68,7 +76,7 @@ export async function until<T>(what: string, fn: () => T | undefined | false | n
 }
 
 /** The table, once the last open or state message (after `from`) satisfies `ok(table, state)`. */
-export async function waitTable(m: Member, what: string, ok: (tb: Frame, s: Frame) => boolean, from = 0, ms = 8000): Promise<Frame> {
+export async function waitTable(m: Member, what: string, ok: (tb: Table, s: TableState) => boolean, from = 0, ms = 8000): Promise<Table> {
   const r = await until(
     `${m.name}: ${what}`,
     () => {
@@ -81,15 +89,15 @@ export async function waitTable(m: Member, what: string, ok: (tb: Frame, s: Fram
 }
 
 /** Sends `a`, then waits for the next state of the table the member gets (a refused action sends the real state again). */
-export async function stateAfter(m: Member, a: Frame): Promise<{ tb: Frame; s: Frame }> {
+export async function stateAfter(m: Member, a: Sent): Promise<{ tb: Table; s: TableState }> {
   const from = count(m);
   act(m, a);
   return until(`${m.name}: the state again after ${JSON.stringify(a)}`, () => tableOf(m, from));
 }
 
-export const handSizes = (tb: Frame): number[] => tb.hands.map((h: unknown[]) => h.length);
-export const seatedCount = (tb: Frame): number => tb.seats.filter((s: unknown) => s !== null).length;
-export const logVerbs = (m: Member): string[] => (lastOf(m, "log")?.log ?? []).map((e: Frame) => e.v);
+export const handSizes = (tb: Table): number[] => tb.hands.map((h) => h.length);
+export const seatedCount = (tb: Table): number => tb.seats.filter((s) => s !== null).length;
+export const logVerbs = (m: Member): string[] => (lastOf(m, "log")?.log ?? []).map((e) => e.v);
 
 /** Every member opens the deck. */
 export const openDeck = (...members: Member[]): void => {
@@ -98,9 +106,9 @@ export const openDeck = (...members: Member[]): void => {
 
 /** The members open the deck, the first chooses `game` once the games are listed, and all take a seat in order. */
 export async function seatAll(members: Member[], game: string): Promise<void> {
-  const first = members[0]!;
+  const first = members[0];
   openDeck(...members);
-  await until(`${game} in the games list`, () => lastOf(first, "games")?.list.some((g: Frame) => g.name === game));
+  await until(`${game} in the games list`, () => lastOf(first, "games")?.list.some((g) => g.name === game));
   act(first, { t: "choose", game });
   for (const [i, m] of members.entries()) {
     await waitTable(m, `${m.name} sees ${game}`, (tb) => tb.game === game);

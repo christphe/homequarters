@@ -41,7 +41,7 @@
     /** @type {Entry[] | null} */
     let index = null;
     /** @returns {Promise<Entry[]>} */
-    const load = async () => (index ??= await (await fetch(root + "search-index.json")).json());
+    const load = async () => (index ??= /** @type {Entry[]} */ (await (await fetch(root + "search-index.json")).json()));
     // oxlint-disable-next-line typescript/no-misused-promises -- the DOM ignores the promise (a failed fetch of the index stays an unhandled rejection, as before)
     q.addEventListener("input", /** @returns {Promise<boolean | void>} */ async () => {
       const term = q.value.trim().toLowerCase();

@@ -26,7 +26,7 @@ const send = (m: ToServer) => hq.send(m);
 
 function act(m: Act): void {
   if (!open) return;
-  send({ ...m, x: open.x, y: open.y } as ToServer);
+  send({ ...m, x: open.x, y: open.y });
 }
 
 function draw(): void {

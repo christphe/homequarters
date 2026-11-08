@@ -19,3 +19,4 @@ desktop/src-tauri/gen
 
 # Vitest reports
 .vitest/
+.tools/

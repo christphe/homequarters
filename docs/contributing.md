@@ -16,7 +16,7 @@ Every change runs the [gauntlet loop](gauntlet.md): written acceptance criteria,
 ~~~bash
 pnpm install                     # once, at the root: one pnpm workspace for every TypeScript project, one lockfile
 ./scripts/dev.sh                 # full local stack
-cd server && go vet ./... && go tool staticcheck ./... && go test -race ./...   # server checks and tests
+cd server && go tool -modfile=../tools/go/golangci-lint/go.mod golangci-lint run ./... && go test -race ./...   # server lint (decision 0040) and tests
 cd web && pnpm exec tsc --noEmit                   # type-check the client
 cd web && pnpm exec vitest run                     # the client's unit and component tests (Vitest on jsdom)
 node tools/fdash/cli.ts run lint test:unit         # every project's lint and unit tests, skipping what already passed

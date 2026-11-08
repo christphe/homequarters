@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -42,11 +43,11 @@ func TestFirstMemberIsAdminAndSessionsRoundTrip(t *testing.T) {
 	if err != nil || se.Name != "Ana" || se.Role != "admin" {
 		t.Fatalf("session lookup: %+v %v", se, err)
 	}
-	if _, err := s.LookupSession(ctx, tok+"x"); err != ErrNotFound {
+	if _, err := s.LookupSession(ctx, tok+"x"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("a forged token must not resolve")
 	}
 	expired, _ := s.CreateSession(ctx, a, o.ID, -time.Minute)
-	if _, err := s.LookupSession(ctx, expired); err != ErrNotFound {
+	if _, err := s.LookupSession(ctx, expired); !errors.Is(err, ErrNotFound) {
 		t.Fatal("expired sessions must not resolve")
 	}
 }
@@ -58,18 +59,18 @@ func TestInviteUseLimitExpiryAndRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		inv, err := s.ConsumeInvite(ctx, tok)
 		if err != nil || inv.Role != "member" || inv.OfficeID != o.ID {
 			t.Fatalf("use %d: %+v %v", i, inv, err)
 		}
 	}
-	if _, err := s.ConsumeInvite(ctx, tok); err != ErrInviteInvalid {
+	if _, err := s.ConsumeInvite(ctx, tok); !errors.Is(err, ErrInviteInvalid) {
 		t.Fatal("third use must fail")
 	}
 	old, _ := s.CreateInvite(ctx, o.ID, "admin", 1, time.Millisecond, 0)
 	time.Sleep(1100 * time.Millisecond)
-	if _, err := s.ConsumeInvite(ctx, old); err != ErrInviteInvalid {
+	if _, err := s.ConsumeInvite(ctx, old); !errors.Is(err, ErrInviteInvalid) {
 		t.Fatal("expired invite must fail")
 	}
 	if _, err := s.CreateInvite(ctx, o.ID, "root", 1, time.Hour, 0); err == nil {
@@ -85,11 +86,11 @@ func TestInviteConsumptionIsAtomicUnderConcurrency(t *testing.T) {
 	ctx := context.Background()
 	tok, _ := s.CreateInvite(ctx, o.ID, "member", 5, time.Hour, 0)
 	res := make(chan bool, 40)
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		go func() { _, err := s.ConsumeInvite(ctx, tok); res <- err == nil }()
 	}
 	ok := 0
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		if <-res {
 			ok++
 		}
@@ -103,7 +104,7 @@ func TestChatHistoryOrderAndPruning(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
 	u, _, _ := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
-	for i := 0; i < chatKeep+40; i++ {
+	for i := range chatKeep + 40 {
 		if err := s.AppendChat(ctx, o.ID, u, "m"+strconv.Itoa(i), int64(i)); err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +117,9 @@ func TestChatHistoryOrderAndPruning(t *testing.T) {
 		t.Fatalf("history must be the newest 100, oldest first: %q .. %q", rows[0].Text, rows[99].Text)
 	}
 	var n int
-	s.DB.QueryRow("SELECT COUNT(*) FROM chat_messages").Scan(&n)
+	if err := s.DB.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM chat_messages").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n > chatKeep+1 {
 		t.Fatalf("history must be pruned to ~%d rows, got %d", chatKeep, n)
 	}
@@ -129,7 +132,9 @@ func TestMigrationsAreIdempotentAndBackupWorks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.EnsureOffice(context.Background(), "x", "X", "{}")
+	if _, err := s.EnsureOffice(context.Background(), "x", "X", "{}"); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.BackupTo(context.Background(), filepath.Join(dir, "b.db")); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +172,9 @@ func TestInstanceIDIsStablePerDatabaseAndDiffersBetweenDatabases(t *testing.T) {
 func TestLinkIdentityRules(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
-	s.AddMember(ctx, o.ID, "Admin", json.RawMessage(`{}`), "admin")
+	if _, _, err := s.AddMember(ctx, o.ID, "Admin", json.RawMessage(`{}`), "admin"); err != nil {
+		t.Fatal(err)
+	}
 	ann, _, _ := s.AddMember(ctx, o.ID, "Ann", json.RawMessage(`{}`), "member")
 	bob, _, _ := s.AddMember(ctx, o.ID, "Bob", json.RawMessage(`{}`), "member")
 	g := Identity{Provider: "google", Subject: "1", Email: "Ann@X.com"}
@@ -177,10 +184,10 @@ func TestLinkIdentityRules(t *testing.T) {
 	if err := s.LinkIdentity(ctx, o.ID, ann, g); err != nil {
 		t.Fatalf("linking the same identity again is a no-op: %v", err)
 	}
-	if err := s.LinkIdentity(ctx, o.ID, bob, g); err != ErrIdentityTaken {
+	if err := s.LinkIdentity(ctx, o.ID, bob, g); !errors.Is(err, ErrIdentityTaken) {
 		t.Fatalf("an identity has one owner: %v", err)
 	}
-	if err := s.LinkIdentity(ctx, o.ID, ann, Identity{Provider: "google", Subject: "2"}); err != ErrIdentityTaken {
+	if err := s.LinkIdentity(ctx, o.ID, ann, Identity{Provider: "google", Subject: "2"}); !errors.Is(err, ErrIdentityTaken) {
 		t.Fatalf("one identity per provider and member: %v", err)
 	}
 	if uid, err := s.UserByIdentity(ctx, o.ID, "google", "1"); err != nil || uid != ann {
@@ -195,13 +202,13 @@ func TestLinkIdentityRules(t *testing.T) {
 	if _, err := s.RemoveMember(ctx, o.ID, bob); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.LinkIdentity(ctx, o.ID, bob, Identity{Provider: "google", Subject: "3"}); err != ErrNotFound {
+	if err := s.LinkIdentity(ctx, o.ID, bob, Identity{Provider: "google", Subject: "3"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("a removed member links nothing: %v", err)
 	}
 	if _, err := s.RemoveMember(ctx, o.ID, ann); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.UserByIdentity(ctx, o.ID, "google", "1"); err != ErrNotFound {
+	if _, err := s.UserByIdentity(ctx, o.ID, "google", "1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("removal drops the identity: %v", err)
 	}
 }

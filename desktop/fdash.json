@@ -32,6 +32,42 @@
           "--version"
         ]
       ]
+    },
+    "lint:rust": {
+      "cwd": "src-tauri",
+      "run": [
+        [
+          "cargo",
+          "fmt",
+          "--check"
+        ],
+        [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--",
+          "-D",
+          "warnings"
+        ]
+      ],
+      "inputs": [
+        "ui/**",
+        "src-tauri/**",
+        "!src-tauri/target/**",
+        "!src-tauri/gen/**"
+      ],
+      "tools": [
+        [
+          "cargo",
+          "--version"
+        ],
+        [
+          "cargo",
+          "clippy",
+          "--version"
+        ]
+      ]
     }
   }
 }

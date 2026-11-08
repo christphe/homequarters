@@ -18,7 +18,7 @@ test("my desk: the free tile on the chair side", () => {
 
 test("a blocked chair side falls back to another side of the desk", () => {
   const s = ["11111111", "10000001", "10110001", "10110001", "10000001", "11111111"];
-  assert.deepEqual(homeTile({ ...map, solid: s } as MapData, 7), { x: 2, y: 1 });
+  assert.deepEqual(homeTile({ ...map, solid: s }, 7), { x: 2, y: 1 });
 });
 
 test("no desk: the free tile nearest the middle of my office", () => {
@@ -40,12 +40,12 @@ test("Ctrl+D on Windows and Linux, Cmd+D on a Mac, by key position", () => {
 });
 
 test("in my office, its chair when it has one", () => {
-  const withChair = { ...map, props: [...map.props, { t: "chair", x: 6, y: 4 }] } as MapData;
+  const withChair = { ...map, props: [...map.props, { t: "chair", x: 6, y: 4 }] };
   assert.deepEqual(homeTile(withChair, 9), { x: 6, y: 4 });
 });
 
 // A free desk at (2,4) in the open, next to the assigned one; px/py are feet in pixels.
-const free = { ...map, props: [...map.props, { t: "desk", x: 2, y: 4, w: 2, h: 1, label: "Desk 2" }] } as MapData;
+const free = { ...map, props: [...map.props, { t: "desk", x: 2, y: 4, w: 2, h: 1, label: "Desk 2" }] };
 const chairOfFree = [2 * 16 + 8, 5 * 16 + 8] as const;
 
 test("claim: a free desk next to me, when I have no place", () => {

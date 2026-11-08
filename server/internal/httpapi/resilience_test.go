@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,8 +59,11 @@ func (u *user) placeAt(t *testing.T, x, y float64) {
 }
 
 type helloMsg struct {
-	You  int64 `json:"you"`
-	Cfg  struct{ X, Y float64 }
+	You int64 `json:"you"`
+	Cfg struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+	} `json:"cfg"`
 	Chat []struct {
 		F int64  `json:"f"`
 		N string `json:"n"`
@@ -92,15 +96,18 @@ func (s *socket) locate(t *testing.T, id int64) (float64, float64) {
 	s.wait(t, `"t":"loc"`, n+1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i := len(s.frames) - 1; i >= 0; i-- {
-		if strings.Contains(s.frames[i], `"t":"loc"`) {
+	for _, v := range slices.Backward(s.frames) {
+		if strings.Contains(v, `"t":"loc"`) {
 			var l struct {
-				OK   bool
-				X, Y float64
+				OK bool    `json:"ok"`
+				X  float64 `json:"x"`
+				Y  float64 `json:"y"`
 			}
-			json.Unmarshal([]byte(s.frames[i]), &l)
+			if err := json.Unmarshal([]byte(v), &l); err != nil {
+				t.Fatal(err)
+			}
 			if !l.OK {
-				t.Fatalf("locate %d: %s", id, s.frames[i])
+				t.Fatalf("locate %d: %s", id, v)
 			}
 			return l.X, l.Y
 		}
@@ -140,7 +147,7 @@ func TestOversizedFrameClosesWith1009AndNoSessionIs401(t *testing.T) {
 		t.Fatalf("an oversized frame closes the connection with 1009: %v (%v)", code, err)
 	}
 
-	resp, err := http.Get(r.ts.URL + "/ws")
+	resp, err := request(t, http.MethodGet, r.ts.URL+"/ws")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +170,7 @@ func TestInputFloodCannotOutrunTheServerSpeed(t *testing.T) {
 	seq := 5000
 	reconnects := 0
 	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			seq++
 			msg := []byte(`{"t":"in","s":` + strconv.Itoa(seq) + `,"x":1,"y":0,"speed":9999}`)
 			if err := s.c.Write(context.Background(), websocket.MessageText, msg); err != nil {
@@ -208,7 +215,9 @@ func TestPositionAndSessionSurviveARestart(t *testing.T) {
 	sa.c.Close(websocket.StatusNormalClosure, "")
 	o, _ := r.st.OfficeBySlug(context.Background(), "default")
 	saved := func(id int64) (x, y float64) {
-		r.st.DB.QueryRow(`SELECT last_x, last_y FROM memberships WHERE office_id=? AND user_id=?`, o.ID, id).Scan(&x, &y)
+		if err := r.st.DB.QueryRow(`SELECT last_x, last_y FROM memberships WHERE office_id=? AND user_id=?`, o.ID, id).Scan(&x, &y); err != nil {
+			t.Fatal(err)
+		}
 		return
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
@@ -246,7 +255,7 @@ func TestChatFloodIsRateLimited(t *testing.T) {
 	sa, sb := ana.socket(t), bia.socket(t)
 	sa.hello(t)
 	sb.hello(t)
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		sa.send(t, `{"t":"chat","sc":"o","text":"flood `+strconv.Itoa(i)+`"}`)
 	}
 	time.Sleep(1500 * time.Millisecond)

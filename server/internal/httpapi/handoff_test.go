@@ -24,7 +24,7 @@ func handoffPair() (n, h string) {
 // redeem is the app's window asking for the session; it returns where the window lands and the page.
 func (u *user) redeem(n string) (*url.URL, string) {
 	u.r.t.Helper()
-	resp, err := u.c.Get(u.r.ts.URL + "/auth/fake-oidc/handoff/" + n)
+	resp, err := u.get(u.r.ts.URL + "/auth/fake-oidc/handoff/" + n)
 	if err != nil {
 		u.r.t.Fatal(err)
 	}
@@ -109,7 +109,12 @@ func TestOnlyTheAppsSecretRedeemsTheHandoff(t *testing.T) {
 		t.Fatalf("the hash is not the secret: %s %q", to, page)
 	}
 	for _, bad := range []string{"short", strings.Repeat("x", 200), "..%2Fapi%2Fme"} {
-		if resp, err := thief.c.Get(r.ts.URL + "/auth/fake-oidc/handoff/" + bad); err == nil && resp.StatusCode == http.StatusOK && resp.Request.URL.Path == "/" {
+		resp, err := thief.get(r.ts.URL + "/auth/fake-oidc/handoff/" + bad)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK && resp.Request.URL.Path == "/" {
 			t.Fatalf("%q redeemed something", bad)
 		}
 	}
@@ -134,7 +139,7 @@ func TestACancelledDesktopSignInSaysWhyInTheApp(t *testing.T) {
 func TestHandoffsAreBoundedAndExpire(t *testing.T) {
 	var hs handoffs
 	now := time.Now()
-	for i := 0; i < maxHandoffs; i++ {
+	for i := range maxHandoffs {
 		if !hs.put(auth.Random(16), handoff{code: "x"}, now) {
 			t.Fatalf("refused entry %d below the bound", i)
 		}

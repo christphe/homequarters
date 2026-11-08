@@ -58,7 +58,7 @@ export async function run(): Promise<boolean> {
     const media: string[] = [];
     ana.page.on("request", (r) => { if (r.resourceType() === "media" && !r.url().startsWith("blob:")) media.push(r.url()); });
     // capture was allowed before, so the browser lists speakers with their ids
-    await ana.ctx.overridePermissions(APP, ["camera", "microphone"]);
+    await ana.ctx.setPermission(APP, { permission: { name: "camera" }, state: "granted" }, { permission: { name: "microphone" }, state: "granted" });
     const speaker = await ana.page.evaluate(async () => (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === "audiooutput" && d.deviceId && d.deviceId !== "default")?.deviceId ?? "");
     check("the browser lists a speaker with an id", speaker !== "", speaker);
 

@@ -10,7 +10,7 @@ const modal = (content: unknown[]) => [{ op: "modal", title: "Demo", content }];
 test("a modal with one view node of a declared shape is accepted", () => {
   const cmds = parseBatch(modal([{ type: "text", text: "Hi" }, view()]));
   assert.ok(Array.isArray(cmds), JSON.stringify(cmds));
-  const m = (cmds as Cmd[])[0] as Extract<Cmd, { op: "modal" }>;
+  const m = cmds[0] as Extract<Cmd, { op: "modal" }>;
   assert.deepEqual(m.content[1], { type: "view", view: "echo", label: "Echo view", height: "medium", message: "c1" });
 });
 
@@ -89,7 +89,7 @@ test("viewMessage gives the JSON copy the page relays, never the value it was ha
 test("a full-screen window with a full-height view is accepted", () => {
   const b = parseBatch([{ op: "modal", title: "Cards", size: "full", content: [{ type: "view", view: "table", label: "Card table", height: "full" }] }]);
   assert.ok(Array.isArray(b), JSON.stringify(b));
-  const m = (b as Cmd[])[0] as Extract<Cmd, { op: "modal" }>;
+  const m = b[0] as Extract<Cmd, { op: "modal" }>;
   assert.equal(m.size, "full");
   assert.equal((m.content[0] as { height: string }).height, "full");
   assert.ok(!Array.isArray(parseBatch([{ op: "modal", title: "t", size: "fullscreen", content: [] }])));

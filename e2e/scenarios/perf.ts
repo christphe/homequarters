@@ -63,7 +63,7 @@ async function measure(browser: Browser, name: string, eco: boolean, size: Size,
     const c = document.createElement("canvas");
     const g = c.getContext("webgl");
     const e = g?.getExtension("WEBGL_debug_renderer_info");
-    return e ? g!.getParameter(e.UNMASKED_RENDERER_WEBGL) : "unknown";
+    return e ? (g!.getParameter(e.UNMASKED_RENDERER_WEBGL) as string) : "unknown";
   });
   const cdp = await u.page.createCDPSession();
   await cdp.send("Performance.enable");

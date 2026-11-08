@@ -54,11 +54,11 @@ function readProject(root: string, dir: string): Project {
   if (raw.tasks !== undefined && !isObject(raw.tasks)) throw new Error(`${file}: tasks must be an object`);
   let tasks: Config;
   try {
-    tasks = parseTasks((raw.tasks as Record<string, unknown> | undefined) ?? {});
+    tasks = parseTasks(raw.tasks ?? {});
   } catch (e) {
-    throw new Error(`${file}: ${(e as Error).message}`);
+    throw new Error(`${file}: ${(e as Error).message}`, { cause: e });
   }
-  return { name: (raw.name as string | undefined) ?? path.posix.basename(dir), dir, files: (raw.files as string[] | undefined) ?? ["**"], dependsOn: (raw.dependsOn as string[] | undefined) ?? [], tasks, file };
+  return { name: raw.name ?? path.posix.basename(dir), dir, files: raw.files ?? ["**"], dependsOn: raw.dependsOn ?? [], tasks, file };
 }
 
 export function loadWorkspace(root: string): Config {
@@ -101,7 +101,7 @@ export function loadWorkspace(root: string): Config {
   };
 
   const config: Config = new Map();
-  const wsTasks = parseTasks((raw.tasks as Record<string, unknown> | undefined) ?? {});
+  const wsTasks = parseTasks(raw.tasks ?? {});
   for (const [n, t] of wsTasks) config.set(n, t.kind === "command" && !t.cache ? { ...t, inputs: undefined } : t);
   // the projects defining each name, in project order
   const across = new Map<string, string[]>();

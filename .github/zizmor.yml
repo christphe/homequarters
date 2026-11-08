@@ -1,0 +1,3 @@
+# zizmor (pinned in scripts/tools.ts), run offline by `node scripts/lint-repo.ts actions` (decision 0040).
+# No ignore is needed: the matrix values that reach `run:` go through `env:`.
+rules: {}

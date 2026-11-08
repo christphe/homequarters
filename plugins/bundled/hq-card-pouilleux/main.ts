@@ -37,12 +37,13 @@ function register(): void {
 
 const isCard = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
 const cardList = (v: unknown): v is number[] => Array.isArray(v) && v.length <= 128 && v.every(isCard);
+const isSeat = (v: unknown): v is string | null => v === null || typeof v === "string";
 
 /** The count hook's arguments, checked for shape: hq-cards is trusted, but its shape could change. */
 function countArgs(v: unknown): CountArgs {
   const a = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
   const { seats, hands } = a;
-  if (!Array.isArray(seats) || seats.length > 8 || !seats.every((s) => s === null || typeof s === "string")) throw new Error("seats");
+  if (!Array.isArray(seats) || seats.length > 8 || !seats.every(isSeat)) throw new Error("seats");
   if (!Array.isArray(hands) || hands.length > 8 || !hands.every(cardList)) throw new Error("hands");
   return { seats, hands, piles: [], loose: [] }; // Old Maid's count reads only the hands
 }

@@ -132,12 +132,12 @@ func TestAOIEnterLeave(t *testing.T) {
 	a := h.add(1, "member", 2*16, 2*16)
 	b := h.add(2, "member", 58*16, 33*16) // far corner
 	h.run(100 * time.Millisecond)
-	if _, ok := pendingPos(a, 2); ok {
+	if hasPendingPos(a, 2) {
 		t.Fatal("far player must not be in a's interest area")
 	}
 	h.teleport(b, 3*16, 3*16)
 	h.w.flush(a)
-	if _, ok := pendingPos(a, 2); !ok && len(a.out) == 0 {
+	if !hasPendingPos(a, 2) && len(a.out) == 0 {
 		t.Fatal("expected b to enter a's interest area")
 	}
 	// Drain frames and look for b's id in a "w" frame.
@@ -295,7 +295,7 @@ func TestASecondClientThatHasNotConsentedLeavesTheCall(t *testing.T) {
 func TestChainOfAvatarsDoesNotMergeOffice(t *testing.T) {
 	h := newHarness(t)
 	var ps []*Player
-	for i := 0; i < 30; i++ { // 40 px apart: each is within JoinR of its neighbour
+	for i := range 30 { // 40 px apart: each is within JoinR of its neighbour
 		p := h.add(uint32(10+i), "member", 3*16+float64(i)*20, sy)
 		if p.X > 39*16 {
 			break
@@ -336,7 +336,7 @@ func TestBetweenTwoConversationsIsSticky(t *testing.T) {
 	}
 	first := mid.group
 	// Walk to the exact middle, then jitter around it: must not hop.
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		x := sx - 5
 		if i%2 == 0 {
 			x = sx + 5
@@ -444,7 +444,7 @@ func TestSlowClientIsCoalescedNotUnbounded(t *testing.T) {
 	a := h.add(1, "member", sx, sy) // never drained
 	b := h.add(2, "member", sx+200, sy)
 	// b keeps changing direction: every change is a state record clients cannot predict
-	for i := 0; i < 450; i++ {
+	for i := range 450 {
 		dx := int8(1)
 		if i%2 == 1 {
 			dx = -1
@@ -607,7 +607,7 @@ func TestCellCrossingStillNotifiesWithoutStateRecords(t *testing.T) {
 	if countRecords(drain(a), "2") == 0 {
 		t.Fatal("entering someone's area of interest must deliver a fresh state even if b sent no records")
 	}
-	if _, ok := pendingPos(b, 1); ok {
+	if hasPendingPos(b, 1) {
 		t.Fatal("unexpected pending state")
 	}
 }
@@ -800,12 +800,10 @@ func TestEvictRemovesThePlayerEndsTheCallAndTellsTheConnection(t *testing.T) {
 	h.w.handle(ev{kind: evEvict, id: 77}, h.now)
 }
 
-// pendingPos is the state record queued for id in p's next world frame, if any.
-func pendingPos(p *Player, id uint32) (posRec, bool) {
-	if i := p.pendIdx.find(p.pend, id); i >= 0 && !p.pend[i].leave {
-		return p.pend[i].r, true
-	}
-	return posRec{}, false
+// hasPendingPos tells whether a state record for id is queued in p's next world frame.
+func hasPendingPos(p *Player, id uint32) bool {
+	i := p.pendIdx.find(p.pend, id)
+	return i >= 0 && !p.pend[i].leave
 }
 
 func nPendingPos(p *Player) int {

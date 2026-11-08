@@ -38,7 +38,7 @@ export async function setDecks(ctx: RunContext, at: { x: number; y: number }[]) 
   return (await admin(ctx, "PUT", "/api/map", m)).ok;
 }
 
-export const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg) as Promise<Awaited<R>>;
+export const read = <R, A>(u: User, fn: (arg: A) => R, arg?: A): Promise<Awaited<R>> => u.page.evaluate(fn as (arg: unknown) => R, arg);
 export async function viewFrame(u: User): Promise<Frame | null> {
   const el = await u.page.$(MODAL + ' iframe.plugin-view[data-view="table"]');
   return el ? el.contentFrame() : null;
@@ -59,15 +59,15 @@ export const modal = async (u: User) => {
     const m = document.querySelector(sel);
     if (!m) return null;
     return {
-      buttons: [...m.querySelectorAll<HTMLButtonElement>(".plugin-body button, .modal-actions button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-      texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent!.trim()),
+      buttons: [...m.querySelectorAll<HTMLButtonElement>(".plugin-body button, .modal-actions button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+      texts: [...m.querySelectorAll(".plugin-body p")].map((p) => p.textContent.trim()),
     };
   }, MODAL);
   if (!own) return null;
   const f = await viewFrame(u);
   const inView = f ? await f.evaluate(() => ({
-    buttons: [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => ({ text: b.textContent!.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
-    texts: [...document.querySelectorAll(".controls p")].map((p) => p.textContent!.trim()),
+    buttons: [...document.querySelectorAll<HTMLButtonElement>(".controls button")].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute("aria-pressed") === "true" })),
+    texts: [...document.querySelectorAll(".controls p")].map((p) => p.textContent.trim()),
   })).catch(() => null) : null;
   return { buttons: [...own.buttons, ...(inView?.buttons ?? [])], texts: [...own.texts, ...(inView?.texts ?? [])] };
 };
@@ -77,9 +77,9 @@ export const hasButton = async (u: User, text: string) => !!(await modal(u))?.bu
 export async function press(u: User, text: string): Promise<void> {
   for (let tries = 0; ; tries++) {
     try {
-      for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return await h.click();
+      for (const h of await u.page.$$(MODAL + " button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return await h.click();
       const f = await viewFrame(u);
-      if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) {
+      if (f) for (const h of await f.$$(".controls button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) {
         await h.evaluate((b) => b.scrollIntoView({ block: "center" }));
         return await h.click();
       }
@@ -92,13 +92,13 @@ export async function press(u: User, text: string): Promise<void> {
 }
 export async function pressInView(u: User, text: string) {
   const f = (await viewFrame(u))!;
-  for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent!.trim())) === text) return h.click();
+  for (const h of await f.$$(".bar button")) if ((await h.evaluate((b) => b.textContent.trim())) === text) return h.click();
   throw new Error("no view button " + text + " for " + u.name);
 }
 /** Types into a field of the table view's panel, found by its label. */
 export async function type(u: User, label: string, value: string) {
   const f = (await viewFrame(u))!;
-  const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent!.trim().startsWith(label))?.querySelector("input"), label) as ElementHandle<HTMLInputElement>;
+  const input = await f.evaluateHandle((label) => [...document.querySelectorAll(".controls label.field")].find((l) => l.textContent.trim().startsWith(label))?.querySelector("input"), label) as ElementHandle<HTMLInputElement>;
   await input.click({ count: 3 }); // selects what the field holds, so typing replaces it
   await input.type(value);
 }
@@ -153,7 +153,7 @@ export async function countFrames(u: Player) {
   await s.send("Network.enable");
   s.on("Network.webSocketFrameSent", (e) => {
     try {
-      const m = JSON.parse(e.response.payloadData);
+      const m = JSON.parse(e.response.payloadData) as { t?: unknown; pl?: unknown; d: ToServer }; // a game frame; a plugin's (plg) carries its payload in d
       if (m.t === "plg" && m.pl === PLUGIN) u.sent.push(m.d);
     } catch { /* not JSON */ }
   });

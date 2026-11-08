@@ -70,6 +70,7 @@ declare global {
       settings(): Record<string, number>;
       /** In load(): a function other plugins may call (hq.plugins.call). name: ^[a-z][a-zA-Z0-9]{0,31}$, at most
        * 16 hooks. It gets the caller and the arguments (JSON) and returns JSON of at most 4 KB, maybe async. */
+      // oxlint-disable-next-line typescript/no-explicit-any -- public API: plugins type hook(caller, args: TheirShape), which unknown would refuse
       expose(name: string, hook: (caller: Caller, args: any) => unknown): void;
       plugins: {
         /** Calls another plugin's hook. Rejects if that plugin is off, does not expose the hook, throws, takes over

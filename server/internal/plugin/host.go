@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -250,7 +250,7 @@ func (h *Host) Start(name string) error {
 	defer h.mu.Unlock()
 	if err == nil && h.closed {
 		if in.vm != nil {
-			in.vm.Close()
+			_ = in.vm.Close() // freeing the VM of a host that is closing: nothing is left to tell
 		}
 		return ErrNotRunning
 	}
@@ -264,7 +264,7 @@ func (h *Host) Start(name string) error {
 	for id := range h.online {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(a, b int) bool { return ids[a] < ids[b] })
+	slices.Sort(ids)
 	for _, id := range ids {
 		in.presence(h.online[id], true)
 	}
