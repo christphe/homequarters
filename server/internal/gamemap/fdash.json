@@ -1,4 +1,8 @@
 {
+  "files": [
+    "**",
+    "!**/*_test.go"
+  ],
   "dependsOn": [
     {
       "goMod": "go.mod"
@@ -21,6 +25,10 @@
         "/tools/go/golangci-lint/go.mod",
         "/tools/go/golangci-lint/go.sum"
       ],
+      "env": {
+        "GOWORK": "off"
+      },
+      "afterDependsOn": false,
       "tools": [
         [
           "go",
@@ -49,6 +57,10 @@
         "/tools/go/govulncheck/go.mod",
         "/tools/go/govulncheck/go.sum"
       ],
+      "env": {
+        "GOWORK": "off"
+      },
+      "afterDependsOn": false,
       "tools": [
         [
           "go",
@@ -78,6 +90,10 @@
           "./..."
         ]
       ],
+      "env": {
+        "GOWORK": "off"
+      },
+      "afterDependsOn": false,
       "inputs": [
         "/web/dev/**"
       ],

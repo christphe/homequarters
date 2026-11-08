@@ -9,6 +9,9 @@ version: "2"
 run:
   timeout: 10m
   tests: true
+  # fdash lints the server's modules at once, one golangci-lint each (decision 0041); without this, every run but
+  # one stops at once with "parallel golangci-lint is running". The analysis cache is Go's, safe to share.
+  allow-parallel-runners: true
 
 linters:
   default: none

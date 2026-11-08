@@ -99,6 +99,14 @@ test("dependsOn from a go.mod: the projects its replace directives point at, wit
   // order follows them as it follows dependsOn
   assert.deepEqual(c.get("app:t")!.after, ["core:t", "net:t"]);
   assert.deepEqual(c.get("app:build")!.after, ["site:build"]);
+  // afterDependsOn: false keeps a command from waiting for its dependencies' task of the same name, not for its own after
+  const free = tree({
+    "fdash-workspace.json": { projects: ["a", "b"] },
+    "a/fdash.json": { tasks: { t: { run: [["x"]] } } },
+    "b/fdash.json": { dependsOn: ["a"], tasks: { t: { run: [["x"]], afterDependsOn: false, after: ["u"] }, u: { run: [["x"]] } } },
+  });
+  assert.deepEqual(loadWorkspace(free).get("b:t")!.after, ["b:u"]);
+  assert.throws(() => loadWorkspace(tree({ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { tasks: { t: { run: [["x"]], afterDependsOn: "no" } } } })), /a:t: afterDependsOn must be true or false/);
   const bad: [Record<string, unknown>, RegExp][] = [
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] } }, /a\/fdash\.json: dependsOn reads a\/go\.mod, which does not exist/],
     [{ "fdash-workspace.json": { projects: ["a"] }, "a/fdash.json": { dependsOn: [{ goMod: "go.mod" }] }, "a/go.mod": goMod(["b"], "replace b => ../b") }, /a\/go\.mod: b is replaced by \.\.\/b, which is no project \(list b in fdash-workspace\.json\)/],

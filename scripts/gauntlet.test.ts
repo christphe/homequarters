@@ -24,6 +24,8 @@ const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
 /** The projects with integration tests (*.ispec.ts against the testbed), in the workspace's order. */
 /** The server's Go modules, one project each (decision 0041), in the workspace's order: [project, folder]. */
 const GO = [...["auth", "config", "gamemap", "httpapi", "media", "plugin", "store", "testbed", "world"].map((m) => [m, `server/internal/${m}`]), ["server", "server/cmd/homequarters"], ["loadgen", "server/cmd/loadgen"]];
+/** The Go tasks ignore any go.work: one would accept imports a go.mod does not declare (decision 0041). */
+const GOWORK_OFF = JSON.stringify({ GOWORK: "off" });
 const INTEGRATION = ["sdk", "hq-card-lastcard", "hq-card-pouilleux", "hq-cards", "hq-chess", "hq-pets"].map((p) => `${p}:test:integration`);
 
 test("the workspace holds the gauntlet's gates, as the conventional tasks of each project, with their commands", () => {
@@ -39,7 +41,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     [`${p}:test:${tier}`, p === "sdk" ? "plugins/sdk" : `plugins/bundled/${p}`, `pnpm exec vitest run --project ${tier === "unit" ? p : `${p}:integration`}`, false, false, tier === "unit" ? "{}" : '{"HQ_BIN_REPO_ONLY":"1"}'];
   const fixtures = ["critters/tsconfig.json", "drawn-pet/tsconfig.json", "drawn-pet/public/tsconfig.json", "drawn-sheet/public/tsconfig.json", "ui-demo/tsconfig.json", "ui-demo/public/tsconfig.json", "ui-demo/public/views/tsconfig.json"];
   assert.deepEqual(gates.map(row), [
-    ...GO.map(([p, dir]) => [`${p}:lint`, dir, "go tool -modfile=../../../tools/go/golangci-lint/go.mod golangci-lint run ./...", false, false, "{}"]),
+    ...GO.map(([p, dir]) => [`${p}:lint`, dir, "go tool -modfile=../../../tools/go/golangci-lint/go.mod golangci-lint run ./...", false, false, GOWORK_OFF]),
     ["web:lint", "web", ["pnpm exec tsc --noEmit", "pnpm exec tsc -p tsconfig.test.json --noEmit", "pnpm exec tsc -p tsconfig.sdk.json", ox("../", "src test")].join(" && "), false, false, "{}"],
     ["site:lint", "site", `pnpm exec tsc --noEmit && ${ox("../")}`, false, false, "{}"],
     ["e2e:lint", "e2e", ["pnpm exec tsc --noEmit", ...fixtures.map((f) => tsc("fixtures/plugins/installed/" + f)), ox("../")].join(" && "), false, false, "{}"],
@@ -56,10 +58,10 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     ...PLUGIN_E2E.map((p) => [`${p}:lint`, `plugins/e2e/${p}`, `${tsc("tsconfig.json")} && ${ox("../../../")}`, false, false, "{}"]),
     // the repository-wide linters (scripts/lint-repo.ts), workspace tasks run from the root
     ...["actions", "secrets", "shell", "docker", "go-versions"].map((c) => [`lint:${c}`, ".", `node scripts/lint-repo.ts ${c}`, false, false, "{}"]),
-    ...GO.filter(([, dir]) => dir.startsWith("server/cmd/")).map(([p, dir]) => [`${p}:build`, dir, "go build -o ../../../bin/ .", false, false, "{}"]),
+    ...GO.filter(([, dir]) => dir.startsWith("server/cmd/")).map(([p, dir]) => [`${p}:build`, dir, "go build -o ../../../bin/ .", false, false, GOWORK_OFF]),
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
-    ...GO.map(([p, dir]) => [`${p}:test:unit`, dir, "go test -race -count=1 ./...", false, false, "{}"]),
+    ...GO.map(([p, dir]) => [`${p}:test:unit`, dir, "go test -race -count=1 ./...", false, false, GOWORK_OFF]),
     ["web:test:unit", "web", "pnpm exec vitest run", false, false, "{}"],
     ["site:test:unit", "site", "node check.ts", false, false, "{}"],
     ["e2e:test:unit", "e2e", "pnpm exec vitest run", false, false, "{}"],

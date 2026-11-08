@@ -16,7 +16,7 @@ Every change runs the [gauntlet loop](gauntlet.md): written acceptance criteria,
 ~~~bash
 pnpm install                     # once, at the root: one pnpm workspace for every TypeScript project, one lockfile
 ./scripts/dev.sh                 # full local stack
-cd server && go tool -modfile=../tools/go/golangci-lint/go.mod golangci-lint run ./... && go test -race ./...   # server lint (decision 0040) and tests
+cd server/internal/world && go tool -modfile=../../../tools/go/golangci-lint/go.mod golangci-lint run ./... && go test -race ./...   # one Go library: lint (decision 0040) and tests; each library is a module (decision 0041)
 cd web && pnpm exec tsc --noEmit                   # type-check the client
 cd web && pnpm exec vitest run                     # the client's unit and component tests (Vitest on jsdom)
 node tools/fdash/cli.ts run lint test:unit         # every project's lint and unit tests, skipping what already passed
@@ -54,8 +54,8 @@ A new variant is a new function (`func Studio() *Map { return wideOffice(wideLay
 
 **Checking it.**
 
-1. `cd server && go test ./internal/gamemap`: every template compiles, every area and desk seat can be walked to from the spawn; add the new template's counts to `TestWideTemplatesMatchThePlans`.
-2. `HQ_UPDATE_FIXTURE=1 go test ./internal/gamemap` writes `web/dev/<id>-map.json`; register the fixture in `web/dev/art-preview.ts` and `art-preview.html` like `manor`.
+1. `cd server/internal/gamemap && go test .`: every template compiles, every area and desk seat can be walked to from the spawn; add the new template's counts to `TestWideTemplatesMatchThePlans`.
+2. `HQ_UPDATE_FIXTURE=1 go test .` (in the same folder) writes `web/dev/<id>-map.json`; register the fixture in `web/dev/art-preview.ts` and `art-preview.html` like `manor`.
 3. `cd web && pnpm exec vite --port 5180`, open `/dev/art-preview.html` and look at the map; `node e2e/export-art.ts` (with `ART_PREVIEW_URL` pointing there) writes `site/assets/map-<id>.png` once you add its `save` line there. Zoom into the result: desks, chairs, doors and corners are where the plan says.
 4. Apply it from Admin > Office in a dev stack (`scripts/dev.sh`) and walk around; the `templates` browser scenario covers switching.
 

@@ -29,6 +29,9 @@ export type Command = {
    * the same file or project; once the config is finished, the commands they stand for, with those coming
    * from groups and (in a workspace) from the projects it depends on. */
   after: string[];
+  /** In a workspace: whether it also starts after the same task of the projects it depends on (default true).
+   * false for a task that gains nothing from waiting, such as tests that build what they test themselves. */
+  afterDependsOn: boolean;
   /** Path patterns (relative to the root, a leading "!" excludes) of the files the command produces: part of
    * the cache key, stored with a pass and restored on a hit. */
   outputs: string[];
@@ -41,7 +44,7 @@ export type Config = Map<string, Task>;
 
 export const CONFIG_FILE = "fdash.json";
 
-const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache", "after", "outputs"]);
+const COMMAND_KEYS = new Set(["cwd", "run", "env", "failOnOutput", "args", "inputs", "envKeys", "tools", "items", "cache", "after", "afterDependsOn", "outputs"]);
 const GROUP_KEYS = new Set(["tasks", "jobs", "after"]);
 
 function parseAfter(name: string, v: unknown): string[] {
@@ -71,7 +74,7 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
   if (!Array.isArray(t.run) || t.run.length === 0 || !t.run.every(isArgv)) throw new Error(`${name}: run must be a non-empty list of steps, each a non-empty list of strings`);
   if (t.cwd !== undefined && typeof t.cwd !== "string") throw new Error(`${name}: cwd must be a string`);
   if (t.env !== undefined && !(isObject(t.env) && Object.values(t.env).every((s) => typeof s === "string"))) throw new Error(`${name}: env must map names to strings`);
-  for (const k of ["failOnOutput", "args", "cache"] as const) if (t[k] !== undefined && typeof t[k] !== "boolean") throw new Error(`${name}: ${k} must be true or false`);
+  for (const k of ["failOnOutput", "args", "cache", "afterDependsOn"] as const) if (t[k] !== undefined && typeof t[k] !== "boolean") throw new Error(`${name}: ${k} must be true or false`);
   if (t.envKeys !== undefined && !isStrings(t.envKeys)) throw new Error(`${name}: envKeys must be a list of names`);
   if (t.tools !== undefined && !(Array.isArray(t.tools) && t.tools.every(isArgv))) throw new Error(`${name}: tools must be a list of commands, each a non-empty list of strings`);
   if (t.outputs !== undefined && !(isStrings(t.outputs) && t.outputs.every((p) => p.replace(/^!/, "") !== ""))) throw new Error(`${name}: outputs must be a list of path patterns`);
@@ -101,6 +104,7 @@ function parseCommand(name: string, t: Record<string, unknown>): Command {
     tools: t.tools ?? [],
     items,
     after: parseAfter(name, t.after),
+    afterDependsOn: t.afterDependsOn !== false,
     outputs: t.outputs ?? [],
   };
 }

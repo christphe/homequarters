@@ -13,7 +13,7 @@ test("parseConfig: defaults and order", () => {
     a: { cwd: "w", run: [["y", "1"], ["z"]], env: { K: "v" }, failOnOutput: true, args: true },
   }));
   assert.deepEqual([...c.keys()], ["b", "g", "h", "a"]);
-  assert.deepEqual(c.get("b"), { kind: "command", name: "b", cwd: ".", run: [["x"]], env: {}, failOnOutput: false, args: false, cache: true, inputs: undefined, envKeys: [], tools: [], items: undefined, after: [], outputs: [] });
+  assert.deepEqual(c.get("b"), { kind: "command", name: "b", cwd: ".", run: [["x"]], env: {}, failOnOutput: false, args: false, cache: true, inputs: undefined, envKeys: [], tools: [], items: undefined, after: [], afterDependsOn: true, outputs: [] });
   assert.deepEqual(c.get("g"), { kind: "group", name: "g", tasks: ["b", "a"], jobs: 2, after: [] });
   assert.equal((c.get("h") as Group).jobs, undefined);
   const a = c.get("a") as Command;

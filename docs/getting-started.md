@@ -38,7 +38,7 @@ Open the app in **two different browsers or profiles** (a session is stored in a
 
 ~~~bash
 # Go: world simulation, collisions, access rules, proximity groups, backpressure
-cd server && go test -race ./...
+node tools/fdash/cli.ts run test:unit   # every project's unit tests, among them the race tests of each Go module of the server (one per library: cd server/internal/world && go test -race ./... for one)
 
 # Every TypeScript project at once: one install at the root (one pnpm workspace, one lockfile)
 pnpm install

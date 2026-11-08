@@ -20,3 +20,7 @@ desktop/src-tauri/gen
 # Vitest reports
 .vitest/
 .tools/
+
+# a go.work would let the server's modules import what their go.mod does not declare (decision 0041): never committed
+go.work
+go.work.sum

@@ -187,7 +187,8 @@ export function loadWorkspace(root: string): Config {
         if (config.get(`${p.name}:${a}`)?.project !== p.name) throw new Error(`${t.name}: after names ${a}, which is no task of ${p.name}`);
         return `${p.name}:${a}`;
       });
-      t.after = [...own, ...nearest(p, local).filter((n) => !own.includes(n))];
+      const deps = t.kind === "command" && !t.afterDependsOn ? [] : nearest(p, local);
+      t.after = [...own, ...deps.filter((n) => !own.includes(n))];
     }
   }
   return finishConfig(config);
