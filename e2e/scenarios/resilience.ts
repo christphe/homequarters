@@ -1,10 +1,11 @@
-// Reconnection, persistence across a server restart, and hostile/invalid client input.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, rtpBytes, type RunContext } from "../lib.ts";
+// Reconnection after a WebSocket drop: same place, same call, audio still flowing through the real SFU.
+// The server's side of resilience is Go tests in server/internal/httpapi/resilience_test.go: an input flood
+// (TestInputFloodCannotOutrunTheServerSpeed), the 1009 close and a plain 401 on /ws
+// (TestOversizedFrameClosesWith1009AndNoSessionIs401), positions and sessions across a restart
+// (TestPositionAndSessionSurviveARestart).
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, pos, st, sleep, rtpBytes } from "../lib.ts";
 
-/** The interval the flood keeps on the page's window. */
-type FloodWindow = { __flood: ReturnType<typeof setInterval> };
-
-export async function run(ctx: RunContext): Promise<boolean> {
+export async function run(): Promise<boolean> {
   resetChecks();
   const browser = await launch();
   try {
@@ -32,48 +33,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("audio keeps flowing after the WebSocket reconnect", rb1 > rb0, rb0 + " -> " + rb1);
     check("remote player still sees the reconnected player", await b.page.evaluate((id) => window.__hq.view.debugEntities().some((e) => e.id === id), a.id));
 
-    // --- Hostile input: speed cheating attempts are inert (server only takes a direction), invalid frames close the socket
-    await walkTo(a, 6 * 16 + 8, 20 * 16 + 8);
-    const s0 = await pos(a);
-    await a.page.evaluate(() => { const s = window.__hq.session.socket!; (window as unknown as FloodWindow).__flood = setInterval(() => { for (let i = 0; i < 20; i++) s.send({ t: "in", s: 5000 + i, x: 1, y: 0, speed: 9999 }); }, 20); });
-    await sleep(2000);
-    await a.page.evaluate(() => { clearInterval((window as unknown as FloodWindow).__flood); window.__hq.session.socket!.send({ t: "in", s: 9999, x: 0, y: 0 }); });
-    await sleep(600);
-    // The flood may trip the rate limit and close the socket; ask again until the reconnected session answers.
-    const loc = await waitFor(async () => {
-      await a.page.evaluate((id) => window.__hq.session.locate(id), a.id);
-      return a.page.evaluate(() => window.__hq.view.locate);
-    }, { timeout: 30000, every: 1000, what: "server position" });
-    const dist = Math.hypot(loc!.x - s0.x, loc!.y - s0.y);
-    check("flooding inputs cannot make the server move a player faster than the configured speed", dist <= 72 * 2.9, dist.toFixed(1) + " px in ~2.6s (limit ~209)");
-    const d = await joinAs(browser, "Rd" + t); // throwaway: a 2nd socket with the same session replaces the 1st (latest wins)
-    const closed = await d.page.evaluate(async () => {
-      const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-      const done = new Promise((res) => { ws.onclose = (e) => res(e.code); });
-      await new Promise((r) => (ws.onopen = r));
-      ws.send("x".repeat(4000)); // over the 2 KB frame limit
-      return Promise.race([done, new Promise((r) => setTimeout(() => r("open"), 3000))]);
-    });
-    check("oversized WebSocket frames close the connection", closed === 1009, "close code " + closed);
-    const noAuth = await fetch(process.env.HQ_APP!.replace("http", "ws").replace("ws://", "http://") + "/ws").then((r) => r.status);
-    check("unauthenticated /ws is rejected", noAuth === 401, "status " + noAuth);
-
-    // --- Persistence across a server restart
-    const c = await joinAs(browser, "Rc" + t);
-    await walkTo(c, 20 * 16 + 8, 30 * 16 + 8);
-    const saved = await pos(c);
-    const cookies = await c.ctx.cookies();
-    await c.page.close();
-    await waitFor(async () => (await (await fetch(process.env.HQ_API + "/metrics")).text()).includes("hq_players 3") || true, { timeout: 500 });
-    await sleep(11500); // reconnect grace (10 s) so the last position is flushed to SQLite
-    await ctx.stopServer();
-    await ctx.startServer();
-    check("session cookie survives a server restart (sessions are persisted)", cookies.some((k) => k.name === "hq_session"));
-    const c2 = await joinAs(browser, "Rc" + t, { cookie: cookies.find((k) => k.name === "hq_session")!.value });
-    const back = await pos(c2);
-    check("player re-enters at the persisted position after a restart", Math.hypot(back.x - saved.x, back.y - saved.y) < 3, JSON.stringify([saved, back]));
-
-    const errs = [a, b, c2].flatMap((u) => u.logs).filter((l) => !/WebSocket|ERR_|closed|1009|net::/.test(l));
+    const errs = [a, b].flatMap((u) => u.logs).filter((l) => !/WebSocket|ERR_|closed|net::/.test(l));
     check("no unexpected console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
   } finally {
     await browser.close();
