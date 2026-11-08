@@ -19,6 +19,8 @@ Generated on 2026-09-29 from `pnpm licenses list --prod` and the Go module cache
 
 Development-only addition (2026-10-01): `@types/node` 24.19.0 and its `undici-types` dependency are MIT-licensed; neither ships in the web bundle. Licenses were checked in the installed package metadata.
 
+Development-only test tools (2026-11-08, [decision 0038](docs/decisions/0038-pnpm-workspace-vitest.md)): Vitest 5.1.0, jsdom 31.0.0, `@testing-library/react` 16.3.3, `@testing-library/dom` 10.4.2 and `@testing-library/user-event` 14.6.8 are MIT-licensed; they run the client's unit and component tests and none ships in the web bundle or the Docker image. Licenses were checked in the installed package metadata.
+
 ## Server (Go modules linked into the binary)
 
 | Module | Version | License |
