@@ -179,7 +179,10 @@ try {
     console.log(`\n== ${name} ==`);
     current = name;
     const mod = (await import(`./scenarios/${name}.ts`)) as Scenario;
+    const t0 = Date.now();
     const passed = await mod.run(ctx);
+    // what e2e/shards.ts's DURATIONS are read from (a CI shard prints its output whole, at the end)
+    console.log(`# ${name} took ${Math.round((Date.now() - t0) / 1000)} s`);
     outcome.set(name, passed);
     ok = ok && passed;
   }

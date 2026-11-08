@@ -9,7 +9,8 @@ export const ALL = ["proximity", "consent", "rooms", "editor", "social", "admin"
 export const PROJECTS = ["hq-chess-e2e", "hq-cards-e2e", "hq-card-pouilleux-e2e", "hq-card-lastcard-e2e"];
 
 // Seconds per scenario (and per e2e project), measured in CI run 40192645010 (GitHub ubuntu-latest). Refresh them when a
-// scenario grows; a scenario missing here counts as UNKNOWN seconds.
+// scenario grows or checks move out (each CI shard prints "# <scenario> took N s"); a scenario missing here counts as
+// UNKNOWN seconds.
 export const DURATIONS: Record<string, number> = {
   proximity: 39, consent: 43, rooms: 110, editor: 56, social: 71, admin: 32, plugins: 76, a11y: 72,
   security: 37, resilience: 79, features: 101, spotlight: 58, mute: 56, movement: 80, presence: 80, offices: 187, idle: 41,
