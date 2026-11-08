@@ -33,7 +33,7 @@ export async function run(): Promise<boolean> {
     const host = await joinAs(browser, "Dev" + tag);
     const visitor = await joinAs(browser, "Vis" + tag);
     // capture was allowed before, so the browser shows device ids (what a returning person has)
-    await host.ctx.overridePermissions(APP, ["camera", "microphone"]);
+    await host.ctx.setPermission(APP, { permission: { name: "camera" }, state: "granted" }, { permission: { name: "microphone" }, state: "granted" });
     const sinkFailures: string[] = [];
     host.page.on("console", (m) => { if (/sink id/i.test(m.text())) sinkFailures.push(m.text()); });
 
