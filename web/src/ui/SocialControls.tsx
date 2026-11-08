@@ -110,7 +110,7 @@ export function SocialControls() {
   );
   return (
     <>
-      {barUp && createPortal(reactions, slot!)}
+      {barUp && createPortal(reactions, slot)}
       <div className={"social-controls" + (compact && open ? " open" : "") + (barUp ? " bar-up" : "")} role="region" aria-label={t("emote.title")}>
         {compact && <button className="chip reaction-toggle" aria-expanded={open} aria-label={t("emote.title")} title={t("emote.title")} onClick={() => setOpen(!open)}>😀</button>}
         {(!compact || open) && !barUp && reactions}

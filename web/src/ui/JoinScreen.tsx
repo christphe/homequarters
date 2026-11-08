@@ -65,7 +65,7 @@ function ProfileForm() {
   const signup = useStore((s) => s.auth.signup);
   const invite = new URLSearchParams(location.search).get("invite") ?? "";
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!name.trim() || busy) return;
     setBusy(true);

@@ -154,7 +154,7 @@ function Chat({ scope, setScope }: { scope: Scope; setScope: (s: Scope) => void 
     end.current?.scrollIntoView({ block: "end" });
   }, [msgs.length, scope]);
   const name = (id: number) => roster.get(id)?.n ?? "?";
-  const send = (e: React.FormEvent) => {
+  const send = (e: React.SubmitEvent) => {
     e.preventDefault();
     const v = text.trim();
     if (!v) return;
