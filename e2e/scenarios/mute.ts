@@ -3,7 +3,7 @@
 // stops, they are told who did it; nothing can be turned on remotely and nobody outside the call can do it.
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, lk, rtpPackets, type User } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, lk, rtpPackets, type RtpStats, type User } from "../lib.ts";
 import type { MediaManager } from "../../web/src/media/MediaManager.ts";
 
 /** livekit-client's Room, which MediaManager keeps private. */
@@ -88,7 +88,7 @@ export async function run(): Promise<boolean> {
     const p0 = await rtpPackets(bruno, "audio");
     await sleep(2000);
     const p1 = await rtpPackets(bruno, "audio");
-    const diag = p1 - p0 <= 2 ? "" : JSON.stringify({ sfu: await sfuTracks(room, ana.id), ana: await ana.page.evaluate(() => [...(window.__hq.media as unknown as Media).room!.localParticipant.trackPublications.values()].map((p) => p.source + ":" + p.trackSid + ":" + p.isMuted)), bruno: await bruno.page.evaluate(async () => { const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager; const pc = pm.subscriber?.pc ?? pm.publisher.pc; const out: string[] = []; (await pc.getStats()).forEach((s) => { if (s.type === "inbound-rtp") out.push(s.kind + ":" + s.trackIdentifier + ":" + s.packetsReceived); }); return out; }) });
+    const diag = p1 - p0 <= 2 ? "" : JSON.stringify({ sfu: await sfuTracks(room, ana.id), ana: await ana.page.evaluate(() => [...(window.__hq.media as unknown as Media).room!.localParticipant.trackPublications.values()].map((p) => p.source + ":" + p.trackSid + ":" + p.isMuted)), bruno: await bruno.page.evaluate(async () => { const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager; const pc = pm.subscriber?.pc ?? pm.publisher.pc; const out: string[] = []; (await pc.getStats()).forEach((s: RtpStats) => { if (s.type === "inbound-rtp") out.push(s.kind + ":" + s.trackIdentifier + ":" + s.packetsReceived); }); return out; }) });
     check("no more of Ana's audio reaches Bruno", p1 - p0 <= 2, `${p1 - p0} packets in 2 s ${diag}`);
     await waitFor(() => ana.page.evaluate(() => (window as unknown as MuteWindow).__micTrack.readyState === "ended" && !window.__hq.state.mic), { timeout: 10000, what: "Ana's microphone released" });
     check("Ana's microphone capture is released (track ended) and her mic shows off", true, await localTrackState(ana, "microphone"));

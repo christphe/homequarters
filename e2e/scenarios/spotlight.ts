@@ -1,5 +1,5 @@
 // A real speaker and listeners in different private calls: the extra SFU room permits publishing only for the speaker.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, lkParticipants, type User, type RunContext } from "../lib.ts";
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, lkParticipants, type RtpStats, type User, type RunContext } from "../lib.ts";
 
 const state = (u: User) => u.page.evaluate(() => window.__hq.state.spotlight);
 const rtp = (u: User, kind: "audio" | "video") => u.page.evaluate(async (kind) => {
@@ -7,7 +7,7 @@ const rtp = (u: User, kind: "audio" | "video") => u.page.evaluate(async (kind) =
   const pm = (window.__hq.spotlightMedia as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
   const pc = pm.subscriber?.pc ?? pm.publisher.pc;
   let bytes = 0;
-  (await pc.getStats()).forEach((s) => { if (s.type === "inbound-rtp" && s.kind === kind) bytes += s.bytesReceived; });
+  (await pc.getStats()).forEach((s: RtpStats) => { if (s.type === "inbound-rtp" && s.kind === kind) bytes += s.bytesReceived ?? 0; });
   return bytes;
 }, kind);
 
@@ -32,7 +32,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await speaker.page.evaluate(() => window.__hq.session.setConsent(true));
     // Stand still ON the pad (tile 34,19); a slow CI browser would otherwise walk past it.
     await walkTo(speaker, 34 * 16 + 8, 19 * 16 + 8);
-    await waitFor(async () => (await state(speaker))?.state === "live" && (await state(listener))?.state === "live", { timeout: 45000, what: "spotlight speaker and listener connected" }).catch(async (e) => {
+    await waitFor(async () => (await state(speaker))?.state === "live" && (await state(listener))?.state === "live", { timeout: 45000, what: "spotlight speaker and listener connected" }).catch(async (e: Error) => {
       const diag = await speaker.page.evaluate(() => ({ pos: window.__hq.view.position(), spot: window.__hq.state.spotlight, consent: window.__hq.state.consent, conn: window.__hq.state.conn, fps: window.__hq.view.stats.fps }));
       const ldiag = await listener.page.evaluate(() => ({ spot: window.__hq.state.spotlight, conv: window.__hq.state.conv?.state }));
       throw new Error(e.message + " speaker=" + JSON.stringify(diag) + " listener=" + JSON.stringify(ldiag));
@@ -40,7 +40,7 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("stepping onto the pad goes on air only with consent", (await state(speaker))!.me === true);
     check("listener keeps their isolated private call", await listener.page.evaluate((r) => window.__hq.media.currentRoom === r && window.__hq.state.conv!.state === "live", privateRoom));
     const room = await speaker.page.evaluate(() => window.__hq.spotlightMedia.currentRoom);
-    const claims = await listener.page.evaluate(() => JSON.parse(atob((window as unknown as { __spotInfo: { token: string } }).__spotInfo.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))));
+    const claims = await listener.page.evaluate(() => JSON.parse(atob((window as unknown as { __spotInfo: { token: string } }).__spotInfo.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { video: { canPublish?: boolean; canSubscribe?: boolean; room?: string } });
     check("the audience token is subscribe-only and scoped to the broadcast", claims.video.canPublish === false && claims.video.room === room && claims.video.canSubscribe === true);
     await waitFor(async () => await rtp(listener, "audio") > 0, { timeout: 15000, what: "real broadcast audio RTP" });
     check("a listener in a private room receives broadcast audio RTP", await rtp(listener, "audio") > 0);

@@ -83,7 +83,8 @@ export async function waitFor<T>(fn: () => T | Promise<T>, { timeout = 15000, ev
 }
 
 /** Opens an isolated browser context (own cookies) and joins as name. */
-export async function joinAs(browser: Browser, name: string, { path = "/", avatar = null as object | null, viewport = (process.env.E2E_VIEWPORT === "small" ? { width: 800, height: 450 } : { width: 1280, height: 720 }) as Viewport, cookie = null as string | null } = {}): Promise<User> {
+type JoinOptions = { path?: string; avatar?: object | null; viewport?: Viewport; cookie?: string | null };
+export async function joinAs(browser: Browser, name: string, { path = "/", avatar = null, viewport = process.env.E2E_VIEWPORT === "small" ? { width: 800, height: 450 } : { width: 1280, height: 720 }, cookie = null }: JoinOptions = {}): Promise<User> {
   // CI runners render in software (SwiftShader) on 2 cores; a smaller canvas keeps the browsers near 30 fps.
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
@@ -136,7 +137,7 @@ export async function walkTo(u: User, tx: number, ty: number, { timeout = 60000 
   if (!prev.has(key(goal[0], goal[1]))) throw new Error("no path");
   const t0 = Date.now();
   for (const [cx, cy] of path.slice(1)) {
-    await steer(u, cx * T + 8, cy * T + 8, Math.max(1000, timeout - (Date.now() - t0)), "walk timeout to " + [cx, cy] + " (" + u.name + ")");
+    await steer(u, cx * T + 8, cy * T + 8, Math.max(1000, timeout - (Date.now() - t0)), "walk timeout to " + cx + "," + cy + " (" + u.name + ")");
   }
   // land exactly at the requested pixel inside the goal tile
   await steer(u, tx, ty, 5000, "landing timeout (" + u.name + ")").catch(() => {});
@@ -193,15 +194,22 @@ function jwt(video: object) {
   const body = b({ alg: "HS256", typ: "JWT" }) + "." + b({ iss: KEY, nbf: now - 10, exp: now + 60, video });
   return body + "." + crypto.createHmac("sha256", SECRET).update(body).digest("base64url");
 }
-export async function lk(method: string, body: object, room?: string) {
+/** The fields of LiveKit's RoomService answers the suite reads; an error answer carries `error` and `text` instead. */
+export type LkTrack = { type?: string; source?: string; muted?: boolean; layers?: unknown[]; mimeType?: string; width?: number; height?: number };
+export type LkParticipant = { identity: string; tracks?: LkTrack[] };
+export type LkReply = { rooms?: { name: string }[]; participants?: LkParticipant[]; tracks?: LkTrack[]; error?: number; text?: string };
+export async function lk(method: string, body: object, room?: string): Promise<LkReply> {
   const r = await fetch(LK + "/twirp/livekit.RoomService/" + method, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt({ roomAdmin: true, roomList: true, room }) },
     body: JSON.stringify(body),
   });
-  return r.ok ? r.json() : { error: r.status, text: await r.text() };
+  return r.ok ? ((await r.json()) as LkReply) : { error: r.status, text: await r.text() };
 }
-export const lkParticipants = async (room: string): Promise<string[]> => ((await lk("ListParticipants", { room }, room)).participants ?? []).map((p: { identity: string }) => p.identity);
+export const lkParticipants = async (room: string): Promise<string[]> => ((await lk("ListParticipants", { room }, room)).participants ?? []).map((p) => p.identity);
+
+/** The fields of an RTCStatsReport entry the RTP counters read (inbound-rtp and outbound-rtp entries). */
+export type RtpStats = { type: string; kind?: string; trackIdentifier?: string; packetsReceived?: number; bytesReceived?: number; bytesSent?: number };
 
 /** Sum of RTP bytes on the LiveKit peer connection (single-PC mode: publisher.pc carries both directions). */
 /** Audio or video packets received so far: a stream that still flows, even silent (Opus sends a packet
@@ -211,8 +219,8 @@ export const rtpPackets = (u: User, kind: "audio" | "video") =>
     const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
     const pc = pm.subscriber?.pc ?? pm.publisher.pc;
     let total = 0;
-    (await pc.getStats()).forEach((s) => {
-      if (s.kind === kind && s.type === "inbound-rtp") total += s.packetsReceived;
+    (await pc.getStats()).forEach((s: RtpStats) => {
+      if (s.kind === kind && s.type === "inbound-rtp") total += s.packetsReceived ?? 0;
     });
     return total;
   }, kind);
@@ -222,8 +230,8 @@ export const rtpBytes = (u: User, dir: "inbound" | "outbound", kind: "audio" | "
     const pm = (window.__hq.media as unknown as { room: { engine: { pcManager: { subscriber?: { pc: RTCPeerConnection }; publisher: { pc: RTCPeerConnection } } } } }).room.engine.pcManager;
     const pc = pm.subscriber?.pc ?? pm.publisher.pc;
     let total = 0;
-    (await pc.getStats()).forEach((s) => {
-      if (s.kind === kind && s.type === (dir === "inbound" ? "inbound-rtp" : "outbound-rtp")) total += dir === "inbound" ? s.bytesReceived : s.bytesSent;
+    (await pc.getStats()).forEach((s: RtpStats) => {
+      if (s.kind === kind && s.type === (dir === "inbound" ? "inbound-rtp" : "outbound-rtp")) total += (dir === "inbound" ? s.bytesReceived : s.bytesSent) ?? 0;
     });
     return total;
   }, dir, kind);
