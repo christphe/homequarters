@@ -58,36 +58,6 @@ async function say(m: Member, ...msgs: unknown[]): Promise<void> {
   }
 }
 
-/** Joins the first member and keeps the administrator's session cookie (the client does not expose it),
- * to call the admin API the testbed client has no method for. */
-async function joinAdmin(bed: Testbed, name: string): Promise<{ ann: Member; cookie: string }> {
-  const real = globalThis.fetch;
-  let cookie = "";
-  globalThis.fetch = (async (...a: Parameters<typeof fetch>) => {
-    const r = await real(...a);
-    const url = typeof a[0] === "string" ? a[0] : a[0] instanceof URL ? a[0].href : a[0].url;
-    if (url.endsWith("/api/join")) cookie = r.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-    return r;
-  }) as typeof fetch;
-  try {
-    const ann = await bed.join(name);
-    assert.ok(cookie, "the join gave no session cookie");
-    return { ann, cookie };
-  } finally {
-    globalThis.fetch = real;
-  }
-}
-
-/** What Administration > Plugins does: PUT /api/admin/plugins/{name}/settings. */
-async function setSetting(bed: Testbed, cookie: string, key: string, value: number): Promise<void> {
-  const r = await fetch(`${bed.url}/api/admin/plugins/${PETS}/settings`, {
-    method: "PUT",
-    headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ key, value }),
-  });
-  assert.equal(r.status, 200, `setting ${key}=${value}: ${r.status} ${await r.text()}`);
-}
-
 test("it survives a full office arriving", async () => {
   const bed = await open();
   const three = `[[0,"","a1"],[3,"ff8800","b2"],[8,"","c3"]]`;
@@ -164,7 +134,7 @@ test("it names pets: trimmed, one line, at most 24 characters", async () => {
 
 test("the limit follows the office's setting", async () => {
   const bed = await open();
-  const { ann, cookie } = await joinAdmin(bed, "Ann");
+  const ann = await bed.join("Ann");
   const bob = await bed.join("Bob");
   await until("the default limit", () => limitOf(bob) === 3);
   await say(bob, { t: "add", k: 1 }, { t: "add", k: 2 }, { t: "add", k: 3 }, { t: "limit", n: 8 }, { t: "add", k: 4 });
@@ -172,10 +142,10 @@ test("the limit follows the office's setting", async () => {
   await sleep(300); // the refused fourth: a bounded wait, nothing is expected
   assert.equal(limitOf(bob), 3, "3 by default, and a page cannot change it");
   assert.equal(petsOf(bob, bob.id).length, 3);
-  await setSetting(bed, cookie, "limit", 1); // what Administration > Plugins does
+  await bed.setSetting(PETS, "limit", 1); // what Administration > Plugins does
   await until("members told the new limit", () => limitOf(bob) === 1);
   await until("a lower limit shows only the first pet", () => petsOf(bob, bob.id).length === 1);
-  await setSetting(bed, cookie, "limit", 4);
+  await bed.setSetting(PETS, "limit", 4);
   await until("raised again, his three pets come back", () => limitOf(ann) === 4 && petsOf(bob, bob.id).length === 3);
   assert.deepEqual(await bed.errors(), {});
 });
@@ -184,11 +154,11 @@ test("the limit follows the office's setting", async () => {
 // may go over the 4 KB a plugin message carries (counted in UTF-8 bytes), or the plugin would crash.
 test("messages stay under the limit in any script", async () => {
   const bed = await open();
-  const { ann, cookie } = await joinAdmin(bed, "m1");
+  const ann = await bed.join("m1");
   const crowd = [ann, ...(await Promise.all(Array.from({ length: 59 }, (_, i) => bed.join(`m${i + 2}`))))];
   const name = "猫".repeat(24);
   const eight = Array.from({ length: 8 }, (_, k) => `[${k},"ff8800","p${k}","${name}"]`).join(",");
-  await setSetting(bed, cookie, "limit", 8);
+  await bed.setSetting(PETS, "limit", 8);
   const seed: Record<string, string> = {};
   for (const m of crowd) seed[`p:${m.id}`] = `[${eight}]`;
   await bed.seedKv(PETS, seed);

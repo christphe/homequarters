@@ -30,6 +30,8 @@ export interface Testbed {
   placeObject(kind: string, at: Tile): Promise<void>;
   /** Starts or stops a plugin through the admin API. */
   setPlugin(name: string, enabled: boolean): Promise<void>;
+  /** Sets one of a plugin's settings (from its plugin.json) as Administration > Plugins does; members are told at once. */
+  setSetting(plugin: string, key: string, value: number): Promise<void>;
   /** A plugin's stored data as the database holds it now (writes reach it a few milliseconds after `hq.kv.set`: see `waitKv`). */
   kv(plugin: string): Promise<Record<string, string>>;
   /** Polls `kv` until `pred` holds; rejects after `timeoutMs` (default: the bed's `timeoutMs`) with the last data read. */
@@ -288,6 +290,9 @@ export async function testbed(o: { plugins: string[]; static?: string; timeoutMs
       await must(200, "PUT", "/api/map", map, cookie);
     },
     setPlugin,
+    async setSetting(plugin, key, value) {
+      await must(200, "PUT", `/api/admin/plugins/${encodeURIComponent(plugin)}/settings`, { key, value }, admin());
+    },
     kv,
     async waitKv(plugin, pred, timeoutMs) {
       const deadline = Date.now() + (timeoutMs ?? waitMs);

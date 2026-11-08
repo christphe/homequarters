@@ -246,6 +246,20 @@ test("outputs: a record whose outputs are not in the cache is a miss, with a war
   assert.equal((await go(root, tasks)).results[0].warn, undefined);
 });
 
+test("outputs: a pass recorded before the command had outputs is a miss, with a warning; another miss is not", async () => {
+  const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
+  // the record a cache made before outputs existed: the same command, without outputs in its key
+  assert.deepEqual(lines((await go(root, { build: producing({ outputs: [] }) })).results), ["PASS build"]);
+  const tasks = { build: producing() };
+  const r = (await go(root, tasks)).results;
+  assert.deepEqual([lines(r), r[0].warn, runs(root, "build")], [["PASS build"], "a pass recorded before outputs were cached", 2]);
+  assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED build"]);
+  // inputs that never passed: an ordinary miss, no warning
+  write(root, "src.txt", "2");
+  const changed = (await go(root, tasks)).results;
+  assert.deepEqual([lines(changed), changed[0].warn], [["PASS build"], undefined]);
+});
+
 test("outputs: a hit touches the stored copies (a cache pruned of what a run did not use keeps them); one pruned is a miss", async () => {
   const root = repo({ "src.txt": "1", ".gitignore": ".fdash/\ncount-*\nout/\n" });
   const tasks = { build: producing() };

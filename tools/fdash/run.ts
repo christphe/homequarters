@@ -175,6 +175,10 @@ export async function run(o: RunOptions): Promise<{ results: Result[]; interrupt
         }
         if (restored === "restored") return [{ name: c.name, ok: true, cached: true, log: "", ms: 0 }];
         warn = "outputs not in the cache";
+      } else if (!o.force && c.outputs.length && passed(cacheDir, c.name, cacheKey(o.root, { ...c, outputs: [] }, extra, common, process.env))) {
+        // the outputs are part of the key: a pass recorded before they were declared (or cached) has the key
+        // the command would have without them, and does not count, since nothing of it can be restored
+        warn = "a pass recorded before outputs were cached";
       }
       const before = key + signature(o.root, common);
       const [r] = await plain();
