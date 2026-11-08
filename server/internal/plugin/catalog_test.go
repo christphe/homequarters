@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,9 +152,7 @@ func objPlugin(t *testing.T, tail string, extra map[string]string) Info {
 		"p/public/board.js":     "window.x = 1",
 		"p/public/sub/other.js": "window.y = 1",
 	}
-	for k, v := range extra {
-		files[k] = v
-	}
+	maps.Copy(files, extra)
 	write(t, root, files)
 	return scanOne(t, root, "p")
 }

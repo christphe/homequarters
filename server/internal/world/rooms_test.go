@@ -12,7 +12,7 @@ func TestAMemberAtTheAdminRoomDoorHasNoCallAndGetsNoToken(t *testing.T) {
 	h := newHarness(t)
 	m := h.add(1, "member", 43*16+8, 10*16+8)
 	h.consent(m, true)
-	for i := 0; i < 40; i++ { // a client that keeps sending "right", past any prediction
+	for i := range 40 { // a client that keeps sending "right", past any prediction
 		h.w.handle(ev{kind: evInput, p: m, gen: m.gen, seq: uint32(1000 + i), dx: 1}, h.now)
 		h.run(60 * time.Millisecond)
 	}

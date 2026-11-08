@@ -237,7 +237,7 @@ func TestCarryDesks(t *testing.T) {
 		Areas: []Area{{ID: "office-1", Kind: KindRoom, X: 10, Y: 0, W: 5, H: 5, Access: Access{Mode: AccessOffice, Users: []int64{11, 12}}}}}
 	desks := func(n int) *Map {
 		m := &Map{W: 40, H: 10}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			m.Props = append(m.Props, Prop{T: "desk", X: i * 3, Y: 5})
 		}
 		return m

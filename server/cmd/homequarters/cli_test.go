@@ -29,8 +29,7 @@ func runCLI(t *testing.T, env []string, args ...string) (int, string, string) {
 	if ctx.Err() != nil {
 		return -1, out.String(), errOut.String()
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
+	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 		return ee.ExitCode(), out.String(), errOut.String()
 	}
 	if err != nil {
@@ -109,7 +108,7 @@ func TestOnlineBackupWhileTheServerRuns(t *testing.T) {
 	if !ready {
 		t.Fatal("the server did not become ready")
 	}
-	if resp, err := http.Post("http://"+addr+"/api/join", "application/json", strings.NewReader(`{"name":"Ana","avatar":{}}`)); err != nil || resp.StatusCode != 200 {
+	if resp, err := http.Post("http://"+addr+"/api/join", "application/json", strings.NewReader(`{"name":"Ana","avatar":{}}`)); err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("join: %v %v", resp, err)
 	}
 	bk := filepath.Join(dir, "backup.db")

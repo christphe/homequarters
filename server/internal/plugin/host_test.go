@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,9 +72,7 @@ func (k *memKV) Load(p string) (map[string]string, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	out := map[string]string{}
-	for a, b := range k.m[p] {
-		out[a] = b
-	}
+	maps.Copy(out, k.m[p])
 	return out, nil
 }
 
@@ -285,7 +284,7 @@ func TestErrorRateCrash(t *testing.T) {
 	if err := h.Start("p"); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		h.Message(alice, "p", []byte(`{}`))
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -527,7 +526,7 @@ export function onLeave(p: { id: number }) { hq.broadcast({ l: p.id }); }`})
 		t.Fatal(err)
 	}
 	h.Presence(alice, true)
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		h.Presence(bob, i%2 == 0)
 	}
 	h.mu.Lock()
@@ -649,7 +648,7 @@ func TestUseErrorsCountLikeAnyExport(t *testing.T) {
 	if err := h.Start("p"); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 11; i++ {
+	for range 11 {
 		h.Use(alice, "p", "thing", 1, 1)
 	}
 	eventually(t, "11th error crashes", func() bool { st, _ := state(h, "p"); return st == "crashed" })

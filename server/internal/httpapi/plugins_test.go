@@ -262,7 +262,7 @@ func TestPluginPathsNeverReachTheSPAOrStartTheWorld(t *testing.T) {
 func TestPluginRouteLimiterKeysOnlyRunningPlugins(t *testing.T) {
 	r := newRig(t, withPlugins)
 	ana, _ := r.join("Ana", "")
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		if code, _, _ := ana.raw("GET", "/plugins/rnd"+strconv.Itoa(i)+"/api/x", nil); code != 404 {
 			t.Fatalf("unknown plugin route: %d", code)
 		}

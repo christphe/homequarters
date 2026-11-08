@@ -536,14 +536,14 @@ func TestUsePluginObjectIsThrottled(t *testing.T) {
 	n := 0
 	h.w.OnUse = func(int64, uint32, string, string, string, string, int, int) { n++ }
 	p := h.add(1, "member", 12*16+8, 10*16+8)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		h.send(p, ev{kind: evUse, x: 12, y: 9})
 	}
 	if n != 8 {
 		t.Fatalf("a burst of 20 uses must reach the plugin 8 times, got %d", n)
 	}
 	h.now = h.now.Add(time.Second)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		h.send(p, ev{kind: evUse, x: 12, y: 9})
 	}
 	if n != 12 {

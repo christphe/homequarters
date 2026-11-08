@@ -50,7 +50,7 @@ export async function onMessage(p: HQ.Player, m: { fail?: boolean }) {
 	}
 	h.Message(alice, "p", []byte(`{}`))
 	eventually(t, "code after await ran", func() bool { return sink.find(1, "after", "await") })
-	for i := 0; i < 11; i++ {
+	for range 11 {
 		h.Message(alice, "p", []byte(`{"fail":true}`))
 	}
 	eventually(t, "async errors counted", func() bool { st, _ := state(h, "p"); return st == "crashed" })
@@ -199,7 +199,7 @@ func TestCacheSeesContentChangesWithTheSameSizeAndTime(t *testing.T) {
 func TestNodeModulesDoNotBreakAPlugin(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{"p/plugin.json": manifest("p", "main.ts", ""), "p/main.ts": "export function load() {}"}
-	for i := 0; i < maxPluginFiles+10; i++ {
+	for i := range maxPluginFiles + 10 {
 		files["p/node_modules/pkg/f"+strconv.Itoa(i)+".js"] = "x"
 	}
 	write(t, root, files)

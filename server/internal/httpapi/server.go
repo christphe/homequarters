@@ -120,8 +120,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.St
 	s.auditQ = make(chan actionSave, 128)
 	s.setupPlugins()
 	s.demoLim = newLimiter(0.2, 5) // demo: about one new account per 5 s per IP, burst 5
-	s.workers.Add(1)
-	go func() { defer s.workers.Done(); s.savePositions(ctx) }()
+	s.workers.Go(func() { s.savePositions(ctx) })
 	go s.reconcileMedia(ctx)
 	if cfg.Demo {
 		if err := s.demoStartup(ctx); err != nil {
@@ -292,14 +291,12 @@ func (s *Server) worldFor(o *store.Office) (*world.World, error) {
 		}
 	}
 	host := s.pluginHost(o.ID, w)
-	s.workers.Add(1)
-	go func() {
-		defer s.workers.Done()
+	s.workers.Go(func() {
 		w.Run(s.ctx)
 		if host != nil {
 			host.Close() // unload runs before the database closes
 		}
-	}()
+	})
 	s.worlds[o.ID] = w
 	if host != nil {
 		s.startPlugins(o.ID, host)
@@ -892,9 +889,7 @@ func (s *Server) reconcileMedia(ctx context.Context) {
 		case <-t.C:
 			s.mu.Lock()
 			ws := make(map[int64]*world.World, len(s.worlds))
-			for id, w := range s.worlds {
-				ws[id] = w
-			}
+			maps.Copy(ws, s.worlds)
 			s.mu.Unlock()
 			for id, w := range ws {
 				rctx, cancel := context.WithTimeout(ctx, 8*time.Second)

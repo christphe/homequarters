@@ -45,7 +45,7 @@ func TestDemoJoinNeedsNoInviteAndNeverGrantsAdmin(t *testing.T) {
 func TestDemoJoinsAreRateLimitedPerIP(t *testing.T) {
 	r := demoRig(t)
 	limited := false
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		if _, code := r.join("V", ""); code == http.StatusTooManyRequests {
 			limited = true
 			break

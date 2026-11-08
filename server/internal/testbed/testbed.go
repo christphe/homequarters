@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -424,9 +425,7 @@ func (c *errCounter) snapshot() map[string]int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := make(map[string]int, len(c.n))
-	for k, v := range c.n {
-		out[k] = v
-	}
+	maps.Copy(out, c.n)
 	return out
 }
 

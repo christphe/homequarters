@@ -158,8 +158,7 @@ func (p *bedProc) wait(t *testing.T, d time.Duration) int {
 	t.Helper()
 	select {
 	case err := <-p.done:
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return ee.ExitCode()
 		}
 		if err != nil {

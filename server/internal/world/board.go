@@ -2,6 +2,7 @@ package world
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 	"time"
 
@@ -236,8 +237,8 @@ func (w *World) doBoard(p *Player, m *BoardMsg, now time.Time) {
 		b.dirty = true
 		b.broadcast(w, m2json(map[string]any{"op": "del", "o": s.Owner, "i": s.ID}, head), nil)
 	case "undo":
-		for i := len(b.strokes) - 1; i >= 0; i-- {
-			if s := b.strokes[i]; s.Owner == p.ID {
+		for _, s := range slices.Backward(b.strokes) {
+			if s.Owner == p.ID {
 				b.remove(s)
 				b.dirty = true
 				b.broadcast(w, m2json(map[string]any{"op": "del", "o": s.Owner, "i": s.ID}, head), nil)

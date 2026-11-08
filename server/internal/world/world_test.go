@@ -295,7 +295,7 @@ func TestASecondClientThatHasNotConsentedLeavesTheCall(t *testing.T) {
 func TestChainOfAvatarsDoesNotMergeOffice(t *testing.T) {
 	h := newHarness(t)
 	var ps []*Player
-	for i := 0; i < 30; i++ { // 40 px apart: each is within JoinR of its neighbour
+	for i := range 30 { // 40 px apart: each is within JoinR of its neighbour
 		p := h.add(uint32(10+i), "member", 3*16+float64(i)*20, sy)
 		if p.X > 39*16 {
 			break
@@ -336,7 +336,7 @@ func TestBetweenTwoConversationsIsSticky(t *testing.T) {
 	}
 	first := mid.group
 	// Walk to the exact middle, then jitter around it: must not hop.
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		x := sx - 5
 		if i%2 == 0 {
 			x = sx + 5
@@ -444,7 +444,7 @@ func TestSlowClientIsCoalescedNotUnbounded(t *testing.T) {
 	a := h.add(1, "member", sx, sy) // never drained
 	b := h.add(2, "member", sx+200, sy)
 	// b keeps changing direction: every change is a state record clients cannot predict
-	for i := 0; i < 450; i++ {
+	for i := range 450 {
 		dx := int8(1)
 		if i%2 == 1 {
 			dx = -1

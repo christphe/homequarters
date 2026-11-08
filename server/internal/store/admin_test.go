@@ -115,7 +115,7 @@ func TestAuditTrailOrderAndPruning(t *testing.T) {
 	if es[0].Action != "invite.create" || es[0].Actor != "system" || es[1].Actor != "Ana" || es[1].TargetName != "Bia" {
 		t.Fatalf("newest first, system actor for id 0: %+v", es)
 	}
-	for i := 0; i < auditKeep+20; i++ {
+	for range auditKeep + 20 {
 		s.Audit(ctx, o.ID, a, "x", 0, "", "")
 	}
 	var n int
@@ -169,7 +169,7 @@ func TestRemovalWaitsForAConcurrentWriter(t *testing.T) {
 		}
 	}()
 	defer func() { close(stop); <-saved }()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		id, _, err := s.AddMember(ctx, o.ID, "Bia", json.RawMessage("{}"), "")
 		if err != nil {
 			t.Fatalf("add %d: %v", i, err)

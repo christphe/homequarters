@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -264,7 +264,7 @@ func (h *Host) Start(name string) error {
 	for id := range h.online {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(a, b int) bool { return ids[a] < ids[b] })
+	slices.Sort(ids)
 	for _, id := range ids {
 		in.presence(h.online[id], true)
 	}

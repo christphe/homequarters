@@ -98,7 +98,7 @@ func httpJoin(name string) (string, error) {
 		req["invite"] = *invite
 	}
 	body, _ := json.Marshal(req)
-	for attempt := 0; attempt < 8; attempt++ {
+	for range 8 {
 		resp, err := http.Post(*base+"/api/join", "application/json", bytes.NewReader(body))
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
@@ -106,7 +106,7 @@ func httpJoin(name string) (string, error) {
 		}
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode == 429 {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
@@ -311,7 +311,7 @@ func (b *bot) behave(ctx context.Context) {
 	for ctx.Err() == nil {
 		// choose a target
 		var target tile
-		for tries := 0; tries < 50; tries++ {
+		for range 50 {
 			t := tile{1 + rand.IntN(b.grid.W-2), 1 + rand.IntN(b.grid.H-2)}
 			if b.walkable(t.x, t.y) && b.inRegion(t.x, t.y) {
 				target = t
@@ -349,10 +349,7 @@ func (b *bot) behave(ctx context.Context) {
 		}
 		b.setDir(ctx, 0, 0)
 		walked := time.Since(walkStart)
-		idle := time.Duration(float64(walked) * (1 - *moving) / math.Max(*moving, 0.01))
-		if idle < 500*time.Millisecond {
-			idle = 500 * time.Millisecond
-		}
+		idle := max(time.Duration(float64(walked)*(1-*moving)/math.Max(*moving, 0.01)), 500*time.Millisecond)
 		select {
 		case <-time.After(time.Duration(float64(idle) * (0.5 + rand.Float64()))):
 		case <-ctx.Done():
@@ -386,7 +383,7 @@ func scrape() map[string]float64 {
 	if mu == "" {
 		mu = *base
 	}
-	rq, _ := http.NewRequest("GET", mu+"/metrics", nil)
+	rq, _ := http.NewRequest(http.MethodGet, mu+"/metrics", nil)
 	tok := *metricsTok
 	if tok == "" {
 		tok = os.Getenv("HQ_METRICS_TOKEN")
@@ -404,17 +401,17 @@ func scrape() map[string]float64 {
 	}
 	b, _ := io.ReadAll(resp.Body)
 	m := map[string]float64{}
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		if line == "" || line[0] == '#' {
 			continue
 		}
-		i := strings.LastIndexByte(line, ' ')
-		if i < 0 {
+		before, after, ok := strings.CutLast(line, " ")
+		if !ok {
 			continue
 		}
-		v, err := strconv.ParseFloat(line[i+1:], 64)
+		v, err := strconv.ParseFloat(after, 64)
 		if err == nil {
-			m[line[:i]] = v
+			m[before] = v
 		}
 	}
 	return m
@@ -512,9 +509,8 @@ func main() {
 	go func() {
 		tk := time.NewTicker(time.Second / time.Duration(*rampRate))
 		defer tk.Stop()
-		for i := 0; i < *nBots; i++ {
+		for i := range *nBots {
 			<-tk.C
-			i := i
 			go func() {
 				cookie, err := httpJoin(fmt.Sprintf("bot%d", i))
 				if err != nil {
@@ -536,7 +532,7 @@ func main() {
 		}
 	}()
 	t0 := time.Now()
-	for i := 0; i < *nBots; i++ {
+	for range *nBots {
 		<-ready
 	}
 	fmt.Fprintf(os.Stderr, "joined %d/%d in %s (failed %d)\n", st.joined.Load(), *nBots, time.Since(t0).Round(time.Millisecond), st.failed.Load())
@@ -661,8 +657,8 @@ func main() {
 // or (tick percentiles) a value above the histogram's largest finite bucket.
 func scrubNaN(r *report) {
 	v := reflect.ValueOf(r).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		if f := v.Field(i); f.Kind() == reflect.Float64 && (math.IsNaN(f.Float()) || math.IsInf(f.Float(), 0)) {
+	for _, f := range v.Fields() {
+		if f.Kind() == reflect.Float64 && (math.IsNaN(f.Float()) || math.IsInf(f.Float(), 0)) {
 			f.SetFloat(-1)
 		}
 	}

@@ -17,7 +17,7 @@ func privacyBody(t *testing.T, ts string) string {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 		t.Fatalf("privacy: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
 	return string(b)
@@ -57,7 +57,7 @@ func TestAboutPageIsPublicAndExplainsTheOffice(t *testing.T) {
 		}
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 			t.Fatalf("about: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 		}
 		return string(b)

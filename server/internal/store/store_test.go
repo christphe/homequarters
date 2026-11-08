@@ -58,7 +58,7 @@ func TestInviteUseLimitExpiryAndRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		inv, err := s.ConsumeInvite(ctx, tok)
 		if err != nil || inv.Role != "member" || inv.OfficeID != o.ID {
 			t.Fatalf("use %d: %+v %v", i, inv, err)
@@ -85,11 +85,11 @@ func TestInviteConsumptionIsAtomicUnderConcurrency(t *testing.T) {
 	ctx := context.Background()
 	tok, _ := s.CreateInvite(ctx, o.ID, "member", 5, time.Hour, 0)
 	res := make(chan bool, 40)
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		go func() { _, err := s.ConsumeInvite(ctx, tok); res <- err == nil }()
 	}
 	ok := 0
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		if <-res {
 			ok++
 		}
@@ -103,7 +103,7 @@ func TestChatHistoryOrderAndPruning(t *testing.T) {
 	s, o := open(t)
 	ctx := context.Background()
 	u, _, _ := s.AddMember(ctx, o.ID, "Ana", json.RawMessage("{}"), "")
-	for i := 0; i < chatKeep+40; i++ {
+	for i := range chatKeep + 40 {
 		if err := s.AppendChat(ctx, o.ID, u, "m"+strconv.Itoa(i), int64(i)); err != nil {
 			t.Fatal(err)
 		}

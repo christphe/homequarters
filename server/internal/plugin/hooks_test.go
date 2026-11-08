@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -176,9 +177,9 @@ func TestAPluginSeesOthersStartAndStop(t *testing.T) {
 		t.Helper()
 		eventually(t, at+" with pets "+map[bool]string{true: "on", false: "off"}[pets], func() bool {
 			ds := sink.data(0)
-			for i := len(ds) - 1; i >= 0; i-- {
-				if ds[i]["at"] == at {
-					return ds[i]["pets"] == pets && (at == "join" || ds[i]["me"] == true)
+			for _, d := range slices.Backward(ds) {
+				if d["at"] == at {
+					return d["pets"] == pets && (at == "join" || d["me"] == true)
 				}
 			}
 			return false
@@ -202,9 +203,9 @@ func TestAPluginSeesOthersStartAndStop(t *testing.T) {
 		t.Helper()
 		eventually(t, "spin seen "+map[bool]string{true: "on", false: "off"}[on], func() bool {
 			ds := sink.data(0)
-			for i := len(ds) - 1; i >= 0; i-- {
-				if ds[i]["at"] == "change" {
-					return ds[i]["spin"] == on
+			for _, d := range slices.Backward(ds) {
+				if d["at"] == "change" {
+					return d["spin"] == on
 				}
 			}
 			return false

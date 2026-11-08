@@ -1,6 +1,7 @@
 package world
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,12 +24,7 @@ func chatTexts(frames []string) []string {
 }
 
 func has(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 // Office chat reaches everybody, trimmed and cut to 500 characters; a direct message reaches only its

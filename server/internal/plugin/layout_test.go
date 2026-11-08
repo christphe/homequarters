@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -229,8 +230,8 @@ func TestInstalledReadOnly(t *testing.T) {
 		}
 		return os.Chmod(p, 0o444)
 	})
-	for i := len(dirs) - 1; i >= 0; i-- {
-		os.Chmod(dirs[i], 0o555)
+	for _, dir := range slices.Backward(dirs) {
+		os.Chmod(dir, 0o555)
 	}
 	t.Cleanup(func() {
 		filepath.WalkDir(inst, func(p string, d fs.DirEntry, _ error) error {

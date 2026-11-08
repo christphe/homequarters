@@ -91,7 +91,7 @@ func Default() *Map {
 	// Individual desks: 2 rows x 6
 	n := 1
 	for _, y := range []int{3, 9} {
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			x := 20 + i*4
 			props = append(props, Prop{T: "desk", X: x, Y: y, Label: "Desk " + itoa(n)})
 			add("chair", x, y+1)

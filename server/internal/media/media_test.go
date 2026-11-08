@@ -168,7 +168,7 @@ func TestRevokeIsAsyncBoundedAndRetried(t *testing.T) {
 		n := calls
 		mu.Unlock()
 		if n < 3 {
-			http.Error(w, "boom", 500)
+			http.Error(w, "boom", http.StatusInternalServerError)
 			return
 		}
 		w.Write([]byte("{}"))
@@ -315,7 +315,7 @@ func TestAFloodOfMutesNeverDelaysARevocation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go c.Run(ctx)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		c.Mute("o1.g1", "7", "mic")
 	}
 	c.Revoke("o1.g1", "5")

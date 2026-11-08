@@ -223,7 +223,7 @@ func TestInviteLifecycleThroughTheAPI(t *testing.T) {
 
 func TestMetricsPolicy(t *testing.T) {
 	get := func(r *rig, auth string) int {
-		req, _ := http.NewRequest("GET", r.ts.URL+"/metrics", nil)
+		req, _ := http.NewRequest(http.MethodGet, r.ts.URL+"/metrics", nil)
 		if auth != "" {
 			req.Header.Set("Authorization", auth)
 		}

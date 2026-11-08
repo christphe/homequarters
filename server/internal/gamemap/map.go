@@ -389,7 +389,7 @@ func Compile(m *Map) (*Compiled, error) {
 	c := &Compiled{Map: m, W: m.W, H: m.H, Solid: make([]bool, m.W*m.H), AreaAt: make([]int16, m.W*m.H),
 		Portals: map[int]Point{}, Spotlights: map[int]struct{}{}}
 	for y, row := range m.Walls {
-		for x := 0; x < m.W; x++ {
+		for x := range m.W {
 			if row[x] == '#' {
 				c.Solid[y*m.W+x] = true
 			}
@@ -416,7 +416,7 @@ func Compile(m *Map) (*Compiled, error) {
 		c.AreaAt[i] = -1
 	}
 	// Non-room areas first so rooms take precedence where they overlap.
-	for pass := 0; pass < 2; pass++ {
+	for pass := range 2 {
 		for i, a := range m.Areas {
 			if (a.Kind == KindRoom) != (pass == 1) {
 				continue
@@ -442,9 +442,9 @@ func Compile(m *Map) (*Compiled, error) {
 
 func encodeWire(c *Compiled) []byte {
 	rows := make([]string, c.H)
-	for y := 0; y < c.H; y++ {
+	for y := range c.H {
 		b := make([]byte, c.W)
-		for x := 0; x < c.W; x++ {
+		for x := range c.W {
 			if c.Solid[y*c.W+x] {
 				b[x] = '1'
 			} else {

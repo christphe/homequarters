@@ -237,7 +237,7 @@ func wideOffice(l wideLayout) *Map {
 	carve(mx0, 11, 10, 13)
 	carve(mx0, 25, 10, 13)
 	miniX := func(i int) int { return 21 + i*(l.miniW+1) }
-	for i := 0; i < l.minis; i++ {
+	for i := range l.minis {
 		carve(miniX(i), 42, l.miniW, 8)
 	}
 	// doors
@@ -254,7 +254,7 @@ func wideOffice(l wideLayout) *Map {
 	for _, y := range []int{4, 16, 30} { // meeting rooms - right corridor
 		carve(rc+2, y, 1, 2)
 	}
-	for i := 0; i < l.minis; i++ {
+	for i := range l.minis {
 		carve(miniX(i)+l.miniW/2-1, 41, 2, 1)
 	}
 	walls := make([]string, H)
@@ -303,8 +303,8 @@ func wideOffice(l wideLayout) *Map {
 	// armchair, with room around for people watching) along the top, couch corners one row lower than
 	// the bottom wall (four couches around a table), a free aisle between them from door to door.
 	area("break", "Break room", "social", bx0, 1, bw, 13, "wood_warm")
-	for side := 0; side < 2; side++ {
-		for j := 0; j < l.cornersPerSide; j++ {
+	for side := range 2 {
+		for j := range l.cornersPerSide {
 			x := breakDoor - 5 - 6*j  // couch corner, 4 wide
 			duo := x                  // duo corner, 3 wide, on the outer edge
 			n := l.cornersPerSide - j // numbered from left to right
@@ -333,10 +333,10 @@ func wideOffice(l wideLayout) *Map {
 	ix0 := cx0 + (cw-islandsW)/2
 	desk := 1
 	for _, y := range []int{18, 29} {
-		for i := 0; i < l.islandsPerRow; i++ {
+		for i := range l.islandsPerRow {
 			x := ix0 + 12*i
-			for row := 0; row < 2; row++ {
-				for c := 0; c < 3; c++ {
+			for row := range 2 {
+				for c := range 3 {
 					zx := x + 3*c
 					if row == 0 {
 						props = append(props, Prop{T: "desk", X: zx, Y: y + 2, W: 3, H: 1, Label: "Desk " + itoa(desk), Up: true})
@@ -362,7 +362,7 @@ func wideOffice(l wideLayout) *Map {
 	}{{1, 9, "carpet_teal"}, {11, 13, "carpet_plum"}, {25, 13, "carpet_green"}} {
 		ty := r.y + r.h/2 - 1
 		add("table", mx0+2, ty, 6, 2)
-		for k := 0; k < 6; k++ {
+		for k := range 6 {
 			add("chair", mx0+2+k, ty-1, 0, 0)
 			add("chair", mx0+2+k, ty+2, 0, 0)
 		}
@@ -371,11 +371,11 @@ func wideOffice(l wideLayout) *Map {
 
 	// Mini rooms: a 4x2 table in the middle, four chairs on each long side.
 	floors := []string{"carpet_blue", "carpet_teal", "carpet_plum", "carpet_green"}
-	for i := 0; i < l.minis; i++ {
+	for i := range l.minis {
 		x := miniX(i)
 		tx := x + (l.miniW-4)/2
 		add("table", tx, 45, 4, 2)
-		for k := 0; k < 4; k++ {
+		for k := range 4 {
 			add("chair", tx+k, 44, 0, 0)
 			add("chair", tx+k, 47, 0, 0)
 		}

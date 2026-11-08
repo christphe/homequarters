@@ -134,7 +134,7 @@ func TestACancelledDesktopSignInSaysWhyInTheApp(t *testing.T) {
 func TestHandoffsAreBoundedAndExpire(t *testing.T) {
 	var hs handoffs
 	now := time.Now()
-	for i := 0; i < maxHandoffs; i++ {
+	for i := range maxHandoffs {
 		if !hs.put(auth.Random(16), handoff{code: "x"}, now) {
 			t.Fatalf("refused entry %d below the bound", i)
 		}
