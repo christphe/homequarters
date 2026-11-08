@@ -48,7 +48,7 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
     ["web:build", "web", "pnpm exec vite build", false, false, "{}"],
     ["site:build", "site", "node build.ts", false, false, "{}"],
     ["server:test:unit", "server", "go test -race -count=1 ./...", false, false, "{}"],
-    unit("web:test:unit", "web"),
+    ["web:test:unit", "web", "pnpm exec vitest run", false, false, "{}"],
     ["site:test:unit", "site", "node check.ts", false, false, "{}"],
     ["e2e:test:unit", "e2e", "node --test shards.test.ts slots.test.ts", false, false, "{}"],
     ["scripts:test:unit", "scripts", "node --test oxlint-hq.test.ts oxlint.test.ts check-protocol-docs.test.ts gauntlet.test.ts ci-fdash-records.test.ts", false, false, "{}"],

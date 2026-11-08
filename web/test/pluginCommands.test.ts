@@ -1,5 +1,5 @@
-// Validation of the command batches a plugin's iframe sends to the page. Run: node --test web/test
-import { test } from "node:test";
+// Validation of the command batches a plugin's iframe sends to the page. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { parseBatch, LIMITS, SendBudget, framesFit } from "../src/plugins/commands.ts";
 

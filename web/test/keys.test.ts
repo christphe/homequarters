@@ -1,5 +1,5 @@
-// Shortcuts by physical key position, labelled with the user's layout. Run: node --test web/test
-import { test } from "node:test";
+// Shortcuts by physical key position, labelled with the user's layout. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { MOVE_KEYS, codeOf, combo, digitOf, keyLabel, learnKey, moveLabels, setKeyLayout } from "../src/keys.ts";
 

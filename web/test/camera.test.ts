@@ -1,5 +1,5 @@
-// The camera: scale and zoom steps, zoom memory, pan, following, and the interest radius it asks for. Run: node --test web/test
-import { test } from "node:test";
+// The camera: scale and zoom steps, zoom memory, pan, following, and the interest radius it asks for. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { Camera, MAX_SCALE, VIEW_PAD, autoScale, reachClamp, zoomStore, type ZoomStore } from "../src/game/camera.ts";
 

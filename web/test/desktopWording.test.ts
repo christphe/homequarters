@@ -1,6 +1,6 @@
 // In the desktop app (desktop/ sets __HQ_DESKTOP__), texts that speak of a browser tab speak of the app.
-// Run: node --test web/test
-import { test } from "node:test";
+// Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { t } from "../src/i18n.ts";
 

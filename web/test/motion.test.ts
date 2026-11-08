@@ -1,6 +1,6 @@
 // Client movement: collisions shared with the server, my predicted position and its reconciliation,
-// remote dead reckoning. Run: node --test web/test
-import { test } from "node:test";
+// remote dead reckoning. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   BOX_HH, BOX_HW, LocalMotion, MAX_ADVANCE, OFFSET_TAU, REMOTE_SNAP_PX, SNAP_PX,

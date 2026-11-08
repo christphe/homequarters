@@ -1,5 +1,5 @@
 // Plugin object pictures: one texture per picture frame, shared by every sprite and freed with the plugin.
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { TextureSource } from "pixi.js";
 import { ObjectPictures } from "../src/game/objectPictures.ts";

@@ -1,5 +1,5 @@
-// Ctrl+D / Cmd+D: where "go back to my desk" leads. Run: node --test web/test
-import { test } from "node:test";
+// Ctrl+D / Cmd+D: where "go back to my desk" leads. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { claimableDesk, homeTile, isBusyKey, isHomeKey } from "../src/game/home.ts";
 import type { MapData } from "../src/net/protocol.ts";

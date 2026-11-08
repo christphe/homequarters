@@ -1,5 +1,5 @@
-// Areas of the map: which one a point is in, which one is named, and when walking changes them. Run: node --test web/test
-import { test } from "node:test";
+// Areas of the map: which one a point is in, which one is named, and when walking changes them. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { AREA, SAME, SHOWN, Whereabouts, areaGrid, areaIndex, deskRoom, shownArea, shownAreas } from "../src/game/areas.ts";
 import type { Area, MapData, Prop } from "../src/net/protocol.ts";

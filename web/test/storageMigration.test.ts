@@ -1,6 +1,6 @@
 // Browser storage moved from tilework.* to hq.* with the rename: an upgraded browser keeps its
-// preferences, avatar and consent. Run: node --test web/test
-import { test } from "node:test";
+// preferences, avatar and consent. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { migrateStorage, type KeyValueStorage } from "../src/storageMigration.ts";
 

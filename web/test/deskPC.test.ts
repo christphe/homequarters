@@ -1,5 +1,5 @@
-// A pc on a desk: what erasing a desk takes, and how the depth sprites are packed. Run: node --test web/test
-import { test } from "node:test";
+// A pc on a desk: what erasing a desk takes, and how the depth sprites are packed. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { eraseAt } from "../src/game/props.ts";
 import { ATLAS_MAX_H, ATLAS_W, packCells } from "../src/game/art/pack.ts";

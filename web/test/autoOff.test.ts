@@ -1,5 +1,5 @@
-// Turning the microphone and camera off for the next conversation once one ends. Run: node --test web/test
-import { test } from "node:test";
+// Turning the microphone and camera off for the next conversation once one ends. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { AUTO_OFF_GRACE_MS, AutoOff, inCall, type Pending } from "../src/media/autoOff.ts";
 

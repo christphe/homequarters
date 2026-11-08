@@ -1,5 +1,5 @@
-// Automatic away: from the tab's own inactivity or the computer's (Idle Detection). Run: node --test web/test
-import { test } from "node:test";
+// Automatic away: from the tab's own inactivity or the computer's (Idle Detection). Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { autoStatus } from "../src/osIdle.ts";
 

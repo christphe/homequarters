@@ -1,5 +1,5 @@
-// Pet following, frame by frame with a fixed 60 Hz clock. Run: node --test web/test
-import { test } from "node:test";
+// Pet following, frame by frame with a fixed 60 Hz clock. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { followOwner, newPet, PET_GAP, type PetState } from "../src/game/petFollow.ts";
 

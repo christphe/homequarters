@@ -1,5 +1,5 @@
-// When a desktop notification may fire. Run: node --test web/test
-import { test } from "node:test";
+// When a desktop notification may fire. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { mayNotify } from "../src/notifyGate.ts";
 

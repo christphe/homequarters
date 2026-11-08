@@ -1,7 +1,6 @@
 // How desks and offices are named on screen (game/places.ts): from the owner names the server sends, never a
-// name stored in the map. Run: node --test web/test
-import "./tsResolve.ts";
-import { test } from "node:test";
+// name stored in the map. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import type { Area } from "../src/net/protocol.ts";
 

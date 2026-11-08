@@ -1,8 +1,7 @@
 // The map as the page models it: props' footprints and solidity agree with the server's table
 // (server/internal/gamemap/map.go), the collision grid computed the server's way, the wire format of a save,
-// and the office helpers of net/protocol.ts. Run: node --test web/test
-import "./tsResolve.ts";
-import { test } from "node:test";
+// and the office helpers of net/protocol.ts. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PROP_DEFS } from "../src/game/props.ts";
@@ -11,7 +10,7 @@ import { isMyOffice, isOwnedOffice, type Area, type MapData } from "../src/net/p
 const { computeSolid, toWire, PROP_TYPES } = await import("../src/game/mapModel.ts");
 
 test("every prop's default size and solidity are the server's (client prediction and server collisions agree)", () => {
-  const go = readFileSync(new URL("../../server/internal/gamemap/map.go", import.meta.url), "utf8");
+  const go = readFileSync(`${import.meta.dirname}/../../server/internal/gamemap/map.go`, "utf8");
   const consts = new Map([...go.matchAll(/(Prop\w+)\s*=\s*"(\w+)"/g)].map((m) => [m[1], m[2]]));
   const table = go.slice(go.indexOf("var propDefaults"), go.indexOf("\n}\n", go.indexOf("var propDefaults")));
   const server = new Map<string, { w: number; h: number; solid: boolean }>();

@@ -1,5 +1,5 @@
-// Avatar look cache: freed on a look change or a disconnect, shared between people. Run: node --test web/test
-import { test } from "node:test";
+// Avatar look cache: freed on a look change or a disconnect, shared between people. Run: pnpm exec vitest run (in web/)
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { LookCache } from "../src/game/lookCache.ts";
 
