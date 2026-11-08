@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Command, Input } from "./config.ts";
+import { pnpmPart } from "./pnpm.ts";
 import { launch } from "./spawn.ts";
 
 const BIG = 256 * 1024 * 1024;
@@ -46,18 +47,47 @@ function goFiles(root: string, input: { go: string; cwd: string; tests: boolean 
   return rel;
 }
 
-/** Every file of the inputs, sorted, relative to the root with "/" separators. */
-export function resolveInputs(root: string, inputs: Input[]): string[] {
+/** What the inputs resolve to. `files`: hashed whole into the key. `parts`: a file of which only a part counts
+ * (a member's share of the pnpm lockfile): the key holds the part's name and digest, not the file. `warnings`:
+ * why something was hashed more broadly than asked, for the command's log. */
+export type Resolved = { files: string[]; parts: { file: string; name: string; digest: string }[]; warnings: string[] };
+
+const byName = (a: { name: string }, b: { name: string }) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+
+/** Every file of the inputs, sorted, relative to the root with "/" separators, and the parts of files. */
+export function resolveInputs(root: string, inputs: Input[]): Resolved {
   const patterns = inputs.filter((i): i is string => typeof i === "string");
   const files = new Set(globFiles(root, patterns));
   const excluded = patterns.filter((p) => p.startsWith("!")).map((p) => p.slice(1));
+  const parts = new Map<string, Resolved["parts"][number]>();
+  const warnings: string[] = [];
+  const add = (f: string) => { if (!excluded.some((x) => path.posix.matchesGlob(f, x))) files.add(f); };
   // a "!" pattern removes from the whole set, the files of Go packages and of the disk included; a disk
   // pattern that matches nothing (an artefact not built yet) adds nothing
   for (const i of inputs) {
     if (typeof i === "string") continue;
-    for (const f of "disk" in i ? resolveOutputs(root, [i.disk]) : goFiles(root, i)) if (!excluded.some((x) => path.posix.matchesGlob(f, x))) files.add(f);
+    if ("pnpm" in i) {
+      const p = pnpmPart(root, i.pnpm);
+      for (const f of p.patches) add(f);
+      if (p.digest === undefined) {
+        // a lockfile fdash cannot read: all of it counts
+        files.add(p.lockfile);
+        if (!warnings.includes(p.warning!)) warnings.push(p.warning!);
+      } else parts.set(p.name, { file: p.lockfile, name: p.name, digest: p.digest });
+      continue;
+    }
+    for (const f of "disk" in i ? resolveOutputs(root, [i.disk]) : goFiles(root, i)) add(f);
   }
-  return [...files].sort();
+  return { files: [...files].sort(), parts: [...parts.values()].sort(byName), warnings };
+}
+
+/** Two resolutions as one (a command's inputs and an item's). */
+export function mergeResolved(a: Resolved, b: Resolved): Resolved {
+  return {
+    files: [...new Set([...a.files, ...b.files])].sort(),
+    parts: [...new Map([...a.parts, ...b.parts].map((p) => [p.name, p])).values()].sort(byName),
+    warnings: [...new Set([...a.warnings, ...b.warnings])],
+  };
 }
 
 function hashFile(file: string): string {
@@ -87,7 +117,7 @@ export function toolOutput(argv: string[]): string {
 }
 
 /** The key of one run of a command: its definition, what it is given, its environment and its input files. */
-export function cacheKey(root: string, c: Command, extra: string[], files: string[], env: Record<string, string | undefined>): string {
+export function cacheKey(root: string, c: Command, extra: string[], inputs: Resolved, env: Record<string, string | undefined>): string {
   const h = crypto.createHash("sha256");
   h.update(JSON.stringify({
     cwd: c.cwd, run: c.run, env: c.env, failOnOutput: c.failOnOutput, extra,
@@ -97,14 +127,17 @@ export function cacheKey(root: string, c: Command, extra: string[], files: strin
     // only when declared, so that a command without outputs keeps the key it had before outputs existed
     ...(c.outputs.length ? { outputs: c.outputs } : {}),
   }));
-  for (const f of files) h.update("\0" + f + "\0" + hashFile(path.join(root, f)));
+  for (const f of inputs.files) h.update("\0" + f + "\0" + hashFile(path.join(root, f)));
+  // after every file, and named "pnpm:<member>": a part never reads as a file entry
+  for (const p of inputs.parts) h.update("\0" + p.name + "\0" + p.digest);
   return h.digest("hex");
 }
 
 /** When and how big each input was: a file changed and changed back during a run keeps its content (and the
- * key) but not its time, which this catches. */
-export function signature(root: string, files: string[]): string {
-  return files.map((f) => {
+ * key) but not its time, which this catches. The files parts are read from count whole: a `pnpm install`
+ * during the run changes the lockfile, even where the part the key holds stays the same. */
+export function signature(root: string, inputs: Resolved): string {
+  return [...new Set([...inputs.files, ...inputs.parts.map((p) => p.file)])].sort().map((f) => {
     try {
       const s = fs.statSync(path.join(root, f));
       return `${s.mtimeMs}:${s.size}`;

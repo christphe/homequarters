@@ -11,6 +11,8 @@ import { cacheKey, resolveInputs, resolveOutputs } from "../cache.ts";
 import { printResult } from "../cli.ts";
 
 const NODE = process.execPath;
+// inputs that are files only
+const only = (files: string[]) => ({ files, parts: [], warnings: [] });
 const node = (code: string) => [NODE, "-e", code];
 
 function repo(files: Record<string, string>): string {
@@ -90,8 +92,8 @@ test("a Go provider follows the packages a pattern reaches, and their tests when
     "m/a/testdata/x.txt": "x",
     "m/b/b.go": "package b\n",
   });
-  assert.deepEqual(resolveInputs(root, [{ go: "./cmd", cwd: "m", tests: false }]), ["m/a/a.go", "m/cmd/main.go", "m/go.mod", "m/go.sum"]);
-  assert.deepEqual(resolveInputs(root, [{ go: "./...", cwd: "m", tests: true }]), ["m/a/a.go", "m/a/a_test.go", "m/a/testdata/x.txt", "m/b/b.go", "m/cmd/main.go", "m/go.mod", "m/go.sum"]);
+  assert.deepEqual(resolveInputs(root, [{ go: "./cmd", cwd: "m", tests: false }]).files, ["m/a/a.go", "m/cmd/main.go", "m/go.mod", "m/go.sum"]);
+  assert.deepEqual(resolveInputs(root, [{ go: "./...", cwd: "m", tests: true }]).files, ["m/a/a.go", "m/a/a_test.go", "m/a/testdata/x.txt", "m/b/b.go", "m/cmd/main.go", "m/go.mod", "m/go.sum"]);
 });
 
 // items: a command that reads its arguments and writes FDASH_REPORT, failing the items named in fail.txt
@@ -282,7 +284,7 @@ test("outputs: part of the key; a command without them keeps its key; resolved f
   const root = repo({ "src.txt": "1", ".gitignore": "out/\n" });
   const key = (outputs?: string[]) => {
     const c = parseConfig(JSON.stringify({ tasks: { t: { run: [["x"]], inputs: ["src.txt"], ...(outputs ? { outputs } : {}) } } })).get("t") as Parameters<typeof cacheKey>[1];
-    return cacheKey(root, c, [], ["src.txt"], {});
+    return cacheKey(root, c, [], only(["src.txt"]), {});
   };
   assert.notEqual(key(["out/**"]), key(["dist/**"]));
   assert.notEqual(key(["out/**"]), key());
@@ -330,7 +332,7 @@ test("disk inputs: files read from the disk, git-ignored ones included; a change
   const tasks = { test: counting("test", { inputs: ["src.txt", { disk: "bin/app*" }] }) };
   const inputs = (parseConfig(JSON.stringify({ tasks })).get("test") as Parameters<typeof cacheKey>[1]).inputs!;
   write(root, "bin/app", "v1");
-  assert.deepEqual(resolveInputs(root, inputs), ["bin/app", "src.txt"]);
+  assert.deepEqual(resolveInputs(root, inputs).files, ["bin/app", "src.txt"]);
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"]);
   assert.deepEqual(lines((await go(root, tasks)).results), ["CACHED test"]);
   write(root, "bin/app", "v2");
@@ -338,7 +340,7 @@ test("disk inputs: files read from the disk, git-ignored ones included; a change
   write(root, "bin/app.exe", "v1");
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "another file the pattern matches");
   fs.rmSync(path.join(root, "bin"), { recursive: true });
-  assert.deepEqual(resolveInputs(root, inputs), ["src.txt"]);
+  assert.deepEqual(resolveInputs(root, inputs).files, ["src.txt"]);
   assert.deepEqual(lines((await go(root, tasks)).results), ["PASS test"], "no artefact: no crash, another key");
   assert.equal(runs(root, "test"), 4);
   if (process.platform !== "win32") {
@@ -346,8 +348,8 @@ test("disk inputs: files read from the disk, git-ignored ones included; a change
     const c = parseConfig(JSON.stringify({ tasks })).get("test") as Parameters<typeof cacheKey>[1];
     write(root, "bin/app", "v2");
     fs.chmodSync(path.join(root, "bin/app"), 0o755);
-    const k1 = cacheKey(root, c, [], ["bin/app"], {});
+    const k1 = cacheKey(root, c, [], only(["bin/app"]), {});
     fs.chmodSync(path.join(root, "bin/app"), 0o644);
-    assert.equal(cacheKey(root, c, [], ["bin/app"], {}), k1);
+    assert.equal(cacheKey(root, c, [], only(["bin/app"]), {}), k1);
   }
 });
