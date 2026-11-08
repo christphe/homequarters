@@ -151,7 +151,7 @@ func Start(ctx context.Context, o Options) (bed *Bed, err error) {
 	if addr == "" {
 		addr = "127.0.0.1:0"
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listen(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -464,4 +464,28 @@ func (h *countHandler) WithAttrs(as []slog.Attr) slog.Handler {
 
 func (h *countHandler) WithGroup(name string) slog.Handler {
 	return &countHandler{inner: h.inner.WithGroup(name), c: h.c, attrs: h.attrs}
+}
+
+// blockedPorts are the ports browsers and fetch refuse to connect to (the Fetch standard's "bad ports" at or
+// above 1024, the only ones an OS hands out for port 0): a free port among them would make every call fail.
+var blockedPorts = map[int]bool{1719: true, 1720: true, 1723: true, 2049: true, 3659: true, 4045: true, 4190: true,
+	5060: true, 5061: true, 6000: true, 6566: true, 6665: true, 6666: true, 6667: true, 6668: true, 6669: true,
+	6679: true, 6697: true, 10080: true}
+
+// listen listens on addr; for port 0 it asks again while the OS gives a port a browser would refuse.
+func listen(addr string) (net.Listener, error) { return listenWith(net.Listen, addr) }
+
+func listenWith(netListen func(network, addr string) (net.Listener, error), addr string) (net.Listener, error) {
+	for range 20 {
+		ln, err := netListen("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		_, port, _ := net.SplitHostPort(addr)
+		if port != "0" || !blockedPorts[ln.Addr().(*net.TCPAddr).Port] {
+			return ln, nil
+		}
+		defer ln.Close() // held until a good one is found, so the OS does not hand the same one back
+	}
+	return nil, fmt.Errorf("no free port outside the ports browsers refuse after 20 tries")
 }

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -348,3 +350,30 @@ func TestTestbedKVReplaceWaitsForQueuedWrites(t *testing.T) {
 		}
 	}
 }
+
+// The OS may hand out a port that fetch and browsers refuse (6000, 10080...): the testbed asks for another one,
+// and keeps a port given explicitly.
+func TestTestbedAvoidsPortsBrowsersRefuse(t *testing.T) {
+	var given []int
+	fake := func(ports ...int) func(string, string) (net.Listener, error) {
+		return func(network, addr string) (net.Listener, error) {
+			p := ports[len(given)]
+			given = append(given, p)
+			return fakeListener{port: p}, nil
+		}
+	}
+	ln, err := listenWith(fake(6000, 10080, 51234), "127.0.0.1:0")
+	if err != nil || ln.Addr().(*net.TCPAddr).Port != 51234 || len(given) != 3 {
+		t.Fatalf("listen = %v, %v after %v; want port 51234 on the third try", ln, err, given)
+	}
+	given = nil
+	if ln, err := listenWith(fake(6000), "127.0.0.1:6000"); err != nil || ln.Addr().(*net.TCPAddr).Port != 6000 {
+		t.Fatalf("an explicit port is kept: %v, %v", ln, err)
+	}
+}
+
+type fakeListener struct{ port int }
+
+func (fakeListener) Accept() (net.Conn, error) { return nil, errors.New("fake") }
+func (fakeListener) Close() error              { return nil }
+func (l fakeListener) Addr() net.Addr          { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: l.port} }
