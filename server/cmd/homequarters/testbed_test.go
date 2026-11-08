@@ -244,6 +244,56 @@ func TestTestbedTempDatabase(t *testing.T) {
 	}
 }
 
+// A test process that dies closes the server's stderr as well as its stdin: the log line written at the stop
+// must not kill the server (SIGPIPE on Linux) before it removes its temporary database.
+func TestTestbedTempDatabaseWhenTheClientDied(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "client")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(binPath, "testbed", "--plugin", echoPlugin, "--db", filepath.Join(dir, "bed.db"), "--db-temp")
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "HQ_ENV=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stderr = errW
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	errW.Close()
+	if !bufio.NewScanner(out).Scan() {
+		t.Fatal("no url line")
+	}
+	errR.Close() // the client is gone: nobody reads the logs any more
+	out.Close()
+	stdin.Close()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		cmd.Process.Kill()
+		t.Fatal("the testbed did not stop")
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		entries, _ := os.ReadDir(dir)
+		t.Fatalf("the temporary database's folder is still there (%v): %v; exit: %v", err, entries, cmd.ProcessState)
+	}
+}
+
 func TestTestbedStopsOnInterrupt(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no SIGINT to send to a child process on Windows")

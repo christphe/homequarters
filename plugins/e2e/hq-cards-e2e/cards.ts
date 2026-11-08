@@ -304,9 +304,12 @@ export async function run(ctx: RunContext): Promise<boolean> {
     check("a named pile turns over: the log says so and its top card now shows face up on every page", turned >= 0, `${turned} ms`);
     await click(ann, stockAt);
     await pressInView(ann, "Turn the pile over"); // back face down
+    // the next press waits for that turn to reach the pages: a press while the view redraws was lost on CI
+    // (2026-11-08: the jokers stayed in, the count read Stock 34 and 20 set aside)
+    await waitFor(async () => !(await drawn(ann))!.cards.some((c) => c.where === "pile" && c.up) && !(await drawn(bo))!.cards.some((c) => c.where === "pile" && c.up), { timeout: 3000, what: "the stock face down again" });
     // a 32-card game: the jokers, then the 2s to 6s chosen one by one, set aside from the panel
     await press(ann, "Play with 52 cards");
-    await waitFor(async () => ((await logOf(bo)).at(-1) ?? "").endsWith("set aside the jokers"), { timeout: 3000, what: "the jokers set aside" }).catch(() => {});
+    await waitFor(async () => ((await logOf(bo)).at(-1) ?? "").endsWith("set aside the jokers"), { timeout: 3000, what: "the jokers set aside" });
     for (const r of ["2", "3", "4", "5", "6"]) await press(ann, r);
     await press(ann, "Set the chosen aside");
     const ranksOut = await within(async () => (await logOf(bo)).at(-1) === `${ann.name} set aside the 2s, 3s, 4s, 5s and 6s`, 3000);

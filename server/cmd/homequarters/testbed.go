@@ -65,6 +65,9 @@ func testbedMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "testbed: refused with HQ_ENV=%s: the testbed is for tests only\n", env)
 		return 2
 	}
+	// a test process that died closed stdout and stderr too: on Linux the next log line would kill this
+	// process with SIGPIPE before it removes its --db-temp database; ignored, the write only fails
+	signal.Ignore(syscall.SIGPIPE)
 	log := slog.New(slog.NewJSONHandler(stderr, nil))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
