@@ -1,5 +1,9 @@
-// Admin map editor: real UI clicks, server-side validation, live update for others, persistence.
-import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, st, sleep, API, type RunContext, type User } from "../lib.ts";
+// Admin map editor through its real controls: painting walls previews at once, a new room is drawn, named
+// and saved, and the saved edits reach another connected member live. The server's side of the same edit
+// (admin only, validation, the size guard, the wall and the admins-only room enforced, no call alone in
+// the new room, the edit kept across a restart) is tested in Go: httpapi/editor_test.go and
+// world/editor_test.go.
+import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, API, type RunContext, type User } from "../lib.ts";
 
 const tileToClient = (u: User, tx: number, ty: number) =>
   u.page.evaluate((tx, ty) => {
@@ -23,23 +27,14 @@ export async function run(ctx: RunContext): Promise<boolean> {
   const browser = await launch();
   try {
     const t = String(Date.now() % 10000);
-    const admin = await joinAs(browser, "Admin", { cookie: ctx.adminCookie });
-    const mem = await joinAs(browser, "Ed" + t);
+    const [admin, mem] = await Promise.all([joinAs(browser, "Admin", { cookie: ctx.adminCookie }), joinAs(browser, "Ed" + t)]);
     const areas0 = await mem.page.evaluate(() => window.__hq.view.map!.areas.length);
-
-    // non-admins and invalid maps are refused by the server
-    const memCookie = (await mem.ctx.cookies()).find((c) => c.name === "hq_session")!.value;
     const map = await admin.page.evaluate(() => JSON.parse(JSON.stringify(window.__hq.view.map)));
     // The world map redacts interactive-object content; round-trip the full map so later
     // scenarios (and real offices) do not lose note text, embed URLs or portal destinations.
     const full = await (await fetch(API + "/api/admin/map", { headers: { Cookie: "hq_session=" + ctx.adminCookie } })).json();
     Object.assign(map, { props: full.props });
     const put = (cookie: string, body: object) => fetch(API + "/api/map", { method: "PUT", headers: { "Content-Type": "application/json", Cookie: "hq_session=" + cookie }, body: JSON.stringify(body) });
-    check("a member cannot replace the map (admin-only endpoint)", (await put(memCookie, map)).status === 403);
-    const badSpawn = { ...map, spawn: { x: 0, y: 0 } }; // (0,0) is a wall
-    check("the server rejects a map whose spawn is inside a wall", (await put(ctx.adminCookie, badSpawn)).status === 422);
-    const badSize = { ...map, walls: map.walls.slice(1), h: map.h - 1 };
-    check("the server refuses to change the map size on the fly", [409, 422].includes((await put(ctx.adminCookie, badSize)).status));
 
     // ---- drive the real editor UI (the camera follows the admin: walk next to what is being edited)
     await walkTo(admin, 32 * 16 + 8, 22 * 16 + 8);
@@ -58,44 +53,13 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await admin.page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".editor button")].find((b) => b.textContent === "Save")?.click());
 
     await waitFor(() => mem.page.evaluate((n) => window.__hq.view.map!.areas.length === n, areas0 + 1), { what: "member receives the new room" });
-    check("saved edits reach other connected users live", true);
+    const room = await mem.page.evaluate(() => window.__hq.view.map!.areas.find((a) => a.name === "Test room"));
+    check("saved edits reach other connected users live", !!room && room.access.mode === "admins" && room.x === 14 && room.y === 28 && room.w === 6 && room.h === 5, JSON.stringify(room));
 
-    // ---- authority: the member cannot walk through the new wall or into the new admins-only room
-    await walkTo(mem, 34 * 16 + 8, 22 * 16 + 8);
-    await mem.page.evaluate(() => { const s = window.__hq.session.socket!; for (let i = 0; i < 30; i++) setTimeout(() => s.send({ t: "in", s: 100 + i, x: 1, y: 0 }), i * 60); });
-    await sleep(2200);
-    await mem.page.evaluate((id) => window.__hq.session.locate(id), mem.id);
-    const loc = await waitFor(() => mem.page.evaluate(() => window.__hq.view.locate), { what: "server position" });
-    check("the new wall blocks movement on the server", loc!.x < 35 * 16, "server x=" + loc!.x.toFixed(1));
-    await mem.page.evaluate(() => window.__hq.session.socket!.send({ t: "in", s: 999, x: 0, y: 0 }));
-
-    await walkTo(mem, 16 * 16 + 8, 27 * 16 + 8);
-    await mem.page.evaluate(() => { window.__hq.view.locate = null; const s = window.__hq.session.socket!; for (let i = 0; i < 30; i++) setTimeout(() => s.send({ t: "in", s: 300 + i, x: 0, y: 1 }), i * 60); });
-    await sleep(2200);
-    await mem.page.evaluate((id) => window.__hq.session.locate(id), mem.id);
-    const loc2 = await waitFor(() => mem.page.evaluate(() => window.__hq.view.locate), { what: "server position 2" });
-    check("a member is kept out of the newly created admins-only room", loc2!.y < 28 * 16, "server y=" + loc2!.y.toFixed(1));
-
-    await admin.page.evaluate(() => window.__hq.session.setConsent(true));
-    await walkTo(admin, 16 * 16 + 8, 30 * 16 + 8);
-    await waitFor(() => admin.page.evaluate(() => window.__hq.state.currentArea === "Test room"), { timeout: 15000, what: "admin inside the new room" });
-    await sleep(1500);
-    check("the new room is a real meeting room: alone inside, no call is started", (await st(admin)).conv === null);
-
-    // ---- persistence across restart
-    // Ed comes back on the member's session: close the member's old page first, or both pages reconnect
-    // on one session after the restart and keep replacing each other (a timing flake under load)
-    await mem.ctx.close();
-    await sleep(500);
-    await ctx.stopServer();
-    await ctx.startServer();
-    const again = await joinAs(browser, "Ed", { cookie: memCookie });
-    const persisted = await again.page.evaluate(() => ({ wall: window.__hq.view.map!.walls[22][35], room: window.__hq.view.map!.areas.some((a) => a.name === "Test room" && a.access.mode === "admins") }));
-    check("edited walls and rooms persist across a server restart", persisted.wall === "#" && persisted.room, JSON.stringify(persisted));
     // Leave the shared office as we found it so later scenarios do not depend on this one.
     const restore = await put(ctx.adminCookie, map);
     check("the original map can be restored by the administrator", restore.status === 200);
-    const errs = [admin, mem, again].flatMap((u) => u.logs).filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
+    const errs = [admin, mem].flatMap((u) => u.logs).filter((l) => !/WebSocket|ERR_|net::|closed/.test(l));
     check("no unexpected console errors", errs.length === 0, errs.slice(0, 2).join(" | "));
   } finally {
     await browser.close();
