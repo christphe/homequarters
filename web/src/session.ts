@@ -14,6 +14,7 @@ import { t } from "./i18n";
 import { soundLog } from "./audioOut";
 import { chime, chimeLog, desktopNotify } from "./notify";
 import { convChange } from "./convChime";
+import { helloReplies } from "./helloReplies";
 import { isOutdated, pageVersion } from "./version";
 import { PluginManager } from "./plugins/manager";
 import { DESKTOP_EVENT, onWindowHidden, onWindowShown } from "./desktopWindow";
@@ -180,13 +181,7 @@ class Session {
         view.setPeople(roster);
         // a new connection: start every plugin afresh, so its browser code resynchronises with its server code
         void this.plugins?.refresh(true);
-        const s = getState();
-        // Always say it, false too: the server keeps a player's consent when another client of the same
-        // account takes over (a second browser, the desktop app), and this one may never have opted in.
-        this.socket?.send({ t: "consent", b: s.consent });
-        if (s.status !== "available") this.socket?.send({ t: "st", v: s.status });
-        const note = localStorage.getItem("hq.note");
-        if (note) this.socket?.send({ t: "note", text: note }); // the note lives in memory on the server
+        for (const r of helloReplies(getState(), localStorage.getItem("hq.note"))) this.socket?.send(r);
         break;
       }
       case "w":
