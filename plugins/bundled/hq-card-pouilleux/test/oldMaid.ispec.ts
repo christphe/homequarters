@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { afterAll, test } from "vitest";
 import { CARDS, NAMES, act, cardBed, cardsDir, closeBeds, count, handSizes, lastOf, logVerbs, noErrors, seatAll, stateAfter, tableOf, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
-import type { Frame } from "../../hq-cards/test/harness.ts";
 
 afterAll(closeBeds);
 
@@ -17,7 +16,7 @@ type Game = { title: string; deck: { standard: string[] } };
 
 /** Whether the last "games" message after the `from`-th one lists Old Maid. */
 const listsOldMaid = (m: Parameters<typeof lastOf>[0], from = 0): boolean => {
-  const list = lastOf(m, "games", from)?.list as Frame[] | undefined;
+  const list = lastOf(m, "games", from)?.list;
   return !!list?.some((g) => g.name === OLD_MAID && g.title === "Old Maid");
 };
 

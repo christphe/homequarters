@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { afterAll, test } from "vitest";
 import { NAMES, act, cardBed, cardsDir, closeBeds, handSizes, lastOf, noErrors, seatedCount, until, openDeck, waitTable } from "../../hq-cards/test/harness.ts";
-import type { Frame } from "../../hq-cards/test/harness.ts";
 
 afterAll(closeBeds);
 
@@ -16,7 +15,7 @@ type Table = { seats: ({ name: string } | null)[]; hands: number[][]; piles: { n
 type Game = { deck: { names: string[]; plugin: string; sheet: string; back: number } };
 
 /** The count text Last Card should give for a table: numbers their face value, Skip, Reverse and Draw Two 20, both wilds 50 (cards 100-107); card n of a colour is at n % 25. */
-function expectedCount(tb: Frame): string {
+function expectedCount(tb: Table): string {
   const value = (n: number): number => {
     if (n >= 100) return 50;
     const i = n % 25;
@@ -24,7 +23,7 @@ function expectedCount(tb: Frame): string {
     return i <= 18 ? (i + 1) >> 1 : 20;
   };
   const parts: string[] = [];
-  const { seats, hands } = tb as Table;
+  const { seats, hands } = tb;
   for (const [i, s] of seats.entries()) {
     if (s === null) continue;
     const sum = hands[i].reduce((a, c) => a + value(c & ~128), 0);
@@ -37,7 +36,7 @@ test("Last Card registers in two parts, its table deals and counts", async () =>
   const { bed, members: [alice, bob, carol] } = await cardBed([cardsDir, path.resolve(import.meta.dirname, "..")], NAMES);
   // registration is asynchronous: the open window is told when the game arrives
   openDeck(alice);
-  await until("Last Card in the game list", () => (lastOf(alice, "games")?.list as Frame[] | undefined)?.some((g) => g.name === LAST_CARD && g.title === "Last Card"));
+  await until("Last Card in the game list", () => lastOf(alice, "games")?.list?.some((g) => g.name === LAST_CARD && g.title === "Last Card"));
   openDeck(bob, carol);
   act(alice, { t: "choose", game: LAST_CARD });
   const { deck } = (await until("the game message", () => lastOf(alice, "game"))).g as Game;
