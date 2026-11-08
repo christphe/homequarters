@@ -66,6 +66,7 @@ h1, h2, h3 { font-weight: 700; }
 
 /* the bottom bar: blue message strips with white text, like a dialogue line */
 .bar-row { background: var(--cream); border: 4px solid var(--orange); border-radius: 999px; box-shadow: var(--f-out), inset 0 0 0 2px var(--dark); }
+.bar-row .muted { color: var(--ink); } /* "unavailable on this server": --muted on the cream bar is 3.83:1, --ink 8.42:1 (WCAG AA wants 4.5) */
 .convline, .bar-error {
   background: var(--blue); color: #fff; text-shadow: 1px 1px 0 #142860; border: 3px solid var(--blue-hi); border-radius: 6px; box-shadow: 0 0 0 2px #182468, 3px 4px 0 2px rgba(20, 16, 40, .3);
 }

@@ -39,6 +39,10 @@ export async function run(ctx: RunContext): Promise<boolean> {
     const cy = await joinAs(browser, "Cyrillia Featherston" + t, { avatar: { sk: 0, hs: 2, hc: 3, sh: 1, pa: 2 } }) as Player;
     users.push(ann, bo, cy);
     for (const u of users) await countFrames(u);
+    // the platform's media bar in the state only a server without LiveKit shows ("Audio and video are unavailable on
+    // this server."): the testbed is the one run that has it, e2e's a11y scenario runs with LiveKit
+    await waitFor(() => read(ann, () => !!document.querySelector("footer.bar .bar-row .muted")), { what: "the media bar's unavailable line" });
+    await audit(ann.page, "the media bar without LiveKit", "footer.bar");
     await Promise.all([goTo(ann, SPOTS[0], FEET), goTo(bo, SPOTS[1], FEET), goTo(cy, SPOTS[2], FEET)]);
 
     // ---- criterion 1: the deck on the table, with the X hint

@@ -10,6 +10,7 @@
 - The server binary refuses an argument it does not know instead of starting the server (#54)
 
 ### Fixed
+- On a server without audio and video, the media bar's "Audio and video are unavailable on this server." line is dark enough to read (WCAG AA contrast) (#59)
 - A plugin error is counted and logged before the request that caused it gets its answer (#55)
 
 ## [0.6.0] - 2026-11-07
