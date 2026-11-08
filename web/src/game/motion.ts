@@ -65,6 +65,10 @@ export function canStandStatic(g: Grid, x: number, y: number) {
   return true;
 }
 
+/** The diagonal factor of world.move on the server, the same literal so prediction matches it bit for bit. */
+// oxlint-disable-next-line oxc/approx-constant -- world.go's literal, not Math.SQRT1_2: the two differ in the 9th digit
+export const DIAGONAL = 0.70710678;
+
 /**
  * world.move on the server: moves p by dist along (dx, dy) in the same sub-steps and with the same
  * contact rule (see SUB_STEP_PX). With an area, room access is checked and follows the walk, as on
@@ -72,7 +76,7 @@ export function canStandStatic(g: Grid, x: number, y: number) {
  */
 export function moveBody(g: Grid, p: { x: number; y: number }, dx: number, dy: number, dist: number, area: number | null) {
   let vx = dx, vy = dy;
-  if (vx && vy) { vx *= 0.70710678; vy *= 0.70710678; }
+  if (vx && vy) { vx *= DIAGONAL; vy *= DIAGONAL; }
   const n = Math.max(1, Math.ceil(dist / SUB_STEP_PX));
   const step = dist / n;
   for (let i = 0; i < n; i++) {
