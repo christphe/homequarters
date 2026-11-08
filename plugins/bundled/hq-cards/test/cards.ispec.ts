@@ -322,8 +322,12 @@ test("a stale close after a reopen does not drop the member", async () => {
   openDeck(alice!);
   await until("the second open", () => opens().length === 2);
   act(alice!, { t: "close", n: first }); // the first window's close, late
+  const logs = (): number => frames(alice!).filter((d) => d.t === "log").length;
+  const logsBefore = logs();
   act(alice!, { t: "draw", pile: "p0" });
   await waitTable(alice!, "Alice still at her open window draws", (t) => handSizes(t)[0] === 1);
+  // the draw's log line comes a tick after the table: waited for, or the quiet check below would catch it
+  await until("the draw's log line", () => logs() > logsBefore);
   // the close of the window she has open still closes it
   act(alice!, { t: "close", n: opens()[1]!.n });
   act(alice!, { t: "draw", pile: "p0" });

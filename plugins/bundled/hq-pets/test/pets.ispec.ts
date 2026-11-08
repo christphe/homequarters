@@ -50,6 +50,14 @@ const petsOf = (m: Member, id: number): Pet[] => entryOf(m, id)?.pets ?? [];
 const limitOf = (m: Member): number | undefined => frames(m).findLast((f) => f.t === "you")?.limit;
 const bytes = (d: unknown): number => Buffer.byteLength(JSON.stringify(d));
 
+/** Probes that the plugin handled what `m` sent before: a sync sent now is answered after it (one plugin
+ * handles its messages in order), so a refused message has had its chance to show something. */
+async function settled(m: Member): Promise<void> {
+  const before = frames(m).length;
+  m.send(PETS, { t: "sync" });
+  await until("the answer to a sync sent after", () => frames(m).slice(before).some((f) => f.t === "pets"));
+}
+
 /** A member's changes are throttled to 5 a second: stay under it. */
 async function say(m: Member, ...msgs: unknown[]): Promise<void> {
   for (const d of msgs) {
@@ -98,7 +106,7 @@ test("it adds pets, colours and removes them", async () => {
   const bob = await bed.join("Bob");
   await say(bob, { t: "add", k: 0 }, { t: "add", k: 0 }, { t: "add", k: 8 }, { t: "add", k: 4 }, { t: "add", k: 9 });
   await until("three pets", () => petsOf(bob, bob.id).length === 3);
-  await sleep(300); // the refused fourth and the invalid kind have nothing to show: a bounded wait, nothing is expected
+  await settled(bob); // the refused fourth and the invalid kind have nothing to show
   const got = petsOf(bob, bob.id);
   assert.deepEqual(
     got.map((p) => p[0]),
@@ -155,7 +163,7 @@ test("the limit follows the office's setting", async () => {
   await until("the default limit", () => limitOf(bob) === 3);
   await say(bob, { t: "add", k: 1 }, { t: "add", k: 2 }, { t: "add", k: 3 }, { t: "limit", n: 8 }, { t: "add", k: 4 });
   await until("three pets", () => petsOf(bob, bob.id).length === 3);
-  await sleep(300); // the refused fourth: a bounded wait, nothing is expected
+  await settled(bob); // the refused fourth has nothing to show
   assert.equal(limitOf(bob), 3, "3 by default, and a page cannot change it");
   assert.equal(petsOf(bob, bob.id).length, 3);
   await bed.setSetting(PETS, "limit", 1); // what Administration > Plugins does

@@ -271,13 +271,15 @@ export async function testbed(o: { plugins: string[]; static?: string; timeoutMs
       const r = await call("POST", "/api/join", { name });
       const text = await r.text();
       if (r.status !== 200) throw new Error(`join ${name}: ${r.status} ${text.slice(0, 200)}`);
-      const out = JSON.parse(text) as { id: number; name: string };
+      const out = JSON.parse(text) as { id: number; name: string; role?: string };
       const cookie = r.headers
         .getSetCookie()
         .map((c) => c.split(";")[0]!)
         .join("; ");
       if (!cookie) throw new Error(`join ${name}: no session cookie`);
-      if (!adminCookie) adminCookie = cookie;
+      // the administrator is the member the server made one (the first created), not the first join to answer:
+      // members joined at once may answer in any order
+      if (!adminCookie && out.role === "admin") adminCookie = cookie;
       const m = new MemberImpl(ctx, out.id, out.name, cookie);
       members.push(m);
       if (jo?.at) await place(m.id, jo.at);
