@@ -145,6 +145,7 @@
         "!scenarios/**",
         "!*.test.ts",
         "!plugin-run.ts",
+        "!fixtures/**",
         {
           "go": ".",
           "cwd": "../server/cmd/homequarters"
@@ -152,8 +153,6 @@
         "/web/**",
         "!/web/test/**",
         "!/web/dev/**",
-        "/plugins/bundled/*/plugin.json",
-        "/plugins/sdk/**",
         {
           "disk": "/bin/homequarters*"
         },
@@ -167,9 +166,6 @@
         },
         {
           "pnpm": "../web"
-        },
-        {
-          "pnpm": "../plugins/sdk"
         }
       ],
       "envKeys": [
@@ -229,16 +225,9 @@
             "scenarios/admin.ts"
           ]
         },
-        "plugins": {
-          "inputs": [
-            "scenarios/plugins.ts",
-            "/plugins/bundled/**"
-          ]
-        },
         "a11y": {
           "inputs": [
-            "scenarios/a11y.ts",
-            "/plugins/bundled/**"
+            "scenarios/a11y.ts"
           ]
         },
         "security": {

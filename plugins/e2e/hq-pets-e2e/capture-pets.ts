@@ -1,11 +1,12 @@
-// UX capture for the critic (not part of the default suite): run "node run.ts capture-plugin-pet".
-// Enables the pets plugin, records the owner walking an L with three of the plugin's
+// UX capture for the critic (not part of the project's test:e2e): from this folder, run
+// "node ../../../e2e/plugin-run.ts --plugin ../../bundled/hq-pets capture-pets.ts" (the testbed, no LiveKit).
+// Turns the pets plugin on, records the owner walking an L with three of the plugin's
 // pets, and writes frames plus one contact sheet to a fresh folder inside $HQ_CAPTURE_DIR
 // (default /tmp/hq-capture). Look at the sheet.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launch, joinAs, walkTo, sleep, waitFor, API, type RunContext } from "../lib.ts";
+import { launch, joinAs, walkTo, sleep, waitFor, API, type RunContext } from "../../../e2e/lib.ts";
 
 // What the plugin iframe's SDK puts on its window.
 type PluginWindow = { hq: { send(m: object): void } };
@@ -15,14 +16,14 @@ const setPlugin = (ctx: RunContext, enabled: boolean) => fetch(API + "/api/admin
 export async function run(ctx: RunContext): Promise<boolean> {
   const base = process.env.HQ_CAPTURE_DIR ?? "/tmp/hq-capture";
   fs.mkdirSync(base, { recursive: true });
-  const dir = fs.mkdtempSync(path.join(base, "plugin-pet-"));
+  const dir = fs.mkdtempSync(path.join(base, "pets-"));
   const browser = await launch();
   try {
     const owner = await joinAs(browser, "Owner", { avatar: { sk: 2, hs: 1, hc: 0, sh: 4, pa: 1 } });
     await setPlugin(ctx, true);
-    // setup through the plugin's own messages (the modal is tested in plugins.ts): a cat in its own
+    // setup through the plugin's own messages (the modal is tested in pets.ts): a cat in its own
     // colours, a tinted fox and a seedling
-    const frame = await waitFor(() => owner.page.frames().find((f) => f.url() === "about:srcdoc"), { what: "plugin frame" });
+    const frame = await waitFor(async () => (await owner.page.$('iframe.plugin-frame[data-plugin="hq-pets"]'))?.contentFrame(), { what: "plugin frame" });
     for (const m of [{ t: "add", k: 0 }, { t: "add", k: 3 }, { t: "colour", i: 1, c: "6a5acd" }, { t: "add", k: 8 }]) {
       await frame.evaluate((m) => (window as unknown as PluginWindow).hq.send(m), m);
       await sleep(300);

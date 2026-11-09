@@ -18,8 +18,8 @@ const root = path.resolve(import.meta.dirname, "..");
 type PackageJson = { packageManager?: string; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
 type FdashJson = { dependsOn?: string[] };
 const readJson = <T>(file: string) => JSON.parse(fs.readFileSync(file, "utf8")) as T;
-/** The plugins' e2e projects (plugins/e2e/*), each run by e2e/plugin-run.ts against the testbed, in the workspace's order. */
-const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e2e", "hq-chess-e2e"];
+/** The plugins' e2e projects (plugins/e2e/*: one per bundled plugin, and plugin-host-e2e with the fixture plugins), each run by e2e/plugin-run.ts against the testbed, in the workspace's order. */
+const PLUGIN_E2E = ["hq-card-lastcard-e2e", "hq-card-pouilleux-e2e", "hq-cards-e2e", "hq-chess-e2e", "hq-pets-e2e", "plugin-host-e2e"];
 const PLUGIN_SUITES = PLUGIN_E2E.map((p) => `${p}:test:e2e`);
 /** The projects with integration tests (*.ispec.ts against the testbed), in the workspace's order. */
 /** The server's Go modules, one project each (decision 0041), in the workspace's order: [project, folder]. */
@@ -84,6 +84,8 @@ test("the workspace holds the gauntlet's gates, as the conventional tasks of eac
       ["hq-card-pouilleux-e2e", "--plugin ../../bundled/hq-cards --plugin ../../bundled/hq-card-pouilleux oldMaid.ts"],
       ["hq-cards-e2e", "--plugin ../../bundled/hq-cards cards.ts"],
       ["hq-chess-e2e", "--plugin ../../bundled/hq-chess chess.ts"],
+      ["hq-pets-e2e", "--plugin ../../bundled/hq-pets --plugin ../../../e2e/fixtures/plugins/installed/critters --plugin ../../../e2e/fixtures/plugins/installed/drawn-pet pets.ts"],
+      ["plugin-host-e2e", "--plugin ../../../e2e/fixtures/plugins/installed/ui-demo --plugin ../../../e2e/fixtures/plugins/installed/drawn-sheet host.ts"],
     ].map(([p, args]) => [`${p}:test:e2e`, `plugins/e2e/${p}`, `node ../../../e2e/plugin-run.ts ${args}`, false, false, '{"E2E_VIEWPORT":"small","HQ_BIN_REPO_ONLY":"1"}']),
   ]);
   // the integration and browser suites start once the build is done: default runs its tiers one after the
@@ -160,15 +162,21 @@ test("every gate is cached, and every scenario of the suite is an item with its 
   assert.deepEqual([...e2e.items!.keys()], ALL);
   for (const [s, item] of e2e.items!) assert.ok(item.inputs.includes(`e2e/scenarios/${s}.ts`), s);
   assert.ok(e2e.inputs!.includes("!e2e/scenarios/**"), "a scenario's file reruns that scenario only");
-  // scenarios that turn a bundled plugin on follow that plugin's code; scenarios that list the plugins' catalog
-  // follow every plugin's manifest (the catalog reads plugin.json and checks the files exist, it compiles nothing:
-  // load in server/internal/plugin/catalog.go)
-  const follows = (s: string, p: string) => e2e.items!.get(s)!.inputs.some((i) => typeof i === "string" && path.posix.matchesGlob(`plugins/bundled/${p}/main.ts`, i));
-  const manifests = (s: string) => [...e2e.inputs!, ...e2e.items!.get(s)!.inputs].some((i) => typeof i === "string" && path.posix.matchesGlob("plugins/bundled/hq-any/plugin.json", i));
+  // the core suite runs with plugins off (run.ts gives its server an empty HQ_PLUGINS_DIR): no scenario names a bundled
+  // plugin outside its comments, and nothing of plugins/bundled or of the fixture plugins is an input, so changing a
+  // plugin reruns only its own e2e project (plugins/e2e/<plugin>-e2e, or plugin-host-e2e for the fixtures)
+  const inputs = [...e2e.inputs!, ...[...e2e.items!.values()].flatMap((i) => i.inputs)].filter((i): i is string => typeof i === "string" && !i.startsWith("!"));
+  for (const probe of ["plugins/bundled/hq-any/main.ts", "plugins/bundled/hq-any/plugin.json", "plugins/sdk/testbed.ts"]) {
+    assert.ok(!inputs.some((i) => path.posix.matchesGlob(probe, i)), probe + " is not an input of the core suite");
+  }
+  // nor through a pnpm package or a disk glob
+  const objects = [...e2e.inputs!, ...[...e2e.items!.values()].flatMap((i) => i.inputs)].filter((i) => typeof i === "object").map((i) => JSON.stringify(i));
+  assert.deepEqual(objects.filter((o) => /plugins\/|fixtures/.test(o)), [], "no pnpm or disk input of the core suite reaches a plugin");
+  assert.ok(e2e.inputs!.includes("!e2e/fixtures/**"), "the fixture plugins are not an input of the core suite");
+  assert.match(fs.readFileSync(path.join(root, "e2e/run.ts"), "utf8"), /HQ_PLUGINS_DIR: "",/);
   for (const s of ALL) {
-    const text = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".ts"), "utf8");
-    for (const p of fs.readdirSync(path.join(root, "plugins/bundled"))) if (text.includes(p)) assert.ok(follows(s, p), `${s} names ${p}: its folder is an input`);
-    if (/\[role=tab\]", "Plugins"|Plugins tab|plugins tab/.test(text)) assert.ok(manifests(s), `${s} lists the plugins: every plugin's plugin.json is an input`);
+    const code = fs.readFileSync(path.join(root, "e2e/scenarios", s + ".ts"), "utf8").split("\n").filter((x) => !x.trim().startsWith("//")).join("\n");
+    for (const p of fs.readdirSync(path.join(root, "plugins/bundled"))) assert.ok(!code.includes(p), s + " names " + p + ": a bundled plugin is tested in its own e2e project");
   }
 });
 

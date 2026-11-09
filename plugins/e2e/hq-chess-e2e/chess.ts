@@ -7,10 +7,12 @@
 // Rules and logic are unit-tested, not here: the rules in plugins/bundled/hq-chess/test/chess.test.ts; what the view lets a member
 // pick up, sends, says and undoes, and the window's buttons, in plugins/bundled/hq-chess/test/chessView.test.ts; the server side
 // (seats, presence, hello, reset, the playing list, restarts) in plugins/bundled/hq-chess/test/chess.ispec.ts. This
-// scenario keeps what needs the browser: real controls, pixels, the live region, sync between pages, badges.
+// scenario keeps what needs the browser: real controls, pixels, the live region, sync between pages, badges, and
+// the axe audit of the Chess window and its board view (e2e's a11y scenario runs without plugins).
 // It runs against the testbed, without LiveKit (e2e/plugin-run.ts): node tools/fdash/cli.ts run test:e2e --pkg hq-chess-e2e
 // (after "node tools/fdash/cli.ts run build --pkg server --pkg web"). Of its RunContext it uses only adminCookie.
 import { check, summary, resetChecks, launch, joinAs, waitFor, walkTo, sleep, API, type Frame, type HTTPRequest, type RunContext, type User } from "../../../e2e/lib.ts";
+import { audit, auditView } from "../../../e2e/axe.ts";
 import { paintPiece, TONES, PIECE_W, PIECE_H, SMALL_W, SMALL_H } from "../../bundled/hq-chess/public/pieces.ts";
 import { START, move as playMove, place as playPlace, type Board, type Side } from "../../bundled/hq-chess/public/game.ts";
 import type { ToServer } from "../../bundled/hq-chess/public/messages.ts";
@@ -264,6 +266,11 @@ export async function run(ctx: RunContext): Promise<boolean> {
     await listen(cy);
     const viewTitle = await read(ann, (sel: string) => document.querySelector<HTMLIFrameElement>(sel + " iframe.plugin-view")?.title, MODAL);
     check("X opens the Chess window with the board view (iframe titled Chessboard)", (await modalOpen(ann)) && viewTitle === "Chessboard" && (await board(ann))!.p === START, viewTitle);
+    // accessibility (moved from e2e's a11y scenario): axe on the Chess window in Ann's page and inside the board view's
+    // own document. The window only: the rest of the page is the platform's, audited by e2e's a11y scenario (with
+    // LiveKit; the testbed has none, and its media bar's "unavailable" line is not this plugin's)
+    await audit(ann.page, "the Chess window", MODAL);
+    await auditView((await viewFrame(ann))!, "the chess board view");
 
     // ---- the window fits a 1280x720 screen without scrolling: seats, the board with both strips, Close
     const small = ann.page.viewport();

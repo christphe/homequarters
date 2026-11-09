@@ -121,11 +121,8 @@ if (ownLiveKit) {
 } else if (!EXTERNAL && !(await portOpen(LK_PORT))) { console.log("# no LiveKit on " + LK_PORT + " (HQ_TEST_LK_PORT): start one there first"); process.exit(1); }
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "homequarters-e2e-"));
-// the bundled plugins (plugins/bundled) plus the suite's own installed ones (e2e/fixtures/plugins/installed), all disabled
-// until a scenario enables one
-const pluginsDir = path.join(dir, "plugins");
-fs.cpSync(path.join(root, "plugins/bundled"), path.join(pluginsDir, "bundled"), { recursive: true });
-fs.cpSync(path.join(root, "e2e/fixtures/plugins/installed"), path.join(pluginsDir, "installed"), { recursive: true });
+// The server runs with plugins off (HQ_PLUGINS_DIR empty): the plugin host is tested on the testbed with the suite's
+// fixture plugins (plugins/e2e/plugin-host-e2e), each bundled plugin in its own e2e project (plugins/e2e/<name>-e2e).
 // Checks that only need time to pass (an expiring token) run after the other scenarios instead of sleeping in theirs.
 const deferred: { name: string; due: number; fn: () => Promise<unknown>; scenario: string | null }[] = [];
 // the scenario running, so that a deferred check counts for the scenario that registered it
@@ -133,7 +130,7 @@ let current: string | null = null;
 // adminCookie and adminId are set once the administrator has joined, before any scenario runs
 const ctx = { dir, bin: BIN, server: null, defer(name: string, due: number, fn: () => Promise<unknown>) { deferred.push({ name, due, fn, scenario: current }); }, async startServer() {
   const child = spawn(BIN, [], {
-    env: { ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: path.join(dir, "e2e.db"), HQ_STATIC_DIR: path.join(root, "web/dist"), HQ_PLUGINS_DIR: pluginsDir,
+    env: { ...process.env, HQ_ENV: "dev", HQ_ADDR: `127.0.0.1:${PORT}`, HQ_DB: path.join(dir, "e2e.db"), HQ_STATIC_DIR: path.join(root, "web/dist"), HQ_PLUGINS_DIR: "",
       HQ_ALLOWED_ORIGINS: `127.0.0.1:${PORT}`, LIVEKIT_URL: process.env.HQ_TEST_LK_URL, LIVEKIT_API_KEY: "devkey", LIVEKIT_API_SECRET: "secret",
       HQ_JOIN_RATE: "5000", HQ_MEDIA_TOKEN_TTL_SECONDS: process.env.HQ_MEDIA_TOKEN_TTL_SECONDS ?? "20", HQ_MEDIA_RECONCILE_SECONDS: process.env.HQ_MEDIA_RECONCILE_SECONDS ?? "3",
       ...(WIN ? { HQ_STOP_ON_STDIN_CLOSE: "1" } : {}) },

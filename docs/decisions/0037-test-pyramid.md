@@ -69,6 +69,17 @@ in three), outside the plugin folders so that neither the plugin's inputs nor th
 `e2e/plugin-run.ts` runs them against the testbed with Chrome and no LiveKit, taking an e2e slot like
 `run.ts`.
 
+**The core suite runs without plugins (2026-11-08).** The `plugins` scenario left `e2e/` too: its pets checks for
+`hq-pets-e2e`, its plugin host checks (ui-demo's anchors, modal widgets, view, app tokens and drawn object, the
+iframe sandbox and CSP, a flooding plugin stopped on one page, turning a plugin on and off live, drawn-sheet) for
+`plugin-host-e2e`, a project of `plugins/e2e/` that loads only the suite's fixture plugins
+(`e2e/fixtures/plugins/installed`), never a bundled one. The host is core code, but it needs no LiveKit, so it runs
+on the testbed like the plugin projects rather than in `run.ts`. The `a11y` scenario's plugin audits went with them
+(the side panel's Plugins tab and a plugin's modal to `plugin-host-e2e`, the Chess window to `hq-chess-e2e`), and
+`run.ts` starts its server with plugins off (`HQ_PLUGINS_DIR` empty, nothing copied). The e2e project's inputs no
+longer include `plugins/bundled` or `e2e/fixtures`: changing a bundled plugin reruns its own e2e project, not the
+core scenarios.
+
 **fdash: conventional names, a graph, outputs.**
 
 - The repository's projects use five task names: `build`, `lint`, `test:unit`, `test:integration`,
