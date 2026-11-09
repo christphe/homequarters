@@ -225,7 +225,9 @@ jobs:
           if [ ${#projects[@]} -gt 0 ]; then
             pkgs=()
             for p in "${projects[@]}"; do pkgs+=(--pkg "$p"); done
-            node tools/fdash/cli.ts run test:e2e "${pkgs[@]}" || status=1
+            # one at a time: two Chromes on the runner's cores drop the pets' walk to 7 fps (hq-pets-e2e's
+            # every-frame checks failed so on 2026-11-08 when it ran next to plugin-host-e2e)
+            FDASH_JOBS=1 node tools/fdash/cli.ts run test:e2e "${pkgs[@]}" || status=1
           fi
           exit "$status"
       - name: Log of the suite
